@@ -7,6 +7,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { decideResult, type RuntimeSummary, type WorkerResult } from "./result.js";
 import { exportHTMLReport } from "./report-artifacts.js";
+import { fixtureBridge } from "./live/fixture-bridge.js";
 
 interface Input {
   runId: string;
@@ -84,10 +85,15 @@ async function execute(input: Input, taskDir: string): Promise<WorkerResult> {
   await symlink(resolve(packageDir, "../.."), join(taskDir, "node_modules"), "dir");
   await writeFile(join(taskDir, "package.json"), '{"type":"commonjs"}\n', "utf8");
   await writeFile(join(taskDir, "run.spec.ts"), input.script, "utf8");
+  const bridgePath = join(taskDir, "live-fixture.cjs");
+  await writeFile(bridgePath, fixtureBridge(new URL("./live/observer.js", import.meta.url).href), "utf8");
+  const tsconfigPath = join(taskDir, "tsconfig.json");
+  await writeFile(tsconfigPath, JSON.stringify({ compilerOptions: { baseUrl: taskDir, paths: { "@playwright/test": [bridgePath] } } }), "utf8");
   const summaryPath = join(taskDir, "runtime-summary.json");
   const htmlDir = join(outputDir, "html");
   const reporterPath = fileURLToPath(new URL("./reporter.js", import.meta.url));
   const config = {
+    tsconfig: tsconfigPath,
     testDir: taskDir,
     testMatch: "run.spec.ts",
     outputDir: join(outputDir, "test-results"),

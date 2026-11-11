@@ -1,5 +1,6 @@
 import { chromium, type Browser, type Page } from "@playwright/test";
 import { AuthorError } from "./types.js";
+import { LiveObserver } from "../live/observer.js";
 
 function tool(name: string, description: string, properties: Record<string, { type: "string" }>) {
   return { type: "function", name, description, strict: true,
@@ -29,6 +30,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
   let browser: Browser | undefined;
   let page: Page | undefined;
   let closed = false;
+  const live = new LiveObserver();
   // Browser subprocesses do not inherit the AI key or Manager credentials.
   const browserEnv: Record<string, string> = {};
   for (const name of ["PATH", "HOME", "TMPDIR", "LANG", "DISPLAY", "PLAYWRIGHT_BROWSERS_PATH"]) {
@@ -38,6 +40,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
     if (closed) throw new AuthorError("cancelled");
     if (!page) {
       browser = await chromium.launch({ headless: true, env: browserEnv, timeout: 15000 });
+      live.observeBrowser(browser);
       if (closed) { await browser.close(); throw new AuthorError("cancelled"); }
       page = await browser.newPage();
       page.setDefaultTimeout(10000);
@@ -92,6 +95,6 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
     snapshot,
     async click(selector) { await (await getPage()).locator(selector).click(); return snapshot(); },
     async fill(selector, value) { await (await getPage()).locator(selector).fill(value); return { ok: true }; },
-    async close() { closed = true; await browser?.close(); },
+    async close() { closed = true; await live.close().catch(() => undefined); await browser?.close(); },
   };
 }

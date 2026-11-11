@@ -185,6 +185,7 @@ type Store interface {
 	CreateRun(context.Context, string) (Run, error)
 	Runs(context.Context, string) ([]Run, error)
 	Run(context.Context, string) (Run, error)
+	LiveTarget(context.Context, string) (LiveTarget, error)
 	Cancel(context.Context, string) (Run, error)
 	RegisterManager(context.Context, string, int) error
 	Assignments(context.Context, string) ([]Assignment, error)

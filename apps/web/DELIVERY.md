@@ -1,8 +1,65 @@
-# Web M1／M2／M3 交付紀錄
+# Web M1／M2／M3／M4 交付紀錄
 
-日期：2026-11-11（Asia/Taipei）。Owner：Web Agent。所有新增與修改均位於 `apps/web/`；未執行 Git、未啟動其他 Agent。進度主檔與測試後 commit 由總指揮彙整處理。M1 整合時由總指揮完成依賴安裝，已保留 lockfile；M2／M3 沿用現有依賴。M3 未安裝套件、未讀取 env 檔案、未呼叫模型。
+日期：2026-11-11（Asia/Taipei）。Owner：Web Agent。所有新增與修改均位於 `apps/web/`；未執行 Git、未啟動其他 Agent。進度主檔與測試後 commit 由總指揮彙整處理。M1 整合時由總指揮完成依賴安裝，已保留 lockfile；後續沿用現有依賴。M3 整合已由總指揮回報通過。本輪 M4 未安裝套件、未讀 env、未呼叫模型、未進行 Git 操作。
 
-## M3 最新交付
+## M4 最新交付：唯讀監看
+
+依 `contracts/mvp-v4.md` 實作；只修改 `apps/web/`，含 owner 範圍內的 Nginx 與 Vite 設定。
+
+- 新增 `src/LiveView.tsx`（唯讀面板）與 `src/live.ts`（原生 WebSocket／RTCPeerConnection controller）；修改 `src/App.tsx`、`src/styles.css`、`vite.config.ts`、`nginx.conf.template`。沒有新套件或依賴／lockfile 變更。
+- 最近一次執行摘要與各活躍 Run 歷史列提供「開始監看」。選定的是明確 Run ID，不追隨 latest；新 author／validation／正式 Run 不會偷換監看目標。同一頁最多一個面板，重新選取會清理前一 session。面板位於最近執行摘要後、歷史列表前。
+- **真 WebRTC**：Runtime 提供 offer；前端依 ready 的 ICE servers 建立 peer、接收 video track、回覆 answer。等待 ICE gathering complete 或最多 8 秒，再送 localDescription.sdp；不傳 trickle candidate。只有 video 有非零尺寸、可播放資料、未暫停且 track live，並以實際 video-frame callback（不支援時用播放事件）確認，才顯示「監看中：WebRTC」。Server streaming、WS open、SDP 成功、peer connected 都不單獨當成功。
+- **JPEG 備援**：ready 後 20 秒沒有可播放 video、peer failed 或 WebRTC 協商失敗時切 JPEG，亦可手動切換與重新嘗試 WebRTC。binary message 只接受完整 JPEG，大小上限 1 MiB；只保留最新 Blob URL，替換與清理時 revoke。圖片實際 decode/load、naturalWidth 非零後才顯示「監看中：JPEG 備援」，不稱為 WebRTC 成功。
+- **等待與重連**：queued／dispatched 尚無作用中的 attempt，以及 no-attempt／not-ready 類錯誤，每 3 秒安全重試監看連線；不重跑測試。一般斷線或 30 秒無 pong，以 2／4／8 秒退避、最多三次自動重連，之後可手動重新連線。busy 不自動搶佔，顯示已有其他觀看者；單 viewer 的最終約束由 Server 執行。
+- **生命週期**：每 10 秒 ping。停止、關閉面板、改選 Run／Test、返回登入、卸載與頁面隱藏／pagehide 都會關閉 WS／peer、停止接收 track、釋放 Blob URL 及計時器。頁面恢復可見時，仍有觀看意圖才重新連線；明確停止不會自行恢復。
+- **終態保留**：Run 終態或 Server ended 後清理影像資源，面板仍保留 Run ID 與「監看已結束」，直到使用者關閉。不因終態立即消失。停止監看與斷線都不呼叫取消 Run、不修改執行結果。
+
+### M4 Server／Runtime 串接
+
+| 項目 | 前端行為／需求 |
+| --- | --- |
+| Viewer endpoint | 同源 `GET /api/runs/:runId/live` WebSocket upgrade；HTTP 用 ws、HTTPS 用 wss，沿用瀏覽器使用者 cookie，沒有 Manager token |
+| `ready` | 接收 `{viewerId,iceServers:[]}`；ICE credentials 僅交原生 peer，不印 log |
+| `offer`／`answer` | 收 `{type:'offer',sdp}`，non-trickle 回 `{type:'answer',sdp}`；Runtime 是 offer 方 |
+| 模式 | `{type:'mode',mode:'jpeg'|'webrtc'}`；初始 webrtc，重連沿用使用者目前模式 |
+| 狀態 | 接收 waiting／connecting／streaming／unavailable／ended 與 reason；streaming 仍等本機媒體確認 |
+| 租約 | 每 10 秒 `{type:'ping'}`，以 pong 更新期限；30 秒無回應重新連線 |
+| binary | 一個 WS message 一張 JPEG；非 JPEG／過大畫面不標成功 |
+| 錯誤 | `{type:'error',code,message}`；busy 結束本連線並提示稍後重試，queued／無 attempt 維持等待 |
+| 停止 | 關閉 viewer WS，由 Server 依該 viewerId 送 live.stop／租約回收；不另外發送未定義的 stop 訊息 |
+
+**Nginx 已更新**：加入 Upgrade／Connection map、HTTP/1.1、60 秒讀寫期限、停用 proxy buffering。`Host` 使用 `$http_host`，並轉送 `X-Forwarded-Host $http_host`，保留 `localhost:18080` 這類原始埠號，讓 Server 同源 Origin 檢查成立。Vite `/api` proxy 啟用 `ws: true`、`changeOrigin: false`，同樣保留原始 Host。M4 要求同源；若 API base 為其他 origin，前端會明確拒絕建立監看連線，請使用代理。
+
+### M4 實際檢查與未驗證項目
+
+- **正式 build 一次通過**：`npm run build`，完整 `tsc --noEmit` 與 Vite `7.1.9` production build，退出碼 `0`。40 個模組；HTML 0.55 kB、CSS 14.66 kB、JS 252.37 kB（gzip 78.80 kB）。通過後未重跑。
+- 本輪未跑真實媒體、UI smoke、Docker build 或 Nginx `-t`；沒有宣稱 WebRTC／JPEG／TURN 實測通過。Docker 與整合黑箱驗收由總指揮／指定 Muse 統一執行，沿用唯讀的 `scripts/test/fixtures/m4-live.spec.ts` 45 秒變動畫面；本 Agent 未修改該 fixture。
+- 無 viewer 不擷取／不開 helper 的最終保證仍由 Server／Manager／Worker 的 stop、viewerId 去重與租約實作負責。前端提供確實關閉連線與資源清理，不能單憑 DOM 關閉推定 Runtime 已回收。
+- TURN 未提供時只可驗證設定接線；實際 NAT／TURN 成功仍待實測。現有 PNG／HTML 報告與 Run API 行為未更動。
+- 明確關閉／停止後不保留最後一張畫面的資源；終態面板保留的是 Run 與結束狀態，不將凍結影格假裝成即時畫面。
+
+### M4 黑箱 accessible 標籤／locator
+
+| 對象 | Accessible 名稱／穩定定位 | 預期 |
+| --- | --- | --- |
+| 最近執行啟動 | button `開始監看`（exact） | 使用摘要當下的 Run ID，啟動一個面板 |
+| 歷史列啟動 | button `開始監看 Run <完整 UUID>` | 指定某筆 Run，不跟隨 latest |
+| 面板 | region `唯讀監看` | 面板顯示固定的完整 Run ID；終態仍保留 |
+| 連線狀態 | status `監看連線狀態`；`data-testid="live-status"` | 可見文字反映等待／連線／傳輸／結束 |
+| WebRTC video | aria-label `WebRTC 唯讀監看畫面`；`data-testid="live-video"` | 原生 video，autoplay／muted／playsInline；應確認 videoWidth、videoHeight、readyState 與未暫停 |
+| JPEG img | img `JPEG 備援唯讀監看畫面`；`data-testid="live-jpeg"` | 原生 img；應確認 naturalWidth > 0，不能只看元素存在 |
+| 手動備援 | button `切換 JPEG 備援` | 關閉 peer，等待 JPEG 真正可顯示 |
+| 回主路徑 | button `嘗試 WebRTC` | 同 viewer 重新協商、重新套用 20 秒可播放期限 |
+| 自動播放被擋 | button `播放監看畫面`（條件出現） | 使用者手勢重試播放；未播出前不標成功 |
+| 重連 | button `重新連線` | 建立新 viewer session，舊資源先清理；Run 終態停用 |
+| 停止 | button `停止監看` | 關閉影像資源，Run 繼續；可再重新連線 |
+| 關面板 | button `關閉監看面板` | 明確卸載與清理，移除面板 |
+
+可見狀態包括 `等待監看畫面`、`監看連線中`、`監看重新連線中`、`監看中：WebRTC`、`監看中：JPEG 備援`、`監看已暫停`、`已停止監看`、`監看已結束`、`目前無法監看`、`監看連線失敗`。不要把「等待監看畫面」或 Server streaming 當作媒體成功。
+
+建議在同一條 45 秒 fixture 黑箱流程：執行 → 開始監看 → 確認真 video 可播放及 WebRTC 狀態 → 切換 JPEG，確認 img decode 與備援狀態 → 停止監看，確認測試仍執行並最終產生原報告。另可不提前停止，確認終態面板保留「監看已結束」。queued 開啟需等候／重試；背景頁面會主動暫停，測試時須使監看頁可見。此為待驗收定位說明，本 Agent 未執行 smoke。
+
+## M3 前次交付
 
 依 `contracts/mvp-v3.md` 實作持久對話，保留 M1／M2 的正式執行、草稿、驗證與明確確認發佈流程。使用 `vercel-react-best-practices`，以獨立對話元件承接流程；沒有 SSE、複雜 diff 套件或額外依賴。
 
@@ -209,7 +266,7 @@ Compose 整合時將 Web 的容器埠 `80` 對外，並讓 Web 與名稱為 `ser
 - 「返回登入」只清除目前頁面的登入顯示並取消前端讀取；契約沒有登出端點，不代表撤銷 Server session。重新整理頁面後需再次點擊開發登入。
 - 列表顯示名稱、描述與發佈狀態；執行結果在所選測試的詳情顯示，未為列表每個測試額外查詢歷史摘要。
 - 輪詢僅追蹤目前測試中已載入的活躍 Run；若其他分頁建立任務，或終態仍缺報告，使用「重新整理」載入。單輪暫時失敗會保留既有狀態並重試，不把連線失敗改成任務失敗。
-- M2 草稿／發佈／取消與 M3 AI 對話已在上方交付；仍不含即時監看。
+- M2 草稿／發佈／取消、M3 AI 對話與 M4 唯讀監看已在上方交付；M4 的真實媒體驗收狀態以上方最新紀錄為準。
 - 依使用者要求，未啟動設計審查 Agent，也未執行額外設計研究／工具探查；未宣稱取得視覺審查通過。
 
 整合時只需跑一條成功路徑，再執行一個真實斷言失敗：確認 UI 分別顯示「通過」與「失敗」、錯誤內容正確、報告可開啟，且完成後停止自動輪詢。此項由總指揮統一驗收，避免多人重跑全量測試。

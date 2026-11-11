@@ -52,15 +52,19 @@
 
 ## M4：唯讀即時監看
 
-狀態：待辦。依賴：M1 的 Run ID 與 Worker 瀏覽器生命週期；可與 M2／M3 平行。
+狀態：完成。Owner：Herdr t30 Web、t31 Server、t32 Runtime（Codex sol／xhigh），t33 Muse 黑箱驗收，總指揮整合。契約 contracts/mvp-v4.md。使用者已授權先開發，push 待 remote URL；既有成果已 commit 600f28e。
 
-- [ ] Runtime：畫面擷取與 WebRTC 輸出；Server 轉送協商訊息，支援自架 TURN 設定。
-- [ ] Web：唯讀監看、連線狀態與斷線重試；沒有觀看者時避免持續占用不必要影像資源。
-- [ ] Runtime／Web：提供經 Server 轉送畫面的 WSS 備援，降低網路限制對觀察能力的影響。
-- [ ] Integration：以部署環境實測決定預設影像參數，文件記錄所需連線與備援方式。
+- [x] Runtime：畫面擷取與 WebRTC 輸出；Server 轉送協商訊息，支援自架 TURN 設定。
+- [x] Web：唯讀監看、連線狀態與斷線重試；沒有觀看者時避免持續占用不必要影像資源。
+- [x] Runtime／Web：提供經 Server 轉送畫面的 WSS 備援，降低網路限制對觀察能力的影響。
+- [x] Integration：以部署環境實測決定預設影像參數，文件記錄所需連線與備援方式。
 
 交付：執行中可看見瀏覽器畫面；影像故障不取消測試，也不阻塞其他功能開發。
 最小驗證：一條 WebRTC 觀看路徑及一次備援切換；不建立影像壓測或完整 NAT 組合矩陣。
+
+實際驗收（2026-11-11）：Server／Manager 必要 Go 測試、Worker build 與真實 RTP 影格測試通過；Mac Chromium → OrbStack Worker 主流程成功，WebRTC 解碼影格 2→3、JPEG 更新、停止監看時 Run 仍 running，最後 succeeded（Run `3a23fa36-0eb4-46ac-a311-ba5541882fcb`）。可見 Chrome demo Run `c63b68dc-88a6-4501-a9e8-2e72a8fd48cf` 顯示 WebRTC 12→30 秒與 JPEG 39 秒，報告兩張 1280×720 PNG 載入正常。TURN 跨主機與 Linux 實機組合留待 M5，未宣稱通過。操作見 [即時監看指南](../guides/live-view.md)。
+
+M4 真實網站補充驗收：依使用者要求改以 Whippet 登入→搜尋→詳情→報告 popup→返回登入示範；Chrome WebRTC 目視觀察到頁面與 popup 切換，Run `248aa019-454d-464b-a2e7-3c519a65feb8` succeeded。合成計數頁僅作串流診斷，不取代實際操作驗收。
 
 ## M5：Linux／Mac Docker 部署與 MVP 收尾
 
@@ -69,6 +73,7 @@
 - [ ] Integration：Server Compose、執行節點 Compose、設定範例、持久化 volumes 與啟動指南。
 - [ ] Runtime：確認實際 Mac Docker CPU 架構可建置／執行；記錄測過的平台與限制。
 - [ ] Integration：補上開源所需 README、選定的 LICENSE 與必要依賴聲明；授權定案前不宣稱已採用特定授權。
+- [ ] Runtime：改善實際網頁監看的 WebRTC 細字清晰度（目前畫面可切換，但文字偏糊）。
 - [ ] 全體：修正完整主流程中實際遇到的阻塞，不另開無關重構或效能優化工作。
 
 交付：依文件可啟動，完成建立 → 對話修改 → 驗證 → 發佈 → 執行 → 監看 → 報告。
@@ -80,7 +85,7 @@
 
 ## 接續方式
 
-下一個可執行任務是 M4：唯讀即時監看，沿用現有Run與Worker生命週期。M3已完成本輪驗收與交付，M4尚未開始。遇到非核心細節採可逆預設，記在相關任務，不延伸成新一輪設計訪談。
+下一個可執行任務是 M5：部署文件與 MVP 收尾。M4 已完成本機 WebRTC／JPEG 驗收與可見示範。遇到非核心細節採可逆預設，記在相關任務，不延伸成新一輪設計訪談。
 
 ## M1 後的模型預配置
 

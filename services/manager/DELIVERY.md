@@ -1,6 +1,47 @@
-# Runtime PNG 截圖與 M3 交付
+# Runtime M4、PNG 截圖與 M3 交付
 
 更新：2026-11-11（Asia/Taipei）。Owner：Runtime Agent。
+
+## 最新 M4 交付（此節優先於下方歷史紀錄）
+
+最新整合回報：Docker viewer 在同 bridge 已走完整 UI，真 video 幀 1→2、手動 JPEG 可顯示且更新、停止監看後 Run 仍 running。Mac native 原先未收到 video，自動 JPEG 成功，驗收正確判 failed。總指揮代取原 helper offer 僅一筆 UDP host `.local` mDNS candidate、無 numeric host；現只在 `src/live/helper.ts` 的 ephemeral sender launch 加入 `--disable-features=WebRtcHideLocalIpsWithMdns`。**最新 Worker 正式 build 通過、dist 已更新；numeric candidate 與 Mac native 真 video 尚待總指揮驗證。Manager／Linux binary 未變，不需重建。** 沒有改觀看端或被測 browser 設定，沒有加入 TURN／依賴。
+
+只修改 `services/manager/`、`runtimes/worker/`，依 [M4 契約](../../contracts/mvp-v4.md)。沒有安裝套件、執行 Git、讀 env 檔案／實際 key、呼叫模型或增加依賴。原有 1 GiB／1 CPU／256 PID／256 MiB shm 限額維持。
+
+| 產物 | 位置與狀態 |
+| --- | --- |
+| Linux arm64 Manager | `/private/tmp/whippet-manager-m4`，ELF aarch64 靜態連結，10,203,371 bytes；既有 cache／`-mod=readonly` 交叉編譯 exit 0。 |
+| Worker dist | `runtimes/worker/dist/`，正式 TypeScript build exit 0；含 live/files、helper、observer、fixture-bridge 與最小測試。 |
+| Worker skill | 保留既有 `skills/`，衍生映像須與 dist 一起保留；M4 未改 AI loop 或技能。 |
+
+實作接縫：
+
+- `src/runner.ts`／`src/live/fixture-bridge.ts`：保留原始完整 spec，以任務 tsconfig paths 攔截 `@playwright/test`，將 named／default test 導向擴充 browser fixture。原始 API 從 `playwright/test` 載入，避免 alias 遞迴；不強制 API-only 測試開 browser。
+- `src/live/observer.ts`：觀察 fixture browser 的既有／新 context、page／popup，選最近建立且存活的 page。author 直接掛既有探索 browser。有效租約才啟動 screencast；無 page 為 waiting；租約到期或 mode 改變時停止／切換。操作與關閉有短期限，例外遮蔽為固定 media_failed，不變更 Run result。
+- `src/live/helper.ts`：獨立無金鑰 Chromium 將 JPEG 畫入 canvas，透過 `canvas.captureStream(3)` video track／RTCPeerConnection 輸出真 RTP video；沒有 DataChannel、模型生成程式或對被測網站導航。non-trickle offer／answer 最多等 ICE gathering 8 秒；只有 viewer 可確認影像已可播放，不將 peer setup 當成成功串流。
+- `src/live/files.ts`：受限 regular file／大小讀取、原子 rename；helper env 只含必要瀏覽器白名單，排除 Manager token／AI key。
+- Manager `live.go`：`live.start/stop` viewerId 去重／匹配停止；媒體 WS 主動連線 `/api/manager/runs/:runId/live?attemptId=...&viewerId=...`，Bearer 只存在 Manager header。與任務控制 WS 分開，incoming 佇列 8 筆、write deadline 3 秒、每 10 秒 ping／35 秒 read deadline；Server 已由總指揮協調回 pong。
+- Manager 經任務 bind 目錄 `live/control.json` 每 5 秒原子續租，expiresAt 為 Unix 毫秒、有效 30 秒，包含 viewerId／mode／iceServers／answer。Worker state.json 含 viewerId／state／transport／offer；最新影格為 `<viewerId>.jpg`。Manager 每 100 ms 只讀最新檔案：JSON 192 KiB、SDP 128 KiB、JPEG 1 MiB，os.Root／regular file／固定名稱檢查；慢 viewer 不累積舊影格、不阻塞 heartbeat/cancel。離線與停止會將 expiresAt 改 0。所有媒體暫存不進 input／journal／report／log。
+- Manager `manager.go`：prepare 建立 live 子目錄；Worker 執行結束時停止媒體，仍沿用既有確認容器回收／附件上傳／終態流程，不改 MAX_WORKERS 或同 attempt 不重跑規則。新 viewer 等舊 media 清理後接手，遲到的舊 stop 不會取消新 viewer。
+
+實際檢查：
+
+1. 本 Agent：`npm run build` 通過。離線 `node --test dist/live/live.test.js` **1 passed／1 browser test skipped／0 failed**；驗租約到期、大小與 helper env 白名單。沒有假稱 skipped browser test 成功。
+2. 本 Agent：真正呼叫 Playwright CLI `--list`，任務 tsconfig path mapping／產生的 bridge 成功註冊 named import 與 default import **2 tests**；沒有啟動 browser 或聯網。完整擷取 fixture 整合待下一步。
+3. 總指揮代跑既有 Worker 映像、正常 Docker default bridge 的 `WHIPPET_LIVE_BROWSER_TEST=1 node --test dist/live/live.test.js`：**2/2 passed，真正 RTP video framesDecoded=3、jpegCaptured=true**，約 2.7 秒；關閉 helper 後原測試頁可繼續。第一次 network=none 沒有有效 ICE candidate 而失敗（framesDecoded=0），已定位為測試網路配置，不據此改程式或冒稱成功。
+4. 本 Agent：Manager `go build -mod=readonly ./...` 與 Linux arm64 交叉編譯通過。`TestLive` 最小 race 因 sandbox bind 被拒，總指揮已代跑相同命令，**PASS／無 race，1.343s**；不再重跑。涵蓋舊 viewer stop、防止 token 寫到 control、WS JPEG、disconnect 撤銷租約、媒體不改任務狀態，以及 symlink／大小拒絕。
+
+```sh
+GOROOT=/opt/homebrew/Cellar/go/1.27.4/libexec \
+GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local \
+GOCACHE=/private/tmp/whippet-manager-go-cache \
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
+go build -mod=readonly -trimpath -o /private/tmp/whippet-manager-m4 ./cmd/manager
+```
+
+總指揮接續：使用上述 binary／最新 dist 衍生既有映像，保留 skills。以 45 秒受控頁驗 fixture→Manager media WS→UI video、JPEG 切換、關 viewer 後停擷取且 Run／PNG 正常完成；author observer 尚未做模型 live（本輪禁止模型呼叫）。Worker 沒有新增外部 port 或 task input 欄位。Docker helper loopback 已證明真 video 路徑，**不代表完整 UI／Mac 原生／跨網／TURN 已驗收**。
+
+限制：獨立自行 launch／connect 的 browser process、繞過 `@playwright/test` bridge 的匯入不保證觀察；目前選最近存活 page，沒有換頁 UI、音訊或遠端操作。TURN 只完成設定接線，未用真 TURN 實測。helper 增加一個 Chromium，既有限額是否足夠由整合確認，尚未擴大限額。即時 video 並不增加 trace／video／Markdown 報告附件支援；PNG 附件管線未變更。
 
 **PNG 管線已交付並部署；總指揮回報 4 個 Whippet 真實驗收案例的報告 9 張 PNG 全部通過，案例 01 revision 4 已修正過場並經目視確認。** M3 先前已完成同對話 read_validation_report 修復、revision 3 validation 成功、confirmed 發佈及 UI／key 隔離驗收。結果以總指揮的 [M3 整合紀錄](../../docs/tracking/devlog/m3-integration.md) 為準；本 Agent 不呼叫模型或重跑上述驗收。
 

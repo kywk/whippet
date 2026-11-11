@@ -115,6 +115,28 @@ npm run test:author
 - **PNG 已支援；trace／video 與其他附件格式仍未支援。** 不要啟用它們或宣稱對應下載連結可用。
 - 基礎設施或語法故障可能沒有 HTML／JSON；只回 failed manifest，不補造成功或仿製 Playwright 報告。
 - 總指揮已完成真實 Docker／Chromium 的 **4 個 Whippet 驗收案例與報告 9 張 PNG**，圖片正常載入、零 CSP／HTTP 錯誤。案例 01 已調整至 Workspace 顯示後擷取，revision 4 重新通過並目視確認。M1／M2／M3 的成功、失敗、取消、對話修復／驗證／確認發佈與 UI 驗收沿用總指揮既有紀錄；本次不重跑。
-- Linux arm64 Manager binary 與 Worker dist 已交由總指揮從既有映像衍生部署，未宣稱所有 OS／CPU 組合已驗證。尚無即時影像與公開多租戶隔離。
+- Linux arm64 Manager binary 與 Worker dist 已交由總指揮從既有映像衍生部署，未宣稱所有 OS／CPU 組合已驗證。M4 即時影像進度見下節；尚無公開多租戶隔離。
 
 PNG 以外附件仍有限制：額外失敗範例的自動截圖可見，但 `error-context.md` 未上傳且讀取會遭 CSP 阻擋。完整檢查與限制見 [本機驗收指南](../../docs/guides/whippet-acceptance.md)。
+
+## M4 唯讀即時畫面
+
+沿用 [M4 契約](../../contracts/mvp-v4.md)，不新增套件。Runner 保留完整 spec，以任務專用 tsconfig paths 將 `@playwright/test` 導向產生的 CJS fixture bridge；bridge 從 `playwright/test` 載入原始 API，包住 worker browser fixture。`src/live/observer.ts` 觀察既有 context／page／popup，選擇最近建立且尚未關閉的 page；不自行建立被測頁面。author 在現有 exploration browser 掛同一 observer。API-only 測試未使用 browser 時不強制啟動它。
+
+Manager 經 `/work/live/control.json` 原子更新 `{viewerId,mode,expiresAt,iceServers,answer?}`，expiresAt 為 Unix 毫秒。Worker 每 250 ms 檢查；沒有有效租約時不擷取、不開 helper。原子 state.json 含 viewerId／state／transport／offer；最新 JPEG 為 `<viewerId>.jpg`，限制 1 MiB，沒有歷史影格佇列。這些都是暫存媒體資料，不是報告附件，不寫入 input、journal 或 log。
+
+擷取使用既有 `page.screencast.start({onFrame,size:{width:1280,height:720},quality:55,fps:3})`。WebRTC 模式另開無金鑰 Chromium helper，將 JPEG 畫入 canvas，以 `canvas.captureStream(3)` 的 video track 送入 RTCPeerConnection；**不是 DataChannel 傳圖**。offer／answer 使用 non-trickle ICE，最多等待 gathering 8 秒；ICE 設定由 Server 傳入，預設空陣列。JPEG 模式關閉 helper、保留畫面擷取。viewer 離線、租約到期、Run 結束時停止影像；媒體例外只回固定 unavailable，不改測試結果。
+
+helper subprocess 只接收 PATH／HOME／TMPDIR／LANG／DISPLAY／PLAYWRIGHT_BROWSERS_PATH，不繼承 AI key 或 Manager token。原始 provider／頁面內容／SDP／ICE credentials 不列印。helper 不導航到被測網站，也不執行生成的 spec。操作／清理設有短期限，監看失敗不阻塞測試。
+
+跨 Docker 診斷：總指揮已驗證 Docker viewer 整條 UI 真 video、手動 JPEG 更新、關閉監看後 Run 繼續；Mac native 先前只能自動切 JPEG。原 helper offer 實際只有一筆 UDP host `.local` mDNS candidate，沒有 numeric host。因此僅對 ephemeral helper 加入 `--disable-features=WebRtcHideLocalIpsWithMdns`，不調整被測 browser 或觀看端設定；正式 build 已通過，旗標後的實際候選與 Mac native 真 video 待總指揮驗收。這不保證一般 NAT／跨網可達，也不取代 TURN。
+
+正式 `npm run build` 與離線租約／環境白名單 mock 通過。總指揮代跑既有映像的 Docker default bridge loopback：**2/2 通過，真 RTP video framesDecoded=3、jpegCaptured=true**，約 2.7 秒；network=none 沒有可用 ICE candidate 的失敗屬測試配置，沒有改稱成功。完整 fixture→Manager→UI、切備援及離線回收仍交總指揮整合。最小容器檢查入口：
+
+```sh
+WHIPPET_LIVE_BROWSER_TEST=1 node --test dist/live/live.test.js
+```
+
+限制：直接使用非 bridge 匯入、自行 `chromium.launch()`／外部 connect 的獨立 browser process 不保證被觀察；目前不提供換頁 UI、音訊或鍵鼠控制。每 Run 一位 viewer。helper 增加一個 Chromium，尚未調高既有 1 GiB／1 CPU／256 PID 限額，資源壓力需整合確認。同 Docker bridge 的 video 已驗證；Mac 原生／跨網與真實 TURN 尚未驗證。即時 video 不等於支援 video／trace 報告附件；既有 PNG 管線維持原樣。
+
+官方 API 依據：[Screencast](https://playwright.dev/docs/api/class-screencast)、[fixtures](https://playwright.dev/docs/test-fixtures)、[tsconfig paths](https://playwright.dev/docs/test-typescript#tsconfig-path-mapping)、[canvas.captureStream](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/captureStream)。

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { errorMessage } from './api';
 import { formatDate, Loading, Notice, ReportLink, RunStatusBadge, runKindLabel } from './components';
 import { DraftEditor } from './DraftEditor';
+import { LiveView } from './LiveView';
 import { CancelRunButton, CreateTestForm, VersionHistory } from './TestActions';
 import { useResource, useRuns } from './hooks';
 import { isActiveRun } from './types';
@@ -141,6 +142,8 @@ function TestDetail({ testId, api, apiBase, onDirtyChange, onTestUpdated }: { te
   const versions = useResource(loadVersions);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string>();
+  const [liveSelection, setLiveSelection] = useState<Run>();
+  const [liveRequest, setLiveRequest] = useState(0);
   const submitLock = useRef(false);
   const submitController = useRef<AbortController | null>(null);
   useEffect(() => () => submitController.current?.abort(), []);
@@ -164,6 +167,8 @@ function TestDetail({ testId, api, apiBase, onDirtyChange, onTestUpdated }: { te
   }
 
   const latest = history.runs[0];
+  const liveRun = liveSelection ? history.runs.find((run) => run.id === liveSelection.id) ?? liveSelection : undefined;
+  function startLive(run: Run) { setLiveSelection(run); setLiveRequest((value) => value + 1); }
   function published(version: Version) {
     if (test.data) onTestUpdated({ ...test.data, publishedVersionId: version.id });
     test.retry(); versions.retry();
@@ -191,11 +196,13 @@ function TestDetail({ testId, api, apiBase, onDirtyChange, onTestUpdated }: { te
         {latest ? <div className="latest-run" aria-live="polite" aria-atomic="true">
           <div className="latest-summary"><RunStatusBadge run={latest} /><span>{runKindLabel(latest)}</span><span>{formatDate(latest.createdAt)}</span>{latest.kind === 'author' ? <span className="muted">撰寫結果見對話</span> : <ReportLink reportUrl={latest.reportUrl} apiBase={apiBase} />}</div>
           <p className="run-id">Run <span className="identifier">{latest.id}</span></p>
+          {isActiveRun(latest) ? <button className="button secondary compact live-start" onClick={() => startLive(latest)}>開始監看</button> : null}
           {latest.error ? <pre className="run-error">{latest.error}</pre> : null}
           {isActiveRun(latest) ? <p className="inline-hint">{latest.status === 'queued' ? '任務已排入佇列，正在等待執行節點。' : '任務正在處理中，結果會自動更新。'}</p> : null}
           {!isActiveRun(latest) && !latest.reportUrl && latest.kind !== 'author' ? <p className="inline-hint">Server 尚未提供報告連結，請重新整理執行紀錄。</p> : null}
         </div> : !history.loading && !history.error ? <p className="muted">還沒有執行紀錄。按「執行測試」開始第一次執行。</p> : null}
       </section>
+      {liveRun ? <LiveView key={`${liveRun.id}:${liveRequest}`} run={liveRun} apiBase={apiBase} onClose={() => setLiveSelection(undefined)} /> : null}
       <section className="history-section" aria-labelledby="history-title">
         <div className="section-heading"><h3 id="history-title">執行紀錄 <span className="count">{history.runs.length}</span></h3>
           <button className="button secondary compact" disabled={history.loading} onClick={history.refresh}>{history.loading ? '更新中…' : '重新整理'}</button>
@@ -208,7 +215,7 @@ function TestDetail({ testId, api, apiBase, onDirtyChange, onTestUpdated }: { te
           <tbody>{history.runs.map((run) => <tr key={run.id}>
             <td><RunStatusBadge run={run} /><span className="table-run-id identifier" title={run.id}>{run.id.slice(0, 8)}</span>
               {run.error ? <details className="error-details"><summary>查看錯誤</summary><pre className="run-error">{run.error}</pre></details> : null}
-            </td><td>{runKindLabel(run)}{run.versionId ? <span className="table-run-id identifier" title={run.versionId}>{run.versionId.slice(0, 8)}</span> : null}</td><td><time dateTime={run.createdAt}>{formatDate(run.createdAt)}</time></td><td>{duration(run)}</td><td><div className="run-actions">{run.kind === 'author' ? <span className="muted">撰寫結果見對話</span> : <ReportLink reportUrl={run.reportUrl} apiBase={apiBase} />}<CancelRunButton api={api} run={run} onUpdated={history.addRun} /></div></td>
+            </td><td>{runKindLabel(run)}{run.versionId ? <span className="table-run-id identifier" title={run.versionId}>{run.versionId.slice(0, 8)}</span> : null}</td><td><time dateTime={run.createdAt}>{formatDate(run.createdAt)}</time></td><td>{duration(run)}</td><td><div className="run-actions">{run.kind === 'author' ? <span className="muted">撰寫結果見對話</span> : <ReportLink reportUrl={run.reportUrl} apiBase={apiBase} />}{isActiveRun(run) ? <button className="button secondary compact" onClick={() => startLive(run)} aria-label={`開始監看 Run ${run.id}`}>開始監看</button> : null}<CancelRunButton api={api} run={run} onUpdated={history.addRun} /></div></td>
           </tr>)}</tbody>
         </table></div> : null}
         {history.updatedAt ? <p className="updated-at">最後同步：{history.updatedAt.toLocaleTimeString('zh-TW', { hour12: false })}</p> : null}

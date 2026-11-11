@@ -93,4 +93,14 @@ go build ./cmd/manager
 
 測試以假的容器 driver 與記憶體 HTTP transport 驗證去重、回收前不釋放名額、附件順序及拒絕假成功。這些 fixture 不代表真實 Docker／Playwright 已驗證。實際檢查與環境限制見 [DELIVERY.md](DELIVERY.md)。
 
-本次沿用 hello／heartbeat／terminal replay 與 journal 對帳，不新增獨立 reconcile envelope；尚無 journal 淘汰、即時影像或公開多租戶沙箱。一般測試 spec 在無 AI key 的容器中執行 Node.js；author 只提供固定工具。M3 的真實模型／瀏覽器／Server 套用與續接驗證由總指揮整合，實際狀態見 DELIVERY。
+本次沿用 hello／heartbeat／terminal replay 與 journal 對帳，不新增獨立 reconcile envelope；尚無 journal 淘汰或公開多租戶沙箱。一般測試 spec 在無 AI key 的容器中執行 Node.js；author 只提供固定工具。M3 的真實模型／瀏覽器／Server 套用與續接驗證由總指揮整合，實際狀態見 DELIVERY。
+
+## M4 獨立媒體 bridge
+
+控制 WS 接受 `live.start`／`live.stop` envelope，payload `{viewerId,iceServers?}`；只接受目前執行中的 run／attempt。相同 viewer start 去重；新 viewer 等舊 session 停止後接手，舊 viewer 的 stop 不會取消後來的 session。媒體不寫 journal，也不派送或重跑任務。
+
+Manager 主動開啟 `/api/manager/runs/:runId/live?attemptId=...&viewerId=...` 的獨立 WS，Bearer token 只在 Manager 的 HTTP header。經此通道傳 offer／answer／mode／state 與 JPEG binary，不占用控制 WS。每 10 秒送 ping、Server 回 pong；35 秒 read deadline，3 秒 write deadline。媒體中斷不自動重跑，清除租約讓 viewer 重連；不印 raw error、SDP 或 ICE credentials。
+
+每任務 `/work/live` 是內部檔案接縫：control.json 以原子 rename 寫入，5 秒續租、有效 30 秒；Worker 狀態與最新 frame 每 100 ms 讀取。檔案讀取用 os.Root、regular file／大小限制，state 最大 192 KiB、SDP 最大 128 KiB、JPEG 最大 1 MiB；只接受目前 viewer／mode，過時狀態不轉送。JPEG 只保留最新一張，慢連線不累積佇列。WS 中斷、live.stop 或 Worker 結束會撤銷租約；影像狀態不改 Run result 或名額回收規則。
+
+Worker／helper 不接收 Manager token，不開 Worker 公開埠。TURN 設定由 Server 的 `WHIPPET_LIVE_ICE_SERVERS` 傳入，不在 Manager 新增憑證設定。完整流程見 [Worker README](../../runtimes/worker/README.md) 與 [M4 契約](../../contracts/mvp-v4.md)。本輪 Go build／Linux arm64 交叉編譯通過，TestLive focused race 由總指揮代跑通過；UI／跨網整合狀態見 DELIVERY。

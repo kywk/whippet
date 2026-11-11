@@ -15,15 +15,23 @@ import (
 )
 
 type API struct {
-	store     Store
-	artifacts ArtifactStorage
-	engine    *Engine
-	token     string
-	log       *slog.Logger
+	store      Store
+	artifacts  ArtifactStorage
+	engine     *Engine
+	token      string
+	log        *slog.Logger
+	liveViewer http.Handler
+	liveMedia  http.Handler
 }
 
 func NewAPI(store Store, artifacts ArtifactStorage, engine *Engine, token string, log *slog.Logger) *API {
-	return &API{store, artifacts, engine, token, log}
+	return &API{store: store, artifacts: artifacts, engine: engine, token: token, log: log}
+}
+
+// Configure once before serving; long-lived live sockets have their own lease.
+func (a *API) WithLiveHandlers(viewer, media http.Handler) *API {
+	a.liveViewer, a.liveMedia = viewer, media
+	return a
 }
 
 // The MVP identity provider deliberately returns one development Superadmin.
@@ -63,6 +71,12 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	if managerConnect != nil {
 		mux.Handle("GET /api/manager/connect", a.ManagerAuth(managerConnect))
 	}
+	if a.liveViewer != nil {
+		mux.Handle("GET /api/runs/{id}/live", a.liveViewer)
+	}
+	if a.liveMedia != nil {
+		mux.Handle("GET /api/manager/runs/{id}/live", a.ManagerAuth(a.liveMedia))
+	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { writeError(w, 404, "not_found", "route not found") })
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -71,7 +85,8 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 			return
 		}
 		// A bounded context protects database operations, without limiting a WS session.
-		if r.URL.Path != "/api/manager/connect" {
+		livePath := strings.HasSuffix(r.URL.Path, "/live") && (strings.HasPrefix(r.URL.Path, "/api/runs/") || strings.HasPrefix(r.URL.Path, "/api/manager/runs/"))
+		if r.URL.Path != "/api/manager/connect" && !livePath {
 			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 			defer cancel()
 			r = r.WithContext(ctx)
@@ -185,6 +200,9 @@ func (a *API) cancel(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.fail(w, err)
 		return
+	}
+	if Terminal(item.Status) {
+		a.engine.endLiveRun(item.ID)
 	}
 	a.engine.Wake()
 	writeJSON(w, 200, item)

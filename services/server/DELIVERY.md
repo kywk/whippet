@@ -1,6 +1,21 @@
 # Server 交付
 
-Owner：Whippet Server Agent。最新交付：M3 Server 實作；M1／M2 歷史紀錄保留於下方。
+Owner：Whippet Server Agent。最新交付：M4 Server 實作；既有里程碑紀錄保留於下方。
+
+## M4 Server 交付
+
+最終 binary：**`/private/tmp/whippet-server-m4`**，Linux arm64、CGO_ENABLED=0、靜態連結，供總指揮封裝既有 image。僅修改 services/server，未安裝套件、執行 Git、讀取 env 檔案或部署服務。
+
+- 獨立 `LiveHub` 與 viewer／media WS：`/api/runs/:id/live`、`/api/manager/runs/:id/live?attemptId=...&viewerId=...`。Viewer 嚴格同源 Origin；media 沿用 Manager bearer token，並核對 DB Run／attempt／assigned Manager、viewerId 與目前控制連線 epoch。
+- 每 Run 一位 viewer，第二位 busy；ready 回 viewerId／iceServers。初始 webrtc，non-trickle offer／answer、mode／state 走獨立 live 通道；JPEG binary 上限 1 MiB，只保留最新一張，獨立 writer／2 秒寫入期限，沒有影格進入 Engine 或 Manager 控制 queue。
+- Viewer 每 10 秒 JSON ping／pong、30 秒租約；media 亦支援 JSON ping／pong，但不延長 viewer 租約。viewer 斷線、租約到期、media 中斷、Manager 控制斷線／替換與 Run 終態均清理 live，送精確 viewerId 的 live.stop；不更動 Run 結果或重跑任務。
+- `Engine` 新增有界短控制命令 queue，只串行寫 live.start／stop，保持原控制 writer；所有 LiveHub lifecycle callback 在 Engine mutex 釋放後執行。取消 queued Run 的終態也清理 live。媒體資料與影像例外不進原控制 handler。
+- `WHIPPET_LIVE_ICE_SERVERS` 解析 JSON RTCIceServer 陣列，預設 []，提供 viewer 與 live.start；錯誤只回固定配置訊息，不印 credentials。主程式啟動 LiveHub lease/status sweep，新 live WS 不繼承原 HTTP 30 秒 request timeout。
+- 不新增 DB migration 或 WebRTC 套件；Server 只轉 signaling／JPEG，真 video track 由 Runtime／瀏覽器實作。
+
+**實際檢查**：`go test ./internal/server ./internal/gateway -count=1` 通過（0.429s／0.349s）；涵蓋 busy、錯誤 attempt／viewer／Manager epoch、viewer lease 與 media ping、最新 JPEG 覆蓋、舊 session 不會停止新 viewer、terminal 清理、控制綁定、ICE 錯誤不洩露 credentials、Origin 含 port、media token 與長連線 context。一次 GOPROXY=off／GOSUMDB=off 的 linux/arm64 靜態 build 通過，file 已核對 ELF aarch64。
+
+**總指揮接續**：Nginx Upgrade／Connection 與 `$http_host` 由 Web owner 串接；若要 TURN，Compose 需轉入專用 WHIPPET_LIVE_ICE_SERVERS（不可挪用 Manager／AI key）。請用已備妥的 Runtime／Web 驗證真 WebRTC、切 JPEG、關閉 viewer 停擷取與 Run 繼續完成、原 PNG 報告。這裡不宣稱 Server 端整合／TURN 已實測。
 
 ## 原生報告 PNG 附件增補
 

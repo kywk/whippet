@@ -84,3 +84,7 @@ Owner：<角色>；可修改：<具體路徑>。
 ## M3 本輪分工
 
 共同契約 `contracts/mvp-v3.md`。沿用 Herdr t30 Web 對話與稿件預覽、t31 Server 持久對話與author結果交易、t32 Runtime工具迴圈與author容器隔離，皆 Codex sol／xhigh。t33 Muse 僅負責合成黑箱驗收，總指揮負責部署與真實模型串接。M2驗收結果沿用，不重跑無關測試。
+
+## M4 本輪分工
+
+共同契約 `contracts/mvp-v4.md`。t30 負責 React 監看與 Nginx WS proxy；t31 負責獨立 LiveHub／viewer 與 Manager media WS；t32 負責 fixture／author 畫面擷取、Chromium WebRTC helper、Manager live bridge。沿用既有依賴，不安裝新套件、不由子 Agent 操作 Git。總指揮管理契約、Compose、整合驗收；t33 Muse 僅撰寫合成黑箱驗收腳本。

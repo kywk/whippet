@@ -11,7 +11,8 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/api': {
           target: env.WHIPPET_API_PROXY_TARGET || 'http://localhost:8080',
-          changeOrigin: true,
+          changeOrigin: false,
+          ws: true,
         },
       },
     },

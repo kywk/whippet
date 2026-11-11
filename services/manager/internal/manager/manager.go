@@ -32,6 +32,8 @@ type Manager struct {
 	connMu   sync.Mutex // serializes writes and connection replacement
 	conn     *websocket.Conn
 	events   chan Envelope
+	liveMu   sync.Mutex
+	live     map[string]*liveSession
 }
 
 func New(cfg Config) (*Manager, error) {
@@ -177,6 +179,12 @@ func (m *Manager) session(ctx context.Context) error {
 			if err := m.cancelAttempt(ctx, env); err != nil {
 				slog.Warn("cancel not accepted", "runId", env.RunID, "error", err)
 			}
+		case "live.start":
+			if err := m.startLive(ctx, env); err != nil {
+				slog.Warn("live start rejected", "runId", env.RunID)
+			}
+		case "live.stop":
+			_ = m.stopLive(env)
 		}
 	}
 }
@@ -318,6 +326,7 @@ func (m *Manager) runAttempt(ctx, executionCtx context.Context, r record, dispat
 	}
 	// Do this before reading outputs and releasing the slot, including when
 	// docker start was killed but the container itself is still running.
+	m.stopAttemptLive(r.AttemptID)
 	for !r.Reclaimed {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		err := m.docker.Remove(cleanupCtx, r)
@@ -377,6 +386,9 @@ func (m *Manager) runAttempt(ctx, executionCtx context.Context, r record, dispat
 
 func (m *Manager) prepare(r record, dispatch Dispatch) error {
 	if err := os.Mkdir(m.taskDir(r), 0700); err != nil {
+		return err
+	}
+	if err := os.Mkdir(filepath.Join(m.taskDir(r), "live"), 0700); err != nil {
 		return err
 	}
 	return atomicJSON(filepath.Join(m.taskDir(r), "input.json"), WorkerInput{

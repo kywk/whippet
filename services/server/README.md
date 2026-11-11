@@ -28,6 +28,7 @@ go run -mod=readonly ./cmd/server
 | `MANAGER_TOKEN` | 必填，Manager WS 與附件上傳共用 bearer token |
 | `ARTIFACT_DIR` | `./data/artifacts`；需持久化並由 Server OS 使用者獨占寫入 |
 | `PORT` | `8080` |
+| `WHIPPET_LIVE_ICE_SERVERS` | `[]`；專用 STUN／TURN RTCIceServer JSON 陣列，不使用 Manager／AI 憑證 |
 
 `POST /api/dev-login` 回固定 `dev-admin`／`superadmin`，不建立 cookie 或 token；M1 的一般 API 共用固定開發身分。這個服務尚未提供真實登入與租戶隔離。SPA 透過相同 origin 的 `/api` 反向代理串接，沒有開放跨來源 CORS。
 
@@ -162,6 +163,14 @@ Manager 上傳 `author.json {message,script?,requestValidation}` 後回 succeede
 author 終態、assistant 訊息、revision 與續接驗證一起提交；重複 result 先辨識原始回報狀態再返回，不重複套用或排工作。取消／失敗不套用候選稿，provider 錯誤採固定遮蔽訊息；無效 author.json 會成為 failed，保留已存對話與草稿。author 成功只需 author.json；M2 validation／發布的兩份報告與人工確認門檻維持不變，不會自動發布。
 
 新增 migration 為 `004_conversations_and_author.sql`。需要原有 ARTIFACT_DIR volume 才能完成 author 結果核對；本階段 Server 沒有新增 AI 環境變數。
+
+## M4 唯讀即時監看
+
+Viewer 使用同源 `GET /api/runs/:id/live` WS，依目前 Run／attempt 綁定，最多一位觀看者。Manager 使用 bearer token 連獨立 `/api/manager/runs/:id/live?attemptId=...&viewerId=...`。Server 轉送 non-trickle WebRTC offer／answer／mode／state，不處理 RTP；JPEG 備援用完整 binary message，上限 1 MiB，只保留最新影格。
+
+Viewer 與 media 都支援 JSON ping／pong；viewer 每 10 秒 ping、30 秒租約，media ping 不延長 viewer。離線、到期或終態停止 live，透過控制 WS 送綁定 viewerId 的 live.start／stop；影格與 live 錯誤不進任務控制 handler，不改 Run 結果。ICE 設定只使用 WHIPPET_LIVE_ICE_SERVERS，不記錄 credentials。
+
+代理需支援 WebSocket upgrade 並保留含埠號的 Host（Nginx `$http_host`）以通過 Origin 檢查。Server 已豁免 live WS 的 HTTP 30 秒 request deadline，連線改由 live lease 與獨立寫入期限控制。實際 WebRTC／JPEG／TURN 驗收狀態見 DELIVERY。
 
 ## 檢查
 

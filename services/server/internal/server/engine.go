@@ -17,6 +17,7 @@ type Peer interface {
 
 type Session struct {
 	managerID string
+	liveEpoch string
 	capacity  int
 	peer      Peer
 	ready     bool
@@ -24,15 +25,17 @@ type Session struct {
 }
 
 type Engine struct {
-	store   Store
-	log     *slog.Logger
-	mu      sync.Mutex
-	session *Session
-	wake    chan struct{}
+	store        Store
+	log          *slog.Logger
+	mu           sync.Mutex
+	session      *Session
+	wake         chan struct{}
+	liveCommands chan LiveCommand
+	liveHub      *LiveHub
 }
 
 func NewEngine(store Store, log *slog.Logger) *Engine {
-	return &Engine{store: store, log: log, wake: make(chan struct{}, 1)}
+	return &Engine{store: store, log: log, wake: make(chan struct{}, 1), liveCommands: make(chan LiveCommand, 32)}
 }
 
 func (e *Engine) Wake() {
@@ -50,6 +53,14 @@ func (e *Engine) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
+		case command := <-e.liveCommands:
+			commandCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			err := e.sendLiveCommand(commandCtx, command)
+			cancel()
+			if err != nil && command.OnError != nil {
+				command.OnError(err)
+			}
+			continue
 		case <-ticker.C:
 		case <-e.wake:
 		}
@@ -66,15 +77,23 @@ func (e *Engine) Attach(ctx context.Context, managerID string, capacity int, pee
 		return nil, fmt.Errorf("%w: hello requires managerId and positive capacity", ErrInvalid)
 	}
 	e.mu.Lock()
-	defer e.mu.Unlock()
+	var previous *Session
+	defer func() {
+		hub := e.liveHub
+		e.mu.Unlock()
+		if hub != nil && previous != nil {
+			hub.ManagerLost(previous.managerID, previous.liveEpoch)
+		}
+	}()
 	if err := e.store.RegisterManager(ctx, managerID, capacity); err != nil {
 		return nil, err
 	}
 	if e.session != nil {
+		previous = e.session
 		_ = e.session.peer.Close()
 	}
 	// Even a fresh DB must reconcile the Manager's active journal before dispatch.
-	s := &Session{managerID: managerID, capacity: capacity, peer: peer, sent: map[string]time.Time{}}
+	s := &Session{managerID: managerID, liveEpoch: NewID(), capacity: capacity, peer: peer, sent: map[string]time.Time{}}
 	e.session = s
 	e.Wake()
 	return s, nil
@@ -82,19 +101,27 @@ func (e *Engine) Attach(ctx context.Context, managerID string, capacity int, pee
 
 func (e *Engine) Detach(s *Session) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
+	hub := e.liveHub
 	if e.session == s {
 		e.session = nil
 	}
 	_ = s.peer.Close()
+	e.mu.Unlock()
+	if hub != nil {
+		hub.ManagerLost(s.managerID, s.liveEpoch)
+	}
 }
 
 func (e *Engine) Close() {
 	e.mu.Lock()
-	defer e.mu.Unlock()
+	hub, previous := e.liveHub, e.session
 	if e.session != nil {
 		_ = e.session.peer.Close()
 		e.session = nil
+	}
+	e.mu.Unlock()
+	if hub != nil && previous != nil {
+		hub.ManagerLost(previous.managerID, previous.liveEpoch)
 	}
 }
 
@@ -110,7 +137,14 @@ func (e *Engine) Handle(ctx context.Context, s *Session, m Envelope) error {
 		return err
 	}
 	e.mu.Lock()
-	defer e.mu.Unlock()
+	endedRun := ""
+	defer func() {
+		hub := e.liveHub
+		e.mu.Unlock()
+		if hub != nil && endedRun != "" {
+			hub.EndRun(endedRun)
+		}
+	}()
 	if e.session != s || m.ManagerID != s.managerID {
 		return ErrConflict
 	}
@@ -178,6 +212,9 @@ func (e *Engine) Handle(ctx context.Context, s *Session, m Envelope) error {
 			return fmt.Errorf("%w: invalid result", ErrInvalid)
 		}
 		err = e.store.Complete(ctx, s.managerID, m.RunID, m.AttemptID, result)
+		if err == nil {
+			endedRun = m.RunID
+		}
 	default:
 		return fmt.Errorf("%w: unsupported manager message type", ErrInvalid)
 	}

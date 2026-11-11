@@ -29,6 +29,7 @@ services:
       MANAGER_TOKEN: ${MANAGER_TOKEN:?Run sh deploy/init-local.sh first}
       ARTIFACT_DIR: /data/artifacts
       PORT: "8080"
+      WHIPPET_LIVE_ICE_SERVERS: ${WHIPPET_LIVE_ICE_SERVERS:-[]}
     ports:
       - "127.0.0.1:${SERVER_PORT:-18081}:8080"
     volumes:

@@ -59,6 +59,10 @@ func run(log *slog.Logger) error {
 	if databaseURL == "" || token == "" {
 		return errors.New("DATABASE_URL and MANAGER_TOKEN are required")
 	}
+	iceServers, err := server.ParseICEServers(os.Getenv("WHIPPET_LIVE_ICE_SERVERS"))
+	if err != nil {
+		return err
+	}
 	port := env("PORT", "8080")
 	n, err := strconv.Atoi(port)
 	if err != nil || n < 1 || n > 65535 {
@@ -90,14 +94,20 @@ func run(log *slog.Logger) error {
 	defer stop()
 	engine := server.NewEngine(store, log)
 	defer engine.Close()
+	liveHub := server.NewLiveHub(store, engine, iceServers)
+	engine.SetLiveHub(liveHub)
+	defer liveHub.Close()
 	api := server.NewAPI(store, artifacts, engine, token, log)
 	ws := &gateway.Gateway{Engine: engine, Log: log}
+	live := &gateway.LiveGateway{Hub: liveHub}
+	api.WithLiveHandlers(http.HandlerFunc(live.Viewer), http.HandlerFunc(live.Media))
 	httpServer := &http.Server{
 		Addr: net.JoinHostPort("", port), Handler: api.Handler(ws),
 		ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 90 * time.Second,
 		WriteTimeout: 90 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 32 << 10,
 	}
 	go engine.Run(ctx)
+	go liveHub.Run(ctx)
 	serveErr := make(chan error, 1)
 	go func() {
 		log.Info("server listening", "port", port)

@@ -175,6 +175,16 @@ textarea { resize: vertical; }
 .message-validation { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 16px; font-size: .8rem; }
 .message-validation .run-error { width: 100%; }
 
+.live-panel { margin-top: 28px; padding: 20px; border: 1px solid var(--line); border-radius: 12px; }
+.live-run { color: var(--muted); font-size: .8rem; overflow-wrap: anywhere; }
+.live-status { margin: 14px 0; font-size: .85rem; }
+.live-status p { margin-top: 6px; color: var(--muted); }
+.live-media { position: relative; min-height: 180px; aspect-ratio: 16 / 9; overflow: hidden; background: #17231c; border-radius: var(--radius); }
+.live-media video, .live-media img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.live-media [hidden] { display: none; }
+.live-placeholder { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; color: #e7eee6; background: rgb(23 35 28 / 60%); font-size: .85rem; text-align: center; pointer-events: none; }
+.live-start { margin-top: 14px; }
+
 @media (max-width: 1000px) {
   .code-comparison { grid-template-columns: minmax(0, 1fr); }
   .workspace-layout { padding: 24px; }
