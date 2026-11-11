@@ -1,8 +1,54 @@
 # Server 交付
 
-Owner：Whippet Server Agent。最新交付：M2 Server 實作；M1 驗收紀錄保留於下方。
+Owner：Whippet Server Agent。最新交付：M3 Server 實作；M1／M2 歷史紀錄保留於下方。
 
-## M2 本輪交付（2026-11-11）
+## M3 本輪交付（2026-11-11）
+
+### 必要修復 context 增補
+
+author 輸入新增 optional `validation:{runId,status,error?}`。POST messages 在原 transaction 內，從目前 Draft.validationRunId 對應的同 Test validation Run 讀取固定摘要；error 最多 4000 Unicode 字元。摘要存入既有不可變 author_payload，再透過 AuthorInput／dispatch 送給 Runtime，不讀 HTML 或模型 key，沒有新增 migration。
+
+無 validation 的舊 payload／journal 維持相容，一般 run／validation 的派送不變。新增定向測試涵蓋錯誤長度、序列化後固定快照、optional 欄位／舊快照解碼，以及 author dispatch 帶摘要：兩項測試 **通過**（0.334s）；一次正式 Go build **通過**。Runtime 的 `read_validation_report` 工具與同對話修復整合由總指揮接續。
+
+範圍僅 `services/server/`，沿用 M2。未讀取 `.env`／模型 key、操作 Git、安裝套件、呼叫真實模型或操作 Docker。M2 的 Docker migration／API／UI／queue kill／cancel／reconnect 已由總指揮回報整合通過，紀錄於 `docs/tracking/devlog/m2-integration.md`；本輪不重跑該整合。
+
+### 產物與行為
+
+- `004_conversations_and_author.sql`：每個 Test 唯一 Conversation、持久 Message、同 Test 唯一未完成 author Run、不可變 author 輸入快照、author 回報狀態與附件 allowlist。assistant 訊息以 `(run_id,role)` 去重，沒有新增重複腳本快照表。
+- `conversations.go`／`conversations_http.go`：GET conversation 首次建立空對話；POST messages 交易保存 user 訊息與 author Run，核對目前已存 revision、空訊息／16000 Unicode 字元上限與未完成 author。派送快照最多最近 12 則、總 32000 字元，保留完整本輪 user 訊息；完整歷史留在 DB。
+- `model.go`／`engine.go`／`postgres.go`：author 走原 FIFO、attempt／journal 重送與取消流程。dispatch 使用 kind author、180000ms、草稿 script 與 author context；一般 run／validation 保持 kind run。Server 不讀取、保存或傳送模型 key。
+- `author.go`：succeeded author 核對當前 attempt 的 author.json，驗證檔案大小、SHA256、JSON 與原始 conversation／baseRevision。在同一 transaction 內鎖定 Test／Draft／Run，保存 assistant、可套用 revision、續接 validation 與終態。
+- 草稿仍為 baseRevision 時才套用變更並清除舊驗證；人工已修改時不覆蓋、不排驗證，保存候選稿及衝突說明。只提問、沒有 script 的成功結果保留原稿。
+- requestValidation 重用 M2 的快照入列函式，固定結果 revision，只建立 queued validation，不占住 author Worker 等待子工作。M2 發布、同 revision 驗證成功、兩份報告與人工確認門檻維持原樣；author 不會自動發布。
+- assistant 訊息回傳 baseRevision、appliedRevision?、proposedScript?、validationRunId?；任何生成 script 都保留 proposedScript，即使已套用。baseScript 從 baseRevision JOIN 既有 draft_revisions 取得，重新開啟仍可比較差異。
+- author 取消／失敗不套用稿件，錯誤使用固定遮蔽文字。invalid/missing author.json 轉為 failed，不暴露解析或 provider body；原始回報狀態另行記錄，讓 normalized failed／cancelled 也可安全接受相同 result 重送。
+- `artifacts.go`／`http.go`／`postgres.go`：author 僅可上傳／讀取 author.json、上限 2 MiB；run／validation 仍只可存取 report.html／results.json、64 MiB。author 成功不要求 Playwright 報告，一般任務成功的兩份報告檢查沒有放寬。
+- `drafts.go`：抽出原有保存 revision／建立 validation 的 transaction 內部函式，供 author 重用，沒有改變 M2 optimistic lock 或發布規則。
+
+### 實際檢查
+
+使用既有 Go 1.23.12／模組快取與暫存 GOCACHE，`GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local`：
+
+1. 修改 Go 檔案已執行 gofmt。
+2. `go test ./internal/server -count=1` **通過**，0.391s；包含既有 M2 回歸與新增 author 必要單元測試。
+3. 一次 `go build -mod=readonly -trimpath -o /private/tmp/whippet-server-m3 ./cmd/server` **通過**，exit 0。
+
+新增測試：Unicode 訊息／context 預算、本輪訊息保留、成功套用與人工衝突、已套用候選稿仍可比較、無 script／空草稿驗證、取消與失敗錯誤遮蔽、重複結果在任何套用前返回、無效 JSON／附件種類及 2 MiB 限制、author 與 validation 派送格式、HTTP 202／400／409 與重新開啟後的 baseScript／proposedScript 欄位。
+
+測試涵蓋 domain 規則、HTTP／Engine 與暫存檔案；DB 邊界使用替身，沒有宣稱 migration／PostgreSQL transaction／真實模型已驗證。實際 Docker 整合由總指揮執行。
+
+### 總指揮串接
+
+Server 已可 build，套用 migration 004 後可串：建立 conversation → 送訊息 → author 派送 → 上傳 author.json → result succeeded → 讀回 conversation／draft／validation Run。請一併檢查：
+
+- 人工在 author 期間保存新 revision，結果只保留 proposedScript 與 baseScript，不覆蓋／排驗證。
+- 重送相同 result，assistant 訊息、revision、validation Run 都只產生一次；normalized failed／cancelled 也可重送原狀態。
+- 一般 run 不接受 author.json，author 不接受一般報告；取消／失敗不套用，失敗可用已保存對話重試。
+- author.json 與原附件 volume 必須可讀；Server 需與新 Manager／Worker 的 author entrypoint、context payload 及回收後回報流程一起更新。Dispatch JSON 大小需預留草稿與最多 32000 Unicode 字元 context。
+
+本 Agent 等待 Docker 整合回饋；沒有執行模型或跨服務 E2E。
+
+## M2 歷史交付（2026-11-11，總指揮整合已通過）
 
 範圍僅 `services/server/`，沿用 M1。沒有安裝套件、操作 Git、讀取 env 機密、啟動其他 Agent 或操作 Docker／現有服務；沒有進入 M3。Commit 由總指揮於整合測試通過後執行。
 

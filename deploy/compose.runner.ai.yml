@@ -1,0 +1,10 @@
+# Opt-in AI environment for Manager. Use both deploy/.env and deploy/.env.ai.
+# Manager forwards these only to author containers, never ordinary test Workers.
+services:
+  manager:
+    environment:
+      WHIPPET_AI_ENABLED: ${WHIPPET_AI_ENABLED:-false}
+      WHIPPET_AI_BASE_URL: ${WHIPPET_AI_BASE_URL:-https://opencode.ai/inference/go/openai/v1}
+      WHIPPET_AI_MODEL: ${WHIPPET_AI_MODEL:-muse-spark-1.3-contributor}
+      WHIPPET_AI_REASONING_EFFORT: ${WHIPPET_AI_REASONING_EFFORT:-xhigh}
+      OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}

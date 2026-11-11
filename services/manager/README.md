@@ -1,6 +1,6 @@
-# Whippet Manager（M1／M2）
+# Whippet Manager（M1／M2／M3）
 
-Go Manager 主動連線 Server，每個一次性 Docker Worker 執行一份完整 TypeScript spec，所有 run／validation 共用 MAX_WORKERS 上限。WS／HTTP 欄位依 [MVP v1](../../contracts/mvp-v1.md) 與 [M2 契約](../../contracts/mvp-v2.md)。本目錄只負責 runtime；FIFO 排隊、Server、種子測試及 Compose 由各自 owner 維護。
+Go Manager 主動連線 Server，以一次性 Docker Worker 執行 TypeScript spec 或 author 工具迴圈；run／validation／author 共用 MAX_WORKERS 上限。WS／HTTP 欄位依 [MVP v1](../../contracts/mvp-v1.md)、[M2](../../contracts/mvp-v2.md) 與 [M3 契約](../../contracts/mvp-v3.md)。本目錄只負責 runtime；FIFO 排隊、Server、種子測試及 Compose 由各自 owner 維護。
 
 ## 設定
 
@@ -74,6 +74,16 @@ Linux 如需 `host.docker.internal`，加 `--add-host host.docker.internal:host-
 
 Manager 重啟會先處理未完成 journal，停止未確認回收的舊容器；有已保存的 collecting 結果就補送附件。尚未保存終態者回報 `failed` 並明示中斷；已保存取消要求者回 cancelled。不猜測成功，也不重跑。契約 result 尚無 `interrupted`；journal 損毀或同一 WORK_DIR 同時被其他程序占用時拒絕啟動。舊 M1 journal 可直接讀取，未記錄 reclaimed 時保守地再確認回收。
 
+## M3 author 任務
+
+`kind:"author"` 允許空草稿，附 `author:{conversationId,baseRevision,messages,validation?}`；messages 最近最多 12 則、總 32000 字元，timeout 最多 180000 ms。optional validation 是 `{runId,status,error?}` 快照，error 最多 4000 字元；沒有快照也可執行。journal 保存 kind，input 保存草稿／對話／驗證摘要快照；兩者不加入任何 AI 環境設定或 key。author 仍沿用同一套 ACK、名額、cancel、回收、重連與補傳。
+
+Manager 從專用程序環境白名單讀取 `WHIPPET_AI_ENABLED`、`WHIPPET_AI_BASE_URL`、`WHIPPET_AI_MODEL`、`WHIPPET_AI_REASONING_EFFORT`、`OPENCODE_API_KEY`，只傳入 author 容器。Docker create 使用 `--env NAME`，值只存在 CLI 環境，不放在 argv；一般 run 不帶這些 env，也不繼承 key。實際部署 overlay 由總指揮維護，本 Agent 不讀 env 檔案。
+
+author 使用同一 Worker 映像，覆寫 command 為 `node dist/author/main.js`；一般 run 保留 `dist/runner.js`。author 成功只上傳 `author.json`（最多 2 MiB），不要求 Playwright HTML／JSON。Server 依 kind 檢查附件後套用候選稿／保存訊息，`requestValidation` 由 Server 在 author 回收後另排一般 validation。author 程序不執行模型生成的 spec，也不自動發佈。
+
+author 原始 stderr、模型與工具內容不轉成事件。Manager 只接受固定白名單的 `author:model:<1..8>:<started|succeeded|failed>` 與 `author:tool:<1..12>:<固定工具名>:<succeeded|failed>` 進度；不包含參數、DOM 或 key。進度沿用現有 best-effort log event，終態與去重仍以 journal 為準。
+
 ## 檢查與邊界
 
 ```sh
@@ -83,4 +93,4 @@ go build ./cmd/manager
 
 測試以假的容器 driver 與記憶體 HTTP transport 驗證去重、回收前不釋放名額、附件順序及拒絕假成功。這些 fixture 不代表真實 Docker／Playwright 已驗證。實際檢查與環境限制見 [DELIVERY.md](DELIVERY.md)。
 
-本次沿用 hello／heartbeat／terminal replay 與 journal 對帳，不新增獨立 reconcile envelope；尚無 journal 淘汰、即時影像或 AI 工具迴圈。任務腳本在容器內執行任意 Node.js 程式；本版用於可信任的 self-hosted 測試，不是公開多租戶沙箱。M2 的真實 Docker 排隊／取消／強制終止與 Server restart 由總指揮做代表整合驗證。
+本次沿用 hello／heartbeat／terminal replay 與 journal 對帳，不新增獨立 reconcile envelope；尚無 journal 淘汰、即時影像或公開多租戶沙箱。一般測試 spec 在無 AI key 的容器中執行 Node.js；author 只提供固定工具。M3 的真實模型／瀏覽器／Server 套用與續接驗證由總指揮整合，實際狀態見 DELIVERY。

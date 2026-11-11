@@ -110,7 +110,7 @@ func (m *Manager) session(ctx context.Context) error {
 		return err
 	}
 	// JSON escapes can expand each script byte to six bytes.
-	conn.MaxPayloadBytes = 6*maxScriptBytes + 65536
+	conn.MaxPayloadBytes = 6*maxScriptBytes + 512*1024
 	// Publish the connection only after hello, so a concurrent completion cannot
 	// send a terminal result before the Server has registered this Manager.
 	if err := conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
@@ -239,8 +239,8 @@ func (m *Manager) accept(ctx context.Context, env Envelope) error {
 	if err := json.Unmarshal(env.Payload, &dispatch); err != nil {
 		return fmt.Errorf("invalid dispatch: %w", err)
 	}
-	if dispatch.Kind != "run" || strings.TrimSpace(dispatch.Script) == "" || len(dispatch.Script) > maxScriptBytes || dispatch.TimeoutMS < 1 || dispatch.TimeoutMS > 3600000 {
-		return errors.New("dispatch requires kind=run, a script <=2MiB, and timeoutMs between 1 and 3600000")
+	if err := validDispatch(dispatch); err != nil {
+		return err
 	}
 	m.mu.Lock()
 	if existing, found := m.records[env.AttemptID]; found {
@@ -266,7 +266,7 @@ func (m *Manager) accept(ctx context.Context, env Envelope) error {
 		m.mu.Unlock()
 		return errors.New("Worker slot is occupied; MAX_WORKERS reached, including cleanup")
 	}
-	r := record{RunID: env.RunID, AttemptID: env.AttemptID, Phase: "accepted", TimeoutMS: dispatch.TimeoutMS, ResultMessageID: newID()}
+	r := record{RunID: env.RunID, AttemptID: env.AttemptID, Phase: "accepted", TimeoutMS: dispatch.TimeoutMS, ResultMessageID: newID(), Kind: dispatch.Kind}
 	err := atomicJSON(m.journalPath(r), r)
 	if err == nil {
 		m.records[r.AttemptID] = r
@@ -332,14 +332,14 @@ func (m *Manager) runAttempt(ctx, executionCtx context.Context, r record, dispat
 		}
 	}
 	if dispatch != nil {
-		result, artifacts := collectResult(m.taskDir(r), outcome)
+		result, artifacts := collectAttemptResult(r, m.taskDir(r), outcome)
 		if ctx.Err() != nil {
 			result = Result{Status: "cancelled", Error: "Manager shutdown interrupted the Worker"}
 		}
 		r.Result, r.Artifacts = &result, artifacts
 	} else if r.Result == nil {
 		result := Result{Status: "failed", Error: "Manager restarted before terminal state was saved; previous attempt was stopped and will not be rerun"}
-		_, r.Artifacts = collectResult(m.taskDir(r), outcome)
+		_, r.Artifacts = collectAttemptResult(r, m.taskDir(r), outcome)
 		r.Result = &result
 	}
 	r.Phase = "collecting"
@@ -379,10 +379,20 @@ func (m *Manager) prepare(r record, dispatch Dispatch) error {
 	if err := os.Mkdir(m.taskDir(r), 0700); err != nil {
 		return err
 	}
-	return atomicJSON(filepath.Join(m.taskDir(r), "input.json"), WorkerInput{r.RunID, r.AttemptID, dispatch.Script, dispatch.TimeoutMS})
+	return atomicJSON(filepath.Join(m.taskDir(r), "input.json"), WorkerInput{
+		RunID: r.RunID, AttemptID: r.AttemptID, Script: dispatch.Script, TimeoutMS: dispatch.TimeoutMS,
+		Kind: dispatch.Kind, Author: dispatch.Author,
+	})
 }
 
 func (m *Manager) emit(r record, kind, text string) {
+	if r.Kind == "author" {
+		if kind == "started" {
+			text = "Author Worker started"
+		} else if kind != "log" || !authorProgressPattern.MatchString(text) {
+			return // Never forward provider/browser stderr or model/tool content.
+		}
+	}
 	event := message(m.cfg.ManagerID, "event", r.RunID, r.AttemptID, map[string]string{"eventId": newID(), "kind": kind, "message": clip(text, 8192)})
 	if kind == "started" {
 		// A queued started event must never arrive after the terminal result.

@@ -114,7 +114,7 @@ func lifecycleManager(t *testing.T, capacity int) (*Manager, *lifecycleDocker, c
 }
 
 func dispatchForTest() Envelope {
-	return message("manager-test", "dispatch", newID(), newID(), Dispatch{"run", "synthetic fixture", 1000})
+	return message("manager-test", "dispatch", newID(), newID(), Dispatch{Kind: "run", Script: "synthetic fixture", TimeoutMS: 1000})
 }
 
 func awaitAttempt(t *testing.T, events <-chan string, attemptID string) {

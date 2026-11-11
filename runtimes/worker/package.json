@@ -10,6 +10,8 @@
     "start": "node dist/runner.js",
     "test": "node --test dist/result.test.js",
     "test:ai": "node --test dist/ai/ai.test.js",
+    "test:author": "node --test dist/author/author.test.js",
+    "author": "node dist/author/main.js",
     "ai:check": "node dist/ai/cli.js check",
     "ai:probe": "node dist/ai/cli.js probe"
   },

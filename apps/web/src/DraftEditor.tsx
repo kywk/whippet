@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, errorMessage, resolveReportUrl } from './api';
 import { formatDate, Loading, Notice, ReportLink, StatusBadge } from './components';
 import { useResource } from './hooks';
+import { ConversationPanel } from './ConversationPanel';
 import { isActiveRun } from './types';
 import type { Draft, Run, Version, WhippetApi } from './types';
 
@@ -13,6 +14,7 @@ interface Props {
   onRun: (run: Run) => void;
   onPublished: (version: Version) => void;
   onDirtyChange: (dirty: boolean) => void;
+  onRefreshRuns: () => void;
 }
 
 export function DraftEditor(props: Props) {
@@ -26,7 +28,7 @@ export function DraftEditor(props: Props) {
   </section>;
 }
 
-function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, onDirtyChange }: Props & { initial: Draft }) {
+function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, onDirtyChange, onRefreshRuns }: Props & { initial: Draft }) {
   const [draft, setDraft] = useState(initial);
   const [script, setScript] = useState(initial.script);
   const [busy, setBusy] = useState<'save' | 'validate' | 'publish' | 'reload'>();
@@ -41,6 +43,31 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
   const actionController = useRef<AbortController | null>(null);
   const [syncRevision, setSyncRevision] = useState(0);
   const dirty = script !== draft.script;
+  const editorState = useRef({ draft, script, busy });
+  editorState.current = { draft, script, busy };
+  const synchronizeDraft = useCallback((next: Draft) => {
+    const current = editorState.current;
+    const changed = next.revision !== current.draft.revision || next.script !== current.draft.script;
+    setConfirmed(false);
+    if (changed && (current.script !== current.draft.script || current.busy)) {
+      setConflict(true); setQualificationFresh(false);
+      setError('AI 完成後 Server 草稿已變更；目前本機編輯已保留，請先檢視對照，再決定是否重新載入。');
+      return;
+    }
+    setDraft(next); setQualificationFresh(true); setConflict(false); setError(undefined);
+    if (changed) {
+      setScript(next.script);
+      setMessage(`已同步 AI 完成後的草稿 revision ${next.revision}，仍需驗證與人工確認發佈。`);
+    }
+  }, []);
+  const useCandidate = useCallback((candidate: string): boolean => {
+    const current = editorState.current;
+    if (current.busy) return false;
+    if (current.script !== current.draft.script && !window.confirm('帶入候選腳本會取代目前未儲存內容。請先複製需要保留的內容，確定繼續？')) return false;
+    setScript(candidate); setConfirmed(false);
+    setMessage('候選腳本已帶入編輯器，尚未儲存。請檢視、儲存並重新驗證。');
+    return true;
+  }, []);
   // 請求中的變更也應受導覽保護，避免切頁後誤認 POST 未送出。
   const guarded = dirty || Boolean(busy);
 
@@ -137,6 +164,7 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
   }
 
   return <>
+    <ConversationPanel api={api} apiBase={apiBase} testId={testId} draft={draft} draftDirty={dirty} draftBusy={Boolean(busy) || syncing || conflict} runs={runs} onRun={onRun} onRefreshRuns={onRefreshRuns} onSynchronized={synchronizeDraft} onUseCandidate={useCandidate} />
     <div className="draft-meta"><span>revision {draft.revision}{dirty ? ' · 有未儲存變更' : ' · 已儲存'}</span><span>更新：{formatDate(draft.updatedAt)}</span></div>
     <label className="field-label" htmlFor="draft-script">Playwright TypeScript 腳本</label>
     <textarea id="draft-script" className="script-editor" rows={16} value={script} spellCheck={false} autoCapitalize="off" autoCorrect="off" disabled={Boolean(busy)} onChange={(event) => { setScript(event.target.value); setConfirmed(false); setMessage(undefined); }} aria-describedby="draft-help" />

@@ -145,24 +145,30 @@ func (p *Postgres) SaveDraft(ctx context.Context, testID string, revision int, s
 	if err := checkRevision(revision, d.Revision); err != nil {
 		return Draft{}, err
 	}
-	if script != d.Script {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO draft_revisions(test_id,revision,script,script_hash,timeout_ms)
-            VALUES($1,$2,$3,$4,$5)`, testID, d.Revision+1, script, scriptHash(script), d.timeoutMS); err != nil {
-			return Draft{}, err
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE drafts SET current_revision=current_revision+1,
-            validation_run_id=NULL,updated_at=now() WHERE test_id=$1`, testID); err != nil {
-			return Draft{}, err
-		}
-		d, err = scanDraft(tx.QueryRowContext(ctx, draftSelect, testID))
-		if err != nil {
-			return Draft{}, err
-		}
+	d, err = saveDraftScript(ctx, tx, d, script)
+	if err != nil {
+		return Draft{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return Draft{}, err
 	}
 	return d.Draft, nil
+}
+
+// Caller holds the Test/Draft locks and has checked the expected revision.
+func saveDraftScript(ctx context.Context, tx *sql.Tx, d draftState, script string) (draftState, error) {
+	if script == d.Script {
+		return d, nil
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO draft_revisions(test_id,revision,script,script_hash,timeout_ms)
+            VALUES($1,$2,$3,$4,$5)`, d.TestID, d.Revision+1, script, scriptHash(script), d.timeoutMS); err != nil {
+		return draftState{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE drafts SET current_revision=current_revision+1,
+            validation_run_id=NULL,updated_at=now() WHERE test_id=$1`, d.TestID); err != nil {
+		return draftState{}, err
+	}
+	return scanDraft(tx.QueryRowContext(ctx, draftSelect, d.TestID))
 }
 
 func (p *Postgres) ValidateDraft(ctx context.Context, testID string, revision int) (Run, error) {
@@ -181,15 +187,7 @@ func (p *Postgres) ValidateDraft(ctx context.Context, testID string, revision in
 	if strings.TrimSpace(d.Script) == "" {
 		return Run{}, fmt.Errorf("%w: save a non-empty script before validation", ErrInvalid)
 	}
-	id := NewID()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO runs(id,test_id,kind,draft_revision,script_snapshot,script_hash,timeout_ms)
-        VALUES($1,$2,'validation',$3,$4,$5,$6)`, id, testID, d.Revision, d.Script, d.hash, d.timeoutMS); err != nil {
-		return Run{}, err
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE drafts SET validation_run_id=$2,updated_at=now() WHERE test_id=$1`, testID, id); err != nil {
-		return Run{}, err
-	}
-	r, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs r WHERE r.id=$1`, id))
+	r, err := enqueueValidation(ctx, tx, d)
 	if err != nil {
 		return Run{}, err
 	}
@@ -197,6 +195,19 @@ func (p *Postgres) ValidateDraft(ctx context.Context, testID string, revision in
 		return Run{}, err
 	}
 	return r, nil
+}
+
+// Reused by author completion; this inserts queued work and never waits for its slot.
+func enqueueValidation(ctx context.Context, tx *sql.Tx, d draftState) (Run, error) {
+	id := NewID()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO runs(id,test_id,kind,draft_revision,script_snapshot,script_hash,timeout_ms)
+        VALUES($1,$2,'validation',$3,$4,$5,$6)`, id, d.TestID, d.Revision, d.Script, d.hash, d.timeoutMS); err != nil {
+		return Run{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE drafts SET validation_run_id=$2,updated_at=now() WHERE test_id=$1`, d.TestID, id); err != nil {
+		return Run{}, err
+	}
+	return scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs r WHERE r.id=$1`, id))
 }
 
 const versionColumns = `id,test_id,source_revision,script,created_at,validation_run_id`

@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -30,9 +32,23 @@ func (d dockerCLI) name(r record) string {
 	return fmt.Sprintf("whippet-%x-%s", owner[:6], strings.ToLower(r.AttemptID))
 }
 
-func (d dockerCLI) Execute(ctx context.Context, r record, taskDir string, emit func(string, string)) execution {
+func (d dockerCLI) Execute(ctx context.Context, r record, taskDir string, emit func(string, string)) (result execution) {
+	defer func() {
+		if r.Kind == "author" && result.Error != "" {
+			result.Error = "Author container execution failed"
+		}
+	}()
 	createCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
+	create := dockerCommand(createCtx, d.createArgs(r, taskDir)...)
+	create.Env = workerCLIEnvironment(r.Kind, os.Environ())
+	if out, err := create.CombinedOutput(); err != nil {
+		return execution{ExitCode: -1, Error: fmt.Sprintf("docker create: %v: %s", err, clip(string(out), 2000))}
+	}
+	return d.attach(ctx, r, emit)
+}
+
+func (d dockerCLI) createArgs(r record, taskDir string) []string {
 	args := []string{
 		"create", "--pull=never", "--name", d.name(r), "--init",
 		"--label", "whippet.manager.id=" + d.cfg.ManagerID,
@@ -40,16 +56,28 @@ func (d dockerCLI) Execute(ctx context.Context, r record, taskDir string, emit f
 		"--label", "whippet.attempt.id=" + r.AttemptID,
 		"--mount", "type=bind,source=" + taskDir + ",target=/work",
 		"--memory", "1g", "--cpus", "1", "--pids-limit", "256", "--shm-size", "256m",
-		d.cfg.WorkerImage,
 	}
-	if out, err := exec.CommandContext(createCtx, "docker", args...).CombinedOutput(); err != nil {
-		return execution{ExitCode: -1, Error: fmt.Sprintf("docker create: %v: %s", err, clip(string(out), 2000))}
+	if r.Kind == "author" {
+		for _, name := range authorEnvNames {
+			args = append(args, "--env", name)
+		}
+		return append(args, d.cfg.WorkerImage, "node", "dist/author/main.js")
 	}
+	return append(args, d.cfg.WorkerImage)
+}
+
+func dockerCommand(ctx context.Context, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd.Env = workerCLIEnvironment("run", os.Environ())
+	return cmd
+}
+
+func (d dockerCLI) attach(ctx context.Context, r record, emit func(string, string)) execution {
 	// Playwright owns timeoutMs; allow startup and report flushing before the
 	// independent Manager watchdog force-removes the container.
 	runCtx, runCancel := context.WithTimeout(ctx, time.Duration(r.TimeoutMS)*time.Millisecond+30*time.Second)
 	defer runCancel()
-	cmd := exec.CommandContext(runCtx, "docker", "start", "--attach", d.name(r))
+	cmd := dockerCommand(runCtx, "start", "--attach", d.name(r))
 	cmd.Stdout = &lineWriter{emit: emit}
 	cmd.Stderr = &lineWriter{emit: emit, stderr: true}
 	if err := cmd.Start(); err != nil {
@@ -62,7 +90,7 @@ func (d dockerCLI) Execute(ctx context.Context, r record, taskDir string, emit f
 	}
 	inspectCtx, inspectCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer inspectCancel()
-	out, err := exec.CommandContext(inspectCtx, "docker", "inspect", "--format", "{{json .State}}", d.name(r)).CombinedOutput()
+	out, err := dockerCommand(inspectCtx, "inspect", "--format", "{{json .State}}", d.name(r)).CombinedOutput()
 	if err != nil {
 		return execution{ExitCode: -1, Error: fmt.Sprintf("docker inspect: %v: %s", err, clip(string(out), 2000))}
 	}
@@ -88,10 +116,13 @@ func (d dockerCLI) Remove(ctx context.Context, r record) error {
 	// Give SIGTERM a short window to flush Playwright reports. Regardless of
 	// stop failure/timeout, force-remove the actual container, not just attach.
 	stopCtx, cancel := context.WithTimeout(ctx, 7*time.Second)
-	_ = exec.CommandContext(stopCtx, "docker", "stop", "--time", "5", d.name(r)).Run()
+	_ = dockerCommand(stopCtx, "stop", "--time", "5", d.name(r)).Run()
 	cancel()
-	out, err := exec.CommandContext(ctx, "docker", "rm", "--force", d.name(r)).CombinedOutput()
+	out, err := dockerCommand(ctx, "rm", "--force", d.name(r)).CombinedOutput()
 	if err != nil && !strings.Contains(string(out), "No such container") {
+		if r.Kind == "author" {
+			return errors.New("author container cleanup failed; slot retained")
+		}
 		return fmt.Errorf("docker rm: %w: %s", err, clip(string(out), 2000))
 	}
 	return nil

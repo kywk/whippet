@@ -32,7 +32,7 @@ export interface Run {
   finishedAt?: string;
   error?: string;
   reportUrl?: string;
-  kind?: 'run' | 'validation';
+  kind?: 'run' | 'validation' | 'author';
   draftRevision?: number;
   versionId?: string;
 }
@@ -54,6 +54,26 @@ export interface Version {
   script: string;
   createdAt: string;
   validationRunId: string;
+}
+
+export interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+  runId?: string;
+  baseRevision?: number;
+  appliedRevision?: number;
+  baseScript?: string;
+  proposedScript?: string;
+  validationRunId?: string;
+}
+
+export interface Conversation {
+  id: string;
+  testId: string;
+  messages: Message[];
+  activeRunId?: string;
 }
 
 export const STATUS_LABELS: Record<RunStatus, string> = {
@@ -88,4 +108,6 @@ export interface WhippetApi {
   publishTest(testId: string, revision: number, signal?: AbortSignal): Promise<Version>;
   listVersions(testId: string, signal?: AbortSignal): Promise<Version[]>;
   cancelRun(runId: string, signal?: AbortSignal): Promise<Run>;
+  getConversation(testId: string, signal?: AbortSignal): Promise<Conversation>;
+  sendMessage(testId: string, content: string, revision: number, signal?: AbortSignal): Promise<{ run: Run; conversationId: string }>;
 }

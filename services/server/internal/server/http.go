@@ -51,6 +51,8 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	mux.HandleFunc("POST /api/tests/{id}/draft/validate", a.validateDraft)
 	mux.HandleFunc("POST /api/tests/{id}/publish", a.publish)
 	mux.HandleFunc("GET /api/tests/{id}/versions", a.versions)
+	mux.HandleFunc("GET /api/tests/{id}/conversation", a.conversation)
+	mux.HandleFunc("POST /api/tests/{id}/messages", a.createAuthor)
 	mux.HandleFunc("POST /api/tests/{id}/runs", a.createRun)
 	mux.HandleFunc("GET /api/tests/{id}/runs", a.runs)
 	mux.HandleFunc("GET /api/runs/{id}", a.run)
@@ -198,23 +200,24 @@ func (a *API) uploadAuthorized(w http.ResponseWriter, r *http.Request) {
 	}
 	attemptID, name := r.Header.Get("X-Attempt-Id"), r.PathValue("name")
 	if !ValidID(attemptID) || !validArtifact(name) {
-		writeError(w, 400, "invalid_request", "valid X-Attempt-Id and report.html or results.json required")
+		writeError(w, 400, "invalid_request", "valid X-Attempt-Id and allowed artifact name required")
 		return
 	}
-	if r.ContentLength > MaxArtifactBytes {
-		writeError(w, 413, "artifact_too_large", "artifact exceeds 64 MiB")
+	limit := artifactLimit(name)
+	if r.ContentLength > limit {
+		writeError(w, 413, "artifact_too_large", fmt.Sprintf("artifact exceeds %d MiB", limit>>20))
 		return
 	}
-	if err := a.store.UploadAllowed(r.Context(), id, attemptID); err != nil {
+	if err := a.store.UploadAllowed(r.Context(), id, attemptID, name); err != nil {
 		a.fail(w, err)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, MaxArtifactBytes)
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	item, err := a.artifacts.Save(id, attemptID, name, r.Body)
 	if err != nil {
 		var maxErr *http.MaxBytesError
 		if errors.As(err, &maxErr) {
-			writeError(w, 413, "artifact_too_large", "artifact exceeds 64 MiB")
+			writeError(w, 413, "artifact_too_large", fmt.Sprintf("artifact exceeds %d MiB", limit>>20))
 		} else {
 			a.fail(w, err)
 		}

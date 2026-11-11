@@ -80,3 +80,7 @@ Owner：<角色>；可修改：<具體路徑>。
 ## M2 本輪分工
 
 共同契約為 `contracts/mvp-v2.md`。t30 負責 Web 草稿／發佈／取消；t31 負責 Server 草稿、版本、發佈交易與排程介面；t32 負責 Manager 併發、取消、回收及去重。開發維持 Codex sol／xhigh。t33 使用 OpenCode Muse Spark 1.3 Contributor／xhigh，僅依合成資料與黑箱介面撰寫驗收腳本，不讀取專案原始碼或憑證。總指揮負責部署、整合驗收與最後提交。M3 暫不開始。
+
+## M3 本輪分工
+
+共同契約 `contracts/mvp-v3.md`。沿用 Herdr t30 Web 對話與稿件預覽、t31 Server 持久對話與author結果交易、t32 Runtime工具迴圈與author容器隔離，皆 Codex sol／xhigh。t33 Muse 僅負責合成黑箱驗收，總指揮負責部署與真實模型串接。M2驗收結果沿用，不重跑無關測試。

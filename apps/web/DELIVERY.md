@@ -1,10 +1,70 @@
-# Web M1／M2 交付紀錄
+# Web M1／M2／M3 交付紀錄
 
-日期：2026-11-11（Asia/Taipei）。Owner：Web Agent。所有新增與修改均位於 `apps/web/`；未執行 Git、未啟動其他 Agent。進度主檔與測試後 commit 由總指揮彙整處理。M1 整合時由總指揮完成依賴安裝，已保留 lockfile；本次 M2 沿用現有依賴，未安裝套件、未讀取 env 檔案。
+日期：2026-11-11（Asia/Taipei）。Owner：Web Agent。所有新增與修改均位於 `apps/web/`；未執行 Git、未啟動其他 Agent。進度主檔與測試後 commit 由總指揮彙整處理。M1 整合時由總指揮完成依賴安裝，已保留 lockfile；M2／M3 沿用現有依賴。M3 未安裝套件、未讀取 env 檔案、未呼叫模型。
 
-## M2 最新交付
+## M3 最新交付
 
-依 `contracts/mvp-v2.md` 完成，保留既有 M1 登入、列表、正式執行、短輪詢與報告流程。沒有 M3／AI 對話介面，沒有變更共用契約或其他 owner 的檔案。
+依 `contracts/mvp-v3.md` 實作持久對話，保留 M1／M2 的正式執行、草稿、驗證與明確確認發佈流程。使用 `vercel-react-best-practices`，以獨立對話元件承接流程；沒有 SSE、複雜 diff 套件或額外依賴。
+
+- **持久對話讀取**：每次選擇 Test 或重新登入後，GET 該 Test 的 Conversation。訊息以純文字顯示角色、時間、內容及 revision；重新整理對話不清除既有訊息或尚未送出的輸入。
+- **送出**：POST `{content,revision}`，revision 固定為目前已儲存草稿。空白／超過 16,000 字元、有本機未存腳本、草稿操作或衝突尚未完成、尚有 active author 時，阻擋送出。訊息只在 202 回應後清空；409／連線結果不明時保留文字並重新讀取對話／紀錄，不自動重送 POST。
+- **任務狀態與取消**：支援 `Run.kind=author`，回復 Conversation 的 `activeRunId` 並接續既有 Run 輪詢。author 活躍時每 2 秒更新對話；與 Run 共用取消 API，顯示排隊、執行、取消中、失敗、已取消等狀態。失敗與取消後同步完成即可送新訊息，不丟棄 Server 已存訊息與草稿。
+- **author 成功不等於測試通過**：成功顯示「撰寫完成」，歷史類型顯示「AI 撰寫」，不要求 author Playwright report，也不因 author 成功放行發佈。正式執行與 validation 維持原本測試狀態／報告呈現。
+- **腳本前後對照**：優先讀取 Server `Message.baseScript` 與 `proposedScript`，顯示兩個可捲動的唯讀 code 區。依總指揮後續指示，即使已自動套用草稿，Server 仍回 `proposedScript`；因此重開訊息仍可看原稿與結果稿。`baseRevision`／`appliedRevision` 同時標示套用結果。
+- **相容與缺資料處理**：舊訊息缺少選填快照時，使用本分頁已取得的精確 revision 腳本作 fallback；仍無資料就明確顯示無法還原，不拿目前腳本冒充舊版本。沒有腳本的 assistant 回覆顯示「此回覆未提供腳本變更，草稿保持原樣」。
+- **候選未套用**：有 `proposedScript`、沒有 `appliedRevision` 時，標示候選尚未套用。只有對應 author Run 已成功，才允許「將候選腳本帶入編輯器」；只改本機文字，需人工檢視、儲存、驗證及確認發佈。帶入前若有未存內容需明確確認；失敗／取消 Run 不允許套用。
+- **終態同步**：author 結束後並行刷新 Conversation 與 Draft，再刷新 Run 歷史，接續顯示 Message 的 `validationRunId` 狀態／報告。若當時本機仍有未存編輯或草稿請求，不覆蓋本機文字，改為衝突提示與重新載入選擇。同步失敗會阻止下一輪送出，直到重試同步成功。
+- **M2 門檻維持**：AI 只會更新草稿；validation 必須對應目前 revision、成功且報告存在，沒有本機未儲存內容，才可勾選並送出 `{revision,confirmed:true}`。模型回覆、author succeeded 或候選帶入均不會自動發佈。
+
+新增 `src/ConversationPanel.tsx`；修改 `src/types.ts`、`src/api.ts`、`src/components.tsx`、`src/DraftEditor.tsx`、`src/App.tsx`、`src/mock.ts`、`src/styles.css`。沒有修改 owner 外檔案、契約、依賴、lockfile 或 Docker 設定。
+
+### M3 API 與 Server 串接事項
+
+| 操作／欄位 | 串接行為 |
+| --- | --- |
+| `GET /api/tests/:id/conversation` | 嚴格解析 Conversation 與 messages；初次需回空陣列 `[]` |
+| `POST /api/tests/:id/messages {content,revision}` | 接收 `{run,conversationId}`，加入既有 Run 狀態追蹤 |
+| `Run.kind=author` | 沿用歷史、GET Run、全域佇列及取消契約 |
+| `Message.baseScript?` | 優先作為原始腳本快照，支援空字串 |
+| `Message.proposedScript?` | 優先作為候選／已套用結果稿，即使 appliedRevision 存在也保留 |
+| `Message.appliedRevision?` | 區分已套用與待人工處理的候選 |
+| `Message.validationRunId?` | 對應續接 validation 的狀態、錯誤與報告 |
+
+`baseScript` 與已套用訊息保留 `proposedScript` 是總指揮在本輪明確協調的補充，前端已支援；未私自編輯契約。Server 必須提供不可變的原始快照，並在 author 終態交易完成後，讓 Conversation／Draft／Run 查詢反映套用與續接 validation 結果。原始 provider 錯誤由 Server 遮蔽，前端不取得模型設定或憑證。
+
+### M3 實際檢查
+
+- **正式 build 一次通過**：`npm run build`，完整 `tsc --noEmit` 與 Vite `7.1.9` production build，退出碼 `0`。共 38 個模組；HTML 0.55 kB、CSS 13.94 kB、JS 238.99 kB（gzip 74.25 kB）。通過後未重跑。
+- 本輪未呼叫模型、未跑 UI smoke、未安裝依賴、未讀 env、未 Git。Docker 與真實模型串接由總指揮統一處理，黑箱 UI 交指定 Muse；未宣稱完成 M3 E2E。
+- 既有 opt-in mock 保留 M1／M2 功能。mock 的 M3 會顯示空對話，送出時明確回報 `MOCK_AUTHOR_UNAVAILABLE`，不假造 AI 成功或呼叫模型；M3 真實流程必須使用 Server API。
+- 尚未送出的訊息僅在目前頁面記憶體；已送出訊息以 Server 持久化內容為準。沒有儲存瀏覽器記憶體、假串流或自動重跑的承諾。
+
+### M3 Muse 黑箱 UI 標籤
+
+| 區塊 | 可見標籤／按鈕 | 驗收重點 |
+| --- | --- | --- |
+| 對話面板 | `AI 測試對話`、`重新整理對話` | 同一 Test 可重讀既有訊息，不因刷新丟失歷史 |
+| 歷史訊息 | `你`、`AI 助手`、`基於 revision N` | 角色、時間、文字與已存 revision 正確 |
+| 訊息輸入 | `測試需求或修改訊息` | 多行輸入；顯示使用 revision 與 `16,000` 字元上限 |
+| 訊息操作 | `送出訊息`、`送出中…`、`AI 任務進行中` | 防止連點；active author 未結束時不可再送 |
+| 未存草稿阻擋 | `有未儲存的腳本編輯，請先儲存草稿再送出訊息。` | 手動編輯 TypeScript 後，送出按鈕 disabled，文字仍保留 |
+| author 狀態 | `AI 撰寫狀態`、`撰寫完成`、`取消執行` | 撰寫完成不能當測試通過；取消進入取消中／已取消 |
+| 同步 | `正在同步對話、草稿與驗證紀錄…` | 終態刷新後，草稿與歷史可接續操作 |
+| 套用結果 | `已套用至草稿 revision N`、`候選腳本尚未套用，不會覆蓋目前草稿。` | 區分自動套用與 revision 衝突候選；都不代表發佈 |
+| 對照 | `查看腳本前後對照`、`變更前 · revision N` | 展開原始腳本與結果稿，重新登入仍能使用 Server 快照 |
+| 對照結果 | `變更後 · revision N`、`候選腳本 · 未套用` | code 區為唯讀；窄畫面改上下排列 |
+| 候選處理 | `將候選腳本帶入編輯器` | 僅帶入本機，接續 `儲存草稿`、`驗證此 revision`，不直接提交或發佈 |
+| 續接驗證 | `續接驗證`、`查看續接驗證報告`、`重新整理驗證紀錄` | 與 validation Run 關聯，觀察通過／失敗與報告 |
+| 人工發佈 | `我已檢視驗證報告，確認發佈 revision N`、`確認發佈 revision N` | 沿用 M2 明確勾選與發佈，不因 AI 完成自動跳過 |
+| 回復對話 | `返回登入` → `以開發管理員登入` → 選相同 Test | 重新讀到相同使用者／助手訊息及前後對照 |
+
+Muse 可在單一真實模型流程中依序操作：新增合成測試 → 用對話產生純 `page.setContent` 腳本 → 等待撰寫完成並檢視前後對照 → 手動改腳本，確認未存時不能送訊息，再儲存 → 在同一對話要求修改並續接驗證 → 查看 validation 成功與報告 → 人工確認發佈 → 返回登入後重新選同 Test，確認對話與腳本對照仍在。取消、錯誤、409 與去重依契約使用受控 mock，不另增加真實模型呼叫；本 Agent 未執行此流程。
+
+供黑箱測試輸入的合成需求可用：「請建立 Playwright TypeScript 測試，只使用 page.setContent 顯示標題 Whippet M3 與一個按鈕，驗證標題與按鈕可見，不連外；完成後請求驗證。」同一對話第二則可用：「沿用相同本地 HTML，將標題改為 Whippet M3 修改版，更新預期文字並請求驗證。」不要提供本機程式碼、env 或機密。
+
+## M2 前次交付
+
+依 `contracts/mvp-v2.md` 完成，保留既有 M1 登入、列表、正式執行、短輪詢與報告流程。M2 階段未實作 AI；後續 M3 以上方最新交付為準。沒有變更共用契約或其他 owner 的檔案。
 
 - **新增測試**：Workspace 列表提供建立表單，POST 名稱與選填描述；直接選取新測試，進入空白草稿。未發佈測試不能執行正式版本。
 - **草稿**：GET 初始草稿、編輯 TypeScript、以 `{revision,script}` PUT 儲存；畫面區分已儲存與未儲存內容。切換測試／Workspace、返回登入、重新整理或離開頁面前，對尚未儲存草稿或進行中的草稿請求提示確認。
@@ -149,7 +209,7 @@ Compose 整合時將 Web 的容器埠 `80` 對外，並讓 Web 與名稱為 `ser
 - 「返回登入」只清除目前頁面的登入顯示並取消前端讀取；契約沒有登出端點，不代表撤銷 Server session。重新整理頁面後需再次點擊開發登入。
 - 列表顯示名稱、描述與發佈狀態；執行結果在所選測試的詳情顯示，未為列表每個測試額外查詢歷史摘要。
 - 輪詢僅追蹤目前測試中已載入的活躍 Run；若其他分頁建立任務，或終態仍缺報告，使用「重新整理」載入。單輪暫時失敗會保留既有狀態並重試，不把連線失敗改成任務失敗。
-- M2 草稿／發佈／取消已在上方最新交付實作；仍不含 M3 AI 對話與即時監看。
+- M2 草稿／發佈／取消與 M3 AI 對話已在上方交付；仍不含即時監看。
 - 依使用者要求，未啟動設計審查 Agent，也未執行額外設計研究／工具探查；未宣稱取得視覺審查通過。
 
 整合時只需跑一條成功路徑，再執行一個真實斷言失敗：確認 UI 分別顯示「通過」與「失敗」、錯誤內容正確、報告可開啟，且完成後停止自動輪詢。此項由總指揮統一驗收，避免多人重跑全量測試。

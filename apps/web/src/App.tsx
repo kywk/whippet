@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { errorMessage } from './api';
-import { formatDate, Loading, Notice, ReportLink, StatusBadge } from './components';
+import { formatDate, Loading, Notice, ReportLink, RunStatusBadge, runKindLabel } from './components';
 import { DraftEditor } from './DraftEditor';
 import { CancelRunButton, CreateTestForm, VersionHistory } from './TestActions';
 import { useResource, useRuns } from './hooks';
@@ -183,17 +183,17 @@ function TestDetail({ testId, api, apiBase, onDirtyChange, onTestUpdated }: { te
         {!test.data.publishedVersionId ? <p className="inline-hint">此測試尚未發佈。請儲存草稿、驗證通過並確認發佈後，再執行正式版本。</p> : <p className="inline-hint">「執行測試」只執行目前已發佈版本，不包含尚未發佈的草稿修改。</p>}
       </> : null}
       {submitError ? <Notice message={submitError} retry={history.refresh} retryLabel="重新整理執行紀錄" /> : null}
-      <DraftEditor api={api} apiBase={apiBase} testId={testId} runs={history.runs} onRun={history.addRun} onPublished={published} onDirtyChange={onDirtyChange} />
+      <DraftEditor api={api} apiBase={apiBase} testId={testId} runs={history.runs} onRun={history.addRun} onPublished={published} onDirtyChange={onDirtyChange} onRefreshRuns={history.refresh} />
       <section className="latest-section" aria-labelledby="latest-title">
         <div className="section-heading"><h3 id="latest-title">最近一次執行</h3>
           <span className="refresh-status" role="status">{history.loading ? '正在讀取狀態…' : history.error ? '同步暫時中斷' : history.polling ? '每 2 秒更新狀態' : '狀態已同步'}</span>
         </div>
         {latest ? <div className="latest-run" aria-live="polite" aria-atomic="true">
-          <div className="latest-summary"><StatusBadge status={latest.status} /><span>{latest.kind === 'validation' ? `草稿驗證 · revision ${latest.draftRevision ?? '—'}` : '正式執行'}</span><span>{formatDate(latest.createdAt)}</span><ReportLink reportUrl={latest.reportUrl} apiBase={apiBase} /></div>
+          <div className="latest-summary"><RunStatusBadge run={latest} /><span>{runKindLabel(latest)}</span><span>{formatDate(latest.createdAt)}</span>{latest.kind === 'author' ? <span className="muted">撰寫結果見對話</span> : <ReportLink reportUrl={latest.reportUrl} apiBase={apiBase} />}</div>
           <p className="run-id">Run <span className="identifier">{latest.id}</span></p>
           {latest.error ? <pre className="run-error">{latest.error}</pre> : null}
           {isActiveRun(latest) ? <p className="inline-hint">{latest.status === 'queued' ? '任務已排入佇列，正在等待執行節點。' : '任務正在處理中，結果會自動更新。'}</p> : null}
-          {!isActiveRun(latest) && !latest.reportUrl ? <p className="inline-hint">Server 尚未提供報告連結，請重新整理執行紀錄。</p> : null}
+          {!isActiveRun(latest) && !latest.reportUrl && latest.kind !== 'author' ? <p className="inline-hint">Server 尚未提供報告連結，請重新整理執行紀錄。</p> : null}
         </div> : !history.loading && !history.error ? <p className="muted">還沒有執行紀錄。按「執行測試」開始第一次執行。</p> : null}
       </section>
       <section className="history-section" aria-labelledby="history-title">
@@ -206,9 +206,9 @@ function TestDetail({ testId, api, apiBase, onDirtyChange, onTestUpdated }: { te
           <caption className="sr-only">測試執行歷史，最新紀錄在前</caption>
           <thead><tr><th scope="col">狀態／Run</th><th scope="col">種類／版本</th><th scope="col">建立時間</th><th scope="col">執行耗時</th><th scope="col">報告／操作</th></tr></thead>
           <tbody>{history.runs.map((run) => <tr key={run.id}>
-            <td><StatusBadge status={run.status} /><span className="table-run-id identifier" title={run.id}>{run.id.slice(0, 8)}</span>
+            <td><RunStatusBadge run={run} /><span className="table-run-id identifier" title={run.id}>{run.id.slice(0, 8)}</span>
               {run.error ? <details className="error-details"><summary>查看錯誤</summary><pre className="run-error">{run.error}</pre></details> : null}
-            </td><td>{run.kind === 'validation' ? `草稿驗證 · r${run.draftRevision ?? '—'}` : '正式執行'}{run.versionId ? <span className="table-run-id identifier" title={run.versionId}>{run.versionId.slice(0, 8)}</span> : null}</td><td><time dateTime={run.createdAt}>{formatDate(run.createdAt)}</time></td><td>{duration(run)}</td><td><div className="run-actions"><ReportLink reportUrl={run.reportUrl} apiBase={apiBase} /><CancelRunButton api={api} run={run} onUpdated={history.addRun} /></div></td>
+            </td><td>{runKindLabel(run)}{run.versionId ? <span className="table-run-id identifier" title={run.versionId}>{run.versionId.slice(0, 8)}</span> : null}</td><td><time dateTime={run.createdAt}>{formatDate(run.createdAt)}</time></td><td>{duration(run)}</td><td><div className="run-actions">{run.kind === 'author' ? <span className="muted">撰寫結果見對話</span> : <ReportLink reportUrl={run.reportUrl} apiBase={apiBase} />}<CancelRunButton api={api} run={run} onUpdated={history.addRun} /></div></td>
           </tr>)}</tbody>
         </table></div> : null}
         {history.updatedAt ? <p className="updated-at">最後同步：{history.updatedAt.toLocaleTimeString('zh-TW', { hour12: false })}</p> : null}

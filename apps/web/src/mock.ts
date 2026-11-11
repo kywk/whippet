@@ -143,5 +143,12 @@ test('本機頁面', async ({ page }) => {
       if (!cancelledAt.has(runId)) cancelledAt.set(runId, Date.now());
       return progress(run);
     },
+    async getConversation(testId) {
+      getTest(testId);
+      return { id: `mock-conversation-${testId}`, testId, messages: [] };
+    },
+    async sendMessage() {
+      throw new ApiError('示範模式未連接 AI。請使用真實 API 進行持久對話；本機不會呼叫模型。', 'MOCK_AUTHOR_UNAVAILABLE', 400);
+    },
   };
 }

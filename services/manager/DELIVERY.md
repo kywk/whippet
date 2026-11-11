@@ -1,73 +1,85 @@
-# Runtime M2 交付
+# Runtime M3 交付
 
 更新：2026-11-11（Asia/Taipei）。Owner：Runtime Agent。
 
-**Manager 程式已固定，可建置映像。** M2 必要單元測試已通過 race 檢查；Docker 代表整合由總指揮負責，本 Agent 不建置／操作容器，也不重跑 M1 全量驗收。M1 先前已由總指揮與 Muse 完成成功／斷言失敗及報告驗收，見 [M1 整合紀錄](../../docs/tracking/devlog/m1-integration.md)。本次不做 M3。
+**Manager／Worker 的 M3 程式已可建置；最新 optional validation snapshot／read_validation_report 修正已通過 build 與受影響 mock，需重建兩個映像。** M3 Runtime mock 測試已通過；真實模型工具續接／草稿修復／驗證／發佈由總指揮驗收，尚不宣稱 M3 完成。M1／M2 已完成的驗收沿用既有 [整合紀錄](../../docs/tracking/devlog/m1-integration.md) 與總指揮結果，不重跑。
 
-## 已檢查並沿用
+## 產物與邊界
 
-- 原本已有 ACK 前持久化、同 attempt 去重、terminal messageId 穩定重送、WS 重連、本機 journal／工作目錄鎖。
-- Worker 已有 Playwright global timeout、外層 watchdog、SIGTERM／SIGINT 停止子程序群組及 5 秒後強制終止；這些程式本輪不修改，也不重跑無關 TypeScript／AI 測試。
-- 原本已有 Docker exit／OOM 檢查、回收失敗重試、附件補傳、缺少真實報告不能成功的檢查。
-
-## 補齊的缺口
-
-| 檔案 | 變更 |
+| 範圍 | 變更 |
 | --- | --- |
-| `internal/manager/config.go` | MAX_WORKERS 接受正整數、預設 1，移除 M1 固定 1 的限制。 |
-| `internal/manager/manager.go` | hello capacity 與本機上限使用相同 MAX_WORKERS；所有 run／validation 共用容量。每個 attempt 有獨立取消 context；WS session 中斷不取消 Worker。 |
-| `internal/manager/cancel.go` | 處理 v2 cancel envelope；先持久化取消要求，再停止匹配的 run／attempt。重複 cancel 冪等，完成後不改終態。cancel 先於遺失 dispatch 到達時建立取消紀錄，遲到 dispatch 不會執行。 |
-| `internal/manager/journal.go` | 新增向下相容的 `cancelRequested`、`reclaimed`。名額與 heartbeat.active 只在確認回收後移除；collection／terminal 寫入合併取消，防止取消被舊結果覆寫。 |
-| `internal/manager/docker.go` | 回收時先嘗試 docker stop（5 秒 SIGTERM 寬限、命令最多 7 秒），再 docker rm --force；以 rm 成功或明確不存在確認回收。失敗維持名額並重試。 |
-| `internal/manager/lifecycle_test.go` | 新增容量、取消、回收失敗、journal 恢復與取消先於派送的必要測試。 |
-| `README.md` | 更新容量、cancel、heartbeat_ack、read deadline、回收／附件生命週期及整合說明。 |
+| Manager `protocol.go`、`author.go` | 接受 kind author、baseRevision／conversation／messages，白名單環境傳遞與固定進度格式。author timeout 最多 180000 ms；對話最近最多 12 則／總 32000 字元。 |
+| Manager `manager.go`、`journal.go` | 持久化 kind 與必要快照；author 共用既有 MAX_WORKERS、ACK、取消 context、回收確認、heartbeat、重連及同 attempt 去重。舊 journal 的空 kind 視為普通 run。 |
+| Manager `docker.go` | author 以同一映像的 `node dist/author/main.js` 啟動；run 保留原 CMD。只有 author create 使用 `--env NAME` 白名單，值不放在 argv。普通 run 的 Docker CLI 環境亦移除 AI 設定／key。 |
+| Manager `artifacts.go` | author 成功只接受 author.json（2 MiB），不要求 Playwright 報告；普通 run 只接受原本兩份報告。author 失敗不補傳候選，錯誤固定遮蔽。 |
+| Worker `src/author/types.ts` | author input／output、上下文界限、固定遮蔽錯誤。 |
+| Worker `src/author/loop.ts` | 原生 Responses function calling、最多 8 requests／12 tools／180 秒；無 retry、payg fallback、previous_response_id 或持久模型狀態依賴。 |
+| Worker `src/author/tools.ts` | 8 個必要工具（含 read_validation_report）、HTTP(S) 探索、文字 aria snapshot 與 bounded selector hints；無任意 shell／eval 工具。瀏覽器 subprocess 不繼承 AI key。 |
+| Worker `src/author/main.ts` | 獨立入口、SIGTERM／timeout、最後寫 author.json／result.json；不執行模型生成的 spec。只印固定進度。 |
+| Worker package／README、Manager README | 新增 npm author／test:author 入口與串接文件；沒有新增 SDK 或相依套件。 |
+| `author_test.go`、`src/author/author.test.ts` | Manager kind／環境／附件／名額／取消測試及 Worker 工具續接、界限與遮蔽測試。 |
 
-只修改 `services/manager/`。`runtimes/worker/`（含 AI 模組）與其他 Agent 檔案本輪未修改；未安裝套件、未做 Git、未讀取 `deploy/.env.ai`，未呼叫模型。
+所有修改限於 `services/manager/`、`runtimes/worker/`。未安裝套件、未讀 `deploy/.env.ai`／任何真實 key、未讀全域 provider 設定、未呼叫模型、未執行 Git。本 Agent 不執行 Docker／live；總指揮負責部署。
 
-## 關鍵行為與串接介面
+## 固定介面
 
-1. 沿用 protocolVersion=1，依 [v1](../../contracts/mvp-v1.md) 及 [M2 契約](../../contracts/mvp-v2.md)。Server 負責 FIFO 與 queued cancel；Manager 不建立第二套佇列，超過實際上限的 dispatch 不 ACK。
-2. hello `{capacity: MAX_WORKERS}`。設定是正整數，目前 Server gateway 接受 1..64；總指揮本次整合設 2。
-3. cancel 帶匹配 `runId`／`attemptId`，payload `{}`；runId 與已知 attempt 不符時拒絕。取消只中止執行 context，不中止回收／附件補傳。任何取消、逾時或異常退出都先完成容器回收，才能送 result。
-4. **容器回收與 Run 終態分開。** 持久化 `reclaimed=true` 才從本機占用與 heartbeat.active 移除；可用附件全數上傳完成才保存 complete／送 result。Server 繼續採「terminal 且 absent」才 ReleaseSlots，不需改此規則。
-5. 新取消在 accepted／running／collecting 階段保存後，會合併為最終 cancelled；已 complete 的終態保持不變。Manager shutdown 仍嘗試獨立的容器回收；未確認回收就保留 journal，供下次啟動處理。
-6. 每 10 秒 heartbeat；**t31／總指揮已協調 Server 成功處理後回 `type:"heartbeat_ack"`、`payload:{}`、相同 managerId**。Manager 設 35 秒 read deadline；沒有讀到 Server 訊息便斷線重連，Worker 繼續受本機 timeout 控制。此訊息回覆協調由總指揮代傳，契約文件由共同 owner 維護。
-7. 重連先送 hello／目前 active，再重送已完成結果；同 attempt 不重跑。Server restart 而 Manager 不重啟時，既有 Worker context 與本機 timeout 不受影響。
-8. Manager restart 時只清理未確認回收的容器／恢復附件補傳，不重新執行 script。未保存結果時保守回 failed 並註明中斷；已保存取消則回 cancelled。舊 M1 journal 沒有新欄位仍可讀取。
+- 沿用 [M3 契約](../../contracts/mvp-v3.md)，沒有要求新增 artifact schema。input 加 kind／author；journal 保存 kind，不含 AI 設定或 key。
+- Manager 專用環境白名單為 `WHIPPET_AI_ENABLED`、`WHIPPET_AI_BASE_URL`、`WHIPPET_AI_MODEL`、`WHIPPET_AI_REASONING_EFFORT`、`OPENCODE_API_KEY`，只給 author 容器。一般 run／validation 不注入。部署 overlay 由總指揮維護。
+- 模型 endpoint／model／User-Agent 沿用既有 Responses 設定，`x-opencode-session=conversationId`；reasoning 使用 `config.reasoningEffort`（預設 xhigh），沒有硬編碼破壞替換設定。
+- 函式為原生 `type:function` schema，工具回覆為 `type:function_call_output`，以 call_id 配對；完整保留 reasoning／function_call 等 output items。採 `store:false`、`include:["reasoning.encrypted_content"]`，不使用 previous_response_id。依 [官方 function calling](https://developers.openai.com/api/docs/guides/function-calling) 與 [stateless reasoning](https://developers.openai.com/api/docs/guides/reasoning)；Go provider 的 live 相容性仍以總指揮驗收為準，不自動降級格式或切換端點。
+- `read_draft` 讀目前候選、`update_draft` 只替換記憶體候選；`request_validation` 只回旗標。成功輸出 `{message,script?,requestValidation}`，由 Server 回收後交易套用／衝突保留／另排 validation。author 不執行生成 spec、不等待 validation，也不自動發佈。
+- 既有 run／validation 的報告成功門檻未削弱。author 成功只檢查 author.json；普通 run 不得上傳該檔。Server 依 kind 保存／讀取附件，由 Server owner 實作。
+- 進度沿用 log event，只轉送 `author:model:<序號>:<started|succeeded|failed>`、`author:tool:<序號>:<固定名稱>:<succeeded|failed>`。不包含工具參數、DOM、provider body、模型原文或 key；其他 author stderr 全部遮蔽。
 
-## 實際驗證
+## 最新 selector 修正
 
-`gofmt -w internal/manager` 已完成。執行一次受影響範圍的 race 檢查：
+總指揮回報第一次真實 author：navigate 成功，但 aria snapshot 缺乏 CSS 資訊，fill／click 各猜錯一次並額外讀 snapshot，導致第 8 次 request 更新候選後達 limit；草稿未套用，符合失敗保護。
 
-```sh
-GOROOT=/opt/homebrew/Cellar/go/1.27.4/libexec \
-GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local \
-GOCACHE=/private/tmp/whippet-manager-go-cache \
-go test -race -mod=readonly ./internal/manager \
-  -run 'Test(M2|ManagerDispatchDedup)' -count=1
-```
+已針對此根因修正，**沒有增加 8 requests／12 tools 預算**：
 
-結果：**exit=0，`ok whippet/services/manager/internal/manager 5.089s`**。只使用既有相依套件快取，沒有下載。
+- navigate／click／snapshot 回傳最多 30 個 input／button／link／textarea／select 的 selectorHints：tag、id、name、type、文字及可用 CSS selector；不讀 input value。
+- 優先產生唯一 id／name selector，否則固定程式產生完整 nth-of-type CSS 路徑。DOM 擷取程式固定，沒有模型可提供程式的 eval 工具。
+- schema 明確要求 literal CSS／text= selector，禁止傳入 page.getByRole(...) 這種 JS 表達式。
+- 指示 navigate／click 已回 snapshot／hints，避免無謂再讀 snapshot 消耗模型回合。
 
-涵蓋 7 項頂層測試（含 MAX_WORKERS 的 5 個設定子案例）：
+此修正後只執行必要正式 build，**exit=0**；未自行重試模型。Manager 未因 selector 修正變動，最新修正只需重建 Worker。總指揮尚未回報修正後 live 結果。
 
-- 既有同 attempt 重複 dispatch／重載 journal 不重跑，以及回收後才上傳並完成。
-- MAX_WORKERS=2 可啟動兩個、第三個拒絕；異常退出尚未回收時仍不得啟動第三個，實際 driver 同時存活數不超過 2。
-- cancel 只作用於匹配 attempt；重複 cancel 不多開 Worker；取消旗標先保存，回收前無 result 且仍出現在 active。
-- collection 期間的取消不被舊成功結果覆寫。
-- cancel 先於 dispatch、未完成 journal 恢復，都不會重新 Execute。
-- watchdog timeout 加第一次回收失敗，仍保留 active／名額，重試成功才完成 timed_out。
-- MAX_WORKERS=1／2 接受；0／負數／非數字拒絕。
+總指揮後續回報：selector 修正後 author **6 requests／5 tools 全成功**，但產生的 spec 使用不正確的 listitem accessible-name 斷言，獨立 validation 真實失敗；沒有弱化發佈門檻。為支援同對話修復，依更新後 M3 契約新增：
 
-容器 driver 是測試替身，這些結果不宣稱 Docker／WS 故障情境已實測。沒有重跑 repo 全量測試或未修改的 AI 測試。
+- `author.validation?:{runId,status,error?}`，Manager 轉傳、Worker 驗證；error 最多 4000 字元，沒有快照可照常執行。
+- `read_validation_report` 只回這份快照，無值回 `{status:"none"}`；不讀任意 report、不執行 spec、不同步等待 validation。
+- system 提醒修復時讀取摘要，仍把摘要當資料；進度白名單加入該固定工具名稱。8 requests／12 tools／180 秒上限不變。
+- 正式 build 通過；受影響 Worker mock **3 passed**（stateless 續接、輸入邊界、optional validation 修復），Manager `TestM3AuthorOptionalValidationSnapshot` 通過（0.322s）。沒有重跑全套或自行呼叫模型。
 
-## 總指揮接續的代表整合
+**這個 validation snapshot 修正同時改動 Manager 與 Worker，兩個映像皆須重建**。總指揮接續目前 test 的同對話修復，不必重跑第一輪生成。修復後 live 驗證結果尚待回報。
 
-- 建置 Manager 映像即可；本輪 Worker 沒有變更，不必因 runtime M2 重建 Worker。
-- `MAX_WORKERS=2`：第三筆維持 FIFO 排隊，容器確實回收後才能放下一筆。
-- 強制終止一個 Worker 容器：Run 失敗，回收完成，其他 Worker 繼續；不偽造成功。
-- 取消執行中的 Run：只停止匹配 attempt，最後 cancelled；若回收受阻仍占名額。
-- 重啟 Server、不重啟 Manager：完成 heartbeat_ack 握手、恢復相同 journal／active；同 attempt 不重跑。
-- 如需要驗證半開連線，Manager 35 秒 read deadline 已加入；此環境未開埠或操作 Docker，實際 WS 斷線／讀取逾時由總指揮整合確認。
+## 實際檢查
 
-本輪程式已固定，等待總指揮的容器整合結果；提交由總指揮負責。
+1. Worker `npm run build`：正式 TypeScript 編譯／型別檢查通過；加入 selector hints 後再 build 一次亦通過，最後一次 exit=0。
+2. Worker `npm run test:author`：**6 passed、0 failed、exit=0**（selector 修正前，工具續接與界限核心未改動）：
+   - 8 個 mock response 走完 read／navigate／snapshot／fill／click／update／validation／final，候選只回傳、不執行。
+   - stateless encrypted reasoning 與 call_id 回傳、相同 conversation session、reasoning effort 使用設定值。
+   - 8 requests／12 tools 上限、缺 key／停用、401／429 不重試、secret echo／raw error 遮蔽。
+   - 整輪 timeout／取消、非 HTTP(S) 與未知 eval 工具拒絕、可只回提問而無候選稿。
+3. Manager `gofmt -w internal/manager` 完成；M3 focused race 檢查 **4 項測試通過、exit=0**：
+
+   ```sh
+   GOROOT=/opt/homebrew/Cellar/go/1.27.4/libexec \
+   GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local \
+   GOCACHE=/private/tmp/whippet-manager-go-cache \
+   go test -race -mod=readonly ./internal/manager -run '^TestM3' -count=1
+   ```
+
+   結果：`ok whippet/services/manager/internal/manager 1.606s`。涵蓋 author 白名單與獨立入口、普通 run 不注入 key、input／journal 無 AI 設定、kind 對應附件、author 共用名額／取消回收／去重，以及固定進度白名單。
+4. 加入 author kind 後，既有 `TestManagerDispatchDedupAndCollectionOrdering` focused 檢查通過（0.380s）；沒有重跑 repo 全量、M1／M2 E2E 或無關 AI probe 測試。
+
+以上均使用合成假 key／fetch／容器 driver；不是本 Agent 的真實模型或 Chromium 驗收。
+
+## 總指揮接續
+
+1. 最新 validation snapshot 修正需重建 Manager／Worker，請更新兩個映像後續接目前 test 的修復；不重跑第一輪。
+2. 使用合成站 `http://host.docker.internal:18082`，不新增 Worker network 設計。驗收 navigate→fill→click→update_draft→request_validation，從固定進度確認動作。
+3. 核對 author.json 上傳後的 baseRevision 交易套用／衝突、冪等 result，以及回收後才建立普通 validation。確認 validation 容器沒有 key。
+4. 真實完成同對話修改→驗證成功→人工發佈→重開對話；未完成前不將 M3 標為完成。
+
+等待總指揮整合結果，提交由總指揮負責。

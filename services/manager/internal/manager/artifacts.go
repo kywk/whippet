@@ -9,11 +9,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
 func openArtifact(taskDir, name string) (*os.File, error) {
-	if name != "report.html" && name != "results.json" && name != "result.json" {
+	if name != "report.html" && name != "results.json" && name != "result.json" && name != "author.json" {
 		return nil, errors.New("unsupported artifact name")
 	}
 	// OpenRoot rejects symlinks escaping the output directory. A Worker must not
@@ -41,7 +42,11 @@ func openArtifact(taskDir, name string) (*os.File, error) {
 		return nil, err
 	}
 	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxArtifactBytes {
+	limit := int64(maxArtifactBytes)
+	if name == "author.json" {
+		limit = 2 << 20
+	}
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > limit {
 		f.Close()
 		return nil, fmt.Errorf("artifact %s must be a nonempty regular file of at most %d bytes", name, maxArtifactBytes)
 	}
@@ -107,6 +112,9 @@ func collectResult(taskDir string, outcome execution) (Result, []string) {
 }
 
 func (m *Manager) upload(ctx context.Context, r record, name string) error {
+	if !artifactAllowed(r, name) {
+		return errors.New("artifact is not allowed for this task kind")
+	}
 	f, err := openArtifact(m.taskDir(r), name)
 	if err != nil {
 		return err
@@ -140,6 +148,41 @@ func (m *Manager) upload(ctx context.Context, r record, name string) error {
 	}
 	_, err = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	return err
+}
+
+func collectAttemptResult(r record, taskDir string, outcome execution) (Result, []string) {
+	if r.Kind != "author" {
+		return collectResult(taskDir, outcome)
+	}
+	var result Result
+	if err := readOutput(taskDir, "result.json", &result); err != nil || !result.valid() {
+		result.Status = "failed"
+	}
+	var artifacts []string
+	if result.Status == "succeeded" {
+		var author struct {
+			Message           *string `json:"message"`
+			Script            *string `json:"script"`
+			RequestValidation *bool   `json:"requestValidation"`
+		}
+		if err := readOutput(taskDir, "author.json", &author); err != nil || author.Message == nil || strings.TrimSpace(*author.Message) == "" || author.RequestValidation == nil {
+			result.Status = "failed"
+		} else {
+			artifacts = []string{"author.json"}
+		}
+	}
+	if outcome.Error != "" || outcome.ExitCode != 0 && result.Status == "succeeded" {
+		result.Status = "failed"
+	}
+	if outcome.TimedOut {
+		result.Status = "timed_out"
+	}
+	result.Error = ""
+	if result.Status != "succeeded" {
+		result.Error = "Author task did not complete; provider and browser details are hidden"
+		artifacts = nil
+	}
+	return result, artifacts
 }
 
 func newHTTPClient() *http.Client {

@@ -62,6 +62,49 @@ type Version struct {
 	ValidationRunID *string   `json:"validationRunId"`
 }
 
+type Conversation struct {
+	ID          string    `json:"id"`
+	TestID      string    `json:"testId"`
+	Messages    []Message `json:"messages"`
+	ActiveRunID *string   `json:"activeRunId,omitempty"`
+}
+
+type Message struct {
+	ID              string    `json:"id"`
+	Role            string    `json:"role"`
+	Content         string    `json:"content"`
+	CreatedAt       time.Time `json:"createdAt"`
+	RunID           *string   `json:"runId,omitempty"`
+	BaseRevision    *int      `json:"baseRevision,omitempty"`
+	BaseScript      *string   `json:"baseScript,omitempty"`
+	AppliedRevision *int      `json:"appliedRevision,omitempty"`
+	ProposedScript  *string   `json:"proposedScript,omitempty"`
+	ValidationRunID *string   `json:"validationRunId,omitempty"`
+}
+
+type ChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type AuthorInput struct {
+	ConversationID string            `json:"conversationId"`
+	BaseRevision   int               `json:"baseRevision"`
+	Messages       []ChatMessage     `json:"messages"`
+	Validation     *AuthorValidation `json:"validation,omitempty"`
+}
+
+type AuthorValidation struct {
+	RunID  string `json:"runId"`
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
+}
+
+type AuthorSubmission struct {
+	Run            Run    `json:"run"`
+	ConversationID string `json:"conversationId"`
+}
+
 func Terminal(status string) bool {
 	switch status {
 	case "succeeded", "failed", "cancelled", "timed_out", "interrupted":
@@ -77,6 +120,7 @@ type Assignment struct {
 	Script    string
 	TimeoutMS int
 	Acked     bool
+	Author    *AuthorInput
 }
 
 type ActiveAttempt struct {
@@ -135,6 +179,8 @@ type Store interface {
 	ValidateDraft(context.Context, string, int) (Run, error)
 	Publish(context.Context, string, int, bool) (Version, error)
 	Versions(context.Context, string) ([]Version, error)
+	Conversation(context.Context, string) (Conversation, error)
+	CreateAuthor(context.Context, string, string, int) (AuthorSubmission, error)
 	CreateRun(context.Context, string) (Run, error)
 	Runs(context.Context, string) ([]Run, error)
 	Run(context.Context, string) (Run, error)
@@ -146,7 +192,7 @@ type Store interface {
 	AddEvent(context.Context, string, string, string, Event) error
 	Complete(context.Context, string, string, string, Result) error
 	ReleaseSlots(context.Context, string, []ActiveAttempt) error
-	UploadAllowed(context.Context, string, string) error
+	UploadAllowed(context.Context, string, string, string) error
 	SaveArtifact(context.Context, Artifact) error
 	Artifact(context.Context, string, string) (Artifact, error)
 }
@@ -170,4 +216,13 @@ func ValidID(id string) bool {
 	return err == nil
 }
 
-func validArtifact(name string) bool { return name == "report.html" || name == "results.json" }
+func validArtifact(name string) bool {
+	return name == "report.html" || name == "results.json" || name == "author.json"
+}
+
+func artifactAllowed(kind, name string) bool {
+	if kind == "author" {
+		return name == "author.json"
+	}
+	return (kind == "run" || kind == "validation") && (name == "report.html" || name == "results.json")
+}

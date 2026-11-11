@@ -23,16 +23,37 @@ type Envelope struct {
 }
 
 type Dispatch struct {
-	Kind      string `json:"kind"`
-	Script    string `json:"script"`
-	TimeoutMS int64  `json:"timeoutMs"`
+	Kind      string      `json:"kind"`
+	Script    string      `json:"script"`
+	TimeoutMS int64       `json:"timeoutMs"`
+	Author    *AuthorTask `json:"author,omitempty"`
+}
+
+type AuthorMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type AuthorTask struct {
+	ConversationID string            `json:"conversationId"`
+	BaseRevision   int64             `json:"baseRevision"`
+	Messages       []AuthorMessage   `json:"messages"`
+	Validation     *AuthorValidation `json:"validation,omitempty"`
+}
+
+type AuthorValidation struct {
+	RunID  string `json:"runId"`
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
 }
 
 type WorkerInput struct {
-	RunID     string `json:"runId"`
-	AttemptID string `json:"attemptId"`
-	Script    string `json:"script"`
-	TimeoutMS int64  `json:"timeoutMs"`
+	RunID     string      `json:"runId"`
+	AttemptID string      `json:"attemptId"`
+	Script    string      `json:"script"`
+	TimeoutMS int64       `json:"timeoutMs"`
+	Kind      string      `json:"kind,omitempty"`
+	Author    *AuthorTask `json:"author,omitempty"`
 }
 
 type Result struct {

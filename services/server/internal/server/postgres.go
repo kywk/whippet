@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -193,7 +194,7 @@ func (p *Postgres) RegisterManager(ctx context.Context, id string, capacity int)
 }
 
 func (p *Postgres) Assignments(ctx context.Context, managerID string) ([]Assignment, error) {
-	rows, err := p.DB.QueryContext(ctx, `SELECT r.id,r.status,r.attempt_id,r.script_snapshot,r.timeout_ms,r.acknowledged_at IS NOT NULL
+	rows, err := p.DB.QueryContext(ctx, `SELECT r.id,r.status,r.attempt_id,r.script_snapshot,r.timeout_ms,r.acknowledged_at IS NOT NULL,r.kind,COALESCE(r.author_payload::text,'')
         FROM runs r WHERE r.manager_id=$1 AND NOT r.slot_released ORDER BY r.queue_seq`, managerID)
 	if err != nil {
 		return nil, err
@@ -202,7 +203,11 @@ func (p *Postgres) Assignments(ctx context.Context, managerID string) ([]Assignm
 	items := []Assignment{}
 	for rows.Next() {
 		a := Assignment{ManagerID: managerID}
-		if err := rows.Scan(&a.ID, &a.Status, &a.AttemptID, &a.Script, &a.TimeoutMS, &a.Acked); err != nil {
+		var authorPayload string
+		if err := rows.Scan(&a.ID, &a.Status, &a.AttemptID, &a.Script, &a.TimeoutMS, &a.Acked, &a.Kind, &authorPayload); err != nil {
+			return nil, err
+		}
+		if err := decodeAssignmentAuthor(&a, authorPayload); err != nil {
 			return nil, err
 		}
 		items = append(items, a)
@@ -231,12 +236,16 @@ func (p *Postgres) Claim(ctx context.Context, managerID string, capacity int) (*
 		return nil, nil
 	}
 	a := Assignment{ManagerID: managerID, AttemptID: NewID()}
-	err = tx.QueryRowContext(ctx, `SELECT id,script_snapshot,timeout_ms FROM runs
-        WHERE status='queued' ORDER BY queue_seq FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&a.ID, &a.Script, &a.TimeoutMS)
+	var authorPayload string
+	err = tx.QueryRowContext(ctx, `SELECT id,script_snapshot,timeout_ms,kind,COALESCE(author_payload::text,'') FROM runs
+        WHERE status='queued' ORDER BY queue_seq FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&a.ID, &a.Script, &a.TimeoutMS, &a.Kind, &authorPayload)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
+		return nil, err
+	}
+	if err := decodeAssignmentAuthor(&a, authorPayload); err != nil {
 		return nil, err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE runs SET status='dispatched',manager_id=$2,attempt_id=$3,slot_released=false WHERE id=$1`, a.ID, managerID, a.AttemptID); err != nil {
@@ -247,6 +256,18 @@ func (p *Postgres) Claim(ctx context.Context, managerID string, capacity int) (*
 	}
 	a.Status = "dispatched"
 	return &a, nil
+}
+
+func decodeAssignmentAuthor(a *Assignment, payload string) error {
+	if a.Kind != "author" {
+		return nil
+	}
+	var input AuthorInput
+	if json.Unmarshal([]byte(payload), &input) != nil || !ValidID(input.ConversationID) || input.BaseRevision < 1 {
+		return fmt.Errorf("invalid author input snapshot")
+	}
+	a.Author = &input
+	return nil
 }
 
 func (p *Postgres) Acknowledge(ctx context.Context, managerID, runID, attemptID string) error {
@@ -300,6 +321,17 @@ func (p *Postgres) Complete(ctx context.Context, managerID, runID, attemptID str
 	if !result.Valid() {
 		return ErrInvalid
 	}
+	var kind, testID string
+	if err := p.DB.QueryRowContext(ctx, `SELECT kind,test_id FROM runs WHERE id=$1 AND manager_id=$2 AND attempt_id=$3`,
+		runID, managerID, attemptID).Scan(&kind, &testID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrConflict
+		}
+		return err
+	}
+	if kind == "author" {
+		return p.completeAuthor(ctx, testID, managerID, runID, attemptID, result)
+	}
 	tx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -317,7 +349,7 @@ func (p *Postgres) Complete(ctx context.Context, managerID, runID, attemptID str
 	}
 	if result.Status == "succeeded" {
 		var count int
-		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM artifacts WHERE run_id=$1 AND attempt_id=$2`, runID, attemptID).Scan(&count); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM artifacts WHERE run_id=$1 AND attempt_id=$2 AND name IN ('report.html','results.json')`, runID, attemptID).Scan(&count); err != nil {
 			return err
 		}
 		if count != 2 {
@@ -355,9 +387,9 @@ func (p *Postgres) ReleaseSlots(ctx context.Context, managerID string, active []
 	return tx.Commit()
 }
 
-func (p *Postgres) UploadAllowed(ctx context.Context, runID, attemptID string) error {
-	var status string
-	err := p.DB.QueryRowContext(ctx, `SELECT status FROM runs WHERE id=$1 AND attempt_id=$2`, runID, attemptID).Scan(&status)
+func (p *Postgres) UploadAllowed(ctx context.Context, runID, attemptID, name string) error {
+	var status, kind string
+	err := p.DB.QueryRowContext(ctx, `SELECT status,kind FROM runs WHERE id=$1 AND attempt_id=$2`, runID, attemptID).Scan(&status, &kind)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrConflict
@@ -366,6 +398,9 @@ func (p *Postgres) UploadAllowed(ctx context.Context, runID, attemptID string) e
 	}
 	if Terminal(status) {
 		return fmt.Errorf("%w: run is terminal", ErrConflict)
+	}
+	if !artifactAllowed(kind, name) {
+		return fmt.Errorf("%w: artifact name does not match run kind", ErrInvalid)
 	}
 	return nil
 }
@@ -376,8 +411,8 @@ func (p *Postgres) SaveArtifact(ctx context.Context, a Artifact) error {
 		return err
 	}
 	defer tx.Rollback()
-	var status string
-	if err := tx.QueryRowContext(ctx, `SELECT status FROM runs WHERE id=$1 AND attempt_id=$2 FOR UPDATE`, a.RunID, a.AttemptID).Scan(&status); err != nil {
+	var status, kind string
+	if err := tx.QueryRowContext(ctx, `SELECT status,kind FROM runs WHERE id=$1 AND attempt_id=$2 FOR UPDATE`, a.RunID, a.AttemptID).Scan(&status, &kind); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrConflict
 		}
@@ -385,6 +420,9 @@ func (p *Postgres) SaveArtifact(ctx context.Context, a Artifact) error {
 	}
 	if Terminal(status) {
 		return ErrConflict
+	}
+	if !artifactAllowed(kind, a.Name) || a.Size < 0 || a.Size > artifactLimit(a.Name) {
+		return fmt.Errorf("%w: invalid artifact for run kind", ErrInvalid)
 	}
 	res, err := tx.ExecContext(ctx, `INSERT INTO artifacts(run_id,name,attempt_id,storage_key,size_bytes,sha256)
         VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT (run_id,name) DO UPDATE SET uploaded_at=artifacts.uploaded_at
@@ -401,6 +439,13 @@ func (p *Postgres) SaveArtifact(ctx context.Context, a Artifact) error {
 
 func (p *Postgres) Artifact(ctx context.Context, runID, name string) (Artifact, error) {
 	a := Artifact{RunID: runID, Name: name}
+	var kind string
+	if err := p.DB.QueryRowContext(ctx, `SELECT kind FROM runs WHERE id=$1`, runID).Scan(&kind); err != nil {
+		return a, dbError(err)
+	}
+	if !artifactAllowed(kind, name) {
+		return a, fmt.Errorf("%w: artifact name does not match run kind", ErrInvalid)
+	}
 	err := p.DB.QueryRowContext(ctx, `SELECT a.attempt_id,a.storage_key,a.size_bytes,a.sha256 FROM artifacts a
         JOIN runs r ON r.id=a.run_id AND r.attempt_id=a.attempt_id WHERE a.run_id=$1 AND a.name=$2`, runID, name).
 		Scan(&a.AttemptID, &a.StorageKey, &a.Size, &a.SHA256)

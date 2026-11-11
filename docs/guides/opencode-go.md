@@ -1,6 +1,6 @@
 # OpenCode Go Muse 預配置
 
-目前只預配 Worker 的原生 Responses 請求、離線檢查與一次性 coding probe。AI 預設停用；使用者已提供本機 key，並於 2026-11-11 授權完成一次 live probe；沒有接上網頁 AI 對話、Server 草稿或 Agent 工具迴圈，不代表 M3 已完成。實測回傳 completed、264 字元、requests=1；沒有自動執行生成程式。
+原生 Responses 設定與一次性 probe 已完成實測。M3 正式 author 工具迴圈與網頁對話操作見 [AI 對話編輯](m3-authoring.md)；本頁保留 provider 設定、訂閱政策與獨立探針用法。
 
 ## 固定的 Go 設定
 
@@ -72,7 +72,7 @@ docker build -t whippet-worker:m1 runtimes/worker
 docker compose --env-file deploy/.env.ai -f deploy/compose.ai.yml --profile ai run --rm --no-deps ai-check
 ```
 
-該 Compose 是獨立 opt-in 檔案，不合併或修改 Manager stack；沒有 Docker socket、任務目錄掛載或常駐服務。Key 只給 `ai-check`／`ai-probe` 的 AI 程序，不會傳入一般 Manager spawned Playwright 容器。不要將這份 AI env 檔加入 Manager／一般 Worker 的環境設定。
+該 Compose 是獨立 opt-in 檔案，不合併或修改 Manager stack；沒有 Docker socket、任務目錄掛載或常駐服務。Key 只給 `ai-check`／`ai-probe` 的 AI 程序，不會傳入一般 Manager spawned Playwright 容器。M3 Manager 另透過 `compose.runner.ai.yml` 白名單讀取設定，只轉交 author 容器；一般測試 Worker 不取得 key。
 
 如需檢查 Compose 格式，使用 `config --quiet`，避免展開後的 key 印到終端：
 

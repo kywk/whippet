@@ -1,0 +1,76 @@
+package manager
+
+import (
+	"errors"
+	"regexp"
+	"strings"
+	"unicode/utf8"
+)
+
+var authorEnvNames = []string{
+	"WHIPPET_AI_ENABLED", "WHIPPET_AI_BASE_URL", "WHIPPET_AI_MODEL",
+	"WHIPPET_AI_REASONING_EFFORT", "OPENCODE_API_KEY",
+}
+
+var authorProgressPattern = regexp.MustCompile(`^author:(model:[1-8]:(started|succeeded|failed)|tool:([1-9]|1[0-2]):(read_draft|read_validation_report|update_draft|browser_navigate|browser_snapshot|browser_click|browser_fill|request_validation|unknown):(succeeded|failed))$`)
+
+func validDispatch(d Dispatch) error {
+	if len(d.Script) > maxScriptBytes || d.TimeoutMS < 1 || d.TimeoutMS > 3600000 {
+		return errors.New("dispatch script/timeout out of range")
+	}
+	if d.Kind == "run" && d.Author == nil && strings.TrimSpace(d.Script) != "" {
+		return nil
+	}
+	if d.Kind != "author" || d.Author == nil || d.TimeoutMS > 180000 {
+		return errors.New("dispatch requires run or author with valid input")
+	}
+	a := d.Author
+	if v := a.Validation; v != nil {
+		validStatus := false
+		for _, status := range []string{"queued", "dispatched", "running", "collecting", "succeeded", "failed", "cancelling", "cancelled", "timed_out", "interrupted"} {
+			validStatus = validStatus || v.Status == status
+		}
+		if !uuidPattern.MatchString(v.RunID) || !validStatus || utf8.RuneCountInString(v.Error) > 4000 {
+			return errors.New("invalid author validation snapshot")
+		}
+	}
+	if !uuidPattern.MatchString(a.ConversationID) || a.BaseRevision < 0 || a.BaseRevision > 9007199254740991 || len(a.Messages) < 1 || len(a.Messages) > 12 {
+		return errors.New("invalid author conversation/revision/messages")
+	}
+	chars, hasUser := 0, false
+	for _, m := range a.Messages {
+		if m.Role != "user" && m.Role != "assistant" {
+			return errors.New("invalid author message role")
+		}
+		chars += utf8.RuneCountInString(m.Content)
+		hasUser = hasUser || m.Role == "user" && strings.TrimSpace(m.Content) != ""
+	}
+	if chars > 32000 || !hasUser {
+		return errors.New("author messages exceed context bounds or lack user input")
+	}
+	return nil
+}
+
+func artifactAllowed(r record, name string) bool {
+	if r.Kind == "author" {
+		return name == "author.json"
+	}
+	return name == "report.html" || name == "results.json"
+}
+
+// Values remain only in the docker CLI process environment. --env NAME avoids
+// putting secrets in process arguments, input.json or the Manager journal.
+func workerCLIEnvironment(kind string, parent []string) []string {
+	filtered := make([]string, 0, len(parent))
+	for _, entry := range parent {
+		name, _, _ := strings.Cut(entry, "=")
+		aiSetting := false
+		for _, allowed := range authorEnvNames {
+			aiSetting = aiSetting || name == allowed
+		}
+		if !aiSetting || kind == "author" {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered
+}

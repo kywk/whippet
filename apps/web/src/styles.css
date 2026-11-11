@@ -155,7 +155,28 @@ textarea { resize: vertical; }
 .version-script pre { max-height: 400px; overflow: auto; padding: 16px; background: var(--subtle); border-radius: var(--radius); font: .75rem/1.8 ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .run-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
 
+.conversation-panel { margin: 20px 0 28px; padding-bottom: 28px; border-bottom: 1px solid var(--line); }
+.conversation-empty { padding: 20px 0; color: var(--muted); font-size: .85rem; }
+.message-list { max-height: 640px; overflow-y: auto; margin: 20px 0; padding: 0; list-style: none; }
+.conversation-message { padding: 20px 16px; border-bottom: 1px solid var(--line); }
+.conversation-message.user { background: var(--subtle); }
+.message-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; font-size: .8rem; }
+.message-heading time { color: var(--muted); font-size: .7rem; }
+.message-content { max-width: 75ch; font-size: .875rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.author-state { padding: 16px; background: var(--subtle); border-radius: var(--radius); font-size: .85rem; }
+.blocked-hint { margin-top: 10px; color: var(--danger); font-size: .8rem; line-height: 1.75; }
+.script-outcome { margin: 12px 0; color: var(--accent); font-size: .8rem; }
+.script-comparison { margin: 12px 0; font-size: .8rem; }
+.script-comparison summary { width: fit-content; color: var(--accent); cursor: pointer; }
+.code-comparison { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; }
+.code-comparison > section { min-width: 0; }
+.code-comparison h4 { margin: 0 0 10px; font-size: .8rem; }
+.code-comparison pre { max-height: 360px; overflow: auto; margin: 0; padding: 12px; background: var(--subtle); border-radius: var(--radius); font: .75rem/1.8 ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.message-validation { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 16px; font-size: .8rem; }
+.message-validation .run-error { width: 100%; }
+
 @media (max-width: 1000px) {
+  .code-comparison { grid-template-columns: minmax(0, 1fr); }
   .workspace-layout { padding: 24px; }
   .test-browser { grid-template-columns: minmax(220px, 260px) minmax(0, 1fr); }
   .detail-panel { padding: 24px; }

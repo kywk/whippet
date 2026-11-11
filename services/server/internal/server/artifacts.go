@@ -12,6 +12,13 @@ import (
 
 const MaxArtifactBytes int64 = 64 << 20
 
+func artifactLimit(name string) int64 {
+	if name == "author.json" {
+		return MaxAuthorArtifactBytes
+	}
+	return MaxArtifactBytes
+}
+
 // ArtifactStorage keeps HTTP and metadata handling independent of the local filesystem.
 type ArtifactStorage interface {
 	Save(string, string, string, io.Reader) (Artifact, error)
@@ -48,12 +55,13 @@ func (s *LocalArtifacts) Save(runID, attemptID, name string, body io.Reader) (Ar
 	defer os.Remove(tmp.Name())
 	defer tmp.Close()
 	hash := sha256.New()
-	a.Size, err = io.Copy(io.MultiWriter(tmp, hash), io.LimitReader(body, MaxArtifactBytes+1))
+	limit := artifactLimit(name)
+	a.Size, err = io.Copy(io.MultiWriter(tmp, hash), io.LimitReader(body, limit+1))
 	if err != nil {
 		return a, err
 	}
-	if a.Size > MaxArtifactBytes {
-		return a, fmt.Errorf("%w: artifact exceeds 64 MiB", ErrInvalid)
+	if a.Size > limit {
+		return a, fmt.Errorf("%w: artifact exceeds %d MiB", ErrInvalid, limit>>20)
 	}
 	if err := tmp.Sync(); err != nil {
 		return a, err

@@ -1,5 +1,5 @@
 import { RUN_STATUSES } from './types';
-import type { DevUser, Draft, Run, RunStatus, Test, Version, WhippetApi, Workspace } from './types';
+import type { Conversation, DevUser, Draft, Message, Run, RunStatus, Test, Version, WhippetApi, Workspace } from './types';
 
 export class ApiError extends Error {
   readonly code: string;
@@ -65,7 +65,7 @@ function parseTest(value: unknown): Test {
 
 function parseRun(value: unknown): Run {
   const data = record(value);
-  if (data.kind != null && data.kind !== 'run' && data.kind !== 'validation') {
+  if (data.kind != null && data.kind !== 'run' && data.kind !== 'validation' && data.kind !== 'author') {
     throw new ApiError('API Run kind 格式不符。', 'INVALID_RESPONSE');
   }
   return {
@@ -94,6 +94,27 @@ function parseVersion(value: unknown): Version {
   return {
     id: string(data.id), testId: string(data.testId), revision: revision(data.revision),
     script: string(data.script), createdAt: string(data.createdAt), validationRunId: string(data.validationRunId),
+  };
+}
+
+function parseMessage(value: unknown): Message {
+  const data = record(value);
+  if (data.role !== 'user' && data.role !== 'assistant') throw new ApiError('對話角色格式不符。', 'INVALID_RESPONSE');
+  return {
+    id: string(data.id), role: data.role, content: string(data.content), createdAt: string(data.createdAt),
+    runId: optionalString(data.runId), baseRevision: data.baseRevision == null ? undefined : revision(data.baseRevision),
+    appliedRevision: data.appliedRevision == null ? undefined : revision(data.appliedRevision),
+    baseScript: optionalString(data.baseScript),
+    proposedScript: optionalString(data.proposedScript), validationRunId: optionalString(data.validationRunId),
+  };
+}
+
+function parseConversation(value: unknown): Conversation {
+  const data = record(value);
+  if (!Array.isArray(data.messages)) throw new ApiError('對話訊息格式不符。', 'INVALID_RESPONSE');
+  return {
+    id: string(data.id), testId: string(data.testId), messages: data.messages.map(parseMessage),
+    activeRunId: optionalString(data.activeRunId),
   };
 }
 
@@ -192,6 +213,13 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     },
     async cancelRun(runId, signal) {
       return parseRun(await request(`/runs/${id(runId)}/cancel`, 'POST', signal));
+    },
+    async getConversation(testId, signal) {
+      return parseConversation(await request(`/tests/${id(testId)}/conversation`, 'GET', signal));
+    },
+    async sendMessage(testId, content, revision, signal) {
+      const data = record(await request(`/tests/${id(testId)}/messages`, 'POST', signal, { content, revision }));
+      return { run: parseRun(data.run), conversationId: string(data.conversationId) };
     },
   };
 }

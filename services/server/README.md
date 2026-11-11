@@ -1,6 +1,6 @@
 # Whippet Server
 
-Go 單一服務，依 [`mvp-v1`](../../contracts/mvp-v1.md) 與 [`mvp-v2`](../../contracts/mvp-v2.md) 提供 HTTP API、PostgreSQL 佇列、Manager WebSocket gateway 與持久化附件。M2 已加入唯一草稿、不可變 revision／版本、驗證與發布交易，以及取消／FIFO／重連去重；實際 PostgreSQL 與跨服務 M2 驗收由總指揮執行。
+Go 單一服務，依 [`mvp-v1`](../../contracts/mvp-v1.md)、[`mvp-v2`](../../contracts/mvp-v2.md) 與 [`mvp-v3`](../../contracts/mvp-v3.md) 提供 HTTP API、PostgreSQL 佇列、Manager WebSocket gateway 與持久化附件。M2 已完成草稿／發布與可靠佇列整合；M3 Server 已加入持久對話、author 任務與結果套用，Docker／模型端到端驗收由總指揮執行。
 
 M1 已於 2026-11-11 驗收完成。總指揮與 Muse 已確認真實成功 Run、斷言失敗 Run 及兩份 HTML report 正常；storage shim 修正後成功報告顯示 Passed 1／Failed 0，失敗報告顯示 Passed 0／Failed 1。完整 Run ID 與驗證來源見 [DELIVERY.md](DELIVERY.md)。
 
@@ -133,9 +133,31 @@ Content-Type: application/octet-stream
 <raw body>
 ```
 
-僅接受 `report.html`／`results.json`，單檔上限 64 MiB。檔名與 UUID 採白名單；檔案先寫暫存、同步並原子 rename，再登記 DB。key 為 `run/attempt/sha256/name`，同內容上傳可重送，衝突內容回 409，不覆寫已登記報告。終態後拒絕再上傳。
+一般 run／validation 僅接受 `report.html`／`results.json`，單檔上限 64 MiB；author 僅接受 `author.json`，上限 2 MiB。上傳與讀取皆核對 Run.kind，不能跨種類存取附件。檔名與 UUID 採白名單；檔案先寫暫存、同步並原子 rename，再登記 DB。key 為 `run/attempt/sha256/name`，同內容上傳可重送，衝突內容回 409，不覆寫已登記報告。終態後拒絕再上傳。
 
 `report.html` 應為單檔自包含報告。回應設定 CSP sandbox，允許 inline scripts、inline styles 與 data/blob 圖片，禁止同源權限與網路存取，避免報告腳本操作 SPA。Server 在原報告 script 前注入記憶體 storage shim，讓 Playwright 設定可在 opaque sandbox 中讀寫 `localStorage`／`sessionStorage`；資料只留在本頁，重新整理即清空，不加入 `allow-same-origin`。注入只改變 HTTP 呈現，保存的附件與 SHA256 不變；回應 ETag 使用 `-storage-v1` 後綴，既有 Run 可直接重新開啟報告。獨立附件資產、trace.zip 與截圖端點尚未納入 v1。
+
+## M3 對話與 author
+
+| Method | Path | 請求／回應 |
+| --- | --- | --- |
+| GET | `/api/tests/:id/conversation` | 首次建立空 Conversation；回傳完整已保存訊息與 activeRunId? |
+| POST | `/api/tests/:id/messages` | `{content,revision}` → 202 `{run,conversationId}` |
+
+每個 Test 一個 Conversation，同時最多一個未完成 author Run。空訊息或超過 16000 Unicode 字元回 400，過期 revision 或已有 author 回 409。user 訊息與 author Run 在同一交易保存；Run 固定當下草稿腳本／revision，並取最近最多 12 則、總 32000 字元的對話作為 dispatch 快照，保留完整本輪 user 訊息。完整歷史不受模型 context 裁切影響。
+
+author 與其他 Run 共用 FIFO、取消與回收名額規則。dispatch 為 `{kind:"author",script,timeoutMs:180000,author:{conversationId,baseRevision,messages:[{role,content}],validation?}}`；validation 是送出時目前草稿驗證 Run 的固定 `{runId,status,error?}` 摘要，error 最多 4000 Unicode 字元，供 Runtime 的 `read_validation_report` 工具使用，不讀 HTML。無摘要的舊 payload 仍相容。Server 不讀取或轉送模型 key，一般 run／validation 仍送 `kind:"run"`。
+
+Manager 上傳 `author.json {message,script?,requestValidation}` 後回 succeeded。Server 核對 attempt、檔案大小／SHA256／JSON 及輸入快照，在同一 transaction 內：
+
+- baseRevision 未改動時，沿用 M2 規則保存候選腳本；真正變更才產生 revision，並清除舊驗證資格。
+- baseRevision 已被人工修改時，不覆蓋草稿、不排驗證，保存候選稿與衝突說明。
+- 無 script 時保留原稿；requestValidation 只在無衝突且非空草稿時建立固定結果 revision 的 validation Run，不占住 author Worker 等待。
+- assistant 訊息保留 baseRevision、變更時的 appliedRevision、任何已生成的 proposedScript，以及續接的 validationRunId。baseScript 由既有 draft_revisions 關聯取得，重新開啟仍可比較前後差異。
+
+author 終態、assistant 訊息、revision 與續接驗證一起提交；重複 result 先辨識原始回報狀態再返回，不重複套用或排工作。取消／失敗不套用候選稿，provider 錯誤採固定遮蔽訊息；無效 author.json 會成為 failed，保留已存對話與草稿。author 成功只需 author.json；M2 validation／發布的兩份報告與人工確認門檻維持不變，不會自動發布。
+
+新增 migration 為 `004_conversations_and_author.sql`。需要原有 ARTIFACT_DIR volume 才能完成 author 結果核對；本階段 Server 沒有新增 AI 環境變數。
 
 ## 檢查
 

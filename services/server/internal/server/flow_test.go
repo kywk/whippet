@@ -315,7 +315,7 @@ func (s *flowStore) ReleaseSlots(_ context.Context, _ string, active []ActiveAtt
 	return nil
 }
 
-func (s *flowStore) UploadAllowed(_ context.Context, runID, attemptID string) error {
+func (s *flowStore) UploadAllowed(_ context.Context, runID, attemptID, _ string) error {
 	return s.check("manager-test", runID, attemptID)
 }
 

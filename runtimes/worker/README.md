@@ -58,15 +58,34 @@ npm test
 
 已保留 `package-lock.json`（lockfileVersion 3），固定直接與間接相依套件；Dockerfile 使用 `npm ci --include=dev` 建置，再 prune 開發依賴。本次 `npm run typecheck`、`npm run build` 均已通過；沒有重跑 E2E，成功／失敗實測由 Muse 接手。`node_modules/`、`dist/` 是本機產物，已由本目錄 `.gitignore` 與 `.dockerignore` 排除。
 
-## AI 預配置（預設停用）
+## M3 author 工具迴圈
+
+Manager 派送 `kind:"author"` 時，使用獨立入口 `node dist/author/main.js`。輸入在既有 run／attempt／script／timeout 外，包含 `author:{conversationId,baseRevision,messages,validation?}`；空草稿可用，對話最多最近 12 則／總 32000 字元。validation 是 optional `{runId,status,error?}` 最新草稿驗證快照，error 最多 4000 字元。
+
+Responses 使用既有 Go base URL／model／User-Agent、設定中的 reasoning effort（預設 xhigh），session 固定為 conversationId。原生 function schema 為 `{type:"function",name,parameters,strict:true}`；以 `function_call.call_id` 配對 `function_call_output`。採 stateless transcript、`store:false`、`include:["reasoning.encrypted_content"]`，保留返回的 reasoning／function call 項目，不使用 previous_response_id。格式依 [官方 OpenAI function calling](https://developers.openai.com/api/docs/guides/function-calling) 與 [stateless reasoning](https://developers.openai.com/api/docs/guides/reasoning)；Go provider 的實際相容性由總指揮 live 驗收。
+
+固定工具只有 `read_draft`、`read_validation_report`、`update_draft(script)`、`browser_navigate(url)`、`browser_snapshot`、`browser_click(selector)`、`browser_fill(selector,value)`、`request_validation`。修復時 read_validation_report 只讀輸入提供的 runId／status／error 摘要，無快照回 `{status:"none"}`；不抓任意報告檔、不執行或同步等待 validation。最多 8 次模型請求、12 次工具執行、180 秒；超限／取消／HTTP 失敗不重試、不改端點。模型與網頁內容皆視為資料，不能覆寫使用者測試目標。
+
+瀏覽器僅允許 HTTP(S) 導航。navigate／click 已回傳 aria snapshot 與最多 30 個 selectorHints（input／button／link／textarea／select 的 id、name、type、文字與可用 CSS selector），**不必在每個動作後另外 snapshot**。fill／click 應直接使用提示的 literal CSS selector 或 `text=`，不可傳入 `page.getByRole(...)` 等 JavaScript 表達式。Selector hints 由固定 DOM 擷取程式產生，不讀 input value，不提供模型任意 eval／shell 工具。
+
+`update_draft` 只修改本輪記憶體候選；`request_validation` 只設定旗標，不執行或等待 spec。成功寫 `/work/output/author.json {message,script?,requestValidation}` 及 result.json，不產生 Playwright 報告；失敗不保存候選附件。Server 在 author 結束並回收後，才核對 baseRevision、套用草稿並按旗標另排 keyless validation；不自動發佈。
+
+AI key 只在 author 程序環境，瀏覽器 subprocess 另用不含 key 的環境白名單。author 只輸出固定序號／名稱／成功或失敗的 NDJSON 進度，不印參數、DOM、模型原文或 provider raw error。若 provider 回應或工具資料含已知 key，會停止並遮蔽，不存入附件。
+
+```sh
+npm run build
+npm run test:author
+```
+
+## 獨立 AI check／probe（預設停用）
 
 已加入 OpenCode Go Muse 原生 Responses 的最小設定／請求組裝，以及 `npm run ai:check`、`npm run ai:probe -- --live --session=<conversation-id>`。check 完全離線；probe 只有明確 enabled、key 與 live 參數齊備才發送一次合成 coding 請求。一般 Playwright runner 不載入 AI 模組或接收 AI key。
 
-設定、獨立 opt-in Compose、訂閱／Contributor 政策及日後的執行方式見 [OpenCode Go 指南](../../docs/guides/opencode-go.md)。此配置尚未接上 author 模式、網頁 AI 對話或工具迴圈。
+設定、獨立 opt-in Compose 與訂閱／Contributor 政策見 [OpenCode Go 指南](../../docs/guides/opencode-go.md)。check／probe 仍是獨立指令；M3 author 使用上方獨立任務入口，Server／Web 串接由各 owner 負責。
 
 ## M1 限制
 
 - v1 上傳契約只開放 `report.html`、`results.json`。預設關閉 screenshot／trace／video，讓固定 `page.setContent` spec 的 HTML 可單檔開啟。若腳本自行附加檔案或覆寫擷取設定，Playwright 會產生額外 data／trace；目前僅保留於本機輸出，未上傳，報告內對應下載連結不可用。要支援完整附件須先擴充契約。
 - 基礎設施或語法故障可能沒有 HTML／JSON；只回 failed manifest，不補造成功或仿製 Playwright 報告。
 - 尚未驗證 Docker、Chromium 實際啟動、Linux／Mac 映像架構及端到端成功／失敗流程。僅有結果判定單元測試與語法檢查不代表這些項目已通過。
-- 尚無 author 模式、瀏覽器探索／Agent 工具迴圈、即時影像及公開多租戶隔離；目前只有獨立 Responses 預配置。
+- author 工具迴圈已實作；M3 真實工具續接與 Server 套用／驗證／發佈驗收由總指揮執行。尚無即時影像與公開多租戶隔離。

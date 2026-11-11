@@ -1,6 +1,6 @@
 import { resolveReportUrl } from './api';
 import { STATUS_LABELS } from './types';
-import type { RunStatus } from './types';
+import type { Run, RunStatus } from './types';
 
 export function Notice({ message, retry, retryLabel = '重試' }: { message: string; retry?: () => void; retryLabel?: string }) {
   return <div className="notice" role="alert"><p>{message}</p>{retry ? <button className="button secondary compact" onClick={retry}>{retryLabel}</button> : null}</div>;
@@ -15,6 +15,16 @@ export function StatusBadge({ status }: { status: RunStatus }) {
     : ['failed', 'timed_out', 'interrupted'].includes(status) ? 'danger'
       : ['queued', 'dispatched', 'running', 'collecting', 'cancelling'].includes(status) ? 'active' : 'neutral';
   return <span className={`status-badge ${tone}`}><span className="status-dot" aria-hidden="true" />{STATUS_LABELS[status]}</span>;
+}
+
+export function RunStatusBadge({ run }: { run: Run }) {
+  return run.kind === 'author' && run.status === 'succeeded'
+    ? <span className="status-badge success"><span className="status-dot" aria-hidden="true" />撰寫完成</span>
+    : <StatusBadge status={run.status} />;
+}
+
+export function runKindLabel(run: Run): string {
+  return run.kind === 'author' ? 'AI 撰寫' : run.kind === 'validation' ? `草稿驗證 · r${run.draftRevision ?? '—'}` : '正式執行';
 }
 
 export function ReportLink({ reportUrl, label = '開啟報告', apiBase }: { reportUrl?: string; label?: string; apiBase: string }) {

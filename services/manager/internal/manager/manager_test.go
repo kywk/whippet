@@ -73,7 +73,7 @@ func TestManagerDispatchDedupAndCollectionOrdering(t *testing.T) {
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	dispatch := message("manager-test", "dispatch", newID(), newID(), Dispatch{"run", "fixture", 1000})
+	dispatch := message("manager-test", "dispatch", newID(), newID(), Dispatch{Kind: "run", Script: "fixture", TimeoutMS: 1000})
 	// No socket is needed: ACK send fails offline, but durable acceptance must
 	// still start exactly one Worker, just as it would for a lost ACK.
 	_ = m.accept(ctx, dispatch)
@@ -86,7 +86,7 @@ func TestManagerDispatchDedupAndCollectionOrdering(t *testing.T) {
 	if docker.starts.Load() != 1 || uploads.Load() != 0 {
 		t.Fatal("duplicate execution or uploads before container removal")
 	}
-	other := message("manager-test", "dispatch", newID(), newID(), Dispatch{"run", "fixture", 1000})
+	other := message("manager-test", "dispatch", newID(), newID(), Dispatch{Kind: "run", Script: "fixture", TimeoutMS: 1000})
 	if err := m.accept(ctx, other); err == nil || !strings.Contains(err.Error(), "slot is occupied") {
 		t.Fatal("accepted a second task before cleanup")
 	}
