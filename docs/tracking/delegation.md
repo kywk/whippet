@@ -1,6 +1,6 @@
 # Agent 分工與派工計畫
 
-M1–M4 已完成本機驗收，現由新 PM t35 推進 M5／M6。里程碑與唯一進度來源為 [實作計畫](implementation.md)。
+M1–M6 本機功能證據沿用；目前由 UI／UX PM 推進 M7–M9 規格與後續實作。里程碑與唯一進度來源為 [實作計畫](implementation.md)。
 
 ## 固定分工
 
@@ -94,3 +94,30 @@ Owner：<角色>；可修改：<具體路徑>。
 最新授權覆蓋歷史提交安排：不安裝套件、不自行 commit／push、不輸出憑證。PM t35 已核對 GPT-6-Astra／low，維持輕量協調；t30／t31／t32 沿用 sol／xhigh 可見 pane。t33 沿用 Muse Spark 1.3 Contributor／xhigh，只做黑箱測試，整合就緒後才執行。
 
 首批 t32 診斷與改善 WebRTC 畫質；t31 提出並落實 Workspace 持久化與快照；t30 檢查播放器縮放並準備設定 UI，API 串接等待 PM 固定介面。共享契約、部署、docs 與進度檔由 PM 單一寫入。子 Agent 不重啟或部署共享服務。第二批才派 runtime 設定接線與 M6 trace／附件；避免同 owner 同時承接互相干擾工作。範圍、狀態與驗收只在 implementation.md 維護。
+
+
+## M7–M9 當前分工（2026-11-12）
+
+本節為最新路由；任務狀態僅在 implementation.md 維護。本輪只更新文件，以下為待派任務，不代表已啟動 Agent。
+
+| Owner／路由 | 寫入範圍 | 可直接派出的任務 |
+| --- | --- | --- |
+| PM／gpt-6-astra low | docs、contracts、deploy、根建置設定 | 固定每波最小契約與遷移；整合隔離預覽、進度及必要驗收 |
+| t30 Web／gpt-6.1-sol xhigh | apps/web | M7 一般／對話模式、草稿入口與確認放棄、對話結果／監看／發佈卡片；M8 多 Workspace 對話與機密欄位 |
+| t31 Server／gpt-6.1-sol xhigh | services/server（含 migrations） | M7 編輯週期與對話歸屬、摘要／發佈一致性、放棄競態；M8 Workspace proposal、scope、機密保存與任務授權 |
+| t32 Runtime／gpt-6.1-sol xhigh | services/manager、runtimes/worker | M7 測試編輯與摘要 skills／背景輸入；M8 設定 skill、登入工具、出站限制與機密生命週期 |
+| t33 黑箱／Muse Spark 1.3 Contributor xhigh | 本輪指定 scripts/test/m7-*、m8-*、m9-* | 依契約與可見標籤寫最小合成黑箱；不讀產品原始碼、真實憑證、不改 DELIVERY 或其他 owner 檔案 |
+
+特別困難且確有需要的任務才升至 astra／medium，先核對有效模型／effort，不默默替換。沿用共享 repo，單檔單 owner；不另建重複 Agent。所有 Agent 不安裝套件、不自行 commit／push、不重啟共享服務、不讀印 deploy/.env.ai。
+
+### 首波任務內容
+
+共同讀取 AGENTS.md、requirements/ai-workspace.md、implementation.md 的 M7 與已固定的新契約；不要轉交整份舊對話。
+
+1. PM 向 t31／t32 收集一次最小介面差異後固定 M7 契約；未固定前只盤點，不各自發明 endpoint。
+2. t30 落實指定詳情順序與對話模式，保持掛載／狀態以避免切換遺失草稿；等待 API 時可使用明確標示的合成資料。不可用假狀態宣稱真驗證通過。
+3. t31 落實編輯週期與版本摘要交易，兼容舊資料；刪除／取消後的遲到結果不能恢復草稿或繼續驗證。
+4. t32 將既有 Playwright recipe 拆成按任務載入的 skills，摘要模式無寫腳本工具；不建外掛平台。實作 skill 檔時載入適用 skill-creator／writing-for-agents 規範。
+5. 各 owner 回報檔案、介面、實際最小驗證及剩餘限制；PM 整合後才派 t33 跑主流程。無新變更則不重跑已通過檢查。
+
+M8 依相同方式先固定 proposal／機密／網路政策再並行；Runtime 不能只提供 prompt 禁止越界就宣稱交付。出站限制涉及 deploy 的部分由 t32 提出需求、PM 修改。無法在現有依賴完成的項目回報具體阻塞，不私自安裝。

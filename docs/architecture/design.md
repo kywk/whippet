@@ -33,7 +33,7 @@ MVP 身分可由後端固定 provider 提供；資源存取走共同授權函式
 
 草稿每次保存使用 expected_revision；不符時回 409，避免覆蓋他人的修改。保存產生不可變 revision。
 驗證 Run 固定 revision、內容雜湊與執行設定。發佈在 DB transaction 中檢查當前 revision、驗證成功與報告已保存，建立 TestVersion 並更新 Test 指標。
-發佈不刪除 revision 或對話；下次編輯延續同一個 Draft，來源可指向已發佈版本。
+發佈不刪除 revision 或對話。M7 起每次修改使用獨立編輯週期；同一 Test 最多一個活躍週期，發佈／放棄後封存，下次修改從目前正式版本開始。
 
 ## 最小 API 範圍
 
@@ -96,4 +96,36 @@ WebRTC 作主要方向，預留 TURN；受限環境可用 WSS 畫面轉送備援
 
 Manager 使用部署 token；模型金鑰僅在後端執行環境；測試腳本不得取得主機管理 socket。報告以受控附件端點或隔離頁面呈現，避免執行內容混入管理介面。
 產品採開源方向，Apache-2.0 為候選，實際 LICENSE 於初始化依選用依賴決定。本輪不複製外部專案程式碼。
-未來沿既有邊界增加 RBAC、多 workspace、多 manager、替代模型、S3 儲存與新 transport；MVP 不為這些先建完整系統。
+本輪完成多 Workspace；未來沿既有邊界增加 RBAC、多 manager、替代模型、S3 儲存與新 transport；MVP 不為這些先建完整系統。
+
+
+## M7–M9：對話工作區擴充（2026-11-12 已確認，待實作）
+
+需求依 [AI 對話工作區規格](../requirements/ai-workspace.md)。以下覆蓋歷史每個 Test 僅一個永久 Conversation 的假設；舊 v1–v6 契約保留為歷史，相容遷移由新契約明定。
+
+### 資料與狀態
+
+- EditingSession：testId、sourceVersionId、conversationId、狀態 active／discarding／discarded／published；唯一約束保證每 Test 最多一個活躍週期。DraftRevision／author／validation 綁定週期與 revision。
+- 放棄先封鎖新任務，取消既有任務；回收／終態確認後封存。結果交易必須同時核對 session 狀態、revision 與 attempt，不能僅比較 revision。
+- 版本保存 description、backgroundSummary、來源編輯週期、驗證 Run 與摘要來源 revision。摘要任務唯讀腳本；發佈交易核對摘要及驗證指向相同腳本／設定快照。
+- Conversation 可屬 Workspace 設定或 Test 編輯週期，採明確 owner 關聯；歷史查詢依 workspace_id 範圍授權。
+- Workspace 設定對話產生 proposal，使用 expectedRevision 提交；建立中 Workspace 尚未啟用，僅允許訪談及經確認的範圍內探索。
+- 舊正式版本、Run 與附件不變；既有草稿／對話需遷移歸屬，不可遺失或一律誤判為未發佈修改。無正式版本或草稿內容／設定異於正式版本者視為活躍草稿；其餘保留歷史，首次修改才建立新週期。
+
+### 背景與任務路由
+
+Server 決定 skillId／skillVersion、sessionId、允許工具、Workspace 背景及驗測設定快照；Manager 傳遞，Worker 按類型載入 skill。共用既有容量／取消／去重，不引入新排程服務。
+
+背景組合：Workspace 摘要＋來源版本摘要＋當前完整腳本（測試類）＋當輪訊息＋近期對話＋必要驗證證據。完整歷史留 DB，提供受限按需讀取；摘要保留來源關聯。Workspace 類任務沒有 testId，需擴充 Run owner 與檢查，不以假 Test 承載。
+
+### 網站與機密邊界
+
+設定分開保存 target origins 與依用途允許的 dependency origins；規則採明確 scheme／host／port，不用字串前綴判斷。預設拒絕未列入範圍的連線；探索與生成腳本的所有出站通道都須受控，包含 redirect、popup、API／非瀏覽器請求。Runtime owner 提出工具檢查與網路執行限制方案，PM 固定契約後落地；僅 Playwright route 攔截不等於任意 Node 腳本網路隔離。
+
+機密獨立加密保存，部署金鑰不入 DB；API 僅回傳機密參照與是否已設定。Worker 透過限定任務的登入工具使用機密，不將值回傳模型；普通 run／validation 同樣可使用授權引用，不能取得模型 API key。機密不可寫入一般 dispatch journal／對話／腳本／版本快照；實際傳遞、暫存回收與輪替方式在 M8 契約固定。
+
+M5 的版本／Run 設定快照仍不可變；但已撤銷的網站許可或機密不可因舊快照繼續生效。執行前以快照與現行許可交集檢查，不符合則明確阻擋並要求更新／重新驗證，不靜默改寫歷史版本。既有無範圍設定的 Workspace 需補確認後才能使用新探索／執行流程。
+
+### 契約交付界線
+
+PM 在各波實作前固定 HTTP／dispatch／輸出與遷移規則；Server／Runtime owner 先回覆既有介面的最小差異。M7 固定編輯週期與摘要契約；M8 固定 Workspace proposal、機密參照與範圍政策；M9 整合技能路由與對話事件。尚未固定的 wire 欄位不由各 Agent 各自猜測。
