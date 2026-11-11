@@ -4,7 +4,7 @@ import { ApiError, errorMessage } from './api';
 import { formatDate, Loading, Notice, ReportLink, RunStatusBadge } from './components';
 import { CancelRunButton } from './TestActions';
 import { isActiveRun } from './types';
-import type { Conversation, Draft, Message, Run, WhippetApi } from './types';
+import type { Conversation, Draft, EditingSession, Message, Run, WhippetApi } from './types';
 
 interface Props {
   api: WhippetApi;
@@ -18,9 +18,13 @@ interface Props {
   onRefreshRuns: () => void;
   onSynchronized: (draft: Draft) => void;
   onUseCandidate: (script: string) => boolean;
+  onGuardChange: (guarded: boolean) => void;
+  editingSessionId: string;
+  onConversationChanged: () => void;
+  onRefreshSession: () => Promise<EditingSession | undefined>;
 }
 
-export function ConversationPanel({ api, apiBase, testId, draft, draftDirty, draftBusy, runs, onRun, onRefreshRuns, onSynchronized, onUseCandidate }: Props) {
+export function ConversationPanel({ api, apiBase, testId, editingSessionId, draft, draftDirty, draftBusy, runs, onRun, onRefreshRuns, onSynchronized, onUseCandidate, onGuardChange, onConversationChanged, onRefreshSession }: Props) {
   const [conversation, setConversation] = useState<Conversation>();
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
@@ -40,6 +44,8 @@ export function ConversationPanel({ api, apiBase, testId, draft, draftDirty, dra
   const handledRuns = useRef(new Set<string>());
   const submitLock = useRef(false);
   const submitController = useRef<AbortController | null>(null);
+  const composerGuarded = content.length > 0 || submitting || synchronizing;
+  useEffect(() => { onGuardChange(composerGuarded); return () => onGuardChange(false); }, [composerGuarded, onGuardChange]);
   useEffect(() => () => submitController.current?.abort(), []);
   useEffect(() => {
     setScripts((current) => current[draft.revision] === draft.script ? current : { ...current, [draft.revision]: draft.script });
@@ -47,7 +53,7 @@ export function ConversationPanel({ api, apiBase, testId, draft, draftDirty, dra
 
   const fetchConversation = useCallback(async (signal: AbortSignal) => {
     const sequence = ++querySequence.current;
-    const next = await api.getConversation(testId, signal);
+    const next = await api.getConversation(testId, editingSessionId, signal);
     if (signal.aborted) return undefined;
     if (sequence === querySequence.current) { setConversation(next); setLoadError(undefined); }
     // 重開對話時可接續既有任務；後續狀態由共用 Run 輪詢負責。
@@ -56,7 +62,7 @@ export function ConversationPanel({ api, apiBase, testId, draft, draftDirty, dra
       if (!signal.aborted && sequence === querySequence.current) onRun(active);
     }
     return next;
-  }, [api, testId, onRun]);
+  }, [api, testId, editingSessionId, onRun]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -69,8 +75,9 @@ export function ConversationPanel({ api, apiBase, testId, draft, draftDirty, dra
     return () => controller.abort();
   }, [fetchConversation, refreshRevision]);
 
-  const lastAuthor = runs.find((run) => run.kind === 'author');
-  const trackedId = conversation?.activeRunId || lastAuthor?.id || sentRunId;
+  const lastAuthor = runs.find((run) => run.kind === 'author' && run.authorMode !== 'summary');
+  const conversationRun = runs.find((run) => run.id === conversation?.activeRunId);
+  const trackedId = (conversationRun?.authorMode === 'summary' ? undefined : conversation?.activeRunId) || lastAuthor?.id || sentRunId;
   const trackedRun = runs.find((run) => run.id === trackedId);
   const authorActive = Boolean((trackedId && (!trackedRun || isActiveRun(trackedRun))) || runs.some((run) => run.kind === 'author' && isActiveRun(run)));
 
@@ -92,13 +99,14 @@ export function ConversationPanel({ api, apiBase, testId, draft, draftDirty, dra
     if (!completedKey || handledRuns.current.has(completedKey)) return;
     const controller = new AbortController();
     setSynchronizing(true);
-    Promise.all([fetchConversation(controller.signal), api.getDraft(testId, controller.signal)]).then(
+    Promise.all([fetchConversation(controller.signal), api.getDraft(testId, editingSessionId, controller.signal)]).then(
       ([nextConversation, nextDraft]) => {
         if (controller.signal.aborted || !nextConversation) return;
         handledRuns.current.add(completedKey);
         setScripts((current) => ({ ...current, [nextDraft.revision]: nextDraft.script }));
         onSynchronized(nextDraft);
         onRefreshRuns();
+        void onRefreshSession().catch(() => undefined);
         setSyncError(undefined); setSynchronizing(false);
       },
       (cause: unknown) => {
@@ -108,7 +116,7 @@ export function ConversationPanel({ api, apiBase, testId, draft, draftDirty, dra
       },
     );
     return () => controller.abort();
-  }, [api, testId, completedKey, refreshRevision, fetchConversation, onSynchronized, onRefreshRuns]);
+  }, [api, testId, editingSessionId, completedKey, refreshRevision, fetchConversation, onSynchronized, onRefreshRuns, onRefreshSession]);
 
   const characterCount = Array.from(content).length;
   const blocked = loading || refreshing || synchronizing || submitting || authorActive || draftDirty || draftBusy || !conversation || Boolean(loadError || syncError);
@@ -120,10 +128,11 @@ export function ConversationPanel({ api, apiBase, testId, draft, draftDirty, dra
     const controller = new AbortController(); submitController.current = controller;
     const revision = draft.revision;
     try {
-      const result = await api.sendMessage(testId, content.trim(), revision, controller.signal);
+      const result = await api.sendMessage(testId, editingSessionId, content.trim(), revision, controller.signal);
       if (controller.signal.aborted) return;
       setScripts((current) => ({ ...current, [revision]: draft.script }));
       onRun(result.run); setSentRunId(result.run.id); setContent('');
+      onConversationChanged();
       setNote(`訊息已送出，使用已儲存 revision ${revision}。AI 只會修改草稿，不會自動發佈。`);
       setRefreshRevision((value) => value + 1);
     } catch (cause) {
@@ -153,7 +162,7 @@ export function ConversationPanel({ api, apiBase, testId, draft, draftDirty, dra
       {authorActive ? <p className="inline-hint">每 2 秒更新；排隊或執行期間仍可取消。暫時離開不會自動重跑任務。</p> : null}
       {synchronizing ? <p className="inline-hint" role="status">正在同步對話、草稿與驗證紀錄…</p> : null}
     </div> : null}
-    <form onSubmit={send}>
+    <form className="conversation-composer" onSubmit={send}>
       <label className="field-label" htmlFor="author-message">測試需求或修改訊息</label>
       <textarea id="author-message" className="text-input" rows={4} value={content} disabled={submitting} onChange={(event) => setContent(event.target.value)} aria-describedby="author-message-help" />
       <p id="author-message-help" className="inline-hint">使用已儲存 revision {draft.revision} · {characterCount.toLocaleString('zh-TW')} / 16,000 字元</p>

@@ -24,11 +24,12 @@ type Workspace struct {
 }
 
 type Test struct {
-	ID                 string  `json:"id"`
-	WorkspaceID        string  `json:"workspaceId"`
-	Name               string  `json:"name"`
-	Description        string  `json:"description"`
-	PublishedVersionID *string `json:"publishedVersionId"`
+	ID                   string                `json:"id"`
+	WorkspaceID          string                `json:"workspaceId"`
+	Name                 string                `json:"name"`
+	Description          string                `json:"description"`
+	PublishedVersionID   *string               `json:"publishedVersionId"`
+	ActiveEditingSession *ActiveEditingSession `json:"activeEditingSession"`
 }
 
 type Run struct {
@@ -44,9 +45,12 @@ type Run struct {
 	DraftRevision     *int               `json:"draftRevision,omitempty"`
 	VersionID         *string            `json:"versionId,omitempty"`
 	WorkspaceSettings *WorkspaceSettings `json:"workspaceSettings,omitempty"`
+	EditingSessionID  *string            `json:"editingSessionId"`
+	AuthorMode        string             `json:"authorMode,omitempty"`
 }
 
 type Draft struct {
+	EditingSessionID  string             `json:"editingSessionId"`
 	TestID            string             `json:"testId"`
 	Revision          int                `json:"revision"`
 	Script            string             `json:"script"`
@@ -58,6 +62,10 @@ type Draft struct {
 }
 
 type Version struct {
+	Description       *string            `json:"description"`
+	BackgroundSummary *string            `json:"backgroundSummary"`
+	SummaryRunID      *string            `json:"summaryRunId"`
+	EditingSessionID  *string            `json:"editingSessionId"`
 	ID                string             `json:"id"`
 	TestID            string             `json:"testId"`
 	Revision          int                `json:"revision"`
@@ -68,10 +76,11 @@ type Version struct {
 }
 
 type Conversation struct {
-	ID          string    `json:"id"`
-	TestID      string    `json:"testId"`
-	Messages    []Message `json:"messages"`
-	ActiveRunID *string   `json:"activeRunId,omitempty"`
+	EditingSessionID string    `json:"editingSessionId"`
+	ID               string    `json:"id"`
+	TestID           string    `json:"testId"`
+	Messages         []Message `json:"messages"`
+	ActiveRunID      *string   `json:"activeRunId,omitempty"`
 }
 
 type Message struct {
@@ -93,10 +102,18 @@ type ChatMessage struct {
 }
 
 type AuthorInput struct {
-	ConversationID string            `json:"conversationId"`
-	BaseRevision   int               `json:"baseRevision"`
-	Messages       []ChatMessage     `json:"messages"`
-	Validation     *AuthorValidation `json:"validation,omitempty"`
+	SkillID             string              `json:"skillId,omitempty"`
+	SkillVersion        string              `json:"skillVersion,omitempty"`
+	AllowedTools        []string            `json:"allowedTools"`
+	EditingSessionID    string              `json:"editingSessionId,omitempty"`
+	ContextRevision     int64               `json:"contextRevision"`
+	SourceVersion       *SourceVersion      `json:"sourceVersion"`
+	ConversationSummary *string             `json:"conversationSummary"`
+	ValidationEvidence  *ValidationEvidence `json:"validationEvidence,omitempty"`
+	ConversationID      string              `json:"conversationId"`
+	BaseRevision        int                 `json:"baseRevision"`
+	Messages            []ChatMessage       `json:"messages"`
+	Validation          *AuthorValidation   `json:"validation,omitempty"`
 }
 
 type AuthorValidation struct {
@@ -189,12 +206,16 @@ type Store interface {
 	Test(context.Context, string) (Test, error)
 	CreateTest(context.Context, string, string, string) (Test, error)
 	Draft(context.Context, string) (Draft, error)
-	SaveDraft(context.Context, string, int, string) (Draft, error)
-	ValidateDraft(context.Context, string, int) (Run, error)
-	Publish(context.Context, string, int, bool) (Version, error)
+	SaveDraft(context.Context, string, string, int, string) (Draft, error)
+	ValidateDraft(context.Context, string, string, int) (Run, error)
+	Publish(context.Context, string, string, int, string, bool) (Version, error)
 	Versions(context.Context, string) ([]Version, error)
-	Conversation(context.Context, string) (Conversation, error)
-	CreateAuthor(context.Context, string, string, int) (AuthorSubmission, error)
+	Conversation(context.Context, string, string) (Conversation, error)
+	CreateAuthor(context.Context, string, string, string, int) (AuthorSubmission, error)
+	StartEditingSession(context.Context, string) (EditingSession, bool, error)
+	EditingSession(context.Context, string, string) (*EditingSession, error)
+	DiscardEditingSession(context.Context, string, string, int) (EditingSession, error)
+	CreateSummary(context.Context, string, string, int, string) (Run, error)
 	CreateRun(context.Context, string) (Run, error)
 	Runs(context.Context, string) ([]Run, error)
 	Run(context.Context, string) (Run, error)

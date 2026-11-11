@@ -2,8 +2,8 @@ import { lstat, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { readAIConfig } from "../ai/config.js";
 import { runAuthor } from "./loop.js";
-import { explorationBrowser } from "./tools.js";
-import { AuthorError, validateAuthorInput } from "./types.js";
+import { explorationBrowser, type ExplorationBrowser } from "./tools.js";
+import { AuthorError, isSummary, validateAuthorInput } from "./types.js";
 
 const workDir = resolve(process.env.WHIPPET_WORK_DIR ?? "/work");
 const outputDir = join(workDir, "output");
@@ -17,13 +17,14 @@ async function save(name: string, data: unknown): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const browser = explorationBrowser(process.env);
+  let browser: ExplorationBrowser | undefined;
   let result: { status: "succeeded" | "failed" | "timed_out" | "cancelled"; error?: string };
   try {
     await mkdir(outputDir);
     const info = await lstat(join(workDir, "input.json"));
     if (!info.isFile() || info.size > 13 * 1024 * 1024) throw new AuthorError("invalid_input");
     const input = validateAuthorInput(JSON.parse(await readFile(join(workDir, "input.json"), "utf8")) as unknown);
+    if (!isSummary(input)) browser = explorationBrowser(process.env);
     const output = await runAuthor(input, readAIConfig(process.env), browser, {
       signal: stop.signal,
       progress: (message) => process.stdout.write(`${JSON.stringify({ kind: "log", message })}\n`),
@@ -37,7 +38,7 @@ async function main(): Promise<void> {
   } finally {
     // Manager independently reclaims the container even if the browser hangs.
     let timer: NodeJS.Timeout | undefined;
-    try { await Promise.race([browser.close().catch(() => undefined), new Promise<void>((resolve) => { timer = setTimeout(resolve, 1000); })]); }
+    try { if (browser) await Promise.race([browser.close().catch(() => undefined), new Promise<void>((resolve) => { timer = setTimeout(resolve, 1000); })]); }
     finally { if (timer) clearTimeout(timer); }
   }
   await save("result.json", result);

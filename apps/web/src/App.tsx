@@ -1,14 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { errorMessage } from './api';
-import { formatDate, Loading, Notice, ReportLink, RunStatusBadge, runKindLabel } from './components';
-import { DraftEditor } from './DraftEditor';
-import { LiveView } from './LiveView';
+import { Loading, Notice } from './components';
 import { WorkspaceSettings } from './WorkspaceSettings';
-import { RunArtifacts } from './RunArtifacts';
-import { CancelRunButton, CreateTestForm, VersionHistory } from './TestActions';
-import { useResource, useRuns } from './hooks';
-import { isActiveRun } from './types';
-import type { DevUser, Run, Test, Version, WhippetApi, Workspace } from './types';
+import { TestWorkspace } from './TestWorkspace';
+import { useResource } from './hooks';
+import type { DevUser, Test, WhippetApi, Workspace } from './types';
 
 interface AppProps {
   api: WhippetApi;
@@ -30,8 +26,8 @@ export function App({ api, apiBase, mock }: AppProps) {
   const settingsDirty = useRef(false);
   const onDirtyChange = useCallback((dirty: boolean) => { draftDirty.current = dirty; }, []);
   const onSettingsDirtyChange = useCallback((dirty: boolean) => { settingsDirty.current = dirty; }, []);
-  const confirmTestNavigation = useCallback(() => !draftDirty.current || window.confirm('目前有未儲存的草稿或進行中的請求。確定離開？未儲存內容將會遺失；已送出的任務仍可能繼續。'), []);
-  const confirmNavigation = useCallback(() => (!draftDirty.current && !settingsDirty.current) || window.confirm('目前有未儲存的草稿、Workspace 設定或進行中的請求。確定離開？未儲存內容將會遺失；已送出的請求仍可能完成。'), []);
+  const confirmTestNavigation = useCallback(() => !draftDirty.current || window.confirm('目前有未儲存的腳本、未送出的訊息或進行中的操作。確定離開此測試？本機未儲存內容將會遺失，已送出的任務仍可能繼續。'), []);
+  const confirmNavigation = useCallback(() => (!draftDirty.current && !settingsDirty.current) || window.confirm('目前有未儲存的腳本、訊息、Workspace 設定或進行中的操作。確定離開？本機未儲存內容將會遺失，已送出的請求仍可能完成。'), []);
 
   async function login() {
     if (loginLock.current) return;
@@ -104,19 +100,47 @@ function TestBrowser({ workspace, api, apiBase, onDirtyChange, confirmNavigation
   const [selectedId, setSelectedId] = useState('');
   const [search, setSearch] = useState('');
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string>();
+  const [autoEditId, setAutoEditId] = useState<string>();
+  const editorDirty = useRef(false);
+  const creationPending = useRef(false);
+  const reportEditorGuard = useCallback((guarded: boolean) => { editorDirty.current = guarded; onDirtyChange(guarded || creationPending.current); }, [onDirtyChange]);
+  useEffect(() => {
+    creationPending.current = creating;
+    onDirtyChange(creating || editorDirty.current);
+    function beforeUnload(event: BeforeUnloadEvent) { event.preventDefault(); event.returnValue = ''; }
+    if (creating) window.addEventListener('beforeunload', beforeUnload);
+    return () => window.removeEventListener('beforeunload', beforeUnload);
+  }, [creating, onDirtyChange]);
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
+  const createLock = useRef(false);
+  const createController = useRef<AbortController | null>(null);
+  useEffect(() => () => createController.current?.abort(), []);
   const [overrides, setOverrides] = useState<Record<string, Test>>({});
   const allTests = [...new Map([...(tests.data ?? []), ...Object.values(overrides)].map((test) => [test.id, test])).values()];
   const selected = allTests.find((item) => item.id === selectedId) ?? allTests[0];
   const filtered = allTests.filter((test) => `${test.name} ${test.description}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   const updateTest = useCallback((test: Test) => setOverrides((current) => ({ ...current, [test.id]: test })), []);
+  async function createTest() {
+    if (createLock.current || !confirmNavigation()) return;
+    createLock.current = true; setCreating(true); setCreateError(undefined);
+    const controller = new AbortController(); createController.current = controller;
+    try {
+      const test = await api.createTest(workspace.id, {}, controller.signal);
+      if (controller.signal.aborted) return;
+      updateTest(test); setSelectedId(test.id); setAutoEditId(test.id); setSearch('');
+    } catch (cause) { if (!controller.signal.aborted) setCreateError(`${errorMessage(cause)} 若結果不明，請先重新載入列表確認是否已建立，避免重複新增。`); }
+    finally { if (!controller.signal.aborted) setCreating(false); createLock.current = false; }
+  }
 
   return (
     <div className="test-browser">
       <aside className="test-sidebar" aria-label="Workspace 測試列表">
         <div className="section-heading"><h2>測試列表 <span className="count">{allTests.length}</span></h2>
-          <button className="button quiet compact" disabled={tests.loading} onClick={() => { if (confirmNavigation()) tests.retry(); }}>重新載入</button>
+          <button className="button quiet compact" disabled={tests.loading || creating} onClick={() => { if (confirmNavigation()) tests.retry(); }}>重新載入</button>
         </div>
-        <button className="button secondary new-test-button" onClick={() => { if (confirmNavigation()) setCreating(true); }}>新增測試</button>
+        <button className="button secondary new-test-button" disabled={creating} onClick={createTest}>{creating ? '正在建立測試…' : '新增測試'}</button>
+        {createError ? <Notice message={createError} /> : null}
         <label className="search-label"><span className="sr-only">搜尋測試</span>
           <SearchIcon /><input type="search" value={search} placeholder="搜尋名稱或描述" onChange={(event) => setSearch(event.target.value)} />
         </label>
@@ -126,7 +150,7 @@ function TestBrowser({ workspace, api, apiBase, onDirtyChange, confirmNavigation
         {allTests.length > 0 && filtered.length === 0 ? <p className="list-empty">找不到符合的測試，請調整搜尋內容。</p> : null}
         <ul className="test-list">
           {filtered?.map((test) => <li key={test.id}>
-            <button className={`test-item${!creating && selected?.id === test.id ? ' selected' : ''}`} aria-current={!creating && selected?.id === test.id ? 'true' : undefined} onClick={() => { if ((!creating && selected?.id === test.id) || !confirmNavigation()) return; setSelectedId(test.id); setCreating(false); }}>
+            <button className={`test-item${selected?.id === test.id ? ' selected' : ''}`} disabled={creating} aria-current={selected?.id === test.id ? 'true' : undefined} onClick={() => { if (selected?.id === test.id || !confirmNavigation()) return; setSelectedId(test.id); setAutoEditId(undefined); }}>
               <span className="test-name">{test.name}<ChevronIcon /></span>
               <span className="test-description">{test.description || '尚無測試描述'}</span>
               <span className="version-label">{test.publishedVersionId ? '已發佈' : '尚未發佈'}</span>
@@ -135,103 +159,10 @@ function TestBrowser({ workspace, api, apiBase, onDirtyChange, confirmNavigation
         </ul>
       </aside>
       <section className="detail-panel" aria-label="測試詳情">
-        {creating ? <CreateTestForm api={api} workspaceId={workspace.id} onCancel={() => setCreating(false)} onCreated={(test) => { updateTest(test); setSelectedId(test.id); setCreating(false); setSearch(''); }} />
-          : selected ? <TestDetail key={selected.id} testId={selected.id} api={api} apiBase={apiBase} onDirtyChange={onDirtyChange} onTestUpdated={updateTest} settingsRefresh={settingsRefresh} />
+        {selected ? <TestWorkspace key={selected.id} testId={selected.id} api={api} apiBase={apiBase} onDirtyChange={reportEditorGuard} onTestUpdated={updateTest} settingsRefresh={settingsRefresh} initialEditing={autoEditId === selected.id} />
           : <Empty title="在這裡查看測試" text="從左側列表選擇一個測試，查看版本、執行狀態與報告。" />}
       </section>
     </div>
-  );
-}
-
-function TestDetail({ testId, api, apiBase, onDirtyChange, onTestUpdated, settingsRefresh }: { testId: string; settingsRefresh: number; onDirtyChange: EditingGuard['onDirtyChange']; onTestUpdated: (test: Test) => void } & Pick<AppProps, 'api' | 'apiBase'>) {
-  const loadTest = useCallback((signal: AbortSignal) => api.getTest(testId, signal), [api, testId]);
-  const test = useResource(loadTest);
-  const history = useRuns(api, testId);
-  const loadVersions = useCallback((signal: AbortSignal) => api.listVersions(testId, signal), [api, testId]);
-  const versions = useResource(loadVersions);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string>();
-  const [liveSelection, setLiveSelection] = useState<Run>();
-  const [liveRequest, setLiveRequest] = useState(0);
-  const submitLock = useRef(false);
-  const submitController = useRef<AbortController | null>(null);
-  useEffect(() => () => submitController.current?.abort(), []);
-
-  async function runTest() {
-    if (submitLock.current || !test.data?.publishedVersionId) return;
-    submitLock.current = true;
-    setSubmitting(true);
-    setSubmitError(undefined);
-    const controller = new AbortController();
-    submitController.current = controller;
-    try {
-      const run = await api.createRun(testId, controller.signal);
-      if (!controller.signal.aborted) history.addRun(run);
-    } catch (error) {
-      if (!controller.signal.aborted) setSubmitError(`${errorMessage(error)} 若請求已送達，任務可能已建立；請先重新整理執行紀錄，再決定是否重試。`);
-    } finally {
-      if (!controller.signal.aborted) setSubmitting(false);
-      submitLock.current = false;
-    }
-  }
-
-  const latest = history.runs[0];
-  const liveRun = liveSelection ? history.runs.find((run) => run.id === liveSelection.id) ?? liveSelection : undefined;
-  function startLive(run: Run) { setLiveSelection(run); setLiveRequest((value) => value + 1); }
-  function published(version: Version) {
-    if (test.data) onTestUpdated({ ...test.data, publishedVersionId: version.id });
-    test.retry(); versions.retry();
-  }
-  return (
-    <>
-      {test.loading ? <Loading text="正在載入測試詳情…" /> : null}
-      {test.error ? <Notice message={test.error} retry={test.retry} /> : null}
-      {test.data ? <>
-        <div className="detail-heading"><div><h2>{test.data.name}</h2><p className="detail-description">{test.data.description || '尚無測試描述。'}</p></div>
-          <button className="button primary run-button" disabled={submitting || !test.data.publishedVersionId} onClick={runTest}>
-            <PlayIcon />{submitting ? '送出中…' : '執行測試'}
-          </button>
-        </div>
-        <dl className="test-metadata"><div><dt>發佈版本</dt><dd className="identifier">{test.data.publishedVersionId || '尚未發佈'}</dd></div>
-          <div><dt>測試 ID</dt><dd className="identifier">{test.data.id}</dd></div></dl>
-        {!test.data.publishedVersionId ? <p className="inline-hint">此測試尚未發佈。請儲存草稿、驗證通過並確認發佈後，再執行正式版本。</p> : <p className="inline-hint">「執行測試」只執行目前已發佈版本，不包含尚未發佈的草稿修改。</p>}
-      </> : null}
-      {submitError ? <Notice message={submitError} retry={history.refresh} retryLabel="重新整理執行紀錄" /> : null}
-      <DraftEditor api={api} apiBase={apiBase} testId={testId} runs={history.runs} onRun={history.addRun} onPublished={published} onDirtyChange={onDirtyChange} onRefreshRuns={history.refresh} settingsRefresh={settingsRefresh} />
-      <section className="latest-section" aria-labelledby="latest-title">
-        <div className="section-heading"><h3 id="latest-title">最近一次執行</h3>
-          <span className="refresh-status" role="status">{history.loading ? '正在讀取狀態…' : history.error ? '同步暫時中斷' : history.polling ? '每 2 秒更新狀態' : '狀態已同步'}</span>
-        </div>
-        {latest ? <div className="latest-run" aria-live="polite" aria-atomic="true">
-          <div className="latest-summary"><RunStatusBadge run={latest} /><span>{runKindLabel(latest)}</span><span>{formatDate(latest.createdAt)}</span>{latest.kind === 'author' ? <span className="muted">撰寫結果見對話</span> : <ReportLink reportUrl={latest.reportUrl} apiBase={apiBase} />}</div>
-          <p className="run-id">Run <span className="identifier">{latest.id}</span></p>
-          {isActiveRun(latest) ? <button className="button secondary compact live-start" onClick={() => startLive(latest)}>開始監看</button> : null}
-          {latest.error ? <pre className="run-error">{latest.error}</pre> : null}
-          {isActiveRun(latest) ? <p className="inline-hint">{latest.status === 'queued' ? '任務已排入佇列，正在等待執行節點。' : '任務正在處理中，結果會自動更新。'}</p> : null}
-          {!isActiveRun(latest) && !latest.reportUrl && latest.kind !== 'author' ? <p className="inline-hint">Server 尚未提供報告連結，請重新整理執行紀錄。</p> : null}
-          {latest.kind !== 'author' ? <RunArtifacts key={latest.id} api={api} apiBase={apiBase} runId={latest.id} /> : null}
-        </div> : !history.loading && !history.error ? <p className="muted">還沒有執行紀錄。按「執行測試」開始第一次執行。</p> : null}
-      </section>
-      {liveRun ? <LiveView key={`${liveRun.id}:${liveRequest}`} run={liveRun} apiBase={apiBase} onClose={() => setLiveSelection(undefined)} /> : null}
-      <section className="history-section" aria-labelledby="history-title">
-        <div className="section-heading"><h3 id="history-title">執行紀錄 <span className="count">{history.runs.length}</span></h3>
-          <button className="button secondary compact" disabled={history.loading} onClick={history.refresh}>{history.loading ? '更新中…' : '重新整理'}</button>
-        </div>
-        {history.error ? <Notice message={history.error} retry={history.refresh} /> : null}
-        {history.loading ? <Loading text="正在載入執行紀錄…" /> : null}
-        {history.runs.length ? <div className="table-scroll"><table>
-          <caption className="sr-only">測試執行歷史，最新紀錄在前</caption>
-          <thead><tr><th scope="col">狀態／Run</th><th scope="col">種類／版本</th><th scope="col">建立時間</th><th scope="col">執行耗時</th><th scope="col">報告／操作</th></tr></thead>
-          <tbody>{history.runs.map((run) => <tr key={run.id}>
-            <td><RunStatusBadge run={run} /><span className="table-run-id identifier" title={run.id}>{run.id.slice(0, 8)}</span>
-              {run.error ? <details className="error-details"><summary>查看錯誤</summary><pre className="run-error">{run.error}</pre></details> : null}
-            </td><td>{runKindLabel(run)}{run.versionId ? <span className="table-run-id identifier" title={run.versionId}>{run.versionId.slice(0, 8)}</span> : null}</td><td><time dateTime={run.createdAt}>{formatDate(run.createdAt)}</time></td><td>{duration(run)}</td><td><div className="run-actions">{run.kind === 'author' ? <span className="muted">撰寫結果見對話</span> : <><ReportLink reportUrl={run.reportUrl} apiBase={apiBase} /><RunArtifacts api={api} apiBase={apiBase} runId={run.id} /></>}{isActiveRun(run) ? <button className="button secondary compact" onClick={() => startLive(run)} aria-label={`開始監看 Run ${run.id}`}>開始監看</button> : null}<CancelRunButton api={api} run={run} onUpdated={history.addRun} /></div></td>
-          </tr>)}</tbody>
-        </table></div> : null}
-        {history.updatedAt ? <p className="updated-at">最後同步：{history.updatedAt.toLocaleTimeString('zh-TW', { hour12: false })}</p> : null}
-      </section>
-      <VersionHistory api={api} apiBase={apiBase} versions={versions.data} runs={history.runs} publishedVersionId={test.data?.publishedVersionId} loading={versions.loading} error={versions.error} onRefresh={versions.retry} />
-    </>
   );
 }
 
@@ -239,18 +170,8 @@ function Empty({ title, text, retry }: { title: string; text: string; retry?: ()
   return <div className="empty-state"><h3>{title}</h3><p>{text}</p>{retry ? <button className="button secondary" onClick={retry}>重新載入</button> : null}</div>;
 }
 
-function duration(run: Run): string {
-  if (!run.startedAt) return '—';
-  if (!run.finishedAt) return isActiveRun(run) ? '執行中' : '—';
-  const milliseconds = Date.parse(run.finishedAt) - Date.parse(run.startedAt);
-  return Number.isFinite(milliseconds) ? `${Math.max(0, milliseconds / 1000).toFixed(1)} 秒` : '—';
-}
-
 function BrandMark() {
   return <svg className="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="m5 9 5 15 6-12 6 12 5-15M12 5h8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
-function PlayIcon() {
-  return <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m7 4 9 6-9 6V4Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>;
 }
 function ArrowIcon() {
   return <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10h12m-5-5 5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>;

@@ -201,12 +201,7 @@ func collectAttemptResult(r record, taskDir string, outcome execution) (Result, 
 	}
 	var artifacts []string
 	if result.Status == "succeeded" {
-		var author struct {
-			Message           *string `json:"message"`
-			Script            *string `json:"script"`
-			RequestValidation *bool   `json:"requestValidation"`
-		}
-		if err := readOutput(taskDir, "author.json", &author); err != nil || author.Message == nil || strings.TrimSpace(*author.Message) == "" || author.RequestValidation == nil {
+		if !validAuthorArtifact(taskDir, r.Author) {
 			result.Status = "failed"
 		} else {
 			artifacts = []string{"author.json"}

@@ -80,11 +80,15 @@ func TestPostgresWorkspaceSettingsSnapshots(t *testing.T) {
 			t.Fatal(err)
 		}
 		p.Artifacts = files
-		draft, err := p.Draft(ctx, tests[0].ID)
+		started, _, err := p.StartEditingSession(ctx, tests[0].ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		draft := *started.Draft
 		if err != nil || !sameWorkspaceSettings(draft.WorkspaceSettings, &w.WorkspaceSettings) {
 			t.Fatalf("initial draft: %+v %v", draft, err)
 		}
-		validation, err := p.ValidateDraft(ctx, draft.TestID, draft.Revision)
+		validation, err := p.ValidateDraft(ctx, draft.TestID, draft.EditingSessionID, draft.Revision)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -123,7 +127,8 @@ func TestPostgresWorkspaceSettingsSnapshots(t *testing.T) {
 		upload(a, "report.html", "<!doctype html><h1>passed</h1>")
 		upload(a, "results.json", `{"status":"passed"}`)
 		finish(a, "succeeded")
-		published, err := p.Publish(ctx, draft.TestID, draft.Revision, true)
+		initialVersions, err := p.Versions(ctx, draft.TestID)
+		published := initialVersions[0]
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -131,7 +136,7 @@ func TestPostgresWorkspaceSettingsSnapshots(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		author, err := p.CreateAuthor(ctx, draft.TestID, "change the draft", draft.Revision)
+		author, err := p.CreateAuthor(ctx, draft.TestID, draft.EditingSessionID, "change the draft", draft.Revision)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -164,7 +169,7 @@ func TestPostgresWorkspaceSettingsSnapshots(t *testing.T) {
 			t.Fatalf("settings did not invalidate draft atomically: %+v %v", after, err)
 		}
 		for _, revision := range []int{before.Revision, after.Revision} {
-			if _, err := p.Publish(ctx, draft.TestID, revision, true); !errors.Is(err, ErrConflict) {
+			if _, err := p.Publish(ctx, draft.TestID, draft.EditingSessionID, revision, NewID(), true); !errors.Is(err, ErrConflict) {
 				t.Fatalf("old successful validation published revision %d: %v", revision, err)
 			}
 		}
@@ -198,7 +203,7 @@ func TestPostgresWorkspaceSettingsSnapshots(t *testing.T) {
 			t.Fatalf("duplicate author result: %v", err)
 		}
 		conflicted, err := p.Draft(ctx, draft.TestID)
-		conversation, convoErr := p.Conversation(ctx, draft.TestID)
+		conversation, convoErr := p.Conversation(ctx, draft.TestID, draft.EditingSessionID)
 		if err != nil || convoErr != nil || conflicted.Revision != after.Revision || conflicted.Script != after.Script || conflicted.ValidationRunID != nil || len(conversation.Messages) != 2 {
 			t.Fatalf("old author applied/queued validation: %+v %+v %v %v", conflicted, conversation, err, convoErr)
 		}
@@ -206,11 +211,15 @@ func TestPostgresWorkspaceSettingsSnapshots(t *testing.T) {
 		if message.ProposedScript == nil || *message.ProposedScript != "changed candidate" || message.AppliedRevision != nil || message.ValidationRunID != nil {
 			t.Fatalf("conflicted author proposal lost: %+v", message)
 		}
-		newDraft, err := p.Draft(ctx, tests[1].ID)
+		second, _, err := p.StartEditingSession(ctx, tests[1].ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		newDraft := *second.Draft
 		if err != nil || !sameWorkspaceSettings(newDraft.WorkspaceSettings, &updated.WorkspaceSettings) || !strings.Contains(newDraft.Script, "test(") {
 			t.Fatalf("new draft did not adopt current settings and published script: %+v %v", newDraft, err)
 		}
-		newValidation, err := p.ValidateDraft(ctx, draft.TestID, after.Revision)
+		newValidation, err := p.ValidateDraft(ctx, draft.TestID, draft.EditingSessionID, after.Revision)
 		if err != nil || !sameWorkspaceSettings(newValidation.WorkspaceSettings, &updated.WorkspaceSettings) {
 			t.Fatalf("new validation snapshot: %+v %v", newValidation, err)
 		}

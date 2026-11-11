@@ -97,7 +97,7 @@ func TestPublicationReportMustExistOnDisk(t *testing.T) {
 
 type draftHTTPStore struct{ Store }
 
-func (draftHTTPStore) SaveDraft(context.Context, string, int, string) (Draft, error) {
+func (draftHTTPStore) SaveDraft(context.Context, string, string, int, string) (Draft, error) {
 	return Draft{}, ErrConflict
 }
 
@@ -109,7 +109,7 @@ func TestDraftHTTPRejectsStaleAndInvalidRequests(t *testing.T) {
 		method, suffix, body string
 		status               int
 	}{
-		{"PUT", "/draft", `{"revision":1,"script":"changed"}`, 409},
+		{"PUT", "/draft", `{"editingSessionId":"00000000-0000-4000-8000-000000000001","revision":1,"script":"changed"}`, 409},
 		{"PUT", "/draft", `{"revision":1}`, 400},
 		{"PUT", "/draft", `{"revision":0,"script":"changed"}`, 400},
 		{"PUT", "/draft", `{"revision":1,"script":"x"} {}`, 400},

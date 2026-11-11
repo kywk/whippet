@@ -19,12 +19,12 @@ export function StatusBadge({ status }: { status: RunStatus }) {
 
 export function RunStatusBadge({ run }: { run: Run }) {
   return run.kind === 'author' && run.status === 'succeeded'
-    ? <span className="status-badge success"><span className="status-dot" aria-hidden="true" />撰寫完成</span>
+    ? <span className="status-badge success"><span className="status-dot" aria-hidden="true" />{run.authorMode === 'summary' ? '摘要完成' : '撰寫完成'}</span>
     : <StatusBadge status={run.status} />;
 }
 
 export function runKindLabel(run: Run): string {
-  return run.kind === 'author' ? 'AI 撰寫' : run.kind === 'validation' ? `草稿驗證 · r${run.draftRevision ?? '—'}` : '正式執行';
+  return run.kind === 'author' ? run.authorMode === 'summary' ? '驗收摘要' : 'AI 撰寫' : run.kind === 'validation' ? `草稿驗證 · r${run.draftRevision ?? '—'}` : '正式執行';
 }
 
 export function ReportLink({ reportUrl, label = '開啟報告', apiBase }: { reportUrl?: string; label?: string; apiBase: string }) {

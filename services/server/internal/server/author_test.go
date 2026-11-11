@@ -174,13 +174,13 @@ func TestAuthorValidationSnapshotIsBoundedAndOptional(t *testing.T) {
 
 type conversationHTTPStore struct{ Store }
 
-func (conversationHTTPStore) Conversation(_ context.Context, testID string) (Conversation, error) {
+func (conversationHTTPStore) Conversation(_ context.Context, testID, sessionID string) (Conversation, error) {
 	revision := 2
 	base, proposed := "original script", "generated script"
 	return Conversation{ID: NewID(), TestID: testID, Messages: []Message{{ID: NewID(), Role: "assistant", Content: "updated", BaseRevision: &revision, AppliedRevision: &revision, BaseScript: &base, ProposedScript: &proposed}}}, nil
 }
 
-func (conversationHTTPStore) CreateAuthor(_ context.Context, testID, _ string, revision int) (AuthorSubmission, error) {
+func (conversationHTTPStore) CreateAuthor(_ context.Context, testID, _sessionID, _ string, revision int) (AuthorSubmission, error) {
 	if revision != 2 {
 		return AuthorSubmission{}, ErrConflict
 	}
@@ -202,8 +202,8 @@ func TestConversationHTTPAndStoredDiffFields(t *testing.T) {
 		body   string
 		status int
 	}{
-		{`{"content":"修改測試","revision":2}`, 202},
-		{`{"content":"修改測試","revision":1}`, 409},
+		{`{"editingSessionId":"00000000-0000-4000-8000-000000000001","content":"修改測試","revision":2}`, 202},
+		{`{"editingSessionId":"00000000-0000-4000-8000-000000000001","content":"修改測試","revision":1}`, 409},
 		{`{"content":"  ","revision":2}`, 400},
 		{`{"content":"修改測試","revision":0}`, 400},
 	} {

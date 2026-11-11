@@ -63,7 +63,7 @@ npm test
 
 ### 實際載入的 Playwright authoring skill
 
-技能來源為 [skills/playwright-authoring/SKILL.md](skills/playwright-authoring/SKILL.md)，常駐核心內容包含：
+legacy 技能來源為 [skills/playwright-authoring/SKILL.md](skills/playwright-authoring/SKILL.md)，共用 [recipe.md](skills/playwright-authoring/recipe.md)；M7 新任務的固定映射見下節。常駐內容包含：
 
 - 先用 browser 工具的 selectorHints 探索；探索參數用 literal CSS／text=，生成的 spec 優先用穩定的 getByRole／getByLabel。
 - listitem 文字通常不是 accessible name；提供 `getByRole('listitem').toHaveText(['alpha'])` 與 `filter({ hasText: 'alpha' })` recipe，依實際預期清單調整斷言。
@@ -82,7 +82,7 @@ Dockerfile 已加入 `COPY skills ./skills`，使技能與 `dist/` 同層封裝�
 node --test --test-name-pattern='packaged Playwright authoring skill' dist/author/author.test.js
 ```
 
-技能正文 2855 bytes、核心指示 598 bytes，合計約 3455 字元；以英文內容字元／4 粗估約 **864 tokens**，未新增 tokenizer，也不宣稱精確 token 數。此測試證明內容確實載入與送入請求，不能保證模型每次都遵循或量化節省時間；真實案例驗收由總指揮獨立負責。
+M7 已將任務 skill 與共用 recipe 分開，每個載入檔案上限 4096 bytes；沒有新增 tokenizer 或宣稱精確 token 數。request capture 證明內容確實載入，不能保證模型每次遵循或量化節省時間；真實案例驗收由 PM 負責。
 
 Manager 派送 `kind:"author"` 時，使用獨立入口 `node dist/author/main.js`。輸入在既有 run／attempt／script／timeout 外，包含 `author:{conversationId,baseRevision,messages,validation?}`；空草稿可用，對話最多最近 12 則／總 32000 字元。validation 是 optional `{runId,status,error?}` 最新草稿驗證快照，error 最多 4000 字元。
 
@@ -100,6 +100,18 @@ AI key 只在 author 程序環境，瀏覽器 subprocess 另用不含 key 的環
 npm run build
 npm run test:author
 ```
+
+## M7 測試編輯與唯讀驗收摘要
+
+固定 `kind:"author"`／既有入口，依契約的 `author.skillId` 選 `test-author` 或 `acceptance-summary`，skillVersion 都為字串 `1`。程式只映射 package 內的兩份 SKILL.md 與共用 recipe；不從輸入讀任意路徑、不建立外掛框架。新 payload 還需 allowedTools、editingSessionId、contextRevision、nullable sourceVersion／conversationSummary；script、workspaceSettings 沿頂層。沒有 mode／context 物件。
+
+test-author 保留原工具，但同時收窄模型宣告與實際執行到 allowedTools。最終回 JSON message／optional conversationSummary，候選 script 與 requestValidation 仍只來自工具狀態；conversationSummary 最多 8192 UTF-8 bytes。legacy 沒有新欄位時仍走原 author；未知／半套 skill pin 拒絕，不靜默降級。
+
+acceptance-summary 必須 allowedTools=[]，可 messages=[]；完整 script 與合格 validationEvidence 仍必填。校驗 succeeded／reportsReady、revision／SHA256／實際 stats；完全不建立 browser／observer，也不抓報告 URL、執行 spec 或提供工具。單次模型 request 的輸出嚴格為 `{message,description,backgroundSummary,name?}`，description 16384 bytes、backgroundSummary 8192 bytes、name 200 bytes；拒絕 script／requestValidation／額外 metadata。綁定只取 Server 保存 input，輸出成功不等於 Playwright 成功，也不自動發佈。
+
+來源版本、週期摘要、Workspace 與完整稿一併作為固定 DATA 提供，不能覆寫系統規則；沒有來源摘要時維持缺值。遠端歷史工具延 M9，範圍／機密機制另屬 M8。沿用原模型 adapter、reasoningEffort、conversationId session、key 白名單、180000 ms 及名額回收。
+
+必要檢查 `npm run build`、`node --test dist/author/author.test.js dist/author/m7.test.js` 已通過（13 項 mock）。技能官方 quick_validate 腳本缺 PyYAML 而未執行成功，未安裝；已人工檢視並以 request capture 證明載入。完整結果與 Manager 資產見 [DELIVERY](../../services/manager/DELIVERY.md)；未做真模型／瀏覽器或整合驗收。
 
 ## 獨立 AI check／probe（預設停用）
 

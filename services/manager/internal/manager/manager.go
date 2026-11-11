@@ -274,7 +274,7 @@ func (m *Manager) accept(ctx context.Context, env Envelope) error {
 		m.mu.Unlock()
 		return errors.New("Worker slot is occupied; MAX_WORKERS reached, including cleanup")
 	}
-	r := record{RunID: env.RunID, AttemptID: env.AttemptID, Phase: "accepted", TimeoutMS: dispatch.TimeoutMS, ResultMessageID: newID(), Kind: dispatch.Kind}
+	r := record{RunID: env.RunID, AttemptID: env.AttemptID, Phase: "accepted", TimeoutMS: dispatch.TimeoutMS, ResultMessageID: newID(), Kind: dispatch.Kind, Author: dispatch.Author}
 	err := atomicJSON(m.journalPath(r), r)
 	if err == nil {
 		m.records[r.AttemptID] = r

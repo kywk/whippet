@@ -187,11 +187,13 @@ func (p *Postgres) PatchWorkspace(ctx context.Context, id string, patch Workspac
 		if _, err := tx.ExecContext(ctx, `INSERT INTO draft_revisions(test_id,revision,script,script_hash,timeout_ms,workspace_settings)
 		    SELECT dr.test_id,dr.revision+1,dr.script,dr.script_hash,$2,$3 FROM drafts d
 		    JOIN tests t ON t.id=d.test_id JOIN draft_revisions dr ON dr.test_id=d.test_id AND dr.revision=d.current_revision
-		    WHERE t.workspace_id=$1`, id, next.TimeoutMS, data); err != nil {
+		    JOIN editing_sessions e ON e.id=d.editing_session_id
+		    WHERE t.workspace_id=$1 AND e.status='active'`, id, next.TimeoutMS, data); err != nil {
 			return Workspace{}, err
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE drafts d SET current_revision=current_revision+1,validation_run_id=NULL,updated_at=now()
-		    FROM tests t WHERE d.test_id=t.id AND t.workspace_id=$1`, id); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE drafts d SET current_revision=current_revision+1,validation_run_id=NULL,
+            summary_run_id=NULL,summary_description=NULL,summary_background=NULL,summary_name=NULL,updated_at=now()
+		    FROM tests t,editing_sessions e WHERE d.test_id=t.id AND t.workspace_id=$1 AND e.id=d.editing_session_id AND e.status='active'`, id); err != nil {
 			return Workspace{}, err
 		}
 		w.WorkspaceSettings = next

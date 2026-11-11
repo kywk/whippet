@@ -7,7 +7,12 @@ func (a *API) conversation(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	conversation, err := a.store.Conversation(r.Context(), id)
+	sessionID := r.URL.Query().Get("editingSessionId")
+	if sessionID != "" && !ValidID(sessionID) {
+		writeError(w, 400, "invalid_request", "valid editing session ID required")
+		return
+	}
+	conversation, err := a.store.Conversation(r.Context(), id, sessionID)
 	if err != nil {
 		a.fail(w, err)
 		return
@@ -21,8 +26,9 @@ func (a *API) createAuthor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Content  string `json:"content"`
-		Revision int    `json:"revision"`
+		EditingSessionID string `json:"editingSessionId"`
+		Content          string `json:"content"`
+		Revision         int    `json:"revision"`
 	}
 	if err := decodeBody(w, r, &body); err != nil {
 		a.fail(w, err)
@@ -32,11 +38,11 @@ func (a *API) createAuthor(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, err)
 		return
 	}
-	if body.Revision < 1 {
+	if body.Revision < 1 || !ValidID(body.EditingSessionID) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "positive revision is required")
 		return
 	}
-	submission, err := a.store.CreateAuthor(r.Context(), id, body.Content, body.Revision)
+	submission, err := a.store.CreateAuthor(r.Context(), id, body.EditingSessionID, body.Content, body.Revision)
 	if err != nil {
 		a.fail(w, err)
 		return

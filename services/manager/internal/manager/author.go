@@ -28,6 +28,9 @@ func validDispatch(d Dispatch) error {
 		return errors.New("dispatch requires run or author with valid input")
 	}
 	a := d.Author
+	if err := validAuthorMetadata(a, &d.Script); err != nil {
+		return err
+	}
 	if v := a.Validation; v != nil {
 		validStatus := false
 		for _, status := range []string{"queued", "dispatched", "running", "collecting", "succeeded", "failed", "cancelling", "cancelled", "timed_out", "interrupted"} {
@@ -37,7 +40,7 @@ func validDispatch(d Dispatch) error {
 			return errors.New("invalid author validation snapshot")
 		}
 	}
-	if !uuidPattern.MatchString(a.ConversationID) || a.BaseRevision < 0 || a.BaseRevision > 9007199254740991 || len(a.Messages) < 1 || len(a.Messages) > 12 {
+	if !uuidPattern.MatchString(a.ConversationID) || a.BaseRevision < 0 || a.BaseRevision > 9007199254740991 || a.Messages == nil || len(a.Messages) > 12 {
 		return errors.New("invalid author conversation/revision/messages")
 	}
 	chars, hasUser := 0, false
@@ -48,7 +51,7 @@ func validDispatch(d Dispatch) error {
 		chars += utf8.RuneCountInString(m.Content)
 		hasUser = hasUser || m.Role == "user" && strings.TrimSpace(m.Content) != ""
 	}
-	if chars > 32000 || !hasUser {
+	if chars > 32000 || !hasUser && !summaryAuthor(a) {
 		return errors.New("author messages exceed context bounds or lack user input")
 	}
 	return nil

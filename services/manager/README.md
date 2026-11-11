@@ -114,3 +114,9 @@ dispatch 可帶頂層 `workspaceSettings:{revision,sites,defaultTestUrl,timeoutM
 普通 run／validation 額外接受 `data/<40位小寫SHA1>.zip/.md`，author 不接受。ZIP 每檔 64 MiB、MD 1 MiB，兩者合計最多 32 檔／128 MiB，PNG 原配額獨立。os.Root／regular file／hash／基本 ZIP signature（僅 PK0304／PK0506）／MD UTF-8 均驗證；收集與 recovery 排除無效或超限項並記固定原因，不改斷言結果。ZIP 不解壓，不掃主機或其他任務。
 
 ZIP 使用 application/zip、MD text/markdown; charset=utf-8，與 PNG 一起排在 report.html／results.json／result 前上傳。journal 保留白名單項目供補送；僅 ZIP／MD 明確 HTTP413 才移除該項並保存固定略過警示，必要報告／PNG、network／5xx／401／409 不套用此例外。完整檢查與 PM 命令見 DELIVERY；不新增影片、內嵌 viewer 或改媒體／控制協定。
+
+## M7 固定 author skills
+
+author 新增固定 skillId（test-author／acceptance-summary）及字串 skillVersion=1、allowedTools、editingSessionId、contextRevision、nullable sourceVersion／conversationSummary；summary 另帶 validationEvidence。完整原稿／Workspace 設定仍沿頂層。Manager 驗證固定欄位／工具子集、revision／SHA256／證據形狀，原樣傳 Worker input；summary 的空訊息陣列保留 `[]`，edit／legacy 仍須 user 訊息。未知 mode／context／半套 pin 不接受。
+
+有界固定非機密 Author input 也保存至 journal，recovery 據此判斷 author.json schema，不重跑 attempt、不信任 artifact 自報類型；不加入 AI key 或登入資料。edit 接受 message／optional script／requestValidation／optional conversationSummary；summary 只接受 message／description／backgroundSummary／optional name。皆沿 author.json 2 MiB 與既有入口、容量、取消回收；summary 不要求 Playwright 報告。Server 仍依保存的 input／session／revision／驗證證據決定發佈，Manager 不建立摘要或驗證的自動排程。產物與 mock／build 結果見 DELIVERY。

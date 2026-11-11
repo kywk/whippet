@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"errors"
 	"fmt"
 	"strings"
 )
@@ -13,8 +12,12 @@ const MaxScriptBytes = 2 << 20
 
 type draftState struct {
 	Draft
-	hash      string
-	timeoutMS int
+	hash               string
+	timeoutMS          int
+	summaryRunID       *string
+	summaryDescription *string
+	summaryBackground  *string
+	summaryName        *string
 }
 
 type validationEvidence struct {
@@ -24,6 +27,8 @@ type validationEvidence struct {
 	timeoutMS                int
 	reportReady              bool
 	settings                 *WorkspaceSettings
+	sessionID                *string
+	attemptID                string
 }
 
 func scriptHash(script string) string { return fmt.Sprintf("%x", sha256.Sum256([]byte(script))) }
@@ -49,7 +54,7 @@ func checkPublication(revision int, confirmed bool, d draftState, v validationEv
 		v.kind != "validation" || v.revision != d.Revision || v.script != d.Script ||
 		v.hash != d.hash || d.hash != scriptHash(d.Script) || v.timeoutMS != d.timeoutMS ||
 		d.WorkspaceSettings == nil || v.settings == nil || d.WorkspaceSettings.TimeoutMS != d.timeoutMS ||
-		!sameWorkspaceSettings(d.WorkspaceSettings, v.settings) {
+		!sameWorkspaceSettings(d.WorkspaceSettings, v.settings) || (d.EditingSessionID != "" && (v.sessionID == nil || *v.sessionID != d.EditingSessionID)) {
 		return fmt.Errorf("%w: validation must match the current draft snapshot", ErrConflict)
 	}
 	if v.status != "succeeded" {
@@ -63,6 +68,9 @@ func checkPublication(revision int, confirmed bool, d draftState, v validationEv
 
 func (p *Postgres) CreateTest(ctx context.Context, workspaceID, name, description string) (Test, error) {
 	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "未命名測試"
+	}
 	if name == "" || len(name) > 200 || len(description) > 16<<10 {
 		return Test{}, fmt.Errorf("%w: name is required (max 200 bytes); description max 16 KiB", ErrInvalid)
 	}
@@ -75,7 +83,7 @@ const draftSelect = `SELECT d.test_id,d.current_revision,dr.script,d.updated_at,
     COALESCE(r.status,''),CASE WHEN EXISTS (SELECT 1 FROM artifacts a
         WHERE a.run_id=r.id AND a.attempt_id=r.attempt_id AND a.name='report.html')
     THEN '/api/runs/' || r.id::text || '/artifacts/report.html' ELSE '' END,
-    dr.script_hash,dr.timeout_ms,dr.workspace_settings
+    dr.script_hash,dr.timeout_ms,dr.workspace_settings,d.editing_session_id,d.summary_run_id,d.summary_description,d.summary_background,d.summary_name
     FROM drafts d JOIN draft_revisions dr ON dr.test_id=d.test_id AND dr.revision=d.current_revision
     LEFT JOIN runs r ON r.id=d.validation_run_id WHERE d.test_id=$1`
 
@@ -83,7 +91,7 @@ func scanDraft(row scanner) (draftState, error) {
 	var d draftState
 	var settings []byte
 	err := row.Scan(&d.TestID, &d.Revision, &d.Script, &d.UpdatedAt, &d.ValidationRunID,
-		&d.ValidationStatus, &d.ReportURL, &d.hash, &d.timeoutMS, &settings)
+		&d.ValidationStatus, &d.ReportURL, &d.hash, &d.timeoutMS, &settings, &d.EditingSessionID, &d.summaryRunID, &d.summaryDescription, &d.summaryBackground, &d.summaryName)
 	if err == nil {
 		d.WorkspaceSettings, err = decodeSettings(settings)
 	}
@@ -91,59 +99,13 @@ func scanDraft(row scanner) (draftState, error) {
 	return d, dbError(err)
 }
 
-// Workspace SHARE -> Test -> Draft is shared by all draft writers. A settings
-// PATCH takes Workspace UPDATE before Test locks, serializing with publication.
-func lockDraft(ctx context.Context, tx *sql.Tx, testID string) (draftState, error) {
-	var settings []byte
-	if err := tx.QueryRowContext(ctx, `SELECT w.settings FROM workspaces w JOIN tests t ON t.workspace_id=w.id
-        WHERE t.id=$1 FOR SHARE OF w`, testID).Scan(&settings); err != nil {
-		return draftState{}, dbError(err)
-	}
-	workspaceSettings, err := decodeSettings(settings)
-	if err != nil {
-		return draftState{}, err
-	}
-	var lockedID string
-	if err := tx.QueryRowContext(ctx, `SELECT id FROM tests WHERE id=$1 FOR UPDATE`, testID).Scan(&lockedID); err != nil {
-		return draftState{}, dbError(err)
-	}
-	d, err := scanDraft(tx.QueryRowContext(ctx, draftSelect+` FOR UPDATE OF d`, testID))
-	if err == nil || !errors.Is(err, ErrNotFound) {
-		return d, err
-	}
-	var script string
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(v.script,'')
-        FROM tests t LEFT JOIN test_versions v ON v.id=t.published_version_id WHERE t.id=$1`, testID).
-		Scan(&script); err != nil {
-		return draftState{}, err
-	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO draft_revisions(test_id,revision,script,script_hash,timeout_ms,workspace_settings)
-        VALUES($1,1,$2,$3,$4,$5)`, testID, script, scriptHash(script), workspaceSettings.TimeoutMS, settingsJSON(workspaceSettings)); err != nil {
-		return draftState{}, err
-	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO drafts(test_id,current_revision) VALUES($1,1)`, testID); err != nil {
-		return draftState{}, err
-	}
-	return scanDraft(tx.QueryRowContext(ctx, draftSelect, testID))
-}
-
+// Read-only: creation is exclusively StartEditingSession.
 func (p *Postgres) Draft(ctx context.Context, testID string) (Draft, error) {
-	tx, err := p.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return Draft{}, err
-	}
-	defer tx.Rollback()
-	d, err := lockDraft(ctx, tx, testID)
-	if err != nil {
-		return Draft{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return Draft{}, err
-	}
-	return d.Draft, nil
+	d, err := scanDraft(p.DB.QueryRowContext(ctx, draftSelect+` AND EXISTS(SELECT 1 FROM editing_sessions e WHERE e.id=d.editing_session_id AND e.status IN ('active','discarding'))`, testID))
+	return d.Draft, err
 }
 
-func (p *Postgres) SaveDraft(ctx context.Context, testID string, revision int, script string) (Draft, error) {
+func (p *Postgres) SaveDraft(ctx context.Context, testID, sessionID string, revision int, script string) (Draft, error) {
 	if len(script) > MaxScriptBytes {
 		return Draft{}, fmt.Errorf("%w: script exceeds 2 MiB", ErrInvalid)
 	}
@@ -152,7 +114,7 @@ func (p *Postgres) SaveDraft(ctx context.Context, testID string, revision int, s
 		return Draft{}, err
 	}
 	defer tx.Rollback()
-	d, err := lockDraft(ctx, tx, testID)
+	d, _, err := requireEditingDraft(ctx, tx, testID, sessionID)
 	if err != nil {
 		return Draft{}, err
 	}
@@ -179,19 +141,19 @@ func saveDraftScript(ctx context.Context, tx *sql.Tx, d draftState, script strin
 		return draftState{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE drafts SET current_revision=current_revision+1,
-            validation_run_id=NULL,updated_at=now() WHERE test_id=$1`, d.TestID); err != nil {
+            validation_run_id=NULL,summary_run_id=NULL,summary_description=NULL,summary_background=NULL,summary_name=NULL,updated_at=now() WHERE test_id=$1`, d.TestID); err != nil {
 		return draftState{}, err
 	}
 	return scanDraft(tx.QueryRowContext(ctx, draftSelect, d.TestID))
 }
 
-func (p *Postgres) ValidateDraft(ctx context.Context, testID string, revision int) (Run, error) {
+func (p *Postgres) ValidateDraft(ctx context.Context, testID, sessionID string, revision int) (Run, error) {
 	tx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return Run{}, err
 	}
 	defer tx.Rollback()
-	d, err := lockDraft(ctx, tx, testID)
+	d, _, err := requireEditingDraft(ctx, tx, testID, sessionID)
 	if err != nil {
 		return Run{}, err
 	}
@@ -214,22 +176,22 @@ func (p *Postgres) ValidateDraft(ctx context.Context, testID string, revision in
 // Reused by author completion; this inserts queued work and never waits for its slot.
 func enqueueValidation(ctx context.Context, tx *sql.Tx, d draftState) (Run, error) {
 	id := NewID()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO runs(id,test_id,kind,draft_revision,script_snapshot,script_hash,timeout_ms,workspace_settings)
-        VALUES($1,$2,'validation',$3,$4,$5,$6,$7)`, id, d.TestID, d.Revision, d.Script, d.hash, d.timeoutMS, settingsJSON(d.WorkspaceSettings)); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO runs(id,test_id,kind,draft_revision,script_snapshot,script_hash,timeout_ms,workspace_settings,editing_session_id)
+        VALUES($1,$2,'validation',$3,$4,$5,$6,$7,$8)`, id, d.TestID, d.Revision, d.Script, d.hash, d.timeoutMS, settingsJSON(d.WorkspaceSettings), d.EditingSessionID); err != nil {
 		return Run{}, err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE drafts SET validation_run_id=$2,updated_at=now() WHERE test_id=$1`, d.TestID, id); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE drafts SET validation_run_id=$2,summary_run_id=NULL,summary_description=NULL,summary_background=NULL,summary_name=NULL,updated_at=now() WHERE test_id=$1`, d.TestID, id); err != nil {
 		return Run{}, err
 	}
 	return scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs r WHERE r.id=$1`, id))
 }
 
-const versionColumns = `id,test_id,source_revision,script,created_at,validation_run_id,workspace_settings`
+const versionColumns = `id,test_id,source_revision,script,created_at,validation_run_id,workspace_settings,description,background_summary,summary_run_id,editing_session_id`
 
 func scanVersion(row scanner) (Version, error) {
 	var v Version
 	var settings []byte
-	err := row.Scan(&v.ID, &v.TestID, &v.Revision, &v.Script, &v.CreatedAt, &v.ValidationRunID, &settings)
+	err := row.Scan(&v.ID, &v.TestID, &v.Revision, &v.Script, &v.CreatedAt, &v.ValidationRunID, &settings, &v.Description, &v.BackgroundSummary, &v.SummaryRunID, &v.EditingSessionID)
 	if err == nil {
 		v.WorkspaceSettings, err = decodeSettings(settings)
 	}
@@ -257,61 +219,63 @@ func (p *Postgres) Versions(ctx context.Context, testID string) ([]Version, erro
 	return items, rows.Err()
 }
 
-func (p *Postgres) Publish(ctx context.Context, testID string, revision int, confirmed bool) (Version, error) {
-	if !confirmed {
-		return Version{}, fmt.Errorf("%w: confirmed must be true", ErrInvalid)
+func (p *Postgres) Publish(ctx context.Context, testID, sessionID string, revision int, summaryID string, confirmed bool) (Version, error) {
+	if !confirmed || !ValidID(sessionID) || !ValidID(summaryID) {
+		return Version{}, ErrInvalid
 	}
 	tx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return Version{}, err
 	}
 	defer tx.Rollback()
-	d, err := lockDraft(ctx, tx, testID)
+	if _, err = lockEditingTest(ctx, tx, testID); err != nil {
+		return Version{}, err
+	}
+	session, err := readEditing(ctx, tx, testID, sessionID)
 	if err != nil {
 		return Version{}, err
 	}
-	if err := checkRevision(revision, d.Revision); err != nil {
-		return Version{}, err
+	if session.Status == "published" {
+		return scanVersion(tx.QueryRowContext(ctx, `SELECT `+versionColumns+` FROM test_versions WHERE editing_session_id=$1 AND source_revision=$2 AND summary_run_id=$3`, sessionID, revision, summaryID))
 	}
-	if d.ValidationRunID == nil {
-		return Version{}, fmt.Errorf("%w: current revision needs validation", ErrConflict)
+	if session.Status != "active" {
+		return Version{}, ErrConflict
 	}
-	var v validationEvidence
-	var key sql.NullString
-	var size sql.NullInt64
-	var settings []byte
-	err = tx.QueryRowContext(ctx, `SELECT r.id,r.test_id,r.kind,r.draft_revision,r.script_snapshot,
-        COALESCE(r.script_hash,''),r.timeout_ms,r.status,a.storage_key,a.size_bytes,r.workspace_settings
-        FROM runs r LEFT JOIN artifacts a ON a.run_id=r.id AND a.attempt_id=r.attempt_id AND a.name='report.html'
-        WHERE r.id=$1 FOR UPDATE OF r`, *d.ValidationRunID).Scan(
-		&v.id, &v.testID, &v.kind, &v.revision, &v.script, &v.hash, &v.timeoutMS, &v.status, &key, &size, &settings)
+	d, err := scanDraft(tx.QueryRowContext(ctx, draftSelect+` FOR UPDATE OF d`, testID))
 	if err != nil {
 		return Version{}, err
 	}
-	v.settings, err = decodeSettings(settings)
+	if d.EditingSessionID != sessionID {
+		return Version{}, ErrConflict
+	}
+	proof, err := p.validationProof(ctx, tx, d)
 	if err != nil {
 		return Version{}, err
 	}
-	v.reportReady = p.reportReady(key, size)
-	if err := checkPublication(revision, confirmed, d, v); err != nil {
+	if err = checkPublication(revision, confirmed, d, proof); err != nil {
 		return Version{}, err
 	}
-	// Repeating the same confirmation returns the original immutable version.
-	published, err := scanVersion(tx.QueryRowContext(ctx, `SELECT `+versionColumns+`
-        FROM test_versions WHERE test_id=$1 AND validation_run_id=$2`, testID, v.id))
-	if errors.Is(err, ErrNotFound) {
-		published, err = scanVersion(tx.QueryRowContext(ctx, `INSERT INTO test_versions
-            (id,test_id,version,source_revision,script,script_hash,timeout_ms,validation_run_id,workspace_settings)
-            SELECT $1,$2,COALESCE(MAX(version),0)+1,$3,$4,$5,$6,$7,$8 FROM test_versions WHERE test_id=$2
-            RETURNING `+versionColumns, NewID(), testID, d.Revision, d.Script, d.hash, d.timeoutMS, v.id, settingsJSON(d.WorkspaceSettings)))
-	}
+	output, err := acceptedSummary(ctx, tx, session, d, summaryID, proof)
 	if err != nil {
 		return Version{}, err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE tests SET published_version_id=$2 WHERE id=$1`, testID, published.ID); err != nil {
+	published, err := scanVersion(tx.QueryRowContext(ctx, `INSERT INTO test_versions
+ (id,test_id,version,source_revision,script,script_hash,timeout_ms,validation_run_id,workspace_settings,description,background_summary,summary_run_id,editing_session_id)
+ SELECT $1,$2,COALESCE(MAX(version),0)+1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12 FROM test_versions WHERE test_id=$2 RETURNING `+versionColumns,
+		NewID(), testID, d.Revision, d.Script, d.hash, d.timeoutMS, proof.id, settingsJSON(d.WorkspaceSettings), output.Description, output.BackgroundSummary, summaryID, sessionID))
+	if err != nil {
 		return Version{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE tests SET published_version_id=$2,description=$3,name=COALESCE($4,name) WHERE id=$1`, testID, published.ID, output.Description, output.Name); err != nil {
+		return Version{}, err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE editing_sessions SET status='published',published_version_id=$2,closed_at=now() WHERE id=$1`, sessionID, published.ID); err != nil {
+		return Version{}, err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM drafts WHERE test_id=$1 AND editing_session_id=$2`, testID, sessionID); err != nil {
+		return Version{}, err
+	}
+	if err = tx.Commit(); err != nil {
 		return Version{}, err
 	}
 	return published, nil

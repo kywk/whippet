@@ -61,18 +61,19 @@ func (a *API) saveDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Revision int     `json:"revision"`
-		Script   *string `json:"script"`
+		EditingSessionID string  `json:"editingSessionId"`
+		Revision         int     `json:"revision"`
+		Script           *string `json:"script"`
 	}
 	if err := decodeBody(w, r, &body); err != nil {
 		a.fail(w, err)
 		return
 	}
-	if body.Script == nil || body.Revision < 1 {
+	if body.Script == nil || body.Revision < 1 || !ValidID(body.EditingSessionID) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "positive revision and script are required")
 		return
 	}
-	item, err := a.store.SaveDraft(r.Context(), id, body.Revision, *body.Script)
+	item, err := a.store.SaveDraft(r.Context(), id, body.EditingSessionID, body.Revision, *body.Script)
 	if err != nil {
 		a.fail(w, err)
 		return
@@ -86,17 +87,18 @@ func (a *API) validateDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Revision int `json:"revision"`
+		EditingSessionID string `json:"editingSessionId"`
+		Revision         int    `json:"revision"`
 	}
 	if err := decodeBody(w, r, &body); err != nil {
 		a.fail(w, err)
 		return
 	}
-	if body.Revision < 1 {
+	if body.Revision < 1 || !ValidID(body.EditingSessionID) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "positive revision is required")
 		return
 	}
-	item, err := a.store.ValidateDraft(r.Context(), id, body.Revision)
+	item, err := a.store.ValidateDraft(r.Context(), id, body.EditingSessionID, body.Revision)
 	if err != nil {
 		a.fail(w, err)
 		return
@@ -111,18 +113,20 @@ func (a *API) publish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Revision  int  `json:"revision"`
-		Confirmed bool `json:"confirmed"`
+		EditingSessionID string `json:"editingSessionId"`
+		SummaryRunID     string `json:"summaryRunId"`
+		Revision         int    `json:"revision"`
+		Confirmed        bool   `json:"confirmed"`
 	}
 	if err := decodeBody(w, r, &body); err != nil {
 		a.fail(w, err)
 		return
 	}
-	if body.Revision < 1 || !body.Confirmed {
+	if body.Revision < 1 || !body.Confirmed || !ValidID(body.EditingSessionID) || !ValidID(body.SummaryRunID) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "positive revision and confirmed:true are required")
 		return
 	}
-	item, err := a.store.Publish(r.Context(), id, body.Revision, body.Confirmed)
+	item, err := a.store.Publish(r.Context(), id, body.EditingSessionID, body.Revision, body.SummaryRunID, body.Confirmed)
 	if err != nil {
 		a.fail(w, err)
 		return

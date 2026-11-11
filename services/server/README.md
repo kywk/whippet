@@ -1,6 +1,6 @@
 # Whippet Server
 
-Go 單一服務，依 [`mvp-v1`](../../contracts/mvp-v1.md)～[`mvp-v6`](../../contracts/mvp-v6.md) 提供 HTTP API、PostgreSQL 佇列、Manager WebSocket gateway、持久對話、報告附件與即時監看。M1～M4 已完成整合驗收；M5 Server／Web 隔離驗收通過，Runtime 設定接線由 PM 接續。M6 Server 失敗證據附件已通過 Go／獨立 PostgreSQL 檢查，真實附件端到端尚待整合。
+Go 單一服務，依 [`mvp-v1`](../../contracts/mvp-v1.md)～[`mvp-v7`](../../contracts/mvp-v7.md) 提供 HTTP API、PostgreSQL 佇列、Manager WebSocket gateway、持久對話、報告附件與即時監看。M1～M6 已有本機整合證據；M7 Server 編輯週期／摘要已通過相關 Go 與 PM 獨立 PostgreSQL 檢查，Web／Runtime 主流程隔離整合待 PM 安排。
 
 M1 已於 2026-11-11 驗收完成。總指揮與 Muse 已確認真實成功 Run、斷言失敗 Run 及兩份 HTML report 正常；storage shim 修正後成功報告顯示 Passed 1／Failed 0，失敗報告顯示 Passed 0／Failed 1。完整 Run ID 與驗證來源見 [DELIVERY.md](DELIVERY.md)。
 
@@ -151,20 +151,42 @@ M2 取消增補：Server 送相同 envelope 的 `type:"cancel"`、既有 runId�
 
 若取消的 attempt 尚未 ACK，Server 會先重送相同 attempt 的 dispatch，再送 cancel，讓 Manager 可辨識該 attempt 並回報結果；不建立新的 attempt。
 
-## M2 草稿、驗證與發布
+## M7 編輯週期與驗收摘要
+
+`GET /api/tests/:id` 的 `activeEditingSession` 為 null 或 `{id,status,draftRevision,updatedAt}`，無建立副作用。一般模式使用它判斷草稿存在；**GET draft／conversation 不再自動建立資料**，無當前週期回 404。以下行為覆蓋 M2／M3 舊契約：
+
+| Method | Path | 行為 |
+| --- | --- | --- |
+| POST | `/api/tests/:id/editing-session` | body {}；201 開始，200 接續同週期；discarding 回 409 |
+| GET | `/api/tests/:id/editing-session` | 純讀 `{session:null|EditingSession}` |
+| GET | `/api/tests/:id/editing-sessions/:sessionId` | 讀指定週期，包含已發布／已放棄 |
+| POST | `/api/tests/:id/editing-sessions/:sessionId/discard` | `{revision,confirmed:true}`，202 等取消／回收，200 已放棄 |
+| POST | `/api/tests/:id/draft/summary` | `{editingSessionId,revision,validationRunId}`，冪等 `{run}`，失敗可獨立重試 |
+
+Session 帶來源版本、conversationId、contextRevision／conversationSummary、目前 draft／summary、pendingRunIds／reclaimPending。每個 Test 最多一個 active／discarding 週期；發布／放棄後關閉週期、移除目前草稿指標，保留歷史對話、revision、Run、附件。下一次 start 從目前正式版取腳本與版本背景，設定取目前 Workspace，revision 繼續遞增。
+
+新 user 訊息與接受的 edit 回覆遞增 contextRevision、失效舊摘要；未改腳本／設定時保留驗證。Web 在真實驗證成功且報告就緒後觸發 summary，失敗時由使用者明確重試，不無限自動重試。摘要不能改腳本，只產 description／backgroundSummary／optional name；只有 QA confirmed publish 才保存到不可變版本及套用名稱。
+
+author 任務仍共用原 FIFO／author.json，新增可信 skillId（test-author／acceptance-summary）、skillVersion="1"、allowedTools、editingSessionId、contextRevision、sourceVersion／conversationSummary；不傳重複 mode。summary 使用空工具集合，允許 messages=[]，完整 script 與 validationEvidence 必填。公開 Run.authorMode 由 skillId 推導。完整 wire 規格見 mvp-v7。
+
+Migration 008 保留真實未發布或仍有活躍／未回收任務的舊草稿；與正式版一致且無活躍任務的舊指標會封存。舊 Version.description／backgroundSummary 為 null，UI 須明示舊版缺值，不能拿目前 Test.description 冒充歷史說明。Worker 遠端歷史工具延 M9，M7 只用持久週期摘要＋近期訊息。
+
+放棄須等該週期 Run 全終態，且已派送 attempt 的 slot 由 Manager heartbeat 確認回收才完成；正式 Run 不取消。晚到／重送結果不會建立草稿、套用到新週期或續排驗證。服務重啟後由原 Engine Tick 繼續收尾，不需另一套排程。
+
+## 草稿、驗證與發布（M7 覆蓋 M2）
 
 | Method | Path | 請求／回應 |
 | --- | --- | --- |
-| POST | `/api/workspaces/:id/tests` | `{name,description?}` → 201 未發布 Test |
-| GET | `/api/tests/:id/draft` | Draft；初次為 revision 1，從已發布腳本或空腳本建立 |
-| PUT | `/api/tests/:id/draft` | `{revision,script}` → Draft；過期 revision 回 409 |
-| POST | `/api/tests/:id/draft/validate` | `{revision}` → 202 validation Run |
-| POST | `/api/tests/:id/publish` | `{revision,confirmed:true}` → 201 Version |
+| POST | `/api/workspaces/:id/tests` | `{name?,description?}` → 201；無 name 暫用「未命名測試」 |
+| GET | `/api/tests/:id/draft` | 純讀目前週期 Draft；無則 404 |
+| PUT | `/api/tests/:id/draft` | `{editingSessionId,revision,script}` → Draft；過期回 409 |
+| POST | `/api/tests/:id/draft/validate` | `{editingSessionId,revision}` → 202 validation Run |
+| POST | `/api/tests/:id/publish` | `{editingSessionId,revision,summaryRunId,confirmed:true}` → 201 Version |
 | GET | `/api/tests/:id/versions` | `{items:[Version]}`，新到舊 |
 
 每個 Test 只有一筆 Draft。實際改動腳本才遞增 revision 並清除 validationRunId；相同內容儲存保留 revision，但仍核對 optimistic lock。腳本上限 2 MiB；空草稿可保存，不能驗證。每次 validate 固定腳本、SHA256 與 timeout 快照，並讓最新 validation Run 成為該草稿的發布依據。
 
-發布在同一 DB transaction 內鎖定 Test／Draft／validation Run，核對目前 revision、驗證內容雜湊／腳本／timeout、succeeded、使用者確認，以及目前 attempt 的 report.html 索引與實體檔案可讀且大小相符。任一門檻不符不建立版本；缺確認回 400，驗證或報告不符回 409。同一次 validation 重複確認回傳原版本，不重複產生版本。
+發布在同一 DB transaction 內沿 Workspace／Test／Session／Draft 鎖序核對目前 revision、驗證內容雜湊／腳本／timeout／設定、succeeded、使用者確認，以及目前 attempt 的 report.html 索引與實體檔案可讀且大小相符；另需相同 session／contextRevision／validation attempt 的成功摘要。任一門檻不符不建立版本；缺確認回 400，驗證、摘要或報告不符回 409。同一發布確認重送回傳原版本，不重複產生版本。
 
 發布版本、歷史 revision 與 Run 腳本／設定快照由 DB trigger 防止修改；草稿後續修改不影響已建立 Run。正式 Run 只執行已發布版本，未發布回 409。Run 增加 `kind`、`draftRevision?`、`versionId?`。M1 種子版本保留原資料，Version 的 `validationRunId` 為 null；M2 新發布版本會附對應 validation Run ID。
 
@@ -207,10 +229,10 @@ Manager WebSocket 輸出先 Marshal 完整 JSON，再用 Gorilla 未壓縮的 se
 
 | Method | Path | 請求／回應 |
 | --- | --- | --- |
-| GET | `/api/tests/:id/conversation` | 首次建立空 Conversation；回傳完整已保存訊息與 activeRunId? |
-| POST | `/api/tests/:id/messages` | `{content,revision}` → 202 `{run,conversationId}` |
+| GET | `/api/tests/:id/conversation` | 純讀當前週期；可帶 `?editingSessionId=...`，回完整訊息與 activeRunId? |
+| POST | `/api/tests/:id/messages` | `{editingSessionId,content,revision}` → 202 `{run,conversationId}` |
 
-每個 Test 一個 Conversation，同時最多一個未完成 author Run。空訊息或超過 16000 Unicode 字元回 400，過期 revision 或已有 author 回 409。user 訊息與 author Run 在同一交易保存；Run 固定當下草稿腳本／revision，並取最近最多 12 則、總 32000 字元的對話作為 dispatch 快照，保留完整本輪 user 訊息。完整歷史不受模型 context 裁切影響。
+每個 EditingSession 一個 Conversation，每 Test 同時最多一個未完成 author Run（含 summary）。空編輯訊息或超過 16000 Unicode 字元回 400，過期 revision 或已有 author 回 409。user 訊息與 author Run 在同一交易保存；Run 固定當下草稿腳本／revision，取週期摘要與最近最多 12 則、總 32000 字元作 dispatch 快照，保留完整本輪 user 訊息。完整週期歷史不受模型 context 裁切影響。
 
 author 與其他 Run 共用 FIFO、取消與回收名額規則。dispatch 為 `{kind:"author",script,timeoutMs:180000,author:{conversationId,baseRevision,messages:[{role,content}],validation?}}`；validation 是送出時目前草稿驗證 Run 的固定 `{runId,status,error?}` 摘要，error 最多 4000 Unicode 字元，供 Runtime 的 `read_validation_report` 工具使用，不讀 HTML。無摘要的舊 payload 仍相容。Server 不讀取或轉送模型 key，一般 run／validation 仍送 `kind:"run"`。
 

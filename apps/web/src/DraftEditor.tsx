@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { ApiError, errorMessage, resolveReportUrl } from './api';
 import { formatDate, Loading, Notice, ReportLink, StatusBadge } from './components';
 import { useResource } from './hooks';
 import { ConversationPanel } from './ConversationPanel';
+import { AcceptanceSummaryCard } from './AcceptanceSummary';
 import { isActiveRun } from './types';
-import type { Draft, Run, Version, WhippetApi } from './types';
+import type { Draft, EditingSession, Run, Version, WhippetApi } from './types';
 
 interface Props {
   api: WhippetApi;
@@ -16,6 +18,11 @@ interface Props {
   onDirtyChange: (dirty: boolean) => void;
   onRefreshRuns: () => void;
   settingsRefresh: number;
+  onDraftChange: (draft: Draft) => void;
+  children?: ReactNode;
+  session: EditingSession;
+  sessionRefreshing: boolean;
+  onRefreshSession: () => Promise<EditingSession | undefined>;
 }
 
 export function DraftEditor(props: Props) {
@@ -23,19 +30,18 @@ export function DraftEditor(props: Props) {
   settingsSequence.current = props.settingsRefresh;
   const load = useCallback(async (signal: AbortSignal) => {
     const sequence = settingsSequence.current;
-    const draft = await props.api.getDraft(props.testId, signal);
+    const draft = await props.api.getDraft(props.testId, props.session.id, signal);
     return { draft, sequence };
-  }, [props.api, props.testId]);
+  }, [props.api, props.testId, props.session.id]);
   const resource = useResource(load);
-  return <section className="draft-section" aria-labelledby="draft-title">
-    <h3 id="draft-title">草稿編輯</h3>
+  return <section className="draft-section" aria-label="對話編輯工作區">
     {resource.loading ? <Loading text="正在載入草稿…" /> : null}
     {resource.error ? <Notice message={resource.error} retry={resource.retry} /> : null}
     {resource.data ? <DraftForm {...props} initial={resource.data.draft} initialSettingsSequence={resource.data.sequence} /> : null}
   </section>;
 }
 
-function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, onDirtyChange, onRefreshRuns, settingsRefresh, initialSettingsSequence }: Props & { initial: Draft; initialSettingsSequence: number }) {
+function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, onDirtyChange, onRefreshRuns, settingsRefresh, onDraftChange, children, initialSettingsSequence, session, sessionRefreshing, onRefreshSession }: Props & { initial: Draft; initialSettingsSequence: number }) {
   const [draft, setDraft] = useState(initial);
   const [script, setScript] = useState(initial.script);
   const [busy, setBusy] = useState<'save' | 'validate' | 'publish' | 'reload'>();
@@ -47,11 +53,16 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
   const [syncing, setSyncing] = useState(false);
   const [qualificationFresh, setQualificationFresh] = useState(true);
   const [settingsSyncing, setSettingsSyncing] = useState(false);
+  const [conversationGuarded, setConversationGuarded] = useState(false);
+  const [summaryRequestBusy, setSummaryRequestBusy] = useState(false);
+  const [invalidatedSummaryId, setInvalidatedSummaryId] = useState<string>();
   const minimumDraftRevision = useRef(initial.revision);
   const actionLock = useRef(false);
   const actionController = useRef<AbortController | null>(null);
   const [syncRevision, setSyncRevision] = useState(0);
   const dirty = script !== draft.script;
+  const readOnly = session.status !== 'active';
+  const activeAuthor = runs.some((run) => run.kind === 'author' && isActiveRun(run));
   const editorState = useRef({ draft, script, busy });
   editorState.current = { draft, script, busy };
   const synchronizeDraft = useCallback((next: Draft, source: 'author' | 'settings' = 'author') => {
@@ -71,13 +82,14 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
       setMessage(source === 'settings' ? `已同步設定變更後的草稿 revision ${next.revision}，請重新驗證。已發佈版本維持原設定。` : `已同步 AI 完成後的草稿 revision ${next.revision}，仍需驗證與人工確認發佈。`);
     }
   }, []);
+  useEffect(() => { if (session.draft) synchronizeDraft(session.draft); }, [session.draft, synchronizeDraft]);
   const lastSettingsSequence = useRef(initialSettingsSequence);
   const settingsPending = settingsRefresh !== lastSettingsSequence.current;
   useEffect(() => {
     if (settingsRefresh === lastSettingsSequence.current) return;
     const controller = new AbortController();
     setSettingsSyncing(true); setQualificationFresh(false); setConfirmed(false);
-    api.getDraft(testId, controller.signal).then(
+    api.getDraft(testId, session.id, controller.signal).then(
       (next) => {
         if (controller.signal.aborted) return;
         if (next.revision < minimumDraftRevision.current) {
@@ -87,7 +99,7 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
         }
         minimumDraftRevision.current = next.revision;
         lastSettingsSequence.current = settingsRefresh;
-        synchronizeDraft(next, 'settings'); setSettingsSyncing(false);
+        synchronizeDraft(next, 'settings'); setSettingsSyncing(false); void onRefreshSession().catch(() => undefined);
       },
       (cause: unknown) => {
         if (controller.signal.aborted) return;
@@ -96,7 +108,7 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
       },
     );
     return () => controller.abort();
-  }, [api, testId, settingsRefresh, synchronizeDraft]);
+  }, [api, testId, session.id, settingsRefresh, synchronizeDraft, onRefreshSession]);
   const useCandidate = useCallback((candidate: string): boolean => {
     const current = editorState.current;
     if (current.busy) return false;
@@ -106,7 +118,8 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
     return true;
   }, []);
   // 請求中的變更也應受導覽保護，避免切頁後誤認 POST 未送出。
-  const guarded = dirty || Boolean(busy);
+  const guarded = dirty || Boolean(busy) || conversationGuarded || summaryRequestBusy || activeAuthor || session.status === 'discarding';
+  useEffect(() => { onDraftChange(draft); }, [draft, onDraftChange]);
 
   useEffect(() => {
     onDirtyChange(guarded);
@@ -130,7 +143,7 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
     if (!completedValidation && syncRevision === 0) return;
     const controller = new AbortController();
     setSyncing(true);
-    api.getDraft(testId, controller.signal).then(
+    api.getDraft(testId, session.id, controller.signal).then(
       (next) => {
         if (controller.signal.aborted) return;
         if (next.revision < minimumDraftRevision.current) { setSyncing(false); return; }
@@ -157,14 +170,18 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
       },
     );
     return () => controller.abort();
-  }, [api, testId, savedRevision, savedScript, completedValidation, syncRevision]);
+  }, [api, testId, session.id, savedRevision, savedScript, completedValidation, syncRevision]);
 
   const report = resolveReportUrl(draft.reportUrl, apiBase, window.location.href);
   const validating = validation ? isActiveRun(validation) : Boolean(draft.validationStatus && ['queued', 'dispatched', 'running', 'collecting', 'cancelling'].includes(draft.validationStatus));
-  const eligible = !dirty && !conflict && !syncing && !settingsSyncing && !settingsPending && qualificationFresh && draft.validationStatus === 'succeeded' && Boolean(draft.validationRunId && report);
+  const summary = session.summary;
+  const summaryValid = Boolean(summary && summary.status === 'succeeded' && summary.validForCurrentDraft && summary.revision === draft.revision && summary.validationRunId === draft.validationRunId && summary.runId !== invalidatedSummaryId && summary.description?.trim() && summary.backgroundSummary?.trim());
+  const eligible = !readOnly && !dirty && !conflict && !syncing && !settingsSyncing && !settingsPending && !sessionRefreshing && !activeAuthor && !summaryRequestBusy && !conversationGuarded && summaryValid && qualificationFresh && draft.validationStatus === 'succeeded' && Boolean(draft.validationRunId && report);
+  useEffect(() => { setConfirmed(false); }, [summary?.runId, summaryValid, session.status]);
 
   async function perform(kind: NonNullable<typeof busy>, discard = false) {
     if (actionLock.current) return;
+    if (readOnly) return;
     if (kind !== 'reload' && (settingsSyncing || settingsPending)) return;
     if (kind === 'reload' && dirty && !discard) { setReloadWarning(true); return; }
     if ((kind === 'validate' && (dirty || conflict || !script.trim())) || (kind === 'publish' && (!eligible || !confirmed))) return;
@@ -174,7 +191,7 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
     setBusy(kind); setError(undefined); setMessage(undefined);
     try {
       if (kind === 'save' || kind === 'reload') {
-        const next = kind === 'save' ? await api.saveDraft(testId, draft.revision, script, controller.signal) : await api.getDraft(testId, controller.signal);
+        const next = kind === 'save' ? await api.saveDraft(testId, session.id, draft.revision, script, controller.signal) : await api.getDraft(testId, session.id, controller.signal);
         if (controller.signal.aborted) return;
         if (next.revision < minimumDraftRevision.current) {
           setConflict(true); setQualificationFresh(false); setConfirmed(false);
@@ -186,8 +203,9 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
         lastSettingsSequence.current = settingsRefresh;
         setQualificationFresh(true);
         setMessage(kind === 'save' ? `已儲存 revision ${next.revision}。` : `已載入 revision ${next.revision}。`);
+        void onRefreshSession().catch(() => undefined);
       } else if (kind === 'validate') {
-        const run = await api.validateDraft(testId, draft.revision, controller.signal);
+        const run = await api.validateDraft(testId, session.id, draft.revision, controller.signal);
         if (controller.signal.aborted) return;
         if (draft.revision < minimumDraftRevision.current) {
           onRun(run); setConfirmed(false);
@@ -198,8 +216,10 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
         setQualificationFresh(false);
         setConfirmed(false); onRun(run);
         setMessage(`revision ${draft.revision} 已送出驗證，進度與取消操作可在執行紀錄查看。`);
+        void onRefreshSession().catch(() => undefined);
       } else {
-        const version = await api.publishTest(testId, draft.revision, controller.signal);
+        if (!summary) return;
+        const version = await api.publishTest(testId, session.id, draft.revision, summary.runId, controller.signal);
         if (controller.signal.aborted) return;
         setConfirmed(false); onPublished(version);
         setMessage(`已發佈 revision ${version.revision}，版本 ${version.id}。`);
@@ -216,35 +236,42 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
   }
 
   return <>
-    <ConversationPanel api={api} apiBase={apiBase} testId={testId} draft={draft} draftDirty={dirty} draftBusy={Boolean(busy) || syncing || settingsSyncing || settingsPending || conflict} runs={runs} onRun={onRun} onRefreshRuns={onRefreshRuns} onSynchronized={synchronizeDraft} onUseCandidate={useCandidate} />
+    <ConversationPanel api={api} apiBase={apiBase} testId={testId} editingSessionId={session.id} draft={draft} draftDirty={dirty} draftBusy={readOnly || Boolean(busy) || syncing || settingsSyncing || settingsPending || conflict || summaryRequestBusy} runs={runs} onRun={onRun} onRefreshRuns={onRefreshRuns} onSynchronized={synchronizeDraft} onUseCandidate={useCandidate} onGuardChange={setConversationGuarded} onConversationChanged={() => { setInvalidatedSummaryId(session.summary?.runId); setConfirmed(false); void onRefreshSession().catch(() => undefined); }} onRefreshSession={onRefreshSession} />
+    <details className="session-background"><summary>本次編輯的版本背景</summary><p>來源版本：{session.sourceVersionId ?? '尚無正式版本'}</p><h4>來源版本說明</h4><p className="summary-content">{session.sourceVersion?.description ?? '來源版本尚無獨立說明（舊資料或新測試）。'}</p><h4>來源背景摘要</h4><p className="summary-content">{session.sourceVersion?.backgroundSummary ?? '尚未提供來源背景摘要。'}</p><h4>本次對話背景</h4><p className="summary-content">{session.conversationSummary ?? '此編輯週期尚無已保存的對話摘要。'}</p></details>
+    {children}
+    <section className="draft-tools" aria-labelledby="draft-tools-title"><h3 id="draft-tools-title">草稿與驗證</h3>
     <div className="draft-meta"><span>revision {draft.revision}{dirty ? ' · 有未儲存變更' : ' · 已儲存'}</span><span>更新：{formatDate(draft.updatedAt)}</span></div>
     {draft.workspaceSettings ? <p className="inline-hint">草稿設定版本 {draft.workspaceSettings.revision} · 執行逾時 {draft.workspaceSettings.timeoutMs.toLocaleString('zh-TW')} 毫秒</p> : null}
     {settingsSyncing ? <p className="inline-hint" role="status">正在同步 Workspace 設定與草稿，暫時不可驗證或發佈。</p> : null}
+    <details className="manual-script"><summary>腳本預覽與手動編輯{dirty ? ' · 有未儲存變更' : ''}</summary>
     <label className="field-label" htmlFor="draft-script">Playwright TypeScript 腳本</label>
-    <textarea id="draft-script" className="script-editor" rows={16} value={script} spellCheck={false} autoCapitalize="off" autoCorrect="off" disabled={Boolean(busy)} onChange={(event) => { setScript(event.target.value); setConfirmed(false); setMessage(undefined); }} aria-describedby="draft-help" />
-    <p id="draft-help" className="inline-hint">先儲存，再驗證目前 revision。修改腳本後，必須重新儲存並驗證，才可發佈。</p>
+    <textarea id="draft-script" className="script-editor" rows={16} value={script} spellCheck={false} autoCapitalize="off" autoCorrect="off" disabled={readOnly || Boolean(busy)} onChange={(event) => { setScript(event.target.value); setConfirmed(false); setMessage(undefined); }} aria-describedby="draft-help" />
+    <p id="draft-help" className="inline-hint">可直接描述需求讓 AI 修改。手動修改後，先儲存再驗證目前 revision。</p>
+    </details>
     <div className="action-row">
-      <button className="button secondary" disabled={Boolean(busy) || settingsSyncing || settingsPending || !dirty || conflict} onClick={() => perform('save')}>{busy === 'save' ? '儲存中…' : '儲存草稿'}</button>
-      <button className="button secondary" disabled={Boolean(busy) || settingsSyncing || settingsPending || dirty || conflict || validating || !script.trim()} onClick={() => perform('validate')}>{busy === 'validate' ? '送出中…' : validating ? '驗證進行中' : '驗證此 revision'}</button>
-      <button className="button quiet" disabled={Boolean(busy)} onClick={() => perform('reload')}>重新載入草稿</button>
+      <button className="button secondary" disabled={readOnly || Boolean(busy) || settingsSyncing || settingsPending || !dirty || conflict} onClick={() => perform('save')}>{busy === 'save' ? '儲存中…' : '儲存草稿'}</button>
+      <button className="button secondary" disabled={readOnly || Boolean(busy) || settingsSyncing || settingsPending || dirty || conflict || validating || !script.trim()} onClick={() => perform('validate')}>{busy === 'validate' ? '送出中…' : validating ? '驗證進行中' : '驗證此 revision'}</button>
+      <button className="button quiet" disabled={readOnly || Boolean(busy)} onClick={() => perform('reload')}>重新載入草稿</button>
     </div>
-    {conflict ? <Notice message="目前 revision 或驗證資格已過期（409），不會自動覆寫 Server。編輯內容仍保留在上方；可先複製，再重新載入最新草稿。" /> : null}
+    {conflict ? <Notice message="目前草稿或驗證資格已變更，不會自動覆寫。本機編輯仍保留，可先複製需要的內容，再重新載入最新草稿。" /> : null}
     {reloadWarning ? <div className="confirmation-panel"><p>重新載入會放棄目前未儲存內容，請先複製需要保留的腳本。</p><div className="action-row">
       <button className="button secondary" disabled={Boolean(busy)} onClick={() => perform('reload', true)}>確定放棄並重新載入</button>
       <button className="button quiet" disabled={Boolean(busy)} onClick={() => setReloadWarning(false)}>繼續編輯</button>
     </div></div> : null}
     {error ? <Notice message={error} /> : null}
     {message ? <p className="action-message" role="status">{message}</p> : null}
+    <AcceptanceSummaryCard api={api} apiBase={apiBase} testId={testId} session={session} draft={draft} runs={runs} blocked={readOnly || dirty || Boolean(busy) || syncing || settingsSyncing || settingsPending || conflict || conversationGuarded || sessionRefreshing || activeAuthor} onRun={onRun} onRefresh={onRefreshSession} onBusyChange={setSummaryRequestBusy} />
     <div className="publish-panel">
       <div className="section-heading"><h4>驗證與發佈</h4><button className="button quiet compact" disabled={Boolean(busy) || syncing} onClick={() => setSyncRevision((value) => value + 1)}>{syncing ? '同步中…' : '重新整理驗證狀態'}</button></div>
       <div className="validation-summary">
         {validation ? <StatusBadge status={validation.status} /> : draft.validationStatus ? <StatusBadge status={draft.validationStatus} /> : <span className="muted">尚未驗證目前 revision</span>}
         <ReportLink reportUrl={draft.reportUrl} apiBase={apiBase} label="查看草稿驗證報告" />
       </div>
-      {validation?.error ? <pre className="run-error">{validation.error}</pre> : null}
-      <p className="inline-hint">{dirty ? '目前有未儲存變更，上方驗證結果只對應已儲存腳本。' : eligible ? '目前 revision 驗證通過且報告就緒。請先檢視報告，再明確確認發佈。' : '需目前 revision 驗證通過、報告就緒，且沒有未儲存變更，才可發佈。'}</p>
-      <label className="checkbox-label"><input type="checkbox" checked={confirmed} disabled={!eligible || Boolean(busy)} onChange={(event) => setConfirmed(event.target.checked)} />我已檢視驗證報告，確認發佈 revision {draft.revision}</label>
+      {validation?.error ? <details className="error-details"><summary>查看驗證錯誤</summary><pre className="run-error">{validation.error}</pre></details> : null}
+      <p className="inline-hint">{dirty ? '目前有未儲存變更，上方驗證結果只對應已儲存腳本。' : eligible ? '目前 revision 的驗證、報告與驗收摘要皆已就緒，請檢視後明確確認發佈。' : '需目前 revision 驗證通過、報告與有效驗收摘要就緒，且沒有未儲存變更或未送出訊息，才可發佈。'}</p>
+      <label className="checkbox-label"><input type="checkbox" checked={confirmed} disabled={!eligible || Boolean(busy)} onChange={(event) => setConfirmed(event.target.checked)} />我已檢視驗證報告與驗收摘要，確認發佈 revision {draft.revision}</label>
       <button className="button primary" disabled={!eligible || !confirmed || Boolean(busy)} onClick={() => perform('publish')}>{busy === 'publish' ? '發佈中…' : `確認發佈 revision ${draft.revision}`}</button>
     </div>
+    </section>
   </>;
 }

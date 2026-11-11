@@ -1,6 +1,40 @@
-# Runtime M6、M5 與既有交付
+# Runtime M7 與既有交付
 
-更新：2026-11-11（Asia/Taipei）。Owner：Runtime Agent。
+更新：2026-11-12（Asia/Taipei）。Owner：Runtime Agent t32，gpt-6.1-sol／xhigh。
+
+## 最新 M7.3：兩個固定 skill 與唯讀驗收摘要
+
+依 `contracts/mvp-v7.md` **頂部固定決策**及 PM 補充實作；未採暫存提案的 context／mode 或 artifact metadata。只改 `services/manager/`、`runtimes/worker/`；未安裝套件、執行 Git、讀印真實憑證、啟動瀏覽器／Docker、呼叫真模型、部署或重啟服務，未修改 docs／contracts。
+
+| 位置 | 變更與限制 |
+| --- | --- |
+| Worker `skills/test-author/SKILL.md`、`skills/acceptance-summary/SKILL.md` | 兩個明確任務 skill，skillVersion 固定字串 `1`。沿 skill-creator／writing-for-agents 規範撰寫，沒有外掛平台、任意路徑、動態下載或新 SDK。 |
+| `skills/playwright-authoring/recipe.md`、既有 SKILL.md | 將已驗證的 locator／listitem／web-first／完整 spec／PNG recipe 抽成單一共用檔；legacy 流程仍保留，兩個新 skill 也載入 recipe。摘要只以例子理解記錄中的程式，不執行例子。 |
+| `src/author/skill.ts` | module URL 定位／去 frontmatter／快取及每檔 4096-byte 上限；固定 ID 映射並核對 version，未知／不完整 pin 不降級到 legacy。COPY skills 的既有 Dockerfile 已涵蓋新檔，不改 Dockerfile／lockfile。 |
+| `src/author/types.ts` | 平面 skillId／skillVersion／allowedTools／editingSessionId／contextRevision／sourceVersion／conversationSummary／validationEvidence。完整驗證 hash／revision／成功證據／stats 與 byte 界限；summary 可 messages=[]，完整 script 與合格 evidence 仍必填；edit／legacy 仍需 user 訊息。拒絕另一套 mode／context／reportUrl。 |
+| `src/author/loop.ts` | 每輪模型請求帶固定完整稿、Workspace、來源版本及週期摘要 DATA；保持原 Responses adapter／reasoningEffort／conversationId session／stateless reasoning。edit 的工具宣告和實際執行都限制在 allowedTools 子集；本輪候選仍只由工具變動。新 edit 最終 JSON 可維護 conversationSummary，最多 8192 UTF-8 bytes。 |
+| `src/author/main.ts` | 先驗輸入，再僅為非 summary 建立 ExplorationBrowser／observer。summary 不建 browser，不抓報告或遠端歷史、不執行 spec；只一次模型 request，無自動重試。共同總時限維持最多 180000 ms。 |
+| 摘要輸出 | 嚴格只有 message／description／backgroundSummary／optional name；description 16384 bytes、backgroundSummary 8192 bytes、name 200 bytes，message 沿既有界限。拒絕 script、requestValidation、skillId／session 等額外欄位，也拒絕任何模型 function_call。綁定只取 Server 保存 input，artifact 不回填。 |
+| Manager `protocol.go`、`author_skill.go`、`author.go` | 接收固定欄位、拒絕未知／半套 pin、校驗允許工具及 evidence 的 revision／SHA256；JSON null／contextRevision 0／空 tools/messages 原樣保留。legacy author 仍可用，頂層 workspaceSettings／timeout 語義不改。 |
+| Manager `manager.go`、`journal.go`、`artifacts.go` | 同一 kind=author／入口／容量／取消回收與 author.json（2 MiB）管線。有界固定非機密 Author input 保存到 journal，recovery 以該輸入選輸出 schema，不信任 artifact 自報類型，也不重跑 attempt。普通 Run 不新增 AI key。 |
+
+實際檢查，均無真模型／瀏覽器：
+
+- Worker 正式 `npm run build` **PASS**，最新 `runtimes/worker/dist/` 已更新。
+- `node --test dist/author/author.test.js dist/author/m7.test.js`：**13/13 PASS**，包含 4 項 M7 mock 與受影響 legacy／M5 author 行為。request capture 證明 skill／共用 recipe 真正進 instructions、平面可信快照進 input、空 summary messages、不宣告或執行越權工具、summary 不需要 browser、來源 DATA 不變系統指令、輸出無 metadata、byte overflow／錯 pin／hash／revision 在適當階段拒絕。
+- Manager `go test -mod=readonly ./internal/manager -run '^TestM7|^TestM3Author' -count=1`：**PASS，0.565s**。3 項 M7 覆蓋 dispatch→input→journal 無損、未知 schema／缺字段／錯 hash 拒絕、以保存輸入決定摘要或 edit artifact schema，以及 legacy 相容；沿用受影響 M3 的 key 白名單／取消回收／同 attempt 去重檢查。
+- Go build／Linux arm64 交叉編譯 **PASS**，產物 `/private/tmp/whippet-manager-m7`；使用既有 GOCACHE、GOPROXY=off、GOSUMDB=off、-mod=readonly，未下載依賴。
+- skill-creator `quick_validate.py` 已嘗試，但缺 **PyYAML（ModuleNotFoundError: yaml）而未執行成功**。未安裝、未另造替代驗證框架；人工檢視 frontmatter／引用，並保留實際 loader/request capture 證據。不能將此腳本列 PASS。
+
+交付資產：最新 **dist＋完整 skills/**（只配送 dist 不足），以及上述 Manager binary。M7 沒有更動 M5 媒體／M6 附件管線，不重跑無關 M1–M6。
+
+整合限制／接手：
+
+1. Server 需同步固定 payload 與嚴格 author.json schema，再以保存 input／session／baseRevision／contextRevision／validationRunId 等交易核對套用與發佈。Runtime 檢查不能替代 Server 的 settings／timeout／附件實體資格。摘要 Run succeeded 只代表摘要完成，不能視為新 Playwright 成功。
+2. summary 的空 messages 要用 JSON `[]`，不是 null；nullable sourceVersion／conversationSummary 仍需保留欄位。edit 的 plain-text legacy 回覆保持相容；**新 test-author@1** 要依載入 skill 回 JSON message／optional conversationSummary，不能加另一套 output。
+3. 摘要由 Web 呼叫冪等 endpoint 觸發，Runtime 不新增自動排程或續接驗證。已成功驗證下只重試摘要的 Server／Web 流程、放棄晚到結果與 QA 發佈門檻，由各 owner／PM 整合。
+4. legacy 缺版本背景／週期摘要時維持 null，不假造。遠端歷史工具延 M9；M7 僅有界摘要＋近期訊息。M8 的出站限制、機密引用與遮蔽尚未實作，不用 prompt 宣稱已隔離；journal／模型輸入只接受這批非機密快照。
+5. 真模型與 Server／Web 完整 M7 主流程尚未執行，由 PM 另排；不宣稱只靠 mock 已完成產品驗收。本輪程式固定後待命，不自行部署。
 
 ## PM 最終隔離整合回報
 

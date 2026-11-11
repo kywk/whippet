@@ -33,7 +33,7 @@ test('本機頁面', async ({ page }) => {
     const createdAt = new Date(Date.now() - 60_000).toISOString();
     const validationRunId = crypto.randomUUID();
     runs.set(validationRunId, { id: validationRunId, testId: test.id, status: 'succeeded', kind: 'validation', draftRevision: 1, createdAt, finishedAt: createdAt, reportUrl: '/mock-report.html' });
-    versions.set(test.publishedVersionId!, { id: test.publishedVersionId!, testId: test.id, revision: 1, script: seedScript, createdAt, validationRunId });
+    versions.set(test.publishedVersionId!, { id: test.publishedVersionId!, testId: test.id, revision: 1, script: seedScript, createdAt, validationRunId, description: null, backgroundSummary: null, summaryRunId: null, editingSessionId: null });
     drafts.set(test.id, { testId: test.id, revision: 1, script: seedScript, updatedAt: createdAt, validationRunId, validationStatus: 'succeeded', reportUrl: '/mock-report.html' });
   }
 
@@ -106,30 +106,29 @@ test('本機頁面', async ({ page }) => {
       return progress(run);
     },
     async createTest(workspaceId, input) {
-      if (!input.name.trim()) throw new ApiError('請輸入測試名稱。', 'INVALID_NAME', 400);
-      const test: Test = { id: crypto.randomUUID(), workspaceId, name: input.name, description: input.description ?? '', publishedVersionId: null };
+      const test: Test = { id: crypto.randomUUID(), workspaceId, name: input.name?.trim() || '未命名測試', description: input.description ?? '', publishedVersionId: null };
       tests.push(test);
       drafts.set(test.id, { testId: test.id, revision: 1, script: '', updatedAt: new Date().toISOString() });
       return { ...test };
     },
     async getDraft(testId) { return getDraft(testId); },
-    async saveDraft(testId, revision, script) {
+    async saveDraft(testId, _editingSessionId, revision, script) {
       const current = checkRevision(testId, revision);
       const next: Draft = script === current.script ? current : { testId, revision: current.revision + 1, script, updatedAt: new Date().toISOString() };
       drafts.set(testId, next);
       return { ...next };
     },
-    async validateDraft(testId, revision) {
+    async validateDraft(testId, _editingSessionId, revision) {
       const draft = checkRevision(testId, revision);
       if (!draft.script.trim()) throw new ApiError('請先儲存腳本。', 'EMPTY_SCRIPT', 400);
       const run = newRun(testId, 'validation', draft.script, draft.revision);
       drafts.set(testId, { ...draft, validationRunId: run.id, validationStatus: run.status, reportUrl: undefined });
       return run;
     },
-    async publishTest(testId, revision) {
+    async publishTest(testId, _editingSessionId, revision) {
       const draft = checkRevision(testId, revision);
       if (draft.validationStatus !== 'succeeded' || !draft.reportUrl || !draft.validationRunId) throw new ApiError('目前 revision 尚未成功驗證或缺少報告。', 'VALIDATION_REQUIRED', 409);
-      const version: Version = { id: crypto.randomUUID(), testId, revision, script: draft.script, createdAt: new Date().toISOString(), validationRunId: draft.validationRunId };
+      const version: Version = { id: crypto.randomUUID(), testId, revision, script: draft.script, createdAt: new Date().toISOString(), validationRunId: draft.validationRunId, description: null, backgroundSummary: null, summaryRunId: null, editingSessionId: null };
       versions.set(version.id, version); getTest(testId).publishedVersionId = version.id;
       return { ...version };
     },
@@ -161,5 +160,10 @@ test('本機頁面', async ({ page }) => {
       // mock 沒有產生 ZIP／MD，不假造下載連結或證據內容。
       return [];
     },
+    async startEditingSession() { throw new ApiError('示範模式未提供 M7 編輯週期，請使用真實 API。', 'MOCK_SESSION_UNAVAILABLE', 400); },
+    async getActiveEditingSession() { throw new ApiError('示範模式未提供編輯週期狀態。', 'MOCK_SESSION_UNAVAILABLE', 400); },
+    async getEditingSession() { throw new ApiError('示範模式未提供編輯週期狀態。', 'MOCK_SESSION_UNAVAILABLE', 400); },
+    async discardEditingSession() { throw new ApiError('示範模式不會放棄草稿。', 'MOCK_SESSION_UNAVAILABLE', 400); },
+    async requestSummary() { throw new ApiError('示範模式不產生驗收摘要，請使用真實 API。', 'MOCK_SUMMARY_UNAVAILABLE', 400); },
   };
 }

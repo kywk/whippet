@@ -1,6 +1,41 @@
 # Server 交付
 
-Owner：Whippet Server Agent。最新交付：M6 失敗證據附件（2026-11-11）；既有里程碑紀錄保留於下方。
+Owner：Whippet Server Agent t31。最新交付：M7.2 編輯週期與驗收摘要（2026-11-12）；既有里程碑紀錄保留於下方。
+
+## M7.2 Server 交付
+
+**Server 實作與必要檢查完成，Web／Runtime 隔離整合待 PM 安排。** 以 `contracts/mvp-v7.md` 頂部固定決策為準，僅修改 `services/server/`；未安裝、執行 Git、讀印憑證、呼叫模型／瀏覽器、部署或重啟共享服務。
+
+### Migration 與行為
+
+- `008_editing_sessions.sql`：每 Test 最多一個 active／discarding 編輯週期；新增 drafts／Conversation／Run／Version 關聯與摘要欄位。舊草稿沒有正式版、腳本／設定異於正式版，或尚有活躍／未回收編輯任務才保留 active；相同且無活躍任務者封存 session／對話與 revision、移除目前 drafts 指標。孤立對話不自動變新草稿。
+- 舊 Version.description／backgroundSummary／summaryRunId／editingSessionId 全為 null，不從目前 Test.description 捏造歷史。原腳本、設定、任務／attempt、author_payload 不改；新增 Run/session 關聯納入 immutable trigger。新週期 revision 採原 Test 的 MAX+1，不重用封存 revision。
+- `editing_sessions.go`／`editing_http.go`：Test.activeEditingSession 純讀 descriptor；明確 start/resume，GET draft／conversation 不再初始化。Session 對話持久保存；放棄／發布關閉週期但保留歷史 revision、Run 及附件。
+- `summaries.go`／`author.go`／`conversations.go`：沿用 kind author、FIFO、author.json 與 180000ms。可信輸入為 skillId=test-author／acceptance-summary、skillVersion="1"、allowedTools、editingSessionId、直接 contextRevision、sourceVersion／conversationSummary；不另傳 mode。公開 Run.authorMode 由保存的 skillId 推導。
+- 新 user 訊息與已接受 edit 回覆遞增 contextRevision、清除舊摘要資格；腳本／設定未變時仍保留成功驗證。edit 可保存 8192-byte UTF-8 週期摘要。摘要模式允許 messages=[]，不補造 user；allowedTools=[]，固定完整腳本與合格 validationEvidence（runId／attemptId／revision／SHA256／timeout／真實 stats）。只從驗證後的 results.json 抽統計，不傳整報告或模型 key。
+- summary 由 Web 冪等觸發；失敗獨立重試不排新 validation。輸出嚴格採 message／description／backgroundSummary／optional name，不接受 script／requestValidation。完成與發布核對 session、contextRevision、revision、成功驗證 attempt、腳本／設定及已接受摘要；仍要求人工 confirmed 與原報告門檻。確認發布時才更新候選名稱、保存不可變版本說明與背景、關閉週期；重送回原版本。
+- discard 先進 discarding、取消本週期編輯任務，保留草稿直到 terminal **且** Manager heartbeat 確認 slot 回收；queued 未派送者可立即結束，不取消正式 Run。原 Engine Tick 在 Manager 離線也做有界 durable 收尾，與 ReleaseSlots 分開交易避免鎖序反轉。晚到／重送 result 在任何現存草稿讀取前核對 Session／attempt 與去重，不可復活新草稿或續排驗證。
+
+### HTTP／JSON 差異
+
+- `GET /api/tests/:id` 新增 `activeEditingSession:null|{id,status,draftRevision,updatedAt}`，一般模式可直接判斷，不呼叫會建草稿的舊行為。
+- POST／GET `/api/tests/:id/editing-session`：POST {} 為 start（201）／resume（200）；GET 純讀 `{session:null|EditingSession}`。GET `/api/tests/:id/editing-sessions/:sessionId` 可查已結束週期。
+- POST `/api/tests/:id/editing-sessions/:sessionId/discard {revision,confirmed:true}`：等待回收 202、完成 200，回 `{session}`；跨 Test 引用 404。
+- PUT draft／POST messages／POST draft/validate 必帶 editingSessionId 與 revision。GET conversation 可指定 `?editingSessionId=...`，不指定只讀當前週期；Conversation／Draft／編輯 Run 回傳 editingSessionId，正式 Run 為 null。
+- POST `/api/tests/:id/draft/summary {editingSessionId,revision,validationRunId}` 回 `{run}`，pending 重送 202 同 Run、已成功 200；失敗後明確重試才建立新摘要。
+- POST publish 必帶 `{editingSessionId,revision,summaryRunId,confirmed:true}`。Version 新增 nullable description／backgroundSummary／summaryRunId／editingSessionId；新發布不可缺摘要。建 Test 的 name 可省略，暫用「未命名測試」。M7 明確覆蓋舊 M2／M3 的自動建立與永久 Test 對話。
+
+### 實際檢查與產物
+
+- 本 Agent：沿用本輪既有 Server／Gateway 檢查 PASS（0.511s／0.122s），沒有重跑無關全套。新增 M7 定向單元最後一次 `go test -mod=readonly ./internal/server -run '^TestM7' -count=1` **PASS 0.264s**，涵蓋摘要嚴格輸出、週期摘要大小、skill@1／空摘要訊息 wire、過期 context／session／revision／設定／attempt 防護與離線 discard sweep。
+- 本 Agent：兩個 M7 integration-tag 案例編譯成功；未提供明確隔離 TEST_DATABASE_URL，故本機只作缺值 skip（0.307s），未連共享 DB，不以 skip 宣稱 DB 通過。
+- **PM t36 獨立 DB 實跑證據：TestM7EditingLifecycle、TestM7LegacyMigration 全部 PASS、無 skip，0.521s。** 使用既有 postgres:16.11-bookworm 的獨立臨時 DB；log：`/private/tmp/whippet-m7-db-check.log`。容器已移除，共享 DB 未碰。本 Agent 沿用此證據、不重跑。
+- DB 案例核對：純讀零新增、並行 start/resume 唯一、跨 Test 拒絕、真附件統計／空訊息摘要、失敗摘要重試不重驗、context 過期不可發布、發布冪等／不可變版本、新週期來源與 revision、不等待 Manager 的 queued 放棄、取消 terminal＋回收屏障、重啟後收尾與遲到結果不復活，以及 legacy 封存／保留／缺值與 immutable trigger。
+- **正式 build PASS**：既有 Go 1.23.12、GOPROXY=off／GOSUMDB=off、GOOS=linux GOARCH=arm64 CGO_ENABLED=0、`go build -mod=readonly -trimpath`。binary：**`/private/tmp/whippet-server-m7`**（含 migration 008），`file` 確認 statically linked ELF aarch64；已回報 t36 可供隔離封裝，本 Agent 未部署。
+
+### 接續與限制
+
+Web 須按新 session/schema 串接，成功驗證後冪等觸發摘要、失敗時明確重試，確認後發布；Runtime 按固定 skillId／skillVersion 與 allowedTools 執行。新／舊 author 輸入解碼相容不代表舊 Web HTTP body 可繼續寫入，新 HTTP 必須帶 sessionId。M7 不提供 Worker 遠端歷史 RPC；完整週期對話在 Server 可讀，Worker 使用有界摘要＋近期訊息，按需歷史工具延 M9。legacy 無 conversationSummary 回 null，首次只有近期訊息窗口，不宣稱已涵蓋完整舊對話，也不補造摘要；後續 edit 逐輪維護。M8 Workspace 範圍強制執行／機密機制未在本輪冒充完成。隔離整合與 M7 主流程由 PM／t33 接續，M1～M6 證據沿用。
 
 ## M6 失敗證據附件交付
 

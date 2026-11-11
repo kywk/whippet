@@ -1,5 +1,5 @@
 import { RUN_STATUSES } from './types';
-import type { Conversation, DevUser, Draft, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, Workspace, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
+import type { AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, Workspace, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
 
 export class ApiError extends Error {
   readonly code: string;
@@ -78,6 +78,7 @@ function parseTest(value: unknown): Test {
     id: string(data.id), workspaceId: string(data.workspaceId), name: string(data.name),
     description: optionalString(data.description) ?? '',
     publishedVersionId: optionalString(data.publishedVersionId) || null,
+    activeEditingSession: data.activeEditingSession === undefined ? undefined : data.activeEditingSession === null ? null : parseActiveSession(data.activeEditingSession),
   };
 }
 
@@ -86,6 +87,7 @@ function parseRun(value: unknown): Run {
   if (data.kind != null && data.kind !== 'run' && data.kind !== 'validation' && data.kind !== 'author') {
     throw new ApiError('API Run kind 格式不符。', 'INVALID_RESPONSE');
   }
+  if (data.authorMode != null && data.authorMode !== 'edit' && data.authorMode !== 'summary') throw new ApiError('authorMode 格式不符。', 'INVALID_RESPONSE');
   return {
     id: string(data.id), testId: string(data.testId), status: parseStatus(data.status),
     createdAt: string(data.createdAt), startedAt: optionalString(data.startedAt),
@@ -95,6 +97,8 @@ function parseRun(value: unknown): Run {
     draftRevision: data.draftRevision == null ? undefined : revision(data.draftRevision),
     versionId: optionalString(data.versionId),
     workspaceSettings: data.workspaceSettings == null ? undefined : parseWorkspaceSnapshot(data.workspaceSettings),
+    editingSessionId: optionalString(data.editingSessionId) ?? null,
+    authorMode: data.authorMode as Run['authorMode'],
   };
 }
 
@@ -106,6 +110,7 @@ function parseDraft(value: unknown): Draft {
     validationStatus: data.validationStatus == null ? undefined : parseStatus(data.validationStatus),
     reportUrl: optionalString(data.reportUrl),
     workspaceSettings: data.workspaceSettings == null ? undefined : parseWorkspaceSnapshot(data.workspaceSettings),
+    editingSessionId: optionalString(data.editingSessionId),
   };
 }
 
@@ -115,6 +120,8 @@ function parseVersion(value: unknown): Version {
     id: string(data.id), testId: string(data.testId), revision: revision(data.revision),
     script: string(data.script), createdAt: string(data.createdAt), validationRunId: string(data.validationRunId),
     workspaceSettings: data.workspaceSettings == null ? undefined : parseWorkspaceSnapshot(data.workspaceSettings),
+    description: optionalString(data.description) ?? null, backgroundSummary: optionalString(data.backgroundSummary) ?? null,
+    summaryRunId: optionalString(data.summaryRunId) ?? null, editingSessionId: optionalString(data.editingSessionId) ?? null,
   };
 }
 
@@ -136,6 +143,38 @@ function parseConversation(value: unknown): Conversation {
   return {
     id: string(data.id), testId: string(data.testId), messages: data.messages.map(parseMessage),
     activeRunId: optionalString(data.activeRunId),
+    editingSessionId: optionalString(data.editingSessionId),
+  };
+}
+
+function parseActiveSession(value: unknown): ActiveEditingSession {
+  const data = record(value);
+  if (data.status !== 'active' && data.status !== 'discarding') throw new ApiError('編輯週期狀態不符。', 'INVALID_RESPONSE');
+  return { id: string(data.id), status: data.status, draftRevision: revision(data.draftRevision), updatedAt: string(data.updatedAt) };
+}
+
+function parseSummary(value: unknown): AcceptanceSummary {
+  const data = record(value);
+  if (typeof data.validForCurrentDraft !== 'boolean') throw new ApiError('摘要資格格式不符。', 'INVALID_RESPONSE');
+  return {
+    runId: string(data.runId), status: parseStatus(data.status), revision: revision(data.revision), validationRunId: string(data.validationRunId),
+    description: optionalString(data.description), backgroundSummary: optionalString(data.backgroundSummary), name: optionalString(data.name), validForCurrentDraft: data.validForCurrentDraft,
+  };
+}
+
+function parseSession(value: unknown): EditingSession {
+  const data = record(value);
+  if (!['active', 'discarding', 'discarded', 'published'].includes(string(data.status)) || typeof data.reclaimPending !== 'boolean' || !Array.isArray(data.pendingRunIds)) throw new ApiError('編輯週期回應格式不符。', 'INVALID_RESPONSE');
+  const source = data.sourceVersion == null ? null : record(data.sourceVersion);
+  return {
+    id: string(data.id), testId: string(data.testId), workspaceId: string(data.workspaceId), status: data.status as EditingSession['status'],
+    sourceVersionId: optionalString(data.sourceVersionId) ?? null,
+    sourceVersion: source ? { id: string(source.id), description: optionalString(source.description) ?? null, backgroundSummary: optionalString(source.backgroundSummary) ?? null } : null,
+    conversationId: string(data.conversationId), conversationSummary: optionalString(data.conversationSummary) ?? null,
+    contextRevision: data.contextRevision == null ? undefined : revision(data.contextRevision),
+    draft: data.draft == null ? null : parseDraft(data.draft), summary: data.summary == null ? null : parseSummary(data.summary),
+    pendingRunIds: data.pendingRunIds.map(string), reclaimPending: data.reclaimPending,
+    publishedVersionId: optionalString(data.publishedVersionId) ?? null, createdAt: string(data.createdAt), closedAt: optionalString(data.closedAt) ?? null,
   };
 }
 
@@ -228,17 +267,19 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     async createTest(workspaceId, input, signal) {
       return parseTest(await request(`/workspaces/${id(workspaceId)}/tests`, 'POST', signal, input));
     },
-    async getDraft(testId, signal) {
-      return parseDraft(await request(`/tests/${id(testId)}/draft`, 'GET', signal));
+    async getDraft(testId, editingSessionId, signal) {
+      const draft = parseDraft(await request(`/tests/${id(testId)}/draft`, 'GET', signal));
+      if (draft.editingSessionId !== editingSessionId) throw new ApiError('草稿已屬於其他編輯週期，請重新載入。', 'SESSION_CONFLICT', 409);
+      return draft;
     },
-    async saveDraft(testId, revision, script, signal) {
-      return parseDraft(await request(`/tests/${id(testId)}/draft`, 'PUT', signal, { revision, script }));
+    async saveDraft(testId, editingSessionId, revision, script, signal) {
+      return parseDraft(await request(`/tests/${id(testId)}/draft`, 'PUT', signal, { editingSessionId, revision, script }));
     },
-    async validateDraft(testId, revision, signal) {
-      return parseRun(await request(`/tests/${id(testId)}/draft/validate`, 'POST', signal, { revision }));
+    async validateDraft(testId, editingSessionId, revision, signal) {
+      return parseRun(await request(`/tests/${id(testId)}/draft/validate`, 'POST', signal, { editingSessionId, revision }));
     },
-    async publishTest(testId, revision, signal) {
-      return parseVersion(await request(`/tests/${id(testId)}/publish`, 'POST', signal, { revision, confirmed: true }));
+    async publishTest(testId, editingSessionId, revision, summaryRunId, signal) {
+      return parseVersion(await request(`/tests/${id(testId)}/publish`, 'POST', signal, { editingSessionId, revision, summaryRunId, confirmed: true }));
     },
     async listVersions(testId, signal) {
       return items(await request(`/tests/${id(testId)}/versions`, 'GET', signal), parseVersion);
@@ -246,12 +287,32 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     async cancelRun(runId, signal) {
       return parseRun(await request(`/runs/${id(runId)}/cancel`, 'POST', signal));
     },
-    async getConversation(testId, signal) {
-      return parseConversation(await request(`/tests/${id(testId)}/conversation`, 'GET', signal));
+    async getConversation(testId, editingSessionId, signal) {
+      const conversation = parseConversation(await request(`/tests/${id(testId)}/conversation?editingSessionId=${id(editingSessionId)}`, 'GET', signal));
+      if (conversation.editingSessionId !== editingSessionId) throw new ApiError('對話週期不符，請重新載入。', 'SESSION_CONFLICT', 409);
+      return conversation;
     },
-    async sendMessage(testId, content, revision, signal) {
-      const data = record(await request(`/tests/${id(testId)}/messages`, 'POST', signal, { content, revision }));
+    async sendMessage(testId, editingSessionId, content, revision, signal) {
+      const data = record(await request(`/tests/${id(testId)}/messages`, 'POST', signal, { editingSessionId, content, revision }));
       return { run: parseRun(data.run), conversationId: string(data.conversationId) };
+    },
+    async startEditingSession(testId, signal) {
+      return parseSession(record(await request(`/tests/${id(testId)}/editing-session`, 'POST', signal, {})).session);
+    },
+    async getActiveEditingSession(testId, signal) {
+      const data = record(await request(`/tests/${id(testId)}/editing-session`, 'GET', signal));
+      return data.session === null ? null : parseSession(data.session);
+    },
+    async getEditingSession(testId, sessionId, signal) {
+      return parseSession(record(await request(`/tests/${id(testId)}/editing-sessions/${id(sessionId)}`, 'GET', signal)).session);
+    },
+    async discardEditingSession(testId, sessionId, revision, signal) {
+      await request(`/tests/${id(testId)}/editing-sessions/${id(sessionId)}/discard`, 'POST', signal, { revision, confirmed: true });
+      // 以純讀端點確認真實狀態，不從 POST 成功碼推定已完成回收。
+      return parseSession(record(await request(`/tests/${id(testId)}/editing-sessions/${id(sessionId)}`, 'GET', signal)).session);
+    },
+    async requestSummary(testId, editingSessionId, revision, validationRunId, signal) {
+      return parseRun(record(await request(`/tests/${id(testId)}/draft/summary`, 'POST', signal, { editingSessionId, revision, validationRunId })).run);
     },
     async getWorkspaceSettings(workspaceId, signal) {
       return parseWorkspaceSettings(await request(`/workspaces/${id(workspaceId)}`, 'GET', signal));

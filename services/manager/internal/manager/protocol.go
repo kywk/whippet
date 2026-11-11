@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
@@ -36,10 +37,69 @@ type AuthorMessage struct {
 }
 
 type AuthorTask struct {
-	ConversationID string            `json:"conversationId"`
-	BaseRevision   int64             `json:"baseRevision"`
-	Messages       []AuthorMessage   `json:"messages"`
-	Validation     *AuthorValidation `json:"validation,omitempty"`
+	ConversationID      string                    `json:"conversationId"`
+	BaseRevision        int64                     `json:"baseRevision"`
+	Messages            []AuthorMessage           `json:"messages"`
+	Validation          *AuthorValidation         `json:"validation,omitempty"`
+	SkillID             *string                   `json:"skillId,omitempty"`
+	SkillVersion        *string                   `json:"skillVersion,omitempty"`
+	AllowedTools        *[]string                 `json:"allowedTools,omitempty"`
+	EditingSessionID    *string                   `json:"editingSessionId,omitempty"`
+	ContextRevision     *int64                    `json:"contextRevision,omitempty"`
+	SourceVersion       json.RawMessage           `json:"sourceVersion,omitempty"`
+	ConversationSummary json.RawMessage           `json:"conversationSummary,omitempty"`
+	ValidationEvidence  *AuthorValidationEvidence `json:"validationEvidence,omitempty"`
+}
+
+func (a *AuthorTask) UnmarshalJSON(data []byte) error {
+	type fields AuthorTask
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode((*fields)(a)); err != nil {
+		return err
+	}
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(data, &keys); err != nil {
+		return err
+	}
+	for _, name := range []string{"skillId", "skillVersion", "allowedTools", "editingSessionId", "contextRevision", "sourceVersion", "conversationSummary", "validationEvidence"} {
+		if _, exists := keys[name]; exists && (a.SkillID == nil || a.SkillVersion == nil) {
+			return fmt.Errorf("incomplete author skill pin")
+		}
+	}
+	return nil
+}
+
+type AuthorValidationEvidence struct {
+	RunID         string `json:"runId"`
+	AttemptID     string `json:"attemptId"`
+	DraftRevision int64  `json:"draftRevision"`
+	ScriptHash    string `json:"scriptHash"`
+	TimeoutMS     int64  `json:"timeoutMs"`
+	Status        string `json:"status"`
+	ReportsReady  bool   `json:"reportsReady"`
+	Stats         struct {
+		Expected   int64   `json:"expected"`
+		Unexpected int64   `json:"unexpected"`
+		Flaky      int64   `json:"flaky"`
+		Skipped    int64   `json:"skipped"`
+		Duration   float64 `json:"duration"`
+	} `json:"stats"`
+}
+
+func (e *AuthorValidationEvidence) UnmarshalJSON(data []byte) error {
+	type fields AuthorValidationEvidence
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode((*fields)(e)); err != nil {
+		return err
+	}
+	var object map[string]json.RawMessage
+	var stats map[string]json.RawMessage
+	if json.Unmarshal(data, &object) != nil || len(object) != 8 || json.Unmarshal(object["stats"], &stats) != nil || len(stats) != 5 {
+		return fmt.Errorf("invalid validation evidence fields")
+	}
+	return nil
 }
 
 type AuthorValidation struct {

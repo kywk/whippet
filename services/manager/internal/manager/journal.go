@@ -12,16 +12,17 @@ import (
 // accepted -> running -> collecting -> complete. complete implies container
 // removal and successful upload of all available v1 artifacts.
 type record struct {
-	RunID           string   `json:"runId"`
-	AttemptID       string   `json:"attemptId"`
-	Phase           string   `json:"phase"`
-	TimeoutMS       int64    `json:"timeoutMs"`
-	Result          *Result  `json:"result,omitempty"`
-	Artifacts       []string `json:"artifacts,omitempty"`
-	ResultMessageID string   `json:"resultMessageId"`
-	CancelRequested bool     `json:"cancelRequested,omitempty"`
-	Reclaimed       bool     `json:"reclaimed,omitempty"`
-	Kind            string   `json:"kind,omitempty"`
+	RunID           string      `json:"runId"`
+	AttemptID       string      `json:"attemptId"`
+	Phase           string      `json:"phase"`
+	TimeoutMS       int64       `json:"timeoutMs"`
+	Result          *Result     `json:"result,omitempty"`
+	Artifacts       []string    `json:"artifacts,omitempty"`
+	ResultMessageID string      `json:"resultMessageId"`
+	CancelRequested bool        `json:"cancelRequested,omitempty"`
+	Reclaimed       bool        `json:"reclaimed,omitempty"`
+	Kind            string      `json:"kind,omitempty"`
+	Author          *AuthorTask `json:"author,omitempty"` // Fixed nonsecret input, never provider/environment credentials.
 }
 
 func (r record) holdsSlot() bool { return r.Phase != "complete" && !r.Reclaimed }
@@ -112,6 +113,9 @@ func loadRecords(workDir string) (map[string]record, error) {
 		}
 		if r.Kind != "" && r.Kind != "run" && r.Kind != "author" {
 			return nil, fmt.Errorf("invalid journal kind: %s", entry.Name())
+		}
+		if r.Author != nil && (r.Kind != "author" || validAuthorMetadata(r.Author, nil) != nil) {
+			return nil, errors.New("invalid journal author snapshot")
 		}
 		if r.Result != nil && !r.Result.valid() || (r.Phase == "complete" || r.Phase == "collecting") && r.Result == nil {
 			return nil, fmt.Errorf("invalid journal result: %s", entry.Name())

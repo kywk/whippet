@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,31 +11,18 @@ import (
 
 const authorTimeoutMS = 180000
 
-func ensureConversation(ctx context.Context, tx *sql.Tx, testID string) (string, error) {
-	var id string
-	err := tx.QueryRowContext(ctx, `SELECT id FROM conversations WHERE test_id=$1`, testID).Scan(&id)
-	if errors.Is(err, sql.ErrNoRows) {
-		id = NewID()
-		_, err = tx.ExecContext(ctx, `INSERT INTO conversations(id,test_id) VALUES($1,$2)`, id, testID)
-	}
-	return id, err
-}
-
-func (p *Postgres) Conversation(ctx context.Context, testID string) (Conversation, error) {
-	tx, err := p.DB.BeginTx(ctx, nil)
+func (p *Postgres) Conversation(ctx context.Context, testID, sessionID string) (Conversation, error) {
+	tx, err := p.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
 		return Conversation{}, err
 	}
 	defer tx.Rollback()
-	var lockedID string
-	if err := tx.QueryRowContext(ctx, `SELECT id FROM tests WHERE id=$1 FOR UPDATE`, testID).Scan(&lockedID); err != nil {
-		return Conversation{}, dbError(err)
-	}
-	id, err := ensureConversation(ctx, tx, testID)
+	session, err := readEditing(ctx, tx, testID, sessionID)
 	if err != nil {
 		return Conversation{}, err
 	}
-	c := Conversation{ID: id, TestID: testID, Messages: []Message{}}
+	id := session.ConversationID
+	c := Conversation{ID: id, TestID: testID, EditingSessionID: session.ID, Messages: []Message{}}
 	rows, err := tx.QueryContext(ctx, `SELECT m.id,m.role,m.content,m.created_at,m.run_id,m.base_revision,
         m.applied_revision,m.proposed_script,m.validation_run_id,
         CASE WHEN m.role='assistant' THEN dr.script ELSE NULL END
@@ -60,8 +46,8 @@ func (p *Postgres) Conversation(ctx context.Context, testID string) (Conversatio
 	if err != nil {
 		return Conversation{}, err
 	}
-	err = tx.QueryRowContext(ctx, `SELECT id FROM runs WHERE test_id=$1 AND kind='author'
-        AND status IN ('queued','dispatched','running','collecting','cancelling')`, testID).Scan(&c.ActiveRunID)
+	err = tx.QueryRowContext(ctx, `SELECT id FROM runs WHERE editing_session_id=$1 AND kind='author'
+        AND status IN ('queued','dispatched','running','collecting','cancelling')`, session.ID).Scan(&c.ActiveRunID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Conversation{}, err
 	}
@@ -108,7 +94,7 @@ func validationSnapshot(runID, status, errorMessage string) *AuthorValidation {
 	return &AuthorValidation{RunID: runID, Status: status, Error: errorMessage}
 }
 
-func (p *Postgres) CreateAuthor(ctx context.Context, testID, content string, revision int) (AuthorSubmission, error) {
+func (p *Postgres) CreateAuthor(ctx context.Context, testID, sessionID, content string, revision int) (AuthorSubmission, error) {
 	if err := validateUserMessage(content); err != nil {
 		return AuthorSubmission{}, err
 	}
@@ -117,7 +103,7 @@ func (p *Postgres) CreateAuthor(ctx context.Context, testID, content string, rev
 		return AuthorSubmission{}, err
 	}
 	defer tx.Rollback()
-	d, err := lockDraft(ctx, tx, testID)
+	d, session, err := requireEditingDraft(ctx, tx, testID, sessionID)
 	if err != nil {
 		return AuthorSubmission{}, err
 	}
@@ -132,10 +118,7 @@ func (p *Postgres) CreateAuthor(ctx context.Context, testID, content string, rev
 	if active {
 		return AuthorSubmission{}, fmt.Errorf("%w: an author run is already active", ErrConflict)
 	}
-	conversationID, err := ensureConversation(ctx, tx, testID)
-	if err != nil {
-		return AuthorSubmission{}, err
-	}
+	conversationID := session.ConversationID
 	newest := []ChatMessage{{Role: "user", Content: content}}
 	rows, err := tx.QueryContext(ctx, `SELECT role,content FROM messages WHERE conversation_id=$1 ORDER BY sequence DESC LIMIT 11`, conversationID)
 	if err != nil {
@@ -154,7 +137,8 @@ func (p *Postgres) CreateAuthor(ctx context.Context, testID, content string, rev
 	if err != nil {
 		return AuthorSubmission{}, err
 	}
-	input := AuthorInput{ConversationID: conversationID, BaseRevision: revision, Messages: authorContext(newest)}
+	session.ContextRevision++
+	input := editingAuthorInput(session, d, "test-author", authorContext(newest))
 	if d.ValidationRunID != nil {
 		var runID, status, errorMessage string
 		if err := tx.QueryRowContext(ctx, `SELECT id,status,error FROM runs
@@ -164,21 +148,19 @@ func (p *Postgres) CreateAuthor(ctx context.Context, testID, content string, rev
 		}
 		input.Validation = validationSnapshot(runID, status, errorMessage)
 	}
-	payload, err := json.Marshal(input)
+	run, err := enqueueAuthor(ctx, tx, d, input)
 	if err != nil {
 		return AuthorSubmission{}, err
 	}
-	runID := NewID()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO runs(id,test_id,kind,draft_revision,script_snapshot,script_hash,timeout_ms,author_payload,workspace_settings)
-        VALUES($1,$2,'author',$3,$4,$5,$6,$7,$8)`, runID, testID, revision, d.Script, d.hash, authorTimeoutMS, string(payload), settingsJSON(d.WorkspaceSettings)); err != nil {
-		return AuthorSubmission{}, err
-	}
+	runID := run.ID
 	if _, err := tx.ExecContext(ctx, `INSERT INTO messages(id,conversation_id,role,content,run_id,base_revision)
         VALUES($1,$2,'user',$3,$4,$5)`, NewID(), conversationID, content, runID, revision); err != nil {
 		return AuthorSubmission{}, err
 	}
-	run, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs r WHERE r.id=$1`, runID))
-	if err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE editing_sessions SET context_revision=context_revision+1 WHERE id=$1`, sessionID); err != nil {
+		return AuthorSubmission{}, err
+	}
+	if err := clearDraftSummary(ctx, tx, testID); err != nil {
 		return AuthorSubmission{}, err
 	}
 	if err := tx.Commit(); err != nil {

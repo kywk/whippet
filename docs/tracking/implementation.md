@@ -100,17 +100,17 @@ M4 真實網站補充驗收：依使用者要求改以 Whippet 登入→搜尋�
 
 ## M7–M9：AI 優先操作與多 Workspace
 
-2026-11-12 使用者已確認需求，要求本輪先更新規格／計畫／分工。文件整理完成；以下實作均待辦，未派出開發。Owner：PM 本 session（已核對 gpt-6-astra／low），Web t30、Server t31、Runtime t32（sol／xhigh），QA t33（Muse Spark 1.3 Contributor／xhigh）。
+2026-11-12 使用者已確認需求，要求本輪先更新規格／計畫／分工。規格文件已提交 1e6fd7e。首波已派出：t30 進行不依賴新 API 的 UI 切片；t31／t32 先回覆最小契約提案，未固定契約前不改共同介面。Owner：PM 本 session（已核對 gpt-6-astra／low），Web t30、Server t31、Runtime t32（sol／xhigh），QA t33（Muse Spark 1.3 Contributor／xhigh）。
 
 依據：[需求](../requirements/ai-workspace.md)、[架構](../architecture/design.md)、[分工](delegation.md)。不安裝套件、不印憑證、不自行 commit／push。
 
 | 順序／任務 | 狀態／Owner | 交付與必要檢查 |
 | --- | --- | --- |
-| M7.0 最小編輯週期與摘要契約 | 待辦／PM，t31／t32 提供介面差異 | 固定 session、草稿刪除、摘要綁定、相容遷移與 API；一次介面對齊後開發 |
-| M7.1 一般詳情與對話工作區 | 待辦／t30 | 指定資訊順序、唯讀版本、完整右側對話與結果／監看卡片；必要 Web build＋目視操作 |
-| M7.2 編輯週期與版本背景 | 待辦／t31 | 續編、放棄、對話歸屬、版本 description／摘要；測過期結果不可復活與摘要／驗證版本門檻 |
-| M7.3 測試編輯／驗收摘要 skills | 待辦／t32 | 按需背景與工具、真實驗證後摘要；最小輸入輸出測試及 Worker build |
-| M7.4 主流程整合 | 待辦／PM＋t33 | 既有 Workspace 建測試→驗證→摘要→人工發佈→正式執行→重開續編／放棄一次；不重跑 M1–M6 |
+| M7.0 最小編輯週期與摘要契約 | 完成／PM，t31／t32 已提案 | 已固定 contracts/mvp-v7.md；統一skillId/version、摘要schema與無副作用查詢，補正legacy草稿判斷 |
+| M7.1 一般詳情與對話工作區 | 完成（模組建置，UI整合待驗）／t30 | 一般/編輯模式與固定契約接線交付；最後tsc/Vite build PASS，46 modules；t33已交付黑箱腳本；沙箱無本機Playwright/連線，瀏覽器實跑待PM |
+| M7.2 編輯週期與版本背景 | 完成（模組與隔離DB驗證，未全鏈整合）／t31 | migration008、純讀/start/scope、摘要/發布/discard交付；定向單元PASS0.264s、PM隔離DB兩案PASS0.521s；Linux arm64產物 /private/tmp/whippet-server-m7 |
+| M7.3 測試編輯／驗收摘要 skills | 完成（模組驗證，未整合）／t32 | author mock13/13、Manager TestM7三項及TestM3Author、Worker build與Linux arm64 cross-build PASS；dist＋skills需一起部署；quick_validate缺PyYAML未成功，不安裝 |
+| M7.4 主流程整合 | 進行中／PM＋t33 | 既有 Workspace 建測試→驗證→摘要→人工發佈→正式執行→重開續編／放棄一次；不重跑 M1–M6 |
 | M8.0 Workspace 與安全執行契約 | 待辦／PM，t31／t32 提案 | 固定 proposal／revision、target／dependency、機密引用與回收、出站限制及舊資料遷移；不做通用治理平台 |
 | M8.1 Multi-workspace 與設定提案 API | 待辦／t31 | 建立／切換／更新、獨立對話、機密保存、統一 workspace scope；兩工作區隔離檢查 |
 | M8.2 Workspace 對話 UI | 待辦／t30 | 建立／修改背景、範圍確認、專用機密輸入、提案確認；build＋最小操作 |
@@ -123,7 +123,7 @@ M4 真實網站補充驗收：依使用者要求改以 Whippet 登入→搜尋�
 
 ## 接續方式
 
-下一步先固定 M7 最小契約，再向原 t30／t31／t32 派工；派工前重查 pane 狀態與模型，每檔單一 owner。t33 在可操作切片就緒後才執行黑箱。M5／M6 既有證據沿用；Dockerfile 離線依賴、跨主機／TURN、LICENSE 及映像聲明不阻塞本輪 UI／AI 開發。18080 是舊部署，最新畫面須用既有產物的隔離預覽核對。本機瀏覽器執行未授權，不納入 M7–M9。
+2026-11-12 使用者授權先提交 M7 現況，再推進 M8；M7 UI/真AI全鏈未驗收項目保留至後續整合，不標完成。下一步固定 M8 最小契約並向原 t30／t31／t32 派工；派工前重查 pane 狀態與模型，每檔單一 owner。t33 在可操作切片就緒後才執行黑箱。M5／M6 既有證據沿用；Dockerfile 離線依賴、跨主機／TURN、LICENSE 及映像聲明不阻塞本輪 UI／AI 開發。18080 是舊部署，最新畫面須用既有產物的隔離預覽核對。本機瀏覽器執行未授權，不納入 M7–M9。
 
 ## M1 後的模型預配置
 
@@ -134,3 +134,11 @@ M4 真實網站補充驗收：依使用者要求改以 Whippet 登入→搜尋�
 狀態：完成。Owner：總指揮整合、Server t31／Runtime t32（Codex sol／xhigh）、QA t33（Muse Spark 1.3 Contributor／xhigh）。四個實際 Whippet UI 案例經 Worker 驗證後發佈，9 張關鍵 PNG 在真實 Chromium 報告正常載入，登入截圖經目視修正過場問題。PNG 附件管線、失敗自動截圖與 author 實際載入的精簡技能已部署；技能包含 locator／等待／斷言／修復／截圖 recipe，mock request capture 與必要 build／測試通過。較長腳本的 WS frame 問題已修復，原受阻 Run 沿用原 attempt 成功。
 
 驗收入口、報告及實際檢查見 [本機驗收指南](../guides/whippet-acceptance.md)。限制：trace／video／Markdown 附件未支援；額外失敗範例 PNG 可見，但 error-context.md 的 CSP 檢查未通過，已如實記錄。本輪無新模型呼叫、未安裝套件、未執行 Git 操作。
+
+M7契約裁定：Worker 遠端歷史按需檢索延至 M9；M7 先使用週期摘要＋近期訊息，完整歷史仍保存，不能宣稱已完成 Worker retrieval。M9 需固定 session-scoped 有界唯讀接縫後補齊。
+
+2026-11-12 PM M7隔離DB驗證：以既有postgres:16.11-bookworm建立獨立臨時DB，TestM7EditingLifecycle與TestM7LegacyMigration全部PASS，無skip，套件0.521s；log=/private/tmp/whippet-m7-db-check.log。容器已移除、共享服務未動。Server正式build與Web最終交付仍收尾，尚未完成新版UI／真模型整合。
+
+M7隔離UI環境已啟動：18085，whippet-m7-web/server/postgres及內部network whippet-m7-qa；既有映像＋最新binary/dist建立m7-qa，非乾淨Dockerfile建置。Manager/AI尚未接入。t33已派一般/編輯/續編/放棄首切片黑箱，證據預定/private/tmp/whippet-m7-ui-evidence；原18080未動，整合結束需移除隔離容器/網路。Server最終Linux arm64與Web最終build皆由owner回報PASS，完整AI主流程尚待驗證。
+
+M7預覽連線修正：Web僅掛internal網路時HostConfig雖有18085，實際NetworkSettings.Ports為null，主機curl拒絕連線。新增whippet-m7-preview橋接網路並僅接Web後映射生效；主機Web及API均HTTP200。清理時需一併移除此preview網路。先前只檢查容器內healthcheck不足以證明主機可達，後續預覽交付必須核對主機HTTP。

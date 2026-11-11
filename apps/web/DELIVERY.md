@@ -1,8 +1,73 @@
-# Web M1／M2／M3／M4／M5／M6 交付紀錄
+# Web M1／M2／M3／M4／M5／M6／M7 交付紀錄
 
-日期：2026-11-11（Asia/Taipei）。Owner：Web Agent。所有新增與修改均位於 `apps/web/`；未執行 Git、未啟動其他 Agent。進度主檔與測試後 commit 由總指揮彙整處理。M1 整合時由總指揮完成依賴安裝，已保留 lockfile；後續沿用現有依賴。M3 整合已由總指揮回報通過。本輪 M4 未安裝套件、未讀 env、未呼叫模型、未進行 Git 操作。
+最新日期：2026-11-12（Asia/Taipei）。Owner：Web Agent（t30）。所有新增與修改均位於 `apps/web/`；未執行 Git、未啟動其他 Agent。進度主檔、整合與 commit 由總指揮彙整。M1 整合時由總指揮完成依賴安裝並保留 lockfile；後續沿用既有依賴。下方 M1–M6 保留原階段證據；M7 對編輯週期、草稿建立及發布門檻的覆蓋，以最新契約及本節為準。
 
-## M6 最新交付：失敗證據下載
+## M7 最新交付：一般／編輯模式與明確編輯週期
+
+Owner：Web；PM：t36。依 `docs/requirements/ai-workspace.md`、實作計畫 M7 與 `contracts/mvp-v7.md` 頂部固定決策實作，載入 impeccable 與 React best practices 技能。沿用既有 React／Vite 依賴；未安裝套件、Git、讀取 env／憑證、呼叫模型、部署或重啟任何服務，未擴張 M8。沒有把 `18080` 的舊部署當作新版驗收。
+
+### 產物與行為
+
+- 一般模式依序呈現測試標題、所選版本說明、最近一次正式執行、正式執行歷史、歷史版本與所選版本唯讀腳本。正式歷史只納入 kind=run（沿用缺 kind 的 legacy 正式 Run），排除 author／validation。歷史版本選取只改唯讀檢視，正式執行仍使用 Server 的目前發布版本。
+- 未發布 Test 顯示正式說明／腳本／執行空狀態並停用正式執行。版本說明與背景只讀取各 Version 自己的 nullable 欄位；舊版本顯示「此版本尚無版本說明（舊資料）。」／「此版本尚無背景摘要（舊資料）。」，不以 Test.description 冒充歷史版本資料。
+- 「新增測試」直接以空輸入建立 Test，再明確 start 編輯週期；不要求先填名稱表單。Server 的「未命名測試」及候選摘要名稱是真實資料，前端不自行套用候選名稱。
+- 一般模式以 Test.activeEditingSession 純讀欄位決定修改／繼續修改／查看放棄進度，不呼叫 GET draft 或 conversation 探測是否存在。欄位尚未取得時顯示未知，不當成不存在。草稿只是一列 UI，不建立假 Version。
+- 進入編輯模式明確 POST start／resume；同一週期接續完整草稿及對話。所有儲存、訊息、驗證、摘要與發布請求帶 editingSessionId。對話 GET 帶 session query，parser 核對回應 session；草稿 GET 亦核對 session，避免前一週期內容混入。
+- 右側編輯模式以對話為主要工作區，整合來源版本／本次對話背景、目前週期 author／validation／summary 紀錄、驗證報告、原有監看與取消、腳本前後對照、手動腳本摺疊區及發布確認。摘要任務顯示「驗收摘要」，不假裝聊天回覆，也不提供沒有瀏覽器的摘要監看入口。
+- 返回一般模式會保留已掛載編輯器的本機腳本與未送出訊息；切 Test／離開時沿用導覽及 beforeunload 防護。切換模式會卸載監看連線，保留 Run 選定語義。一般模式不展示草稿編輯器。
+- 保留 revision 衝突及 Workspace 設定同步的未儲存內容保護：較舊 revision 回應不回退目前編輯器，外部更新不靜默覆蓋本機文字；資格失效時阻擋訊息／驗證／發布，要求檢視與重載。單純 metadata 更新不取代本機未儲存腳本。
+- 只有目前草稿真實 validation succeeded 且 reportUrl 就緒後才呼叫冪等摘要 API；重開 active session 也檢查。自動請求以 session、Server contextRevision、revision、validationRunId 及摘要 Run 防重；因此相同腳本但新對話仍能重新建立摘要。失敗／取消／逾時／中斷或未知 POST 結果顯示明確重試，不以輪詢無限重送，也不重跑成功 validation。
+- 摘要使用 Server 的 Run 狀態、validForCurrentDraft、綁定 revision／validationRunId 及非空 description／backgroundSummary；不從 AI 文字推定成功。送出新訊息立即清除本機發布確認，待權威 session 更新後才重新判斷。描述／背景以純文字顯示，不解析 HTML。
+- 發布需目前驗證、報告及有效摘要全部合格，且沒有未存腳本、未送訊息或進行中操作，再由使用者勾選 QA 確認；送出 revision、sessionId、summaryRunId、confirmed:true。收到真實 Version 才切回一般模式並刷新 Test／Version；不自行關閉尚未確認成功的週期。
+- 刪除草稿先讀取目標週期及 revision，再用原生確認對話框說明影響並要求確認。POST 後以純讀 session 端點確認實際狀態；discarding 保留草稿／本機內容、停用寫入，輪詢僅 GET 進度並顯示 pendingRunIds／reclaimPending。只有 Server 回 discarded 才卸載編輯器；Run terminal 或取消成功本身不視為回收完成。失敗保留草稿與可重試入口，正式 Run／Version／附件不受影響。
+- opt-in mock 對 M7 start/session／summary 明確回不可用錯誤；沒有假刪除、假摘要、真 API 失敗自動切 mock 或假完成狀態。預設仍是真 API。
+
+新增：`src/TestWorkspace.tsx`、`src/RunHistory.tsx`、`src/AcceptanceSummary.tsx`、`src/DiscardSessionDialog.tsx`。
+
+修改：`src/App.tsx`、`src/DraftEditor.tsx`、`src/ConversationPanel.tsx`、`src/TestActions.tsx`、`src/types.ts`、`src/api.ts`、`src/components.tsx`、`src/mock.ts`、`src/styles.css`、本紀錄。沒有修改 Server、Runtime、契約、docs、依賴／lockfile、Dockerfile、Nginx 或既有 LiveView 的媒體成功條件。
+
+### M7 實際檢查、串接與限制
+
+- **最後程式版本 build PASS**：`npm run build`，`tsc --noEmit`＋Vite `7.1.9`，退出碼 `0`；46 個模組，HTML 0.55 kB、CSS 20.18 kB、JS 287.20 kB（gzip 88.18 kB）。只檢查受影響 Web；通過後僅補交付文件，沒有無變動重建或全套 E2E。
+- 已完整讀取 M7 契約，並唯讀比對 `services/server/internal/server/editing_http.go`、`editing_sessions.go`、`summaries.go` 的 session／discard／summary 回應與交易門檻；目前 wire shape 相符。Server 額外回傳的 contextRevision 只讀取，不由 Web 編造或送出。
+- 已檢視既有基線截圖 `/private/tmp/whippet-m5-settings-evidence/m5-unsaved-retained.png` 與 `/private/tmp/whippet-m6-download-evidence/m6-evidence.png`，據此拆分原長頁的操作層級。這些是舊 UI 證據，不是 M7 新畫面的瀏覽器驗收；本輪未自行啟動預覽服務。
+- **PM t36 回報**：M7 真隔離 PostgreSQL lifecycle／legacy 兩案 PASS、無 skip，Runtime dist＋skills 與 manager-m7 已固定。此為 PM 提供的後端／Runtime 整合進度，Web 未重跑，不能取代新版 UI 的驗收。
+- **待新版隔離 API＋瀏覽器整合**：新增→對話／人工腳本→驗證報告→摘要→QA 發布→正式執行；resume/reload 週期隔離；摘要失敗只重試摘要；同腳本新對話令摘要失效；active 任務 discard 等 heartbeat 回收；一般／編輯切換與未存保護；桌面／窄螢幕、鍵盤與對話框焦點。交由 PM／指定黑箱驗收執行，未宣稱這些已由本輪瀏覽器跑過。
+- 若新版 API 尚未部署或回舊 schema，會顯示讀取／週期錯誤並停用不合格發布，不作相容假成功。GET activeEditingSession 缺值保持未知；Version 新欄位缺值保持 null 舊資料語義。
+- M7 沿用有界週期摘要＋近期訊息；完整歷史仍由 session-scoped Web GET 保留。Worker 按需遠端歷史工具屬 M9，未宣稱完成。M8 Workspace 機密／scope、API key UI 亦未新增。
+
+### M7 黑箱標籤／locator
+
+一般模式與編輯模式都可能仍掛載，請以可見 region 為 scope；不要從舊 18080 驗收。表格標題含動態筆數時使用名稱前綴。
+
+| 對象 | Accessible 名稱／可見文字或屬性 | 驗收重點 |
+| --- | --- | --- |
+| 建立 | button `新增測試` | 不先開名稱表單，建立後進編輯；未知結果先查列表 |
+| 一般模式 | region `測試一般模式`；`[data-mode="general"]` | 一般模式可見，草稿編輯區隱藏 |
+| 進入／接續 | button `修改腳本`／`繼續修改` | 明確 start／resume；未知 pointer 時為 `開啟編輯工作區` |
+| 開始失敗後重試 | button `開始或接續修改` | 不以錯誤當成已成功建立週期 |
+| 正式執行 | button `執行正式版本` | 未發布 disabled；不執行所選歷史版本 |
+| 正式結果與歷史 | region `最近一次正式執行`；region 名稱前綴 `正式執行歷史` | 排除 author／validation；列有 `data-run-id` |
+| 版本說明 | heading `版本說明`；details `查看版本背景摘要` | 只顯示所選 Version 的獨立欄位及舊資料缺值 |
+| 版本列表 | region 名稱前綴 `歷史版本`；`[data-version-id="<id>"]` | 草稿列來自 activeEditingSession，不是假 Version |
+| 選版本 | button `檢視版本 <完整版本 UUID>` | aria-pressed 表示選定；`回到目前正式版本` 還原 |
+| 唯讀腳本 | textbox `正式版本腳本（唯讀）`／`歷史版本腳本（唯讀）` | readonly，不可手動改版本快照 |
+| 編輯模式 | region `測試編輯模式`；`[data-mode="editing"]` | `返回一般模式` 保留本機編輯，關閉監看連線 |
+| 對話工作區 | region `對話編輯工作區`；list `已儲存的對話訊息` | 訊息限定目前 session，重開可接續 |
+| 對話輸入 | textbox `測試需求或修改訊息`；button `送出訊息` | 使用已存 revision；未存腳本／衝突阻擋送出 |
+| 背景與腳本 | details `本次編輯的版本背景`／`腳本預覽與手動編輯` | 純文字摘要；原候選前後對照入口保留 |
+| 手動腳本與驗證 | textbox `Playwright TypeScript 腳本`；button `儲存草稿`／`驗證此 revision` | 保留 revision 衝突、未存及設定同步保護 |
+| 編輯 Run 紀錄 | region `最近編輯結果`；region 名稱前綴 `AI 與草稿驗證紀錄` | 僅目前 session；summary 類別為 `驗收摘要` |
+| 驗證報告 | link `查看草稿驗證報告`；button `重新整理驗證狀態` | 真實驗證與有效 reportUrl 才有發布資格 |
+| 摘要 | region `驗收摘要`；button `產生驗收摘要`／`重試驗收摘要` | 真 Run 狀態；失敗不自動無限 POST，也不重驗 |
+| 摘要內容 | `版本說明`、`候選名稱：…`、details `查看背景摘要` | 候選名稱尚未套用；過期／不完整不能發布 |
+| QA 發布 | checkbox `我已檢視驗證報告與驗收摘要，確認發佈 revision N`；button `確認發佈 revision N` | 符合驗證＋摘要門檻後才可勾選與發布 |
+| 刪除入口 | button `刪除草稿` | 先 scope 可見模式／版本草稿列；沒有 active 週期不假造 |
+| 放棄確認 | dialog `確認放棄本次修改？`；button `確認放棄草稿`／`保留草稿` | 確認後才 POST；本機未存內容影響明示 |
+| 回收進度 | region `編輯週期狀態`；button `重新載入週期`／`查看放棄進度` | `正在放棄草稿，等待任務停止與資源回收。`；需回收時顯示 `等待執行節點確認回收，尚未完成放棄。` |
+| 舊入口延續 | `開始監看`、`取消 Run <UUID>`、`下載失敗證據` | 以 formal/editing 父 region 與 `data-run-id` 區分；摘要無監看 |
+
+## M6 前次交付：失敗證據下載
 
 Owner：Web；PM：t35。依 `contracts/mvp-v6.md` 實作，只修改 `apps/web/`；未安裝套件、未部署／重啟服務、未 Git、未讀取憑證／env、未呼叫模型。Server API 由 t31 並行實作，本輪未以 mock 或靜態檔假造真實下載成功。
 

@@ -5,18 +5,21 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
+	"unicode/utf8"
 )
 
 const MaxAuthorArtifactBytes int64 = 2 << 20
 const authorFailureMessage = "AI authoring failed. The saved conversation and draft are preserved; you can retry."
 
 type authorOutput struct {
-	Message           *string `json:"message"`
-	Script            *string `json:"script,omitempty"`
-	RequestValidation *bool   `json:"requestValidation"`
+	ConversationSummary *string `json:"conversationSummary,omitempty"`
+	Message             *string `json:"message"`
+	Script              *string `json:"script,omitempty"`
+	RequestValidation   *bool   `json:"requestValidation"`
 }
 
 func decodeAuthorOutput(data []byte) (authorOutput, error) {
@@ -27,7 +30,7 @@ func decodeAuthorOutput(data []byte) (authorOutput, error) {
 		result.Message == nil || result.RequestValidation == nil || decoder.Decode(new(any)) != io.EOF {
 		return result, fmt.Errorf("invalid author output")
 	}
-	if strings.ContainsRune(*result.Message, '\x00') || (result.Script != nil && (len(*result.Script) > MaxScriptBytes || strings.ContainsRune(*result.Script, '\x00'))) {
+	if validateUserMessage(*result.Message) != nil || (result.ConversationSummary != nil && (len(*result.ConversationSummary) > 8192 || !utf8.ValidString(*result.ConversationSummary) || strings.ContainsRune(*result.ConversationSummary, '\x00'))) || strings.ContainsRune(*result.Message, '\x00') || (result.Script != nil && (len(*result.Script) > MaxScriptBytes || strings.ContainsRune(*result.Script, '\x00'))) {
 		return result, fmt.Errorf("author script exceeds limit")
 	}
 	return result, nil
@@ -86,23 +89,9 @@ func authorResultDisposition(currentStatus, priorReported string, incoming Resul
 }
 
 func (p *Postgres) readAuthorOutput(ctx context.Context, tx *sql.Tx, runID, attemptID string) (authorOutput, error) {
-	var key, hash string
-	var size int64
-	if err := tx.QueryRowContext(ctx, `SELECT storage_key,size_bytes,sha256 FROM artifacts
-        WHERE run_id=$1 AND attempt_id=$2 AND name='author.json'`, runID, attemptID).Scan(&key, &size, &hash); err != nil {
-		return authorOutput{}, err
-	}
-	if p.Artifacts == nil || size <= 0 || size > MaxAuthorArtifactBytes {
-		return authorOutput{}, fmt.Errorf("author artifact unavailable")
-	}
-	f, err := p.Artifacts.Open(key)
+	data, err := p.readArtifactBytes(ctx, tx, runID, attemptID, "author.json", MaxAuthorArtifactBytes)
 	if err != nil {
 		return authorOutput{}, err
-	}
-	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, MaxAuthorArtifactBytes+1))
-	if err != nil || int64(len(data)) != size || scriptHash(string(data)) != hash {
-		return authorOutput{}, fmt.Errorf("author artifact integrity mismatch")
 	}
 	return decodeAuthorOutput(data)
 }
@@ -113,10 +102,7 @@ func (p *Postgres) completeAuthor(ctx context.Context, testID, managerID, runID,
 		return err
 	}
 	defer tx.Rollback()
-	// Match Workspace -> Test -> Draft -> Run lock order. Posting a turn and applying a
-	// result cannot race with a human save or create two active author runs.
-	d, err := lockDraft(ctx, tx, testID)
-	if err != nil {
+	if _, err = lockEditingTest(ctx, tx, testID); err != nil {
 		return err
 	}
 	status, err := lockAttempt(ctx, tx, managerID, runID, attemptID)
@@ -125,9 +111,11 @@ func (p *Postgres) completeAuthor(ctx context.Context, testID, managerID, runID,
 	}
 	var reported sql.NullString
 	var baseRevision int
-	var rawInput []byte
-	if err := tx.QueryRowContext(ctx, `SELECT author_reported_status,draft_revision,author_payload
-        FROM runs WHERE id=$1`, runID).Scan(&reported, &baseRevision, &rawInput); err != nil {
+	var rawInput, rawSettings []byte
+	var sessionID *string
+	var script string
+	if err = tx.QueryRowContext(ctx, `SELECT author_reported_status,draft_revision,author_payload,editing_session_id,script_snapshot,workspace_settings FROM runs WHERE id=$1`, runID).
+		Scan(&reported, &baseRevision, &rawInput, &sessionID, &script, &rawSettings); err != nil {
 		return err
 	}
 	result, duplicate, err := authorResultDisposition(status, reported.String, incoming)
@@ -135,56 +123,102 @@ func (p *Postgres) completeAuthor(ctx context.Context, testID, managerID, runID,
 		return err
 	}
 	if result.Status == "succeeded" {
-		var input AuthorInput
-		output, outputErr := p.readAuthorOutput(ctx, tx, runID, attemptID)
-		if json.Unmarshal(rawInput, &input) != nil || input.BaseRevision != baseRevision || !ValidID(input.ConversationID) {
-			outputErr = fmt.Errorf("invalid author snapshot")
+		var session EditingSession
+		if sessionID != nil {
+			session, err = readEditing(ctx, tx, testID, *sessionID)
 		}
-		var conversationMatches bool
-		if outputErr == nil {
-			if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM conversations WHERE id=$1 AND test_id=$2)`, input.ConversationID, testID).Scan(&conversationMatches); err != nil {
-				return err
-			}
-			if !conversationMatches {
-				outputErr = fmt.Errorf("author conversation mismatch")
-			}
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return err
 		}
-		var plan authorPlan
-		if outputErr == nil {
-			plan, outputErr = planAuthorResult(d.Draft, baseRevision, output)
-		}
-		if outputErr != nil {
-			// Never expose provider body, invalid artifact details, or candidate scripts as errors.
-			result = Result{Status: "failed", Error: authorFailureMessage}
+		if sessionID == nil || err != nil || session.Status != "active" {
+			result = Result{Status: "cancelled", Error: "The editing session is closed; this result was not applied."}
 		} else {
-			var appliedRevision *int
-			if plan.changed {
-				d, err = saveDraftScript(ctx, tx, d, plan.script)
-				if err != nil {
-					return err
-				}
-				applied := d.Revision
-				appliedRevision = &applied
+			d, readErr := scanDraft(tx.QueryRowContext(ctx, draftSelect+` FOR UPDATE OF d`, testID))
+			if readErr != nil && !errors.Is(readErr, ErrNotFound) {
+				return readErr
 			}
-			var validationRunID *string
-			if plan.requestValidation {
-				validation, err := enqueueValidation(ctx, tx, d)
-				if err != nil {
-					return err
+			if readErr != nil || d.EditingSessionID != session.ID {
+				result = Result{Status: "cancelled", Error: "The editing session is closed; this result was not applied."}
+			} else {
+				var input AuthorInput
+				settings, settingsErr := decodeSettings(rawSettings)
+				if json.Unmarshal(rawInput, &input) != nil || settingsErr != nil || input.BaseRevision != baseRevision || input.ConversationID != session.ConversationID {
+					result = Result{Status: "failed", Error: authorFailureMessage}
+				} else if input.SkillID == "acceptance-summary" {
+					data, outputErr := p.readArtifactBytes(ctx, tx, runID, attemptID, "author.json", MaxAuthorArtifactBytes)
+					var out summaryOutput
+					if outputErr == nil {
+						out, outputErr = decodeSummaryOutput(data)
+					}
+					if outputErr != nil {
+						result = Result{Status: "failed", Error: authorFailureMessage}
+					} else {
+						proof, proofErr := p.validationProof(ctx, tx, d)
+						if proofErr != nil || checkPublication(d.Revision, true, d, proof) != nil || !summaryBindingMatches(session, d, input, script, settings) ||
+							input.ValidationEvidence.AttemptID != proof.attemptID || d.summaryRunID == nil || *d.summaryRunID != runID {
+							result = Result{Status: "failed", Error: "Acceptance summary no longer matches the current editing session."}
+						} else if _, err = tx.ExecContext(ctx, `UPDATE drafts SET summary_description=$2,summary_background=$3,summary_name=$4 WHERE test_id=$1 AND summary_run_id=$5`, testID, out.Description, out.BackgroundSummary, out.Name, runID); err != nil {
+							return err
+						}
+					}
+				} else if input.SkillID != "" && (input.SkillID != "test-author" || input.SkillVersion != "1" || input.EditingSessionID != session.ID) {
+					result = Result{Status: "failed", Error: authorFailureMessage}
+				} else {
+					output, outputErr := p.readAuthorOutput(ctx, tx, runID, attemptID)
+					var plan authorPlan
+					if outputErr == nil {
+						plan, outputErr = planAuthorResult(d.Draft, baseRevision, output)
+					}
+					if outputErr != nil {
+						result = Result{Status: "failed", Error: authorFailureMessage}
+					} else {
+						contextMatches := input.SkillID == "" || input.ContextRevision == session.ContextRevision
+						snapshotMatches := contextMatches && d.Revision == baseRevision && script == d.Script && sameWorkspaceSettings(settings, d.WorkspaceSettings)
+						if !snapshotMatches {
+							plan.changed = false
+							plan.requestValidation = false
+							if d.Revision == baseRevision {
+								plan.message += "\n\n編輯背景已變更，建議未自動套用或驗證；請先檢視差異。"
+							}
+						}
+						var appliedRevision *int
+						if plan.changed {
+							d, err = saveDraftScript(ctx, tx, d, plan.script)
+							if err != nil {
+								return err
+							}
+							applied := d.Revision
+							appliedRevision = &applied
+						}
+						var validationID *string
+						if plan.requestValidation {
+							validation, err := enqueueValidation(ctx, tx, d)
+							if err != nil {
+								return err
+							}
+							validationID = &validation.ID
+						}
+						if _, err = tx.ExecContext(ctx, `INSERT INTO messages(id,conversation_id,role,content,run_id,base_revision,applied_revision,proposed_script,validation_run_id)
+       VALUES($1,$2,'assistant',$3,$4,$5,$6,$7,$8)`, NewID(), session.ConversationID, plan.message, runID, baseRevision, appliedRevision, plan.proposedScript, validationID); err != nil {
+							return err
+						}
+						var recap *string
+						if snapshotMatches {
+							recap = output.ConversationSummary
+						}
+						if _, err = tx.ExecContext(ctx, `UPDATE editing_sessions SET context_revision=context_revision+1,conversation_summary=COALESCE($2,conversation_summary) WHERE id=$1`, session.ID, recap); err != nil {
+							return err
+						}
+						if err = clearDraftSummary(ctx, tx, testID); err != nil {
+							return err
+						}
+					}
 				}
-				validationRunID = &validation.ID
-			}
-			if _, err := tx.ExecContext(ctx, `INSERT INTO messages
-                (id,conversation_id,role,content,run_id,base_revision,applied_revision,proposed_script,validation_run_id)
-                VALUES($1,$2,'assistant',$3,$4,$5,$6,$7,$8)`, NewID(), input.ConversationID,
-				plan.message, runID, baseRevision, appliedRevision, plan.proposedScript, validationRunID); err != nil {
-				return err
 			}
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE runs SET status=$2,error=$3,finished_at=now(),
-        author_reported_status=$4,acknowledged_at=COALESCE(acknowledged_at,now()) WHERE id=$1`,
-		runID, result.Status, result.Error, incoming.Status); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE runs SET status=$2,error=$3,finished_at=now(),author_reported_status=$4,
+  acknowledged_at=COALESCE(acknowledged_at,now()) WHERE id=$1`, runID, result.Status, result.Error, incoming.Status); err != nil {
 		return err
 	}
 	return tx.Commit()

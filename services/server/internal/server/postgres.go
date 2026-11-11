@@ -79,13 +79,20 @@ func (p *Postgres) Workspaces(ctx context.Context) ([]Workspace, error) {
 	return items, rows.Err()
 }
 
-const testColumns = `id,workspace_id,name,description,published_version_id`
+const testColumns = `id,workspace_id,name,description,published_version_id,
+ (SELECT json_build_object('id',e.id,'status',e.status,'draftRevision',d.current_revision,'updatedAt',d.updated_at)
+  FROM editing_sessions e JOIN drafts d ON d.editing_session_id=e.id
+  WHERE e.test_id=tests.id AND e.status IN ('active','discarding'))`
 
 type scanner interface{ Scan(...any) error }
 
 func scanTest(row scanner) (Test, error) {
 	var t Test
-	err := row.Scan(&t.ID, &t.WorkspaceID, &t.Name, &t.Description, &t.PublishedVersionID)
+	var active []byte
+	err := row.Scan(&t.ID, &t.WorkspaceID, &t.Name, &t.Description, &t.PublishedVersionID, &active)
+	if err == nil && len(active) > 0 {
+		err = json.Unmarshal(active, &t.ActiveEditingSession)
+	}
 	return t, dbError(err)
 }
 
@@ -120,12 +127,13 @@ func (p *Postgres) Test(ctx context.Context, id string) (Test, error) {
 const runColumns = `r.id,r.test_id,r.status,r.created_at,r.started_at,r.finished_at,r.error,
     CASE WHEN EXISTS(SELECT 1 FROM artifacts a WHERE a.run_id=r.id AND a.attempt_id=r.attempt_id AND a.name='report.html')
     THEN '/api/runs/' || r.id::text || '/artifacts/report.html' ELSE '' END,
-    r.kind,r.draft_revision,r.version_id,r.workspace_settings`
+    r.kind,r.draft_revision,r.version_id,r.workspace_settings,r.editing_session_id,
+    CASE WHEN r.kind='author' THEN CASE WHEN r.author_payload->>'skillId'='acceptance-summary' THEN 'summary' ELSE 'edit' END ELSE '' END`
 
 func scanRun(row scanner) (Run, error) {
 	var r Run
 	var settings []byte
-	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL, &r.Kind, &r.DraftRevision, &r.VersionID, &settings)
+	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL, &r.Kind, &r.DraftRevision, &r.VersionID, &settings, &r.EditingSessionID, &r.AuthorMode)
 	if err == nil {
 		r.WorkspaceSettings, err = decodeSettings(settings)
 	}

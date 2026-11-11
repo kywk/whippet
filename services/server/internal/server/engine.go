@@ -225,6 +225,11 @@ func (e *Engine) Handle(ctx context.Context, s *Session, m Envelope) error {
 }
 
 func (e *Engine) Tick(ctx context.Context) error {
+	if finisher, ok := e.store.(interface{ FinalizeDiscardingSessions(context.Context) error }); ok {
+		if err := finisher.FinalizeDiscardingSessions(ctx); err != nil {
+			return err
+		}
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	s := e.session
