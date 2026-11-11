@@ -1,0 +1,150 @@
+import { RUN_STATUSES } from './types';
+import type { DevUser, Run, Test, WhippetApi, Workspace } from './types';
+
+export class ApiError extends Error {
+  readonly code: string;
+  readonly status: number;
+
+  constructor(message: string, code = 'NETWORK_ERROR', status = 0) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.status = status;
+  }
+}
+
+export function errorMessage(error: unknown): string {
+  if (error instanceof ApiError) return `${error.message}（${error.code}）`;
+  return error instanceof Error ? error.message : '發生未知錯誤，請稍後重試。';
+}
+
+function record(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new ApiError('API 回應格式不符，請確認 Server 與前端使用相同契約。', 'INVALID_RESPONSE');
+  }
+  return value as Record<string, unknown>;
+}
+
+function string(value: unknown): string {
+  if (typeof value !== 'string') throw new ApiError('API 缺少必要欄位。', 'INVALID_RESPONSE');
+  return value;
+}
+
+function optionalString(value: unknown): string | undefined {
+  return value == null ? undefined : string(value);
+}
+
+function parseWorkspace(value: unknown): Workspace {
+  const data = record(value);
+  return { id: string(data.id), name: string(data.name) };
+}
+
+function parseTest(value: unknown): Test {
+  const data = record(value);
+  return {
+    id: string(data.id), workspaceId: string(data.workspaceId), name: string(data.name),
+    description: optionalString(data.description) ?? '',
+    publishedVersionId: optionalString(data.publishedVersionId) || null,
+  };
+}
+
+function parseRun(value: unknown): Run {
+  const data = record(value);
+  const status = string(data.status);
+  if (!RUN_STATUSES.some((item) => item === status)) {
+    throw new ApiError(`無法辨識執行狀態：${status}`, 'INVALID_RESPONSE');
+  }
+  return {
+    id: string(data.id), testId: string(data.testId), status: status as Run['status'],
+    createdAt: string(data.createdAt), startedAt: optionalString(data.startedAt),
+    finishedAt: optionalString(data.finishedAt), error: optionalString(data.error),
+    reportUrl: optionalString(data.reportUrl),
+  };
+}
+
+function items<T>(value: unknown, parse: (item: unknown) => T): T[] {
+  const data = record(value);
+  if (!Array.isArray(data.items)) throw new ApiError('API 列表格式不符。', 'INVALID_RESPONSE');
+  return data.items.map(parse);
+}
+
+export function createHttpApi(apiBase = '/api'): WhippetApi {
+  const base = apiBase.replace(/\/+$/, '');
+
+  async function request(path: string, method = 'GET', signal?: AbortSignal): Promise<unknown> {
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 12_000);
+
+    try {
+      const response = await fetch(`${base}${path}`, {
+        method, credentials: 'include', headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      const data: unknown = await response.json().catch((error: unknown) => {
+        if (controller.signal.aborted) throw error;
+        return null;
+      });
+      if (!response.ok) {
+        const body = data && typeof data === 'object' ? (data as Record<string, unknown>).error : null;
+        const details = body && typeof body === 'object' ? body as Record<string, unknown> : {};
+        throw new ApiError(
+          typeof details.message === 'string' ? details.message : `API 請求失敗（HTTP ${response.status}）。`,
+          typeof details.code === 'string' ? details.code : `HTTP_${response.status}`,
+          response.status,
+        );
+      }
+      if (data === null) throw new ApiError('API 未回傳 JSON，請確認 /api 代理設定。', 'INVALID_RESPONSE');
+      return data;
+    } catch (error) {
+      if (signal?.aborted) throw new DOMException('請求已取消', 'AbortError');
+      if (error instanceof ApiError) throw error;
+      if (timedOut) throw new ApiError('API 回應逾時，請確認 Server 連線後重試。', 'REQUEST_TIMEOUT');
+      throw new ApiError('無法連線到 API，請確認 Server 與代理設定後重試。');
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+    }
+  }
+
+  const id = encodeURIComponent;
+  return {
+    async login(signal) {
+      const data = record(await request('/dev-login', 'POST', signal));
+      const user = record(data.user);
+      return { id: string(user.id), role: string(user.role) } satisfies DevUser;
+    },
+    async listWorkspaces(signal) {
+      return items(await request('/workspaces', 'GET', signal), parseWorkspace);
+    },
+    async listTests(workspaceId, signal) {
+      return items(await request(`/workspaces/${id(workspaceId)}/tests`, 'GET', signal), parseTest);
+    },
+    async getTest(testId, signal) {
+      return parseTest(await request(`/tests/${id(testId)}`, 'GET', signal));
+    },
+    async createRun(testId, signal) {
+      return parseRun(await request(`/tests/${id(testId)}/runs`, 'POST', signal));
+    },
+    async listRuns(testId, signal) {
+      return items(await request(`/tests/${id(testId)}/runs`, 'GET', signal), parseRun);
+    },
+    async getRun(runId, signal) {
+      return parseRun(await request(`/runs/${id(runId)}`, 'GET', signal));
+    },
+  };
+}
+
+export function resolveReportUrl(reportUrl: string | undefined, apiBase: string, pageUrl: string): string | null {
+  if (!reportUrl) return null;
+  try {
+    const base = new URL(`${apiBase.replace(/\/+$/, '')}/`, pageUrl);
+    const url = new URL(reportUrl, base);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}

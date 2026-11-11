@@ -1,0 +1,81 @@
+name: ${WHIPPET_PROJECT_NAME:-whippet-m1}
+
+services:
+  postgres:
+    image: postgres:16.11-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-whippet}
+      POSTGRES_USER: ${POSTGRES_USER:-whippet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run sh deploy/init-local.sh first}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - database
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  server:
+    image: whippet-server:m1
+    build:
+      context: ../services/server
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-whippet}:${POSTGRES_PASSWORD:?Run sh deploy/init-local.sh first}@postgres:5432/${POSTGRES_DB:-whippet}?sslmode=disable
+      MANAGER_TOKEN: ${MANAGER_TOKEN:?Run sh deploy/init-local.sh first}
+      ARTIFACT_DIR: /data/artifacts
+      PORT: "8080"
+    ports:
+      - "127.0.0.1:${SERVER_PORT:-18081}:8080"
+    volumes:
+      - server_data:/data
+    networks:
+      - database
+      - control
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, /app/whippet-server, healthcheck]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 10s
+
+  web:
+    image: whippet-web:m1
+    build:
+      context: ../apps/web
+      args:
+        VITE_API_BASE_URL: /api
+        VITE_USE_MOCK: "false"
+    restart: unless-stopped
+    environment:
+      WHIPPET_API_UPSTREAM: http://server:8080
+    ports:
+      - "127.0.0.1:${WEB_PORT:-18080}:80"
+    networks:
+      - control
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1/]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+
+volumes:
+  postgres_data:
+  server_data:
+
+networks:
+  database:
+    internal: true
+  control:
+    name: ${WHIPPET_CONTROL_NETWORK:-whippet-m1-control}

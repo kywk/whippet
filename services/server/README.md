@@ -1,0 +1,137 @@
+# Whippet Server
+
+Go 單一服務，依 [`contracts/mvp-v1.md`](../../contracts/mvp-v1.md) 提供 M1 HTTP API、PostgreSQL 佇列、Manager WebSocket gateway 與持久化附件。另包含 M2 的 attempt／事件／結果去重，以及取消入口；草稿、revision 與發佈流程尚未實作。
+
+M1 已於 2026-11-11 驗收完成。總指揮與 Muse 已確認真實成功 Run、斷言失敗 Run 及兩份 HTML report 正常；storage shim 修正後成功報告顯示 Passed 1／Failed 0，失敗報告顯示 Passed 0／Failed 1。完整 Run ID 與驗證來源見 [DELIVERY.md](DELIVERY.md)。
+
+## 執行
+
+需求：Go 1.23.12、可連線的 PostgreSQL，以及 Server 可寫入的附件目錄。依賴固定於 `go.mod`／`go.sum`：Gorilla WebSocket 1.5.3、lib/pq 1.10.9。完整本機 Compose 操作見 [M1 指南](../../docs/guides/local-m1.md)。
+
+獨立開發時，在 `services/server/` 執行：
+
+```sh
+export DATABASE_URL='postgres://whippet:whippet@localhost:5432/whippet?sslmode=disable'
+export MANAGER_TOKEN='replace-with-a-deployment-token'
+export ARTIFACT_DIR='./data/artifacts'
+export PORT='8080'
+
+go mod download all
+go run -mod=readonly ./cmd/server
+```
+
+啟動時先 Ping DB，再以 transaction 與 advisory lock 執行內嵌的 `migrations/*.sql`。`schema_migrations` 記錄已套用檔案；Server 重啟不重建種子或改寫既有 Run。資料庫帳號需有建立資料表的權限。DB 不可用時啟動失敗，由部署層安排重試。
+
+| 環境變數 | 預設／用途 |
+| --- | --- |
+| `DATABASE_URL` | 必填，PostgreSQL connection URL |
+| `MANAGER_TOKEN` | 必填，Manager WS 與附件上傳共用 bearer token |
+| `ARTIFACT_DIR` | `./data/artifacts`；需持久化並由 Server OS 使用者獨占寫入 |
+| `PORT` | `8080` |
+
+`POST /api/dev-login` 回固定 `dev-admin`／`superadmin`，不建立 cookie 或 token；M1 的一般 API 共用固定開發身分。這個服務尚未提供真實登入與租戶隔離。SPA 透過相同 origin 的 `/api` 反向代理串接，沒有開放跨來源 CORS。
+
+## Docker
+
+建置 context 必須是本服務目錄：
+
+```sh
+docker build -t whippet-server:m1 services/server
+```
+
+上述命令從 repo 根目錄執行。Dockerfile 於 build stage 下載固定依賴，使用 `-mod=readonly` 產生靜態 binary，runtime 使用 distroless nonroot。掛載 `/data` 保存附件，並另行持久化 PostgreSQL。使用 bind mount 時需讓 UID/GID `65532:65532` 可寫入 `/data/artifacts`。本機 Compose 位於 [compose.server.yml](../../deploy/compose.server.yml)，預設 Server 對主機為 `127.0.0.1:18081`。
+
+`GET /healthz` 為程序存活檢查，`GET /readyz` 檢查 DB。映像內可執行 `/app/whippet-server healthcheck`，以 3 秒期限查詢本機 `/readyz`，供 distroless 的 Compose healthcheck 使用。Server 不在程序內處理 TLS；遠端部署由入口代理終止 HTTPS/WSS，代理需支援 WS upgrade 並允許超過 60 秒的連線。
+
+## 種子與 HTTP
+
+| 資源 | ID |
+| --- | --- |
+| 預設 Workspace | `00000000-0000-4000-8000-000000000001` |
+| 成功 Test | `10000000-0000-4000-8000-000000000001` |
+| 刻意斷言失敗 Test | `10000000-0000-4000-8000-000000000002` |
+| 對應已發佈版本 | `20000000-0000-4000-8000-000000000001`／`20000000-0000-4000-8000-000000000002` |
+
+兩份完整 TypeScript spec 都使用 `page.setContent`，不連線外網；每筆 Run 在建立時保存已發佈版本、腳本及 60000ms timeout 快照。失敗 Test 斷言不同的 heading，應由真實 Worker 回 `failed`。
+
+| Method | Path | 回應 |
+| --- | --- | --- |
+| POST | `/api/dev-login` | 固定 `{user:{id,role}}` |
+| GET | `/api/workspaces` | `{items:[Workspace]}` |
+| GET | `/api/workspaces/:id/tests` | `{items:[Test]}` |
+| GET | `/api/tests/:id` | Test |
+| POST | `/api/tests/:id/runs` | `202` Run |
+| GET | `/api/tests/:id/runs` | `{items:[Run]}`，新到舊 |
+| GET | `/api/runs/:id` | Run |
+| POST | `/api/runs/:id/cancel` | Run；queued 立即 cancelled，已派送者進入 cancelling |
+| GET | `/api/runs/:id/artifacts/:name` | 已保存附件 |
+
+錯誤使用 `{error:{code,message}}`；無效 UUID 為 400、不存在資源 404、狀態或 attempt 衝突 409。Run 的 `reportUrl` 在 `report.html` 已保存後出現。再次 POST 建立 Run 會產生新 Run；HTTP 建立請求尚無 idempotency key。
+
+```sh
+curl -X POST http://localhost:8080/api/dev-login
+curl http://localhost:8080/api/workspaces
+curl http://localhost:8080/api/workspaces/00000000-0000-4000-8000-000000000001/tests
+curl -X POST http://localhost:8080/api/tests/10000000-0000-4000-8000-000000000001/runs
+```
+
+## Manager 串接
+
+連線 `ws://<server>:8080/api/manager/connect`，header `Authorization: Bearer <MANAGER_TOKEN>`。所有訊息使用 camelCase envelope；第一筆必須在 10 秒內送出：
+
+```json
+{"protocolVersion":1,"messageId":"<uuid>","type":"hello","managerId":"runner-1","payload":{"capacity":1}}
+```
+
+每 10～20 秒送一次 heartbeat，最長間隔 60 秒。`active` 必須是陣列，閒置時也要送 `[]`：
+
+```json
+{"protocolVersion":1,"messageId":"<uuid>","type":"heartbeat","managerId":"runner-1","payload":{"active":[{"runId":"<run-uuid>","attemptId":"<attempt-uuid>"}]}}
+```
+
+1. Server 以 PostgreSQL `queue_seq` FIFO claim 任務，先提交唯一 attempt，再送 dispatch。單一 Manager 的 `capacity`（1～64）為全域名額上限。
+2. dispatch payload 為 `{kind:"run",script:"<完整 spec>",timeoutMs:60000}`。Manager 先持久化 journal，再啟動 Worker，回 `ack`。未 ACK 的 dispatch 每 5 秒最多重送一次，保持相同 runId／attemptId；Manager 必須依 attempt 去重。
+3. `event` payload 為 `{eventId,kind:"started"|"log",message?}`；同一 eventId 只保存一次。開始事件設為 running，附件上傳後設為 collecting。
+4. Manager 上傳附件成功後送 `result`，payload 為 `{status:"succeeded"|"failed"|"timed_out"|"cancelled",error?}`。`succeeded` 必須已保存兩份附件；異常失敗／逾時／取消可缺附件，以便呈現實際錯誤。
+5. 終態結果可重送，互相衝突的終態與舊 attempt 會被拒絕。result 只更新 Run；只有終態 attempt 已從後續 heartbeat.active 移除，Server 才釋放名額。Manager 必須在容器實際回收後才移除 active。
+
+Manager ID 於首次 hello 寫入 DB，之後僅接受相同 ID；同 ID 新連線取代舊連線。Server 重啟會恢復 queued Run，既有 attempt 不自動重新排隊。有尚未回收的 assignment 時，重連先等待 heartbeat 對帳，再允許派新工作；未知 active attempt 會中止連線。已 ACK／running 但缺少結果的任務會保留名額，等待 Manager journal 補送，不猜測已停止。
+
+M2 取消增補：Server 送相同 envelope 的 `type:"cancel"`、既有 runId／attemptId、`payload:{}`；最多每 5 秒重送一次。Manager 必須去重、停止／回收容器，再回報結果與 heartbeat。queued 取消不派送。取消與完成同時發生時，接受 Manager 實際的最終結果，因此 `cancelling` 仍可能收到 `succeeded`。
+
+目前沒有額外的 Server result ACK／完整 reconcile 訊息；Manager 斷線重連時需補送 journal 中尚未確認的終態。發送失敗不建立新 attempt，也不自動重跑測試。
+
+## 附件
+
+```http
+POST /api/manager/runs/:runId/artifacts/report.html
+Authorization: Bearer <MANAGER_TOKEN>
+X-Attempt-Id: <attemptId>
+Content-Type: application/octet-stream
+
+<raw body>
+```
+
+僅接受 `report.html`／`results.json`，單檔上限 64 MiB。檔名與 UUID 採白名單；檔案先寫暫存、同步並原子 rename，再登記 DB。key 為 `run/attempt/sha256/name`，同內容上傳可重送，衝突內容回 409，不覆寫已登記報告。終態後拒絕再上傳。
+
+`report.html` 應為單檔自包含報告。回應設定 CSP sandbox，允許 inline scripts、inline styles 與 data/blob 圖片，禁止同源權限與網路存取，避免報告腳本操作 SPA。Server 在原報告 script 前注入記憶體 storage shim，讓 Playwright 設定可在 opaque sandbox 中讀寫 `localStorage`／`sessionStorage`；資料只留在本頁，重新整理即清空，不加入 `allow-same-origin`。注入只改變 HTTP 呈現，保存的附件與 SHA256 不變；回應 ETag 使用 `-storage-v1` 後綴，既有 Run 可直接重新開啟報告。獨立附件資產、trace.zip 與截圖端點尚未納入 v1。
+
+## 檢查
+
+無外部模組的核心檢查可離線執行，包含 HTTP → 假儲存層 → dispatch／result → 真實附件檔案，並覆蓋 FIFO、名額回收、重連、取消與 traversal：
+
+```sh
+GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local go test ./internal/server
+```
+
+依賴可用時，先建置整個服務，再以測試用 DB 執行一次資料層整合檢查：
+
+```sh
+go build -o /tmp/whippet-server ./cmd/server
+TEST_DATABASE_URL='postgres://whippet:whippet@localhost:5432/whippet_test?sslmode=disable' \
+  go test -tags=integration ./internal/server -run TestPostgresQueueAndAttemptInvariants -count=1
+```
+
+整合測試會在指定 DB 建立獨立隨機 schema，結束時刪除該 schema；不使用既有應用資料表。需要 schema 建立權限。
+
+上述命令供後續開發按改動執行；本次 M1 驗收已完成，不需重跑。實際檢查與仍未涵蓋的 M2 項目見 [DELIVERY.md](DELIVERY.md)。

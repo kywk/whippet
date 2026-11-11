@@ -1,0 +1,36 @@
+name: ${WHIPPET_RUNNER_PROJECT_NAME:-whippet-m1-runner}
+
+services:
+  manager:
+    image: whippet-manager:m1
+    build:
+      context: ../services/manager
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 45s
+    environment:
+      SERVER_URL: ${SERVER_URL:?Set the Server origin in deploy/.env}
+      MANAGER_TOKEN: ${MANAGER_TOKEN:?Run sh deploy/init-local.sh first}
+      MANAGER_ID: ${MANAGER_ID:-local-runner}
+      WORKER_IMAGE: ${WORKER_IMAGE:-whippet-worker:m1}
+      WORK_DIR: ${WORK_DIR:?Run sh deploy/init-local.sh first}
+      MAX_WORKERS: "1"
+      DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - type: bind
+        source: ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
+        target: /var/run/docker.sock
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WORK_DIR:?Run sh deploy/init-local.sh first}
+        target: ${WORK_DIR:?Run sh deploy/init-local.sh first}
+        bind:
+          create_host_path: false
+
+  # Build target only. Never include this service in `up`; Manager creates Workers.
+  worker:
+    image: ${WORKER_IMAGE:-whippet-worker:m1}
+    build:
+      context: ../runtimes/worker
+    profiles: [build]

@@ -1,0 +1,12 @@
+# Same Docker daemon: use service discovery without publishing Server to the LAN.
+services:
+  manager:
+    environment:
+      SERVER_URL: http://server:8080
+    networks:
+      - control
+
+networks:
+  control:
+    external: true
+    name: ${WHIPPET_CONTROL_NETWORK:-whippet-m1-control}
