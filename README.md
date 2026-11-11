@@ -37,6 +37,7 @@ docker compose --env-file deploy/.env -f deploy/compose.runner.yml -f deploy/com
 - [實作進度](docs/tracking/implementation.md)
 - [Agent 分工](docs/tracking/delegation.md)
 - [M1 共用契約](contracts/mvp-v1.md)
+- [OpenCode Go Muse AI Worker 設定](docs/guides/opencode-go.md)
 
 Server／Manager 使用 Go，Worker 使用 Node.js／TypeScript 與 Playwright，前端使用 React SPA，資料庫為 PostgreSQL。
 模型 key 與 Manager token 請放在部署環境，不提交到原始碼。

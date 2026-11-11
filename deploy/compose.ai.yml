@@ -1,0 +1,26 @@
+name: whippet-ai
+
+# Opt-in one-shot commands only; this file does not extend the Manager stack.
+# Pass --env-file deploy/.env.ai explicitly. Only the AI process receives key.
+x-ai-service: &ai-service
+  image: ${WORKER_IMAGE:-whippet-worker:m1}
+  init: true
+  restart: "no"
+  profiles: [ai]
+  environment:
+    WHIPPET_AI_ENABLED: ${WHIPPET_AI_ENABLED:-false}
+    WHIPPET_AI_BASE_URL: ${WHIPPET_AI_BASE_URL:-https://opencode.ai/inference/go/openai/v1}
+    WHIPPET_AI_MODEL: ${WHIPPET_AI_MODEL:-muse-spark-1.3-contributor}
+    WHIPPET_AI_REASONING_EFFORT: ${WHIPPET_AI_REASONING_EFFORT:-xhigh}
+    OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}
+  entrypoint: [node, dist/ai/cli.js]
+
+services:
+  ai-check:
+    <<: *ai-service
+    command: [check]
+
+  ai-probe:
+    <<: *ai-service
+    entrypoint: [node, dist/ai/cli.js, probe]
+    command: []

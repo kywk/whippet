@@ -58,9 +58,15 @@ npm test
 
 已保留 `package-lock.json`（lockfileVersion 3），固定直接與間接相依套件；Dockerfile 使用 `npm ci --include=dev` 建置，再 prune 開發依賴。本次 `npm run typecheck`、`npm run build` 均已通過；沒有重跑 E2E，成功／失敗實測由 Muse 接手。`node_modules/`、`dist/` 是本機產物，已由本目錄 `.gitignore` 與 `.dockerignore` 排除。
 
+## AI 預配置（預設停用）
+
+已加入 OpenCode Go Muse 原生 Responses 的最小設定／請求組裝，以及 `npm run ai:check`、`npm run ai:probe -- --live --session=<conversation-id>`。check 完全離線；probe 只有明確 enabled、key 與 live 參數齊備才發送一次合成 coding 請求。一般 Playwright runner 不載入 AI 模組或接收 AI key。
+
+設定、獨立 opt-in Compose、訂閱／Contributor 政策及日後的執行方式見 [OpenCode Go 指南](../../docs/guides/opencode-go.md)。此配置尚未接上 author 模式、網頁 AI 對話或工具迴圈。
+
 ## M1 限制
 
 - v1 上傳契約只開放 `report.html`、`results.json`。預設關閉 screenshot／trace／video，讓固定 `page.setContent` spec 的 HTML 可單檔開啟。若腳本自行附加檔案或覆寫擷取設定，Playwright 會產生額外 data／trace；目前僅保留於本機輸出，未上傳，報告內對應下載連結不可用。要支援完整附件須先擴充契約。
 - 基礎設施或語法故障可能沒有 HTML／JSON；只回 failed manifest，不補造成功或仿製 Playwright 報告。
 - 尚未驗證 Docker、Chromium 實際啟動、Linux／Mac 映像架構及端到端成功／失敗流程。僅有結果判定單元測試與語法檢查不代表這些項目已通過。
-- 尚無 author 模式、模型 adapter、瀏覽器探索工具、即時影像及公開多租戶隔離。
+- 尚無 author 模式、瀏覽器探索／Agent 工具迴圈、即時影像及公開多租戶隔離；目前只有獨立 Responses 預配置。

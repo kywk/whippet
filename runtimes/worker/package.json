@@ -8,7 +8,10 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/runner.js",
-    "test": "node --test dist/result.test.js"
+    "test": "node --test dist/result.test.js",
+    "test:ai": "node --test dist/ai/ai.test.js",
+    "ai:check": "node dist/ai/cli.js check",
+    "ai:probe": "node dist/ai/cli.js probe"
   },
   "dependencies": {
     "@playwright/test": "1.64.1"

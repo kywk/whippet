@@ -81,7 +81,7 @@ Playwright 內部 workers 預設 1，避免與 Manager 併發上限相乘。
 ## AI 編輯
 
 工具介面採探索瀏覽器、讀／更新草稿、執行驗證、讀取報告。官方 Playwright 工具可接入，MVP 不需要多 Agent 自治框架。
-模型 adapter 支援自訂 endpoint／model、串流及工具呼叫；OpenAI-compatible 不保證所有供應商能力一致，先驗證實際選用的一個 endpoint。
+模型 adapter 保留自訂 endpoint／model、串流及工具呼叫；OpenCode Go Muse 先預配原生 Responses（非強制 Chat Completions），完整編輯迴圈仍在 M3；OpenAI-compatible 不保證所有供應商能力一致，先驗證實際選用的一個 endpoint。
 每輪使用需求摘要、當前草稿、近期對話與必要工具結果；完整歷史持久化但不全量送模型。設定工具步數、執行時間與輸出上限。
 驗證要求走同一任務佇列，避免 Agent 另外啟動未計入容量的瀏覽器工作。串行續接任務時釋放前一 slot，避免占用 slot 等另一個任務而卡死。
 

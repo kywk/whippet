@@ -80,4 +80,8 @@
 
 ## 接續方式
 
-下一個可執行任務是 M1：先由總指揮建立最小任務／結果契約，再讓三個 Agent 各自完成可串接的 UI、Server、Runtime。遇到非核心細節採可逆預設，記在相關任務，不延伸成新一輪設計訪談。
+下一個可執行任務是 M2：先固定草稿 revision／驗證／發佈契約，再讓 Server、Web 與 Runtime Agent 依檔案 ownership 推進。遇到非核心細節採可逆預設，記在相關任務，不延伸成新一輪設計訪談。
+
+## M1 後的模型預配置
+
+狀態：完成。Owner：Runtime t32（Codex sol／xhigh）、總指揮整合。M1 已先提交 `0b6f2f9`，再完成 OpenCode Go Muse Spark 1.3 Contributor／xhigh 的 Responses API 預配置、CLI 與獨立 Compose。TypeScript build、8 項 mock 測試、Worker Docker build 與容器離線 ai-check 通過。API key 尚未提供，未發送真實模型請求；訂閱資格與 live 呼叫待 key 到位後驗證，不視為 M3 AI 對話已完成。設定方式見 [OpenCode Go 指南](../guides/opencode-go.md)。
