@@ -47,8 +47,8 @@ func LoadConfig() (Config, error) {
 	}
 	if value := os.Getenv("MAX_WORKERS"); value != "" {
 		cfg.MaxWorkers, err = strconv.Atoi(value)
-		if err != nil || cfg.MaxWorkers != 1 {
-			return cfg, errors.New("M1 supports MAX_WORKERS=1 only")
+		if err != nil || cfg.MaxWorkers < 1 || cfg.MaxWorkers > 64 {
+			return cfg, errors.New("MAX_WORKERS must be an integer between 1 and 64")
 		}
 	}
 	if cfg.WorkDir == "" {

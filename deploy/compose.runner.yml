@@ -14,7 +14,7 @@ services:
       MANAGER_ID: ${MANAGER_ID:-local-runner}
       WORKER_IMAGE: ${WORKER_IMAGE:-whippet-worker:m1}
       WORK_DIR: ${WORK_DIR:?Run sh deploy/init-local.sh first}
-      MAX_WORKERS: "1"
+      MAX_WORKERS: ${MAX_WORKERS:-1}
       DOCKER_HOST: unix:///var/run/docker.sock
     volumes:
       - type: bind

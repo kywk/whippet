@@ -1,8 +1,45 @@
 # Server 交付
 
-時間：2026-11-11 17:19 Asia/Taipei。Owner：Whippet Server／本輪本機部署整合 Agent。
+Owner：Whippet Server Agent。最新交付：M2 Server 實作；M1 驗收紀錄保留於下方。
 
-M1 已由總指揮與 Muse 驗收完成。Server 依賴、正式 build、四個服務映像與 Compose 串接已就緒，真實成功／失敗執行及報告呈現均已確認；服務保持運作，M2 待派。
+## M2 本輪交付（2026-11-11）
+
+範圍僅 `services/server/`，沿用 M1。沒有安裝套件、操作 Git、讀取 env 機密、啟動其他 Agent 或操作 Docker／現有服務；沒有進入 M3。Commit 由總指揮於整合測試通過後執行。
+
+### 產物與行為
+
+- `migrations/003_drafts_and_publication.sql`：唯一 Draft、不可變 revision、validation Run 來源、Version 驗證關聯；DB trigger 防止修改已發布版本、revision 與歷史 Run 腳本／設定快照。既有 M1 版本與 Run 保留。
+- `model.go`：Draft／Version 與 v2 Run 欄位；Store 擴充建立 Test、草稿、驗證、發布、版本查詢。
+- `drafts.go`：初次草稿 revision 1；Test row lock 串行化初始化與寫入，主鍵保證每個 Test 一份草稿。過期 revision 回 409，實際變更才遞增並清除驗證資格。
+- `drafts.go`：validation 固定 revision、腳本、SHA256、timeout；與正式 Run 共用 FIFO。發布 transaction 鎖定目前草稿及驗證，核對同一 revision／內容／設定、succeeded、使用者確認、目前 attempt 的報告索引與可讀的實體非空檔案。缺報告或檔案大小不符拒絕發布。同一次驗證重複確認回原版本。
+- `drafts_http.go`／`http.go`：依 v2 新增建立測試、GET／PUT Draft、validate、publish、versions；處理 invalid JSON、缺確認、過期 revision，維持統一錯誤格式。
+- `postgres.go`：Run 增加 kind／draftRevision／versionId，正式執行仍只取已發布不可變版本。原取消、事件／結果去重及 SQL FIFO／slot 保留邏輯沿用。
+- `engine.go`：正整數 capacity；每次連線先 heartbeat 對帳。active 可補回遺失 ACK，既有 attempt 不因重連重跑；取消未 ACK 的 attempt 時先重送相同 dispatch 再 cancel。
+- `engine.go`：對帳與持久化成功後，經既有串行 Peer 寫入 `heartbeat_ack`，payload `{}`、省略 runId／attemptId；寫入失敗關閉連線並暫停派送，供 Runtime refresh read deadline。
+- `cmd/server/main.go`：設定 Postgres.Artifacts，讓發布門檻在交易內讀取實體報告。
+- `README.md`：更新 v2 HTTP、草稿 revision／發布門檻、heartbeat_ack 與取消重送規則。
+
+### 實際驗證
+
+使用既有配對的 Go 1.23.12、既有模組快取，設定 `GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local` 與暫存 GOCACHE：
+
+1. `go test ./internal/server -count=1` **通過**，0.437s。
+2. `go build -mod=readonly -trimpath -o /private/tmp/whippet-server-m2 ./cmd/server` **通過**，exit 0。
+3. 修改的 Go 檔案已執行 gofmt。
+
+新增必要測試涵蓋：舊 revision 成功不可發布、過期 UI revision、其他 Test／非 validation Run、錯誤腳本／hash／timeout、失敗／尚未完成／取消驗證、缺報告、缺使用者確認；真實暫存檔案核對可讀性／非空／大小；HTTP 400／409；capacity=2 的 FIFO 與回收前保留名額；遺失 dispatch 後取消維持同 attempt；heartbeat_ack 格式與 ACK 失敗暫停。M1 的既有流程測試同步納入 heartbeat 對帳。
+
+這些是 domain／HTTP／Engine 與真實暫存附件檢查，DB 邊界使用測試替身或直接驗證發布規則。**未宣稱 PostgreSQL migration／交易或跨服務 M2 smoke 已驗證**；依總指揮指示不等待本機 DB，也不擴大環境測試。
+
+### 總指揮串接
+
+Server 已可 build。請於 Docker 套用 migration 003，使用既有環境進行實際 API smoke：建立未發布 Test → GET 草稿 → 儲存 → validate → 報告就緒 → confirmed publish → 正式 Run；並核對修改後舊 revision 發布回 409、缺報告不可發布、版本與既有 Run 不被草稿改動。Runtime 的 heartbeat_ack／cancel 與多 Worker 可靠性情境一併整合。
+
+M1 種子 Version 的 validationRunId 保留 null；新版本才有驗證來源。發布端必須掛入原附件 volume，否則即使 DB 有報告索引也會回 409。完整主流程與 migration smoke 通過後，再由總指揮標記 M2 完成與 commit。
+
+## M1 歷史交付
+
+M1 已由總指揮與 Muse 驗收完成。Server 依賴、正式 build、四個服務映像與 Compose 串接已就緒，真實成功／失敗執行及報告呈現均已確認。
 
 本輪授權寫入 `services/server/`、`deploy/`、`docs/guides/` 與根目錄 `README.md`。Compose 啟動、修正版 Server 部署與瀏覽器 E2E 由總指揮／Muse 執行；本 Agent 未執行 Git、啟動其他 Agent 或修改共同契約／追蹤文件。本次只更新驗收文件，沒有重跑測試或操作服務。
 
@@ -78,7 +115,7 @@ M1 已由總指揮與 Muse 驗收完成。Server 依賴、正式 build、四個�
 
 驗證分工：本 Agent 完成上述核心檢查與建置；總指揮／Muse 完成 Compose 啟動及 Server → Manager → Worker → 報告的實際主流程。獨立的 `postgres_integration_test.go` 仍未執行，完整取消／重連可靠性情境也尚未驗證；這些不與已通過的 M1 E2E 混稱。
 
-## M2 已補與限制
+## M1 交接時的 M2 限制（歷史紀錄，本輪變更見上方）
 
 - 已補：固定 runId／attemptId 重送、ACK、eventId 持久化去重、同終態安全重送、拒絕終態變更與舊 attempt、queued／執行中取消入口。
 - result 不直接釋放名額；終態且 heartbeat.active 已移除才放行下一筆。Manager 斷線不自動重派既有 Run。
@@ -98,4 +135,4 @@ M1 已由總指揮與 Muse 驗收完成。Server 依賴、正式 build、四個�
 5. **M1 驗收**：成功／刻意失敗與 HTML report 均已確認完成；後續 M2 再驗證超額排隊、回收、取消與重連。
 6. **總指揮**：唯一任務進度來源 `docs/tracking/implementation.md` 由總指揮維護；M1 已驗收，M2 尚待派工。本 Agent 不自行展開下一階段。
 
-本 Agent 等待 M2 派工；既有本機服務保持運作，沒有執行公開服務部署。
+上述為 M1 當時交接；M2 本輪產物與待整合項目以本文件開頭為準。既有服務未由本 Agent 操作。

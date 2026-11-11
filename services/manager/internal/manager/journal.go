@@ -19,7 +19,11 @@ type record struct {
 	Result          *Result  `json:"result,omitempty"`
 	Artifacts       []string `json:"artifacts,omitempty"`
 	ResultMessageID string   `json:"resultMessageId"`
+	CancelRequested bool     `json:"cancelRequested,omitempty"`
+	Reclaimed       bool     `json:"reclaimed,omitempty"`
 }
+
+func (r record) holdsSlot() bool { return r.Phase != "complete" && !r.Reclaimed }
 
 func atomicJSON(path string, value any) error {
 	data, err := json.Marshal(value)

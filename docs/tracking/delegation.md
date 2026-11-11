@@ -1,6 +1,6 @@
 # Agent 分工與派工計畫
 
-本輪只完成文件；下列開發任務尚未執行。里程碑與唯一進度來源為 [實作計畫](implementation.md)。
+M1 已交付，現依使用者指示推進 M2。里程碑與唯一進度來源為 [實作計畫](implementation.md)。
 
 ## 固定分工
 
@@ -13,7 +13,7 @@
 | Server Agent | `services/server/`，含其 migrations | Go API、PostgreSQL、版本與發佈規則、任務表、Manager gateway、附件管理 |
 | Runtime Agent | `services/manager/`、`runtimes/worker/` | Go Manager、Docker 生命週期、Node／TS Agent 與 Playwright、影像輸出 |
 
-- 路徑是預定程式布局，隨首次實作建立；本輪不建立空的程式專案。
+- 各模組已建立，沿用既有實作，以最小垂直切片補齊缺口。
 - Agent 在自己的範圍內直接完成實作與必要檢查；需要跨範圍修改時回報具體介面需求，由 owner 處理。
 - Dockerfile 放在各自服務目錄，由該 owner 維護；Compose 與部署指南由總指揮整合。
 - 契約由總指揮單一寫入。新增必要欄位時同步通知受影響 owner，不先建立未使用的完整框架。
@@ -76,3 +76,7 @@ Owner：<角色>；可修改：<具體路徑>。
 ## 本次執行路由（使用者已指定）
 
 透過 herdr 可見 pane 執行互動式 Agent。一般開發使用 Codex gpt-6.1-sol／xhigh；特別困難任務才使用 gpt-6-astra／medium。單純測試使用 OpenCode muse spark 1.3／xhigh（啟動前核對精確模型 ID）。不得默默替換模型。首批共用 contracts/mvp-v1.md；同一工作目錄依檔案 owner 協作，不執行 Git 操作。
+
+## M2 本輪分工
+
+共同契約為 `contracts/mvp-v2.md`。t30 負責 Web 草稿／發佈／取消；t31 負責 Server 草稿、版本、發佈交易與排程介面；t32 負責 Manager 併發、取消、回收及去重。開發維持 Codex sol／xhigh。t33 使用 OpenCode Muse Spark 1.3 Contributor／xhigh，僅依合成資料與黑箱介面撰寫驗收腳本，不讀取專案原始碼或憑證。總指揮負責部署、整合驗收與最後提交。M3 暫不開始。

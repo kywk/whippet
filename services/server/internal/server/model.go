@@ -30,14 +30,36 @@ type Test struct {
 }
 
 type Run struct {
-	ID         string     `json:"id"`
-	TestID     string     `json:"testId"`
-	Status     string     `json:"status"`
-	CreatedAt  time.Time  `json:"createdAt"`
-	StartedAt  *time.Time `json:"startedAt,omitempty"`
-	FinishedAt *time.Time `json:"finishedAt,omitempty"`
-	Error      string     `json:"error,omitempty"`
-	ReportURL  string     `json:"reportUrl,omitempty"`
+	ID            string     `json:"id"`
+	TestID        string     `json:"testId"`
+	Status        string     `json:"status"`
+	CreatedAt     time.Time  `json:"createdAt"`
+	StartedAt     *time.Time `json:"startedAt,omitempty"`
+	FinishedAt    *time.Time `json:"finishedAt,omitempty"`
+	Error         string     `json:"error,omitempty"`
+	ReportURL     string     `json:"reportUrl,omitempty"`
+	Kind          string     `json:"kind"`
+	DraftRevision *int       `json:"draftRevision,omitempty"`
+	VersionID     *string    `json:"versionId,omitempty"`
+}
+
+type Draft struct {
+	TestID           string    `json:"testId"`
+	Revision         int       `json:"revision"`
+	Script           string    `json:"script"`
+	UpdatedAt        time.Time `json:"updatedAt"`
+	ValidationRunID  *string   `json:"validationRunId,omitempty"`
+	ValidationStatus string    `json:"validationStatus,omitempty"`
+	ReportURL        string    `json:"reportUrl,omitempty"`
+}
+
+type Version struct {
+	ID              string    `json:"id"`
+	TestID          string    `json:"testId"`
+	Revision        int       `json:"revision"`
+	Script          string    `json:"script"`
+	CreatedAt       time.Time `json:"createdAt"`
+	ValidationRunID *string   `json:"validationRunId"`
 }
 
 func Terminal(status string) bool {
@@ -107,6 +129,12 @@ type Store interface {
 	Workspaces(context.Context) ([]Workspace, error)
 	Tests(context.Context, string) ([]Test, error)
 	Test(context.Context, string) (Test, error)
+	CreateTest(context.Context, string, string, string) (Test, error)
+	Draft(context.Context, string) (Draft, error)
+	SaveDraft(context.Context, string, int, string) (Draft, error)
+	ValidateDraft(context.Context, string, int) (Run, error)
+	Publish(context.Context, string, int, bool) (Version, error)
+	Versions(context.Context, string) ([]Version, error)
 	CreateRun(context.Context, string) (Run, error)
 	Runs(context.Context, string) ([]Run, error)
 	Run(context.Context, string) (Run, error)

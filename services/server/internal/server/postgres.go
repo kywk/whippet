@@ -11,7 +11,10 @@ import (
 	"github.com/whippet/whippet/services/server/migrations"
 )
 
-type Postgres struct{ DB *sql.DB }
+type Postgres struct {
+	DB        *sql.DB
+	Artifacts ArtifactStorage
+}
 
 // Migrate serializes startup migrations and records each file in the same transaction.
 func (p *Postgres) Migrate(ctx context.Context) error {
@@ -115,11 +118,12 @@ func (p *Postgres) Test(ctx context.Context, id string) (Test, error) {
 
 const runColumns = `r.id,r.test_id,r.status,r.created_at,r.started_at,r.finished_at,r.error,
     CASE WHEN EXISTS(SELECT 1 FROM artifacts a WHERE a.run_id=r.id AND a.attempt_id=r.attempt_id AND a.name='report.html')
-    THEN '/api/runs/' || r.id::text || '/artifacts/report.html' ELSE '' END`
+    THEN '/api/runs/' || r.id::text || '/artifacts/report.html' ELSE '' END,
+    r.kind,r.draft_revision,r.version_id`
 
 func scanRun(row scanner) (Run, error) {
 	var r Run
-	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL)
+	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL, &r.Kind, &r.DraftRevision, &r.VersionID)
 	r.CreatedAt = r.CreatedAt.UTC()
 	return r, dbError(err)
 }
@@ -127,8 +131,8 @@ func scanRun(row scanner) (Run, error) {
 func (p *Postgres) CreateRun(ctx context.Context, testID string) (Run, error) {
 	// INSERT ... SELECT freezes the published version and its script in one statement.
 	id := NewID()
-	res, err := p.DB.ExecContext(ctx, `INSERT INTO runs(id,test_id,version_id,script_snapshot,timeout_ms)
-        SELECT $1,t.id,v.id,v.script,v.timeout_ms FROM tests t
+	res, err := p.DB.ExecContext(ctx, `INSERT INTO runs(id,test_id,version_id,script_snapshot,timeout_ms,script_hash)
+        SELECT $1,t.id,v.id,v.script,v.timeout_ms,v.script_hash FROM tests t
         JOIN test_versions v ON v.id=t.published_version_id AND v.test_id=t.id WHERE t.id=$2`, id, testID)
 	if err != nil {
 		return Run{}, err

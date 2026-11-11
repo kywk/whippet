@@ -17,20 +17,27 @@ import (
 	"golang.org/x/net/websocket"
 )
 
+const heartbeatInterval = 10 * time.Second
+const connectionReadTimeout = 35 * time.Second
+
 type Manager struct {
-	cfg     Config
-	docker  containerRuntime
-	http    *http.Client
-	lock    *os.File
-	mu      sync.Mutex // records and admission
-	records map[string]record
-	wg      sync.WaitGroup
-	connMu  sync.Mutex // serializes writes and connection replacement
-	conn    *websocket.Conn
-	events  chan Envelope
+	cfg      Config
+	docker   containerRuntime
+	http     *http.Client
+	lock     *os.File
+	mu       sync.Mutex // records and admission
+	records  map[string]record
+	controls map[string]context.CancelFunc // execution only; collection uses service context
+	wg       sync.WaitGroup
+	connMu   sync.Mutex // serializes writes and connection replacement
+	conn     *websocket.Conn
+	events   chan Envelope
 }
 
 func New(cfg Config) (*Manager, error) {
+	if cfg.MaxWorkers < 1 {
+		return nil, errors.New("MAX_WORKERS must be a positive integer")
+	}
 	lock, err := lockWorkDir(cfg)
 	if err != nil {
 		return nil, err
@@ -40,7 +47,7 @@ func New(cfg Config) (*Manager, error) {
 		lock.Close()
 		return nil, err
 	}
-	return &Manager{cfg: cfg, docker: dockerCLI{cfg}, http: newHTTPClient(), lock: lock, records: records, events: make(chan Envelope, 64)}, nil
+	return &Manager{cfg: cfg, docker: dockerCLI{cfg}, http: newHTTPClient(), lock: lock, records: records, controls: make(map[string]context.CancelFunc), events: make(chan Envelope, 64)}, nil
 }
 
 func (m *Manager) Close() error {
@@ -48,14 +55,17 @@ func (m *Manager) Close() error {
 	return m.lock.Close()
 }
 
-func (m *Manager) Run(ctx context.Context) error {
-	// Recovery never starts a script again. It removes the named container and
-	// resumes only collection/upload for accepted attempts.
+func (m *Manager) recoverAttempts(ctx context.Context) {
+	// Recovery cleans up/resumes collection only, never executes the script.
 	for _, r := range m.snapshot() {
 		if r.Phase != "complete" {
 			m.startAttempt(ctx, r, nil)
 		}
 	}
+}
+
+func (m *Manager) Run(ctx context.Context) error {
+	m.recoverAttempts(ctx)
 	eventsDone := make(chan struct{})
 	go func() {
 		defer close(eventsDone)
@@ -107,7 +117,7 @@ func (m *Manager) session(ctx context.Context) error {
 		conn.Close()
 		return err
 	}
-	if err := websocket.JSON.Send(conn, message(m.cfg.ManagerID, "hello", "", "", map[string]int{"capacity": 1})); err != nil {
+	if err := websocket.JSON.Send(conn, m.hello()); err != nil {
 		conn.Close()
 		return err
 	}
@@ -124,11 +134,11 @@ func (m *Manager) session(ctx context.Context) error {
 			}
 		}
 	}
-	slog.Info("Manager connected", "managerId", m.cfg.ManagerID, "capacity", 1)
+	slog.Info("Manager connected", "managerId", m.cfg.ManagerID, "capacity", m.cfg.MaxWorkers)
 	done := make(chan struct{})
 	defer close(done)
 	go func() {
-		ticker := time.NewTicker(10 * time.Second)
+		ticker := time.NewTicker(heartbeatInterval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -147,12 +157,25 @@ func (m *Manager) session(ctx context.Context) error {
 	}()
 	for {
 		var env Envelope
+		if err := conn.SetReadDeadline(time.Now().Add(connectionReadTimeout)); err != nil {
+			return err
+		}
 		if err := websocket.JSON.Receive(conn, &env); err != nil {
 			return err
 		}
-		if env.Type == "dispatch" {
+		if env.ProtocolVersion != 1 || env.ManagerID != m.cfg.ManagerID {
+			return errors.New("invalid Server envelope")
+		}
+		switch env.Type {
+		case "heartbeat_ack":
+			// Server liveness reply; receiving it renews the next read deadline.
+		case "dispatch":
 			if err := m.accept(ctx, env); err != nil {
 				slog.Warn("dispatch not acknowledged", "runId", env.RunID, "error", err)
+			}
+		case "cancel":
+			if err := m.cancelAttempt(ctx, env); err != nil {
+				slog.Warn("cancel not accepted", "runId", env.RunID, "error", err)
 			}
 		}
 	}
@@ -184,18 +207,33 @@ func (m *Manager) send(env Envelope) error {
 }
 
 func (m *Manager) heartbeat() error {
+	return m.send(m.heartbeatMessage())
+}
+
+func (m *Manager) hello() Envelope {
+	return message(m.cfg.ManagerID, "hello", "", "", map[string]int{"capacity": m.cfg.MaxWorkers})
+}
+
+func (m *Manager) heartbeatMessage() Envelope {
 	active := make([]map[string]string, 0)
 	for _, r := range m.snapshot() {
-		if r.Phase != "complete" {
+		if r.holdsSlot() {
 			active = append(active, map[string]string{"runId": r.RunID, "attemptId": r.AttemptID})
 		}
 	}
-	return m.send(message(m.cfg.ManagerID, "heartbeat", "", "", map[string]any{"active": active}))
+	return message(m.cfg.ManagerID, "heartbeat", "", "", map[string]any{"active": active})
+}
+
+func (m *Manager) validateCommand(env Envelope) error {
+	if env.ProtocolVersion != 1 || env.ManagerID != m.cfg.ManagerID || !uuidPattern.MatchString(env.MessageID) || !uuidPattern.MatchString(env.RunID) || !uuidPattern.MatchString(env.AttemptID) {
+		return errors.New("invalid manager command envelope")
+	}
+	return nil
 }
 
 func (m *Manager) accept(ctx context.Context, env Envelope) error {
-	if env.ProtocolVersion != 1 || env.ManagerID != m.cfg.ManagerID || !uuidPattern.MatchString(env.MessageID) || !uuidPattern.MatchString(env.RunID) || !uuidPattern.MatchString(env.AttemptID) {
-		return errors.New("invalid v1 dispatch envelope")
+	if err := m.validateCommand(env); err != nil {
+		return err
 	}
 	var dispatch Dispatch
 	if err := json.Unmarshal(env.Payload, &dispatch); err != nil {
@@ -218,11 +256,15 @@ func (m *Manager) accept(ctx context.Context, env Envelope) error {
 		}
 		return nil
 	}
+	active := 0
 	for _, existing := range m.records {
-		if existing.Phase != "complete" {
-			m.mu.Unlock()
-			return errors.New("M1 Worker slot is occupied, including collection/cleanup")
+		if existing.holdsSlot() {
+			active++
 		}
+	}
+	if active >= m.cfg.MaxWorkers {
+		m.mu.Unlock()
+		return errors.New("Worker slot is occupied; MAX_WORKERS reached, including cleanup")
 	}
 	r := record{RunID: env.RunID, AttemptID: env.AttemptID, Phase: "accepted", TimeoutMS: dispatch.TimeoutMS, ResultMessageID: newID()}
 	err := atomicJSON(m.journalPath(r), r)
@@ -240,16 +282,29 @@ func (m *Manager) accept(ctx context.Context, env Envelope) error {
 }
 
 func (m *Manager) startAttempt(ctx context.Context, r record, dispatch *Dispatch) {
+	executionCtx, cancel := context.WithCancel(ctx)
+	m.mu.Lock()
+	m.controls[r.AttemptID] = cancel
+	if m.records[r.AttemptID].CancelRequested {
+		cancel()
+	}
+	m.mu.Unlock()
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
-		m.runAttempt(ctx, r, dispatch)
+		defer cancel()
+		defer func() {
+			m.mu.Lock()
+			delete(m.controls, r.AttemptID)
+			m.mu.Unlock()
+		}()
+		m.runAttempt(ctx, executionCtx, r, dispatch)
 	}()
 }
 
-func (m *Manager) runAttempt(ctx context.Context, r record, dispatch *Dispatch) {
+func (m *Manager) runAttempt(ctx, executionCtx context.Context, r record, dispatch *Dispatch) {
 	outcome := execution{ExitCode: -1}
-	if dispatch != nil {
+	if dispatch != nil && executionCtx.Err() == nil {
 		if err := m.prepare(r, *dispatch); err != nil {
 			outcome.Error = "prepare Worker input: " + err.Error()
 		} else {
@@ -257,17 +312,18 @@ func (m *Manager) runAttempt(ctx context.Context, r record, dispatch *Dispatch) 
 			if err := m.store(r); err != nil {
 				outcome.Error = "persist running state: " + err.Error()
 			} else {
-				outcome = m.docker.Execute(ctx, r, m.taskDir(r), func(kind, text string) { m.emit(r, kind, text) })
+				outcome = m.docker.Execute(executionCtx, r, m.taskDir(r), func(kind, text string) { m.emit(r, kind, text) })
 			}
 		}
 	}
 	// Do this before reading outputs and releasing the slot, including when
 	// docker start was killed but the container itself is still running.
-	for {
+	for !r.Reclaimed {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		err := m.docker.Remove(cleanupCtx, r)
 		cancel()
 		if err == nil {
+			r.Reclaimed = true
 			break
 		}
 		slog.Error("container cleanup failed; slot retained", "attemptId", r.AttemptID, "error", err)
@@ -306,6 +362,11 @@ func (m *Manager) runAttempt(ctx context.Context, r record, dispatch *Dispatch) 
 	if !m.storeUntil(ctx, r) {
 		return
 	}
+	// A cancel may have arrived during collection. store merges it under the
+	// same lock used to make the terminal state immutable.
+	m.mu.Lock()
+	r = m.records[r.AttemptID]
+	m.mu.Unlock()
 	if err := m.sendResult(r); err != nil {
 		slog.Info("terminal result retained for reconnect", "attemptId", r.AttemptID)
 	}
@@ -353,6 +414,13 @@ func (m *Manager) snapshot() []record {
 func (m *Manager) store(r record) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if existing, ok := m.records[r.AttemptID]; ok {
+		r.CancelRequested = r.CancelRequested || existing.CancelRequested
+	}
+	if r.CancelRequested && r.Result != nil {
+		result := Result{Status: "cancelled", Error: "Server requested cancellation of this attempt"}
+		r.Result = &result
+	}
 	if err := atomicJSON(m.journalPath(r), r); err != nil {
 		return err
 	}

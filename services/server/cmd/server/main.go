@@ -85,6 +85,7 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("artifact directory: %w", err)
 	}
+	store.Artifacts = artifacts
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	engine := server.NewEngine(store, log)

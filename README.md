@@ -2,7 +2,7 @@
 
 Self-hosted Playwright 測試平台，讓 QA 透過對話建立、驗證與發佈測試，並由遠端 Worker 執行。
 
-M1 本機流程已於 2026-11-11 由總指揮與 Muse 驗收完成：開發登入、固定測試、真實成功／斷言失敗執行及 Playwright 報告均已串通，兩份報告皆可在保留 sandbox 隔離下正常顯示。AI 對話、草稿發佈與即時畫面仍待後續里程碑；驗收紀錄見 [Server DELIVERY](services/server/DELIVERY.md)。
+M1 本機流程已於 2026-11-11 由總指揮與 Muse 驗收完成：開發登入、固定測試、真實成功／斷言失敗執行及 Playwright 報告均已串通，兩份報告皆可在保留 sandbox 隔離下正常顯示。M2 草稿編輯、驗證發佈、版本快照、多 Worker、取消及重連已完成本機驗收，見 [M2 紀錄](docs/tracking/devlog/m2-integration.md)。AI 對話與即時畫面仍待後續里程碑；驗收紀錄見 [Server DELIVERY](services/server/DELIVERY.md)。
 
 ## 本機啟動
 
@@ -37,6 +37,7 @@ docker compose --env-file deploy/.env -f deploy/compose.runner.yml -f deploy/com
 - [實作進度](docs/tracking/implementation.md)
 - [Agent 分工](docs/tracking/delegation.md)
 - [M1 共用契約](contracts/mvp-v1.md)
+- [M2 草稿、驗證與發佈](docs/guides/m2-drafts.md)
 - [OpenCode Go Muse AI Worker 設定](docs/guides/opencode-go.md)
 
 Server／Manager 使用 Go，Worker 使用 Node.js／TypeScript 與 Playwright，前端使用 React SPA，資料庫為 PostgreSQL。

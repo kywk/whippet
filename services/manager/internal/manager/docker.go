@@ -85,6 +85,11 @@ func (d dockerCLI) Execute(ctx context.Context, r record, taskDir string, emit f
 }
 
 func (d dockerCLI) Remove(ctx context.Context, r record) error {
+	// Give SIGTERM a short window to flush Playwright reports. Regardless of
+	// stop failure/timeout, force-remove the actual container, not just attach.
+	stopCtx, cancel := context.WithTimeout(ctx, 7*time.Second)
+	_ = exec.CommandContext(stopCtx, "docker", "stop", "--time", "5", d.name(r)).Run()
+	cancel()
 	out, err := exec.CommandContext(ctx, "docker", "rm", "--force", d.name(r)).CombinedOutput()
 	if err != nil && !strings.Contains(string(out), "No such container") {
 		return fmt.Errorf("docker rm: %w: %s", err, clip(string(out), 2000))

@@ -41,7 +41,7 @@ export function useRuns(api: WhippetApi, testId: string) {
         if (controller.signal.aborted) return;
         // 讀取歷史期間若剛建立新 Run，保留該筆，避免較早的 GET 蓋掉 POST 結果。
         setRuns((current) => newestFirst(mutation.current === startedAtMutation ? items : [
-          ...items, ...current.filter((run) => !items.some((item) => item.id === run.id)),
+          ...current, ...items.filter((run) => !current.some((item) => item.id === run.id)),
         ]));
         setError(undefined);
         setUpdatedAt(new Date());
@@ -62,8 +62,14 @@ export function useRuns(api: WhippetApi, testId: string) {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
+      const startedAtMutation = mutation.current;
       const results = await Promise.allSettled(activeIds.split(',').map((id) => api.getRun(id, controller.signal)));
       if (controller.signal.aborted) return;
+      // 取消或建立任務後，不採用較早送出的 GET 狀態。
+      if (mutation.current !== startedAtMutation) {
+        timer = setTimeout(poll, 2_000);
+        return;
+      }
       const updates: Run[] = [];
       const failures: string[] = [];
       for (const result of results) {

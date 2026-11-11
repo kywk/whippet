@@ -1,5 +1,5 @@
 import { RUN_STATUSES } from './types';
-import type { DevUser, Run, Test, WhippetApi, Workspace } from './types';
+import type { DevUser, Draft, Run, RunStatus, Test, Version, WhippetApi, Workspace } from './types';
 
 export class ApiError extends Error {
   readonly code: string;
@@ -34,6 +34,21 @@ function optionalString(value: unknown): string | undefined {
   return value == null ? undefined : string(value);
 }
 
+function revision(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new ApiError('API revision 格式不符。', 'INVALID_RESPONSE');
+  }
+  return value;
+}
+
+function parseStatus(value: unknown): RunStatus {
+  const status = string(value);
+  if (!RUN_STATUSES.some((item) => item === status)) {
+    throw new ApiError(`無法辨識執行狀態：${status}`, 'INVALID_RESPONSE');
+  }
+  return status as RunStatus;
+}
+
 function parseWorkspace(value: unknown): Workspace {
   const data = record(value);
   return { id: string(data.id), name: string(data.name) };
@@ -50,15 +65,35 @@ function parseTest(value: unknown): Test {
 
 function parseRun(value: unknown): Run {
   const data = record(value);
-  const status = string(data.status);
-  if (!RUN_STATUSES.some((item) => item === status)) {
-    throw new ApiError(`無法辨識執行狀態：${status}`, 'INVALID_RESPONSE');
+  if (data.kind != null && data.kind !== 'run' && data.kind !== 'validation') {
+    throw new ApiError('API Run kind 格式不符。', 'INVALID_RESPONSE');
   }
   return {
-    id: string(data.id), testId: string(data.testId), status: status as Run['status'],
+    id: string(data.id), testId: string(data.testId), status: parseStatus(data.status),
     createdAt: string(data.createdAt), startedAt: optionalString(data.startedAt),
     finishedAt: optionalString(data.finishedAt), error: optionalString(data.error),
     reportUrl: optionalString(data.reportUrl),
+    kind: data.kind as Run['kind'],
+    draftRevision: data.draftRevision == null ? undefined : revision(data.draftRevision),
+    versionId: optionalString(data.versionId),
+  };
+}
+
+function parseDraft(value: unknown): Draft {
+  const data = record(value);
+  return {
+    testId: string(data.testId), revision: revision(data.revision), script: string(data.script),
+    updatedAt: string(data.updatedAt), validationRunId: optionalString(data.validationRunId),
+    validationStatus: data.validationStatus == null ? undefined : parseStatus(data.validationStatus),
+    reportUrl: optionalString(data.reportUrl),
+  };
+}
+
+function parseVersion(value: unknown): Version {
+  const data = record(value);
+  return {
+    id: string(data.id), testId: string(data.testId), revision: revision(data.revision),
+    script: string(data.script), createdAt: string(data.createdAt), validationRunId: string(data.validationRunId),
   };
 }
 
@@ -71,7 +106,7 @@ function items<T>(value: unknown, parse: (item: unknown) => T): T[] {
 export function createHttpApi(apiBase = '/api'): WhippetApi {
   const base = apiBase.replace(/\/+$/, '');
 
-  async function request(path: string, method = 'GET', signal?: AbortSignal): Promise<unknown> {
+  async function request(path: string, method = 'GET', signal?: AbortSignal, body?: unknown): Promise<unknown> {
     const controller = new AbortController();
     const abort = () => controller.abort();
     signal?.addEventListener('abort', abort, { once: true });
@@ -81,7 +116,9 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
 
     try {
       const response = await fetch(`${base}${path}`, {
-        method, credentials: 'include', headers: { Accept: 'application/json' },
+        method, credentials: 'include',
+        headers: body === undefined ? { Accept: 'application/json' } : { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
       });
       const data: unknown = await response.json().catch((error: unknown) => {
@@ -134,6 +171,27 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     },
     async getRun(runId, signal) {
       return parseRun(await request(`/runs/${id(runId)}`, 'GET', signal));
+    },
+    async createTest(workspaceId, input, signal) {
+      return parseTest(await request(`/workspaces/${id(workspaceId)}/tests`, 'POST', signal, input));
+    },
+    async getDraft(testId, signal) {
+      return parseDraft(await request(`/tests/${id(testId)}/draft`, 'GET', signal));
+    },
+    async saveDraft(testId, revision, script, signal) {
+      return parseDraft(await request(`/tests/${id(testId)}/draft`, 'PUT', signal, { revision, script }));
+    },
+    async validateDraft(testId, revision, signal) {
+      return parseRun(await request(`/tests/${id(testId)}/draft/validate`, 'POST', signal, { revision }));
+    },
+    async publishTest(testId, revision, signal) {
+      return parseVersion(await request(`/tests/${id(testId)}/publish`, 'POST', signal, { revision, confirmed: true }));
+    },
+    async listVersions(testId, signal) {
+      return items(await request(`/tests/${id(testId)}/versions`, 'GET', signal), parseVersion);
+    },
+    async cancelRun(runId, signal) {
+      return parseRun(await request(`/runs/${id(runId)}/cancel`, 'POST', signal));
     },
   };
 }

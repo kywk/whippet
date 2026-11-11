@@ -32,6 +32,28 @@ export interface Run {
   finishedAt?: string;
   error?: string;
   reportUrl?: string;
+  kind?: 'run' | 'validation';
+  draftRevision?: number;
+  versionId?: string;
+}
+
+export interface Draft {
+  testId: string;
+  revision: number;
+  script: string;
+  updatedAt: string;
+  validationRunId?: string;
+  validationStatus?: RunStatus;
+  reportUrl?: string;
+}
+
+export interface Version {
+  id: string;
+  testId: string;
+  revision: number;
+  script: string;
+  createdAt: string;
+  validationRunId: string;
 }
 
 export const STATUS_LABELS: Record<RunStatus, string> = {
@@ -59,4 +81,11 @@ export interface WhippetApi {
   createRun(testId: string, signal?: AbortSignal): Promise<Run>;
   listRuns(testId: string, signal?: AbortSignal): Promise<Run[]>;
   getRun(runId: string, signal?: AbortSignal): Promise<Run>;
+  createTest(workspaceId: string, input: { name: string; description?: string }, signal?: AbortSignal): Promise<Test>;
+  getDraft(testId: string, signal?: AbortSignal): Promise<Draft>;
+  saveDraft(testId: string, revision: number, script: string, signal?: AbortSignal): Promise<Draft>;
+  validateDraft(testId: string, revision: number, signal?: AbortSignal): Promise<Run>;
+  publishTest(testId: string, revision: number, signal?: AbortSignal): Promise<Version>;
+  listVersions(testId: string, signal?: AbortSignal): Promise<Version[]>;
+  cancelRun(runId: string, signal?: AbortSignal): Promise<Run>;
 }

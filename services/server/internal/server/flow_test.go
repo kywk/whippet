@@ -51,6 +51,7 @@ func TestRunFlowWaitsForReclaimedSlot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	testHeartbeat(t, engine, session, nil)
 	if err := engine.Tick(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -123,6 +124,7 @@ func TestReconnectPreservesAttemptAndCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	testHeartbeat(t, engine, session1, nil)
 	if err := engine.Tick(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -150,8 +152,8 @@ func TestReconnectPreservesAttemptAndCancellation(t *testing.T) {
 	if err := engine.Handle(ctx, session2, hb); err != nil {
 		t.Fatal(err)
 	}
-	if err := engine.Tick(ctx); err != nil || len(peer2.messages) != 1 || peer2.messages[0].AttemptID != attempt {
-		t.Fatalf("retry must preserve attempt: %v %+v", err, peer2.messages)
+	if err := engine.Tick(ctx); err != nil || len(peer2.messages) != 0 || store.assigned[first.ID].AttemptID != attempt {
+		t.Fatalf("active heartbeat must acknowledge the existing attempt without rerunning: %v %+v", err, peer2.messages)
 	}
 	if _, err := store.Cancel(ctx, first.ID); err != nil {
 		t.Fatal(err)
@@ -159,7 +161,7 @@ func TestReconnectPreservesAttemptAndCancellation(t *testing.T) {
 	if _, err := store.Cancel(ctx, second.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := engine.Tick(ctx); err != nil || len(peer2.messages) != 2 || peer2.messages[1].Type != "cancel" || peer2.messages[1].AttemptID != attempt {
+	if err := engine.Tick(ctx); err != nil || len(peer2.messages) != 1 || peer2.messages[0].Type != "cancel" || peer2.messages[0].AttemptID != attempt {
 		t.Fatalf("active cancellation must target existing attempt: %v %+v", err, peer2.messages)
 	}
 	if store.runs[second.ID].Status != "cancelled" {
@@ -167,10 +169,30 @@ func TestReconnectPreservesAttemptAndCancellation(t *testing.T) {
 	}
 }
 
-type recordPeer struct{ messages []Envelope }
+func testHeartbeat(t *testing.T, engine *Engine, session *Session, active []ActiveAttempt) {
+	t.Helper()
+	if active == nil {
+		active = []ActiveAttempt{}
+	}
+	if err := engine.Handle(context.Background(), session, NewEnvelope("heartbeat", "manager-test", "", "", map[string]any{"active": active})); err != nil {
+		t.Fatal(err)
+	}
+}
 
-func (p *recordPeer) Send(m Envelope) error { p.messages = append(p.messages, m); return nil }
-func (p *recordPeer) Close() error          { return nil }
+type recordPeer struct {
+	messages   []Envelope
+	heartbeats []Envelope
+}
+
+func (p *recordPeer) Send(m Envelope) error {
+	if m.Type == "heartbeat_ack" {
+		p.heartbeats = append(p.heartbeats, m)
+	} else {
+		p.messages = append(p.messages, m)
+	}
+	return nil
+}
+func (p *recordPeer) Close() error { return nil }
 
 // flowStore is a deterministic test double for the persistent boundary.
 type flowStore struct {

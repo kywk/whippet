@@ -62,22 +62,19 @@ func (e *Engine) Run(ctx context.Context) {
 }
 
 func (e *Engine) Attach(ctx context.Context, managerID string, capacity int, peer Peer) (*Session, error) {
-	if len(managerID) == 0 || len(managerID) > 128 || capacity < 1 || capacity > 64 {
-		return nil, fmt.Errorf("%w: hello requires managerId and capacity 1..64", ErrInvalid)
+	if len(managerID) == 0 || len(managerID) > 128 || capacity < 1 {
+		return nil, fmt.Errorf("%w: hello requires managerId and positive capacity", ErrInvalid)
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if err := e.store.RegisterManager(ctx, managerID, capacity); err != nil {
 		return nil, err
 	}
-	assignments, err := e.store.Assignments(ctx, managerID)
-	if err != nil {
-		return nil, err
-	}
 	if e.session != nil {
 		_ = e.session.peer.Close()
 	}
-	s := &Session{managerID: managerID, capacity: capacity, peer: peer, ready: len(assignments) == 0, sent: map[string]time.Time{}}
+	// Even a fresh DB must reconcile the Manager's active journal before dispatch.
+	s := &Session{managerID: managerID, capacity: capacity, peer: peer, sent: map[string]time.Time{}}
 	e.session = s
 	e.Wake()
 	return s, nil
@@ -121,26 +118,40 @@ func (e *Engine) Handle(ctx context.Context, s *Session, m Envelope) error {
 		var payload struct {
 			Active *[]ActiveAttempt `json:"active"`
 		}
-		if err := json.Unmarshal(m.Payload, &payload); err != nil || payload.Active == nil || len(*payload.Active) > 64 {
+		if err := json.Unmarshal(m.Payload, &payload); err != nil || payload.Active == nil {
 			return fmt.Errorf("%w: heartbeat requires active array", ErrInvalid)
 		}
 		known, err := e.store.Assignments(ctx, s.managerID)
 		if err != nil {
 			return err
 		}
-		index := make(map[ActiveAttempt]bool, len(known))
+		index := make(map[ActiveAttempt]Assignment, len(known))
 		for _, a := range known {
-			index[ActiveAttempt{a.ID, a.AttemptID}] = true
+			index[ActiveAttempt{a.ID, a.AttemptID}] = a
 		}
 		seen := map[ActiveAttempt]bool{}
 		for _, a := range *payload.Active {
-			if !index[a] || seen[a] {
+			if _, exists := index[a]; !exists || seen[a] {
 				s.ready = false
 				return fmt.Errorf("%w: unknown or repeated active attempt; dispatch paused", ErrConflict)
 			}
 			seen[a] = true
 		}
+		for _, a := range *payload.Active {
+			// An active journal entry proves receipt even if the original ACK was lost.
+			if !index[a].Acked {
+				if err := e.store.Acknowledge(ctx, s.managerID, a.RunID, a.AttemptID); err != nil {
+					s.ready = false
+					return err
+				}
+			}
+		}
 		if err := e.store.ReleaseSlots(ctx, s.managerID, *payload.Active); err != nil {
+			return err
+		}
+		if err := s.peer.Send(NewEnvelope("heartbeat_ack", s.managerID, "", "", struct{}{})); err != nil {
+			s.ready = false
+			_ = s.peer.Close()
 			return err
 		}
 		s.ready = true
@@ -191,6 +202,9 @@ func (e *Engine) Tick(ctx context.Context) error {
 	for _, a := range assignments {
 		if a.Status == "cancelling" {
 			liveCommands["cancel:"+a.AttemptID] = true
+			if !a.Acked {
+				liveCommands["dispatch:"+a.AttemptID] = true
+			}
 		} else if a.Status == "dispatched" && !a.Acked {
 			liveCommands["dispatch:"+a.AttemptID] = true
 		}
@@ -203,6 +217,12 @@ func (e *Engine) Tick(ctx context.Context) error {
 	for _, a := range assignments {
 		switch {
 		case a.Status == "cancelling":
+			// A lost dispatch must not leave an unknown cancel permanently occupying a slot.
+			if !a.Acked {
+				if err := e.send(s, a, "dispatch"); err != nil {
+					return err
+				}
+			}
 			if err := e.send(s, a, "cancel"); err != nil {
 				return err
 			}

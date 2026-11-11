@@ -1,6 +1,6 @@
 # Whippet Server
 
-Go 單一服務，依 [`contracts/mvp-v1.md`](../../contracts/mvp-v1.md) 提供 M1 HTTP API、PostgreSQL 佇列、Manager WebSocket gateway 與持久化附件。另包含 M2 的 attempt／事件／結果去重，以及取消入口；草稿、revision 與發佈流程尚未實作。
+Go 單一服務，依 [`mvp-v1`](../../contracts/mvp-v1.md) 與 [`mvp-v2`](../../contracts/mvp-v2.md) 提供 HTTP API、PostgreSQL 佇列、Manager WebSocket gateway 與持久化附件。M2 已加入唯一草稿、不可變 revision／版本、驗證與發布交易，以及取消／FIFO／重連去重；實際 PostgreSQL 與跨服務 M2 驗收由總指揮執行。
 
 M1 已於 2026-11-11 驗收完成。總指揮與 Muse 已確認真實成功 Run、斷言失敗 Run 及兩份 HTML report 正常；storage shim 修正後成功報告顯示 Passed 1／Failed 0，失敗報告顯示 Passed 0／Failed 1。完整 Run ID 與驗證來源見 [DELIVERY.md](DELIVERY.md)。
 
@@ -89,15 +89,36 @@ curl -X POST http://localhost:8080/api/tests/10000000-0000-4000-8000-00000000000
 {"protocolVersion":1,"messageId":"<uuid>","type":"heartbeat","managerId":"runner-1","payload":{"active":[{"runId":"<run-uuid>","attemptId":"<attempt-uuid>"}]}}
 ```
 
-1. Server 以 PostgreSQL `queue_seq` FIFO claim 任務，先提交唯一 attempt，再送 dispatch。單一 Manager 的 `capacity`（1～64）為全域名額上限。
+1. Server 以 PostgreSQL `queue_seq` FIFO claim 任務，先提交唯一 attempt，再送 dispatch。單一 Manager 的正整數 `capacity` 為全域名額上限；驗證與正式 Run 共用佇列。
 2. dispatch payload 為 `{kind:"run",script:"<完整 spec>",timeoutMs:60000}`。Manager 先持久化 journal，再啟動 Worker，回 `ack`。未 ACK 的 dispatch 每 5 秒最多重送一次，保持相同 runId／attemptId；Manager 必須依 attempt 去重。
 3. `event` payload 為 `{eventId,kind:"started"|"log",message?}`；同一 eventId 只保存一次。開始事件設為 running，附件上傳後設為 collecting。
 4. Manager 上傳附件成功後送 `result`，payload 為 `{status:"succeeded"|"failed"|"timed_out"|"cancelled",error?}`。`succeeded` 必須已保存兩份附件；異常失敗／逾時／取消可缺附件，以便呈現實際錯誤。
 5. 終態結果可重送，互相衝突的終態與舊 attempt 會被拒絕。result 只更新 Run；只有終態 attempt 已從後續 heartbeat.active 移除，Server 才釋放名額。Manager 必須在容器實際回收後才移除 active。
 
-Manager ID 於首次 hello 寫入 DB，之後僅接受相同 ID；同 ID 新連線取代舊連線。Server 重啟會恢復 queued Run，既有 attempt 不自動重新排隊。有尚未回收的 assignment 時，重連先等待 heartbeat 對帳，再允許派新工作；未知 active attempt 會中止連線。已 ACK／running 但缺少結果的任務會保留名額，等待 Manager journal 補送，不猜測已停止。
+Manager ID 於首次 hello 寫入 DB，之後僅接受相同 ID；同 ID 新連線取代舊連線。每個新連線都先等待 heartbeat 對帳，成功後回 `heartbeat_ack`、payload `{}`，不帶 runId／attemptId，再允許派新工作。ACK 與 dispatch／cancel 使用相同串行寫入；ACK 寫入失敗會關閉連線並暫停派送。active 清單可補回遺失的 dispatch ACK；未知 active attempt 會中止連線。Server 重啟恢復 queued Run，既有 attempt 不自動重新排隊；已 ACK／running 但缺少結果的任務保留名額，等待 Manager journal 補送，不猜測已停止。
 
 M2 取消增補：Server 送相同 envelope 的 `type:"cancel"`、既有 runId／attemptId、`payload:{}`；最多每 5 秒重送一次。Manager 必須去重、停止／回收容器，再回報結果與 heartbeat。queued 取消不派送。取消與完成同時發生時，接受 Manager 實際的最終結果，因此 `cancelling` 仍可能收到 `succeeded`。
+
+若取消的 attempt 尚未 ACK，Server 會先重送相同 attempt 的 dispatch，再送 cancel，讓 Manager 可辨識該 attempt 並回報結果；不建立新的 attempt。
+
+## M2 草稿、驗證與發布
+
+| Method | Path | 請求／回應 |
+| --- | --- | --- |
+| POST | `/api/workspaces/:id/tests` | `{name,description?}` → 201 未發布 Test |
+| GET | `/api/tests/:id/draft` | Draft；初次為 revision 1，從已發布腳本或空腳本建立 |
+| PUT | `/api/tests/:id/draft` | `{revision,script}` → Draft；過期 revision 回 409 |
+| POST | `/api/tests/:id/draft/validate` | `{revision}` → 202 validation Run |
+| POST | `/api/tests/:id/publish` | `{revision,confirmed:true}` → 201 Version |
+| GET | `/api/tests/:id/versions` | `{items:[Version]}`，新到舊 |
+
+每個 Test 只有一筆 Draft。實際改動腳本才遞增 revision 並清除 validationRunId；相同內容儲存保留 revision，但仍核對 optimistic lock。腳本上限 2 MiB；空草稿可保存，不能驗證。每次 validate 固定腳本、SHA256 與 timeout 快照，並讓最新 validation Run 成為該草稿的發布依據。
+
+發布在同一 DB transaction 內鎖定 Test／Draft／validation Run，核對目前 revision、驗證內容雜湊／腳本／timeout、succeeded、使用者確認，以及目前 attempt 的 report.html 索引與實體檔案可讀且大小相符。任一門檻不符不建立版本；缺確認回 400，驗證或報告不符回 409。同一次 validation 重複確認回傳原版本，不重複產生版本。
+
+發布版本、歷史 revision 與 Run 腳本／設定快照由 DB trigger 防止修改；草稿後續修改不影響已建立 Run。正式 Run 只執行已發布版本，未發布回 409。Run 增加 `kind`、`draftRevision?`、`versionId?`。M1 種子版本保留原資料，Version 的 `validationRunId` 為 null；M2 新發布版本會附對應 validation Run ID。
+
+新增 migration 為 `003_drafts_and_publication.sql`；不修改已套用的 M1 migration。服務的 `Postgres.Artifacts` 必須設定附件儲存，才能在發布 transaction 中核對實體報告（正式入口已設定）。
 
 目前沒有額外的 Server result ACK／完整 reconcile 訊息；Manager 斷線重連時需補送 journal 中尚未確認的終態。發送失敗不建立新 attempt，也不自動重跑測試。
 
