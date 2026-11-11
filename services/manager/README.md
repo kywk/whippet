@@ -14,7 +14,7 @@ Go Manager 主動連線 Server，以一次性 Docker Worker 執行 TypeScript sp
 | `MAX_WORKERS` | 介於 `1`–`64` 的整數，預設 `1`；超出範圍在啟動時拒絕。hello capacity 與本機實際接收上限使用同一值，與 Server gateway 一致；整合範例設 `2`。 |
 | `DOCKER_HOST` 等 | 交由 Docker CLI 讀取；只使用本機 Docker daemon，勿設為遠端主機。 |
 
-`runId`、`attemptId`、`messageId` 驗證 UUID 格式。腳本上限 2 MiB，`timeoutMs` 為 1..3600000。附件單檔上限 64 MiB；Server 必須允許相應大小。Manager 不向 Worker 注入部署 token，也不掛入 Docker socket。
+`runId`、`attemptId`、`messageId` 驗證 UUID 格式。腳本上限 2 MiB，`timeoutMs` 為 1..3600000。報告單檔上限 64 MiB；PNG 每張 10 MiB、每 run 最多 32 張／合計 64 MiB。Server 必須允許相應大小。Manager 不向 Worker 注入部署 token，也不掛入 Docker socket。
 
 ## 建置與啟動
 
@@ -65,7 +65,7 @@ Linux 如需 `host.docker.internal`，加 `--add-host host.docker.internal:host-
 3. 寫入 `WORK_DIR/runs/<attemptId>/input.json`，建立帶 run／attempt／manager labels 的容器，將該任務目錄 mount 至 `/work`。
 4. 每個容器限制 1 CPU、1 GiB 記憶體、256 PID、256 MiB shm；Playwright 內部 workers=1。stdout／stderr 轉為 WS `event`。
 5. Worker 結束後檢查 Docker exit／OOM 狀態，先嘗試 `docker stop` 留 5 秒給 SIGTERM，再強制移除容器，確認回收後才讀輸出。Manager watchdog 為 `timeoutMs + 30 秒`；逾時殺掉 attach 程序後仍會移除真正的容器。OOM、意外退出與停止／回收失敗均不能成為成功。
-6. 上傳可取得的 `report.html`、`results.json`，兩者都收到 HTTP 2xx 才保存終態並送 result。缺少報告、manifest 無效、非零退出碼等皆不會回報 succeeded；基礎設施故障可回傳 failed 且沒有報告。
+6. 普通 run／validation 先上傳 `data/<40位小寫hex>.png`，再上傳 `report.html`、`results.json`；全部收到 HTTP 2xx 才保存終態並送 result。檔名、數量、大小、regular file、PNG header／SHA-1 均檢查，拒絕 symlink／traversal；圖片收集失敗時扣住 HTML，避免斷圖。缺少報告、manifest 無效、非零退出碼等皆不會回報 succeeded；基礎設施故障可回傳 failed 且沒有報告。
 7. 確認容器回收並持久化 `reclaimed=true` 才釋放本機名額、從 heartbeat.active 移除；Run result 仍等可用附件上傳成功才送。Server 維持「terminal 且 absent」才釋放排程名額。最後刪除任務暫存目錄，保留精簡 journal，供重複派送與重連重送終態。
 
 上傳失敗每 3 秒補送，保留原始檔案，不重新執行測試；已回收的容器不再占本機執行名額，Server 排程名額仍等待終態。WS 斷線採 1..15 秒上限退避加 jitter；已執行 Worker 繼續受本機 timeout 控制。Server 必須允許同 attempt／附件名稱冪等補送，並以 attempt 身分去重終態。尚無 result receipt ACK，Manager 在每次重連重送已完成結果，使用相同 terminal `messageId`。

@@ -19,8 +19,18 @@ type Gateway struct {
 type peer struct{ conn *websocket.Conn }
 
 func (p *peer) Send(m server.Envelope) error {
-	_ = p.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	return p.conn.WriteJSON(m)
+	data, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+	if err := p.conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return err
+	}
+	// x/net/websocket.JSON.Receive decodes one frame, not a fragmented message.
+	// Gorilla's uncompressed server WriteMessage fast path sends one complete frame,
+	// independent of the 4096-byte write buffer and without reducing script limits.
+	p.conn.EnableWriteCompression(false)
+	return p.conn.WriteMessage(websocket.TextMessage, data)
 }
 
 func (p *peer) Close() error { return p.conn.Close() }

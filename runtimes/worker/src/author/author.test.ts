@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { readAIConfig } from "../ai/config.js";
 import { runAuthor, AUTHOR_INSTRUCTIONS } from "./loop.js";
 import type { ExplorationBrowser } from "./tools.js";
@@ -30,6 +32,36 @@ function call(name: string, args: object, index: number) {
 function final(message = "候選稿已備妥，待獨立驗證。") {
   return { status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: message }] }] };
 }
+
+test("packaged Playwright authoring skill reaches a real request body from a different cwd", async () => {
+  const previousCwd = process.cwd();
+  let requests = 0;
+  let captured = "";
+  try {
+    // A relative skills/ lookup from dist/author would fail. The module URL
+    // must still resolve the actual packaged Markdown, with no test override.
+    process.chdir(dirname(fileURLToPath(import.meta.url)));
+    await runAuthor(input(), config, browser(), { fetcher: async (_url, init) => {
+      requests += 1;
+      captured = (JSON.parse(init!.body as string) as { instructions: string }).instructions;
+      return Response.json(final());
+    } });
+  } finally { process.chdir(previousCwd); }
+  assert.equal(requests, 1);
+  assert.equal(captured.split("# Playwright authoring").length - 1, 1);
+  assert.match(captured, /getByRole.*getByLabel/);
+  assert.ok(captured.includes("await expect(page.getByRole('listitem')).toHaveText(['alpha']);"));
+  assert.ok(captured.includes("page.getByRole('listitem').filter({ hasText: 'alpha' })"));
+  assert.match(captured, /NOT its accessible name/);
+  assert.match(captured, /web-first assertions/);
+  assert.match(captured, /read_validation_report/);
+  assert.match(captured, /run independently/);
+  assert.match(captured, /No skip\/only/);
+  assert.ok(captured.includes("await testInfo.attach('after-submit',"));
+  assert.match(captured, /Trace\/video attachments remain unsupported/);
+  assert.equal(captured.includes("metadata:"), false);
+  assert.equal(captured.includes(key), false);
+});
 
 test("author explores, updates candidate and defers validation with stateless reasoning/call outputs", async () => {
   const candidate = "throw new Error('Generated spec must never execute in author');";

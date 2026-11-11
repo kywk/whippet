@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"image/png"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,10 +12,23 @@ import (
 )
 
 const MaxArtifactBytes int64 = 64 << 20
+const MaxScreenshotBytes int64 = 10 << 20
+const MaxScreenshotTotalBytes int64 = 64 << 20
+const MaxScreenshotCount = 32
+
+func checkScreenshotQuota(count, total, size int64) error {
+	if count >= MaxScreenshotCount || size > MaxScreenshotBytes || total+size > MaxScreenshotTotalBytes {
+		return fmt.Errorf("%w: PNG quota exceeds 32 files or 64 MiB per run (10 MiB per file)", ErrInvalid)
+	}
+	return nil
+}
 
 func artifactLimit(name string) int64 {
 	if name == "author.json" {
 		return MaxAuthorArtifactBytes
+	}
+	if isScreenshotArtifact(name) {
+		return MaxScreenshotBytes
 	}
 	return MaxArtifactBytes
 }
@@ -63,6 +77,11 @@ func (s *LocalArtifacts) Save(runID, attemptID, name string, body io.Reader) (Ar
 	if a.Size > limit {
 		return a, fmt.Errorf("%w: artifact exceeds %d MiB", ErrInvalid, limit>>20)
 	}
+	if isScreenshotArtifact(name) {
+		if _, err := png.DecodeConfig(io.NewSectionReader(tmp, 0, a.Size)); err != nil {
+			return a, fmt.Errorf("%w: screenshot must be a valid PNG", ErrInvalid)
+		}
+	}
 	if err := tmp.Sync(); err != nil {
 		return a, err
 	}
@@ -107,14 +126,14 @@ func (s *LocalArtifacts) Open(key string) (*os.File, error) {
 
 func (s *LocalArtifacts) resolve(key string, create bool) (string, error) {
 	parts := strings.Split(filepath.ToSlash(key), "/")
-	if len(parts) != 4 || !ValidID(parts[0]) || !ValidID(parts[1]) || len(parts[2]) != 64 || !validArtifact(parts[3]) {
+	if (len(parts) != 4 && len(parts) != 5) || !ValidID(parts[0]) || !ValidID(parts[1]) || len(parts[2]) != 64 || !validArtifact(strings.Join(parts[3:], "/")) {
 		return "", ErrInvalid
 	}
 	if _, err := hex.DecodeString(parts[2]); err != nil {
 		return "", ErrInvalid
 	}
 	path := s.root
-	for _, part := range parts[:3] {
+	for _, part := range parts[:len(parts)-1] {
 		path = filepath.Join(path, part)
 		if create {
 			if err := os.Mkdir(path, 0700); err != nil && !os.IsExist(err) {
@@ -129,5 +148,5 @@ func (s *LocalArtifacts) resolve(key string, create bool) (string, error) {
 			return "", ErrInvalid
 		}
 	}
-	return filepath.Join(path, parts[3]), nil
+	return filepath.Join(path, parts[len(parts)-1]), nil
 }

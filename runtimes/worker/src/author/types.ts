@@ -19,7 +19,7 @@ export interface AuthorOutput {
 }
 
 export class AuthorError extends Error {
-  constructor(readonly code: "invalid_input" | "limit" | "tool_failed" | "provider_failed" | "invalid_response" | "sensitive_output" | "timed_out" | "cancelled") {
+  constructor(readonly code: "invalid_input" | "limit" | "tool_failed" | "provider_failed" | "invalid_response" | "sensitive_output" | "timed_out" | "cancelled" | "skill_unavailable") {
     super(`Author task ${code}; provider and browser details are hidden`);
     this.name = "AuthorError";
   }

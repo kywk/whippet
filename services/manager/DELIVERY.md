@@ -1,8 +1,39 @@
-# Runtime M3 交付
+# Runtime PNG 截圖與 M3 交付
 
 更新：2026-11-11（Asia/Taipei）。Owner：Runtime Agent。
 
-**Manager／Worker 的 M3 程式已可建置；最新 optional validation snapshot／read_validation_report 修正已通過 build 與受影響 mock，需重建兩個映像。** M3 Runtime mock 測試已通過；真實模型工具續接／草稿修復／驗證／發佈由總指揮驗收，尚不宣稱 M3 完成。M1／M2 已完成的驗收沿用既有 [整合紀錄](../../docs/tracking/devlog/m1-integration.md) 與總指揮結果，不重跑。
+**PNG 管線已交付並部署；總指揮回報 4 個 Whippet 真實驗收案例的報告 9 張 PNG 全部通過，案例 01 revision 4 已修正過場並經目視確認。** M3 先前已完成同對話 read_validation_report 修復、revision 3 validation 成功、confirmed 發佈及 UI／key 隔離驗收。結果以總指揮的 [M3 整合紀錄](../../docs/tracking/devlog/m3-integration.md) 為準；本 Agent 不呼叫模型或重跑上述驗收。
+
+## 本輪 PNG 交付（此節優先於下方 M3 基線紀錄）
+
+- Worker `src/report-artifacts.ts` 將原生 `html/data/<sha1>.png` 複製為 `output/data/<sha1>.png`，全部成功後才輸出 report.html，不解析 HTML ZIP、不改寫報告。
+- Runner 預設 screenshot only-on-failure，成功步驟用 spec 的 testInfo.attach 手動附加 PNG；trace／video 關閉且仍不支援附件上傳。
+- Manager `screenshots.go`／`artifacts.go`／allowlist／journal 支援 `data/[0-9a-f]{40}.png`。10 MiB／張、最多 32 張／64 MiB 合計；只接受 regular file／directory，Root 限制路徑、拒絕 symlink／traversal，檢查 PNG header 與 SHA-1 內容。
+- 上傳順序為全部 PNG → report.html → results.json → result。圖片收集不合法會 failed 且扣住 HTML；上傳失敗保留檔案／journal 補送，不宣稱成功。author 不接受 PNG。
+- Server owner t31 已配合 POST／GET `.../artifacts/data/<hash>.png`、image/png 與必要報告存在檢查；PNG 不計入原本「兩份必要報告」數量，不改 Server terminal-and-absent 名額規則。
+- skill 已改為 testInfo.attach 成功步驟 recipe，保留 trace／video 不支援的描述。README 已移除 screenshot off／未上傳／Docker 尚未驗證等過時說明。
+
+交付供既有映像衍生 COPY：
+
+| 產物 | 位置／說明 |
+| --- | --- |
+| Manager binary | `/private/tmp/whippet-manager-screenshots`，ELF Linux arm64、靜態連結，10,115,690 bytes。 |
+| Worker 編譯輸出 | `runtimes/worker/dist/`，含最新 runner.js、report-artifacts.js。 |
+| 技能資產 | `runtimes/worker/skills/`，須與 dist 一起 COPY 到既有 Worker 映像。 |
+
+本 Agent 實際檢查：正式 npm build 通過；PNG 匯出測試 1 項、Manager 截圖測試 3 項、更新後 skill mock capture 1 項均通過。測試涵蓋原生相對路徑、先圖後報告、MIME／attempt、regular file／symlink、檔名／數量／大小限制與失敗扣住 HTML。未重跑既有 8 個 author mock／全量 E2E。
+
+Linux binary 使用既有快取交叉編譯，exit=0：
+
+```sh
+GOROOT=/opt/homebrew/Cellar/go/1.27.4/libexec \
+GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local \
+GOCACHE=/private/tmp/whippet-manager-go-cache \
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
+go build -mod=readonly -trimpath -o /private/tmp/whippet-manager-screenshots ./cmd/manager
+```
+
+總指揮部署後首筆 Run `04152970-718a-4b66-a752-8555224d42c0` succeeded／published，真 Chromium HTML 報告 3 張 PNG 全載入且零 CSP／HTTP 錯誤；後續回報 4 案例／9 PNG 通過。這些是總指揮回報的整合證據，不是本 Agent 的 live 測試。案例 01 最終 Run `8cd30023-c743-4aa6-a6ee-12332692d865` 已通過、發佈且目視確認；本輪依使用者限制不執行 Git 操作。
 
 ## 產物與邊界
 
@@ -83,3 +114,5 @@
 4. 真實完成同對話修改→驗證成功→人工發佈→重開對話；未完成前不將 M3 標為完成。
 
 等待總指揮整合結果，提交由總指揮負責。
+
+PNG 以外附件仍有限制：額外失敗範例的自動截圖可見，但 `error-context.md` 未上傳且讀取會遭 CSP 阻擋。完整檢查與限制見 [本機驗收指南](../../docs/guides/whippet-acceptance.md)。

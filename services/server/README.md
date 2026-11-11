@@ -133,9 +133,13 @@ Content-Type: application/octet-stream
 <raw body>
 ```
 
-一般 run／validation 僅接受 `report.html`／`results.json`，單檔上限 64 MiB；author 僅接受 `author.json`，上限 2 MiB。上傳與讀取皆核對 Run.kind，不能跨種類存取附件。檔名與 UUID 採白名單；檔案先寫暫存、同步並原子 rename，再登記 DB。key 為 `run/attempt/sha256/name`，同內容上傳可重送，衝突內容回 409，不覆寫已登記報告。終態後拒絕再上傳。
+一般 run／validation 接受 `report.html`／`results.json`（各 64 MiB），另支援原生 HTML 的 `data/<40位小寫hex>.png`（每張 10 MiB、每 Run 最多 32 張且合計 64 MiB）。author 僅接受 `author.json`，上限 2 MiB。上傳與讀取皆核對 Run.kind，不能跨種類存取附件。檔名與 UUID 採白名單，PNG 上傳核對格式，路徑逐層拒絕 symlink；檔案先寫暫存、同步並原子 rename，再登記 DB。key 為 `run/attempt/sha256/name`，同內容上傳可重送，衝突內容回 409，不覆寫已登記報告。終態後拒絕再上傳。
 
-`report.html` 應為單檔自包含報告。回應設定 CSP sandbox，允許 inline scripts、inline styles 與 data/blob 圖片，禁止同源權限與網路存取，避免報告腳本操作 SPA。Server 在原報告 script 前注入記憶體 storage shim，讓 Playwright 設定可在 opaque sandbox 中讀寫 `localStorage`／`sessionStorage`；資料只留在本頁，重新整理即清空，不加入 `allow-same-origin`。注入只改變 HTTP 呈現，保存的附件與 SHA256 不變；回應 ETag 使用 `-storage-v1` 後綴，既有 Run 可直接重新開啟報告。獨立附件資產、trace.zip 與截圖端點尚未納入 v1。
+PNG 沿用同一組上傳／下載端點，name 可為 `data/<hash>.png`。report.html 保持原路徑，內部相對圖片網址不改寫；PNG 回應為 image/png。請先上傳 PNG 再上傳報告／送 result。Server 在 Run row lock 下核對 PNG 配額，重送同檔名不重占名額；成功檢查只計 report.html／results.json，PNG 不影響兩份報告門檻。此功能需 migration `005_report_screenshots.sql`。
+
+`report.html` 保留原生報告與相對 PNG 路徑。回應設定 CSP sandbox，允許 inline scripts／styles，以及同源、data/blob 圖片；connect-src 維持 none，script-src 不開放外部來源，避免報告腳本操作 SPA。Server 在原報告 script 前注入記憶體 storage shim，讓 Playwright 設定可在 opaque sandbox 中讀寫 localStorage／sessionStorage；資料只留在本頁，重新整理即清空，不加入 allow-same-origin。注入只改變 HTTP 呈現，保存的附件與 SHA256 不變；回應 ETag 使用 `-storage-png-v1` 後綴。trace.zip、影片與其他附件類型尚未提供。
+
+Manager WebSocket 輸出先 Marshal 完整 JSON，再用 Gorilla 未壓縮的 server WriteMessage 單 frame 路徑，支援 x/net JSON.Receive。4096-byte buffer 與 2 MiB script 契約不變；跨函式庫長 payload 回歸測試位於 `internal/gateway/websocket_interop_test.go`（wsinterop tag，需現有 x/net 0.56.0 與配對 Go >=1.25，獨立暫存 modfile，不新增 production 依賴）。
 
 ## M3 對話與 author
 

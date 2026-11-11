@@ -41,3 +41,13 @@ docker run -d --rm --name whippet-m3-fixture -p 127.0.0.1:18082:8080 \
 ```
 
 Mac Docker Worker使用 `http://host.docker.internal:18082`。停止示範用 `docker stop whippet-m3-fixture`；這不影響平台，但使用該URL的合成測試將無法執行。
+
+## Playwright 基本技能
+
+Author 每輪會載入 [`playwright-authoring`](../../runtimes/worker/skills/playwright-authoring/SKILL.md)，將內容放入每次 Responses 請求的 instructions，不只是提供一份供人閱讀的文件。技能隨 Worker 映像封裝，以模組位置定位，不依賴啟動目錄；缺失時停止 author 任務並回報錯誤。
+
+技能包含先觀察頁面再選 locator、getByRole／getByLabel、listitem 文字比對、自動等待與可重試斷言、完整 TypeScript 腳本及測試隔離。修復時先讀驗證錯誤，保留原測試意圖與斷言，不用 skip、硬等待或放寬斷言換取通過。探索工具接受 literal CSS／text selector，生成的 Playwright 腳本則可使用完整 Locator API。
+
+這是精簡的 MVP 基礎技能，沒有增加檢索框架或模型請求。是否正確仍以獨立 validation 的真實 Playwright 執行為準；技能本身不保證模型每次都能一次產稿成功。
+
+需要截圖證據時，技能會引導 Agent 在關鍵斷言後以 `testInfo.attach` 附加 PNG；報告附件由平台保存。失敗自動截圖已開啟。實際範例與 PNG 驗收結果見 [本機驗收指南](whippet-acceptance.md)。

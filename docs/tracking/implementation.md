@@ -85,3 +85,9 @@
 ## M1 後的模型預配置
 
 狀態：完成。Owner：Runtime t32（Codex sol／xhigh）、總指揮整合。M1 已先提交 `0b6f2f9`，再完成 OpenCode Go Muse Spark 1.3 Contributor／xhigh 的 Responses API 預配置、CLI 與獨立 Compose。TypeScript build、8 項 mock 測試、Worker Docker build 與容器離線 ai-check 通過。2026-11-11 使用者提供 key 並授權實測，單次 live probe 成功（completed、264 字元、requests=1）；未輸出或提交 key，不視為 M3 AI 對話已完成。設定方式見 [OpenCode Go 指南](../guides/opencode-go.md)。
+
+## M3 後續：本機驗收案例與 Playwright 技能
+
+狀態：完成。Owner：總指揮整合、Server t31／Runtime t32（Codex sol／xhigh）、QA t33（Muse Spark 1.3 Contributor／xhigh）。四個實際 Whippet UI 案例經 Worker 驗證後發佈，9 張關鍵 PNG 在真實 Chromium 報告正常載入，登入截圖經目視修正過場問題。PNG 附件管線、失敗自動截圖與 author 實際載入的精簡技能已部署；技能包含 locator／等待／斷言／修復／截圖 recipe，mock request capture 與必要 build／測試通過。較長腳本的 WS frame 問題已修復，原受阻 Run 沿用原 attempt 成功。
+
+驗收入口、報告及實際檢查見 [本機驗收指南](../guides/whippet-acceptance.md)。限制：trace／video／Markdown 附件未支援；額外失敗範例 PNG 可見，但 error-context.md 的 CSP 檢查未通過，已如實記錄。本輪無新模型呼叫、未安裝套件、未執行 Git 操作。

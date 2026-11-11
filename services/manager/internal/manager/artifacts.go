@@ -14,21 +14,26 @@ import (
 )
 
 func openArtifact(taskDir, name string) (*os.File, error) {
-	if name != "report.html" && name != "results.json" && name != "result.json" && name != "author.json" {
+	shot := screenshotPattern.MatchString(name)
+	if name != "report.html" && name != "results.json" && name != "result.json" && name != "author.json" && !shot {
 		return nil, errors.New("unsupported artifact name")
 	}
 	// OpenRoot rejects symlinks escaping the output directory. A Worker must not
 	// trick the host Manager into uploading arbitrary host files.
-	taskRoot, err := os.OpenRoot(taskDir)
-	if err != nil {
-		return nil, err
-	}
-	defer taskRoot.Close()
-	root, err := taskRoot.OpenRoot("output")
+	root, err := openOutputRoot(taskDir)
 	if err != nil {
 		return nil, err
 	}
 	defer root.Close()
+	if shot {
+		data, err := root.Lstat("data")
+		if err != nil {
+			return nil, err
+		}
+		if !data.IsDir() || data.Mode()&os.ModeSymlink != 0 {
+			return nil, errors.New("screenshot data must be a regular directory")
+		}
+	}
 	// A named pipe would otherwise block Open before we could inspect its type.
 	entry, err := root.Lstat(name)
 	if err != nil {
@@ -46,9 +51,18 @@ func openArtifact(taskDir, name string) (*os.File, error) {
 	if name == "author.json" {
 		limit = 2 << 20
 	}
+	if shot {
+		limit = maxScreenshotBytes
+	}
 	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > limit {
 		f.Close()
-		return nil, fmt.Errorf("artifact %s must be a nonempty regular file of at most %d bytes", name, maxArtifactBytes)
+		return nil, fmt.Errorf("artifact %s must be a nonempty regular file of at most %d bytes", name, limit)
+	}
+	if shot {
+		if err := verifyScreenshot(f, name); err != nil {
+			f.Close()
+			return nil, err
+		}
 	}
 	return f, nil
 }
@@ -74,8 +88,15 @@ func collectResult(taskDir string, outcome execution) (Result, []string) {
 	if err := readOutput(taskDir, "result.json", &result); err != nil || !result.valid() {
 		result = Result{Status: "failed", Error: "Worker result.json missing or invalid"}
 	}
-	var artifacts []string
+	artifacts, screenshotErr := collectScreenshots(taskDir)
+	if screenshotErr != nil {
+		result = Result{Status: "failed", Error: "Screenshot collection failed; HTML report withheld: " + screenshotErr.Error()}
+		artifacts = nil
+	}
 	for _, name := range []string{"report.html", "results.json"} {
+		if name == "report.html" && screenshotErr != nil {
+			continue
+		}
 		f, err := openArtifact(taskDir, name)
 		if err == nil {
 			f.Close()
@@ -134,6 +155,8 @@ func (m *Manager) upload(ctx context.Context, r record, name string) error {
 	req.Header.Set("X-Attempt-Id", r.AttemptID)
 	if name == "report.html" {
 		req.Header.Set("Content-Type", "text/html; charset=utf-8")
+	} else if screenshotPattern.MatchString(name) {
+		req.Header.Set("Content-Type", "image/png")
 	} else {
 		req.Header.Set("Content-Type", "application/json")
 	}

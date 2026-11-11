@@ -424,6 +424,18 @@ func (p *Postgres) SaveArtifact(ctx context.Context, a Artifact) error {
 	if !artifactAllowed(kind, a.Name) || a.Size < 0 || a.Size > artifactLimit(a.Name) {
 		return fmt.Errorf("%w: invalid artifact for run kind", ErrInvalid)
 	}
+	if isScreenshotArtifact(a.Name) {
+		// The Run row remains locked, serializing the quota check with all uploads.
+		// Exclude this name so an identical upload retry does not consume another slot.
+		var count, total int64
+		if err := tx.QueryRowContext(ctx, `SELECT count(*),COALESCE(sum(size_bytes),0) FROM artifacts
+            WHERE run_id=$1 AND name LIKE 'data/%' AND name<>$2`, a.RunID, a.Name).Scan(&count, &total); err != nil {
+			return err
+		}
+		if err := checkScreenshotQuota(count, total, a.Size); err != nil {
+			return err
+		}
+	}
 	res, err := tx.ExecContext(ctx, `INSERT INTO artifacts(run_id,name,attempt_id,storage_key,size_bytes,sha256)
         VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT (run_id,name) DO UPDATE SET uploaded_at=artifacts.uploaded_at
         WHERE artifacts.attempt_id=EXCLUDED.attempt_id AND artifacts.sha256=EXCLUDED.sha256`,

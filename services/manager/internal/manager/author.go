@@ -55,7 +55,7 @@ func artifactAllowed(r record, name string) bool {
 	if r.Kind == "author" {
 		return name == "author.json"
 	}
-	return name == "report.html" || name == "results.json"
+	return name == "report.html" || name == "results.json" || screenshotPattern.MatchString(name)
 }
 
 // Values remain only in the docker CLI process environment. --env NAME avoids

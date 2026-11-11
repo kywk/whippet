@@ -9,6 +9,7 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
 COPY package.json package-lock.json tsconfig.json ./
 RUN npm ci --include=dev --ignore-scripts --no-audit --no-fund
 COPY src ./src
+COPY skills ./skills
 RUN npm run build && npm prune --omit=dev --ignore-scripts --no-audit --no-fund
 
 CMD ["node", "dist/runner.js"]

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 )
 
@@ -217,12 +218,16 @@ func ValidID(id string) bool {
 }
 
 func validArtifact(name string) bool {
-	return name == "report.html" || name == "results.json" || name == "author.json"
+	return name == "report.html" || name == "results.json" || name == "author.json" || isScreenshotArtifact(name)
 }
+
+var screenshotNamePattern = regexp.MustCompile(`^data/[0-9a-f]{40}[.]png$`)
+
+func isScreenshotArtifact(name string) bool { return screenshotNamePattern.MatchString(name) }
 
 func artifactAllowed(kind, name string) bool {
 	if kind == "author" {
 		return name == "author.json"
 	}
-	return (kind == "run" || kind == "validation") && (name == "report.html" || name == "results.json")
+	return (kind == "run" || kind == "validation") && (name == "report.html" || name == "results.json" || isScreenshotArtifact(name))
 }

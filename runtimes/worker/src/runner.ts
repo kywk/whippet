@@ -1,11 +1,12 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createRequire } from "node:module";
-import { copyFile, lstat, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { decideResult, type RuntimeSummary, type WorkerResult } from "./result.js";
+import { exportHTMLReport } from "./report-artifacts.js";
 
 interface Input {
   runId: string;
@@ -98,10 +99,10 @@ async function execute(input: Input, taskDir: string): Promise<WorkerResult> {
     globalTimeout: input.timeoutMs,
     reporter: [
       [reporterPath, { summaryPath }],
-      ["html", { outputFolder: htmlDir, open: "never" }],
+      ["html", { outputFolder: htmlDir, open: "never", attachmentsBaseURL: "data/" }],
       ["json", { outputFile: join(outputDir, "results.json") }],
     ],
-    projects: [{ name: "chromium", use: { browserName: "chromium", headless: true, trace: "off", screenshot: "off", video: "off" } }],
+    projects: [{ name: "chromium", use: { browserName: "chromium", headless: true, trace: "off", screenshot: "only-on-failure", video: "off" } }],
   };
   const configPath = join(taskDir, "playwright.config.cjs");
   await writeFile(configPath, `module.exports = ${JSON.stringify(config, null, 2)};\n`, "utf8");
@@ -113,7 +114,7 @@ async function execute(input: Input, taskDir: string): Promise<WorkerResult> {
     cwd: taskDir,
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, CI: "1", FORCE_COLOR: "0", PLAYWRIGHT_HTML_OPEN: "never" },
+    env: { ...process.env, CI: "1", FORCE_COLOR: "0", PLAYWRIGHT_HTML_OPEN: "never", PLAYWRIGHT_HTML_ATTACHMENTS_BASE_URL: "data/" },
   });
   const stdout = child.stdout;
   const stderr = child.stderr;
@@ -137,7 +138,7 @@ async function execute(input: Input, taskDir: string): Promise<WorkerResult> {
   // This is the actual built-in Playwright HTML reporter output. Never create
   // a placeholder HTML file when Playwright fails to generate one.
   if (await regularFile(join(htmlDir, "index.html"))) {
-    await copyFile(join(htmlDir, "index.html"), join(outputDir, "report.html"));
+    await exportHTMLReport(htmlDir, outputDir);
   }
   let json: unknown;
   let summary: RuntimeSummary | undefined;

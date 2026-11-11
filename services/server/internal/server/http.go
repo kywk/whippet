@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 	"time"
 )
@@ -57,8 +58,8 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	mux.HandleFunc("GET /api/tests/{id}/runs", a.runs)
 	mux.HandleFunc("GET /api/runs/{id}", a.run)
 	mux.HandleFunc("POST /api/runs/{id}/cancel", a.cancel)
-	mux.HandleFunc("POST /api/manager/runs/{id}/artifacts/{name}", a.upload)
-	mux.HandleFunc("GET /api/runs/{id}/artifacts/{name}", a.artifact)
+	mux.HandleFunc("POST /api/manager/runs/{id}/artifacts/{name...}", a.upload)
+	mux.HandleFunc("GET /api/runs/{id}/artifacts/{name...}", a.artifact)
 	if managerConnect != nil {
 		mux.Handle("GET /api/manager/connect", a.ManagerAuth(managerConnect))
 	}
@@ -262,7 +263,7 @@ func (a *API) artifact(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "private, no-cache")
 	w.Header().Set("ETag", `"`+item.SHA256+`"`)
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, name))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, path.Base(name)))
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	if name == "report.html" {
 		content, err := reportContent(f)
@@ -271,12 +272,15 @@ func (a *API) artifact(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Version the transformed representation to invalidate cached pre-shim reports.
-		w.Header().Set("ETag", `"`+item.SHA256+`-storage-v1"`)
+		w.Header().Set("ETag", `"`+item.SHA256+`-storage-png-v1"`)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		// Opaque sandbox origin prevents scripts in a report from accessing the SPA.
-		w.Header().Set("Content-Security-Policy", "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'")
+		w.Header().Set("Content-Security-Policy", "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src data:; connect-src 'none'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'")
 		http.ServeContent(w, r, name, time.Time{}, content)
 		return
+	} else if isScreenshotArtifact(name) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'")
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'")

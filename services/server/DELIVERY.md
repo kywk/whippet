@@ -2,6 +2,36 @@
 
 Owner：Whippet Server Agent。最新交付：M3 Server 實作；M1／M2 歷史紀錄保留於下方。
 
+## 原生報告 PNG 附件增補
+
+**整合已驗證**：總指揮已部署新版 Server。驗收 Run `04152970-718a-4b66-a752-8555224d42c0` 通過並完成發布；Chromium 原生 HTML report 實際載入 3 張 PNG，naturalWidth=1280，image HTTP failures=0、requestfailed=0、CSP 錯誤=0。驗證來源為總指揮回報，本 Agent 沒有重複執行。
+
+依總指揮轉交的 Runtime 最小介面完成，只修改 `services/server/`：
+
+- POST `/api/manager/runs/:runId/artifacts/data/<40位小寫hex>.png` 與 GET `/api/runs/:runId/artifacts/data/<40位小寫hex>.png`。沿用部署 token／X-Attempt-Id 及目前 attempt 綁定；僅 run／validation 可上傳、讀取，author 禁止。
+- `005_report_screenshots.sql` 擴充 DB 檔名 CHECK；只允許原生 `data/[0-9a-f]{40}.png`，拒絕大小寫變體、其他長度／副檔名與 traversal。LocalArtifacts 支援對應巢狀 data 目錄，逐層拒絕 symlink；上傳先用標準庫 PNG DecodeConfig 核對格式。
+- 單張 10 MiB，每 Run 最多 32 張、PNG 合計 64 MiB。SaveArtifact 在原 Run row lock 下核對配額，排除同檔名後計算，讓相同內容重送不重占名額；附件內容仍以 SHA256 防止覆寫。
+- HTTP 回傳 `image/png`、nosniff；report.html 路徑與 HTML 相對 `data/<hash>.png` 保持。storage shim 保留，CSP 只將 img-src 擴為 `'self' data: blob:`，script-src／connect-src／opaque sandbox 不放寬。報告 ETag 更新為 `-storage-png-v1`。
+- 一般 Run succeeded 仍只核對 report.html／results.json 兩個名稱，不將 PNG 計入報告數量；M2 發布門檻不變。Runtime 依共同介面先傳圖，再傳報告及 result。
+
+**實際檢查**：`go test ./internal/server -count=1` 通過（0.520s），包含 PNG 名稱／種類／大小與總額邊界、真實暫存 PNG 存取、POST／GET 相對路徑、錯誤格式拒絕、author 禁止及 report CSP／shim 保留。這是 HTTP／檔案／domain 檢查，不宣稱 opaque sandbox 的瀏覽器載圖已驗證。
+
+最終交付 **`/private/tmp/whippet-server-screenshots`**，含 WS 修復與內嵌 migration 005。使用既有 Go 1.23.12 cache、GOPROXY=off／GOSUMDB=off、GOOS=linux／GOARCH=arm64／CGO_ENABLED=0 正式 build 通過；file 確認 statically linked ELF ARM aarch64。production go.mod/go.sum 沒有新增依賴，未安裝套件、讀取 env、執行 Git 或部署服務。
+
+**交接完成**：總指揮已將此 binary 部署並與 Runtime PNG 管線完成整合，真實 Chromium 已確認原生報告相對 PNG 可見，無圖片請求／CSP 錯誤。原 WS 阻塞 Run 亦已復原成功。本 Agent 僅補記驗收結果後 idle，不重跑測試或操作現有服務。
+
+## 長腳本 WebSocket 互通修正
+
+本機驗收 Run `a17ae5b8-41c3-45ec-bc5f-25ba176c043d` 的 4319-byte 腳本因 Server／Manager frame 互通問題卡在 dispatched。本輪僅改 Server，沒有改 Run／attempt 或重建任務。
+
+- 已核對本機 Gorilla 1.5.3：WriteJSON 使用 NextWriter／Encoder，超過 buffer 可能產生多個合法 continuation frames；x/net 0.56.0 JSON.Receive 則對單一 frame 直接解碼，不組合完整 message。較長完整 JSON frame 之後還可能留下空 continuation frame，使下一次 Receive 失敗。
+- `peer.Send` 改為先 json.Marshal，再關閉輸出壓縮並呼叫伺服器端 WriteMessage(TextMessage) 單 frame fast path。4096-byte buffer 不調大，2 MiB script 契約保持；既有串行寫入、write deadline 與重連 attempt 去重保持。
+- `internal/gateway/websocket_interop_test.go`（wsinterop tag）使用真實 HTTP Upgrade、Gorilla Server 與 x/net JSON.Receive，以 net.Pipe 傳送實際 WebSocket frames，不需要對外 listener。4500-byte ASCII、7000-byte Unicode、2 MiB 含跳脫字元／Unicode，並接續相同 attempt 重送與 heartbeat_ack，皆核對完整 envelope。
+- 修正前以上三案例都實際重現 unexpected end of JSON input；修正後 **全部通過**，0.316s。僅使用現有 cache；x/net 透過 `/private/tmp/whippet-wsinterop.mod` 的 local replace 載入既有版本，以 Go 1.27.4 執行 tag 測試，production go.mod/go.sum 未改動。
+- `GOPROXY=off GOSUMDB=off GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -mod=readonly -trimpath -o /private/tmp/whippet-server-m3-ws ./cmd/server` **通過**。file 確認為 statically linked ELF ARM aarch64；由總指揮使用既有 image COPY 此 binary 整合，沒有下載或安裝套件。
+
+總指揮已部署並確認原 Run `a17ae5b8-41c3-45ec-bc5f-25ba176c043d` 恢復 running 後 succeeded，沒有建立新 Run。PNG 附件支援是後續獨立增補，不阻擋先交付此 WS binary。
+
 ## M3 本輪交付（2026-11-11）
 
 ### 必要修復 context 增補

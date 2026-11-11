@@ -43,3 +43,9 @@ Server author成功檢查和validation成功的兩份報告檢查分開；不得
 ## 本輪驗收
 
 以合成網站/本地HTML完成真實模型：產生→同一對話修改→驗證成功→人工確認發佈→重開讀取對話。其餘錯誤/衝突/去重使用mock測試。Contributor流量只送合成測試資料，不傳本機專案程式碼或機密。
+
+## M3 增補：PNG 截圖證據
+
+普通 run／validation 除 HTML／JSON，新增 `data/<40位小寫十六進位hash>.png` 附件；author 仍只允許 author.json。沿用 Manager 上傳 token／X-Attempt-Id 與原 artifact 端點，Manager 先上傳圖片再上傳報告，完成後才送 result。PNG 單張上限 10 MiB，每個 Run 最多 32 張、合計 64 MiB。拒絕其他副檔名與任意路徑。
+
+Worker 保存 Playwright HTML reporter 的相對 `data/` 引用，Server 以 `image/png` 提供附件。HTML 報告維持 sandbox，僅允許同源圖片及原本的 data／blob 圖片，不開放任意 script／connect。成功步驟由 spec 使用 `testInfo.attach` 明確附加 PNG，失敗時由 Playwright `only-on-failure` 自動截圖；trace／video 本輪仍關閉。
