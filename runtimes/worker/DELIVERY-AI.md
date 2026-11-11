@@ -63,3 +63,7 @@
 待使用者提供 key 並明確啟用後，才能另行授權執行 guide 的一次 live probe。Probe 只使用固定合成 Playwright coding prompt、最多一次 POST、120 秒 timeout、4096 output tokens；不執行模型產生的程式，不自動追加請求，也不切換 payg。帳戶已開啟的 Extra Usage 仍可能由服務端扣餘額，client 不會代替帳戶政策。
 
 目前不需要等待 API key。互動工作階段保留，等待後續指示。
+
+## 後續實際驗證
+
+2026-11-11 使用者提供 key 並授權後，總指揮透過 Compose 一次性覆寫 WHIPPET_AI_ENABLED=true 執行固定合成 coding probe。exit=0、status=completed、textCharacters=264、requests=1。未輸出金鑰、未執行生成程式、未更改帳戶設定。

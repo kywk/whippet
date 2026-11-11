@@ -1,6 +1,6 @@
 # OpenCode Go Muse 預配置
 
-目前只預配 Worker 的原生 Responses 請求、離線檢查與一次性 coding probe。AI 預設停用，key 尚未提供；沒有接上網頁 AI 對話、Server 草稿或 Agent 工具迴圈，不代表 M3 已完成。本輪沒有發送任何模型請求。
+目前只預配 Worker 的原生 Responses 請求、離線檢查與一次性 coding probe。AI 預設停用；使用者已提供本機 key，並於 2026-11-11 授權完成一次 live probe；沒有接上網頁 AI 對話、Server 草稿或 Agent 工具迴圈，不代表 M3 已完成。實測回傳 completed、264 字元、requests=1；沒有自動執行生成程式。
 
 ## 固定的 Go 設定
 
@@ -82,7 +82,7 @@ docker compose --env-file deploy/.env.ai -f deploy/compose.ai.yml --profile ai c
 
 ## 日後的一次 live probe
 
-**本輪不可執行以下 live 指令。** 待使用者提供 key、確認上述資格與資料政策，並明確設為 enabled=true 後，才由使用者或另行授權的 Agent 執行一次：
+使用者授權後可執行以下 live 指令。首次實測已成功；範例仍需 enabled=true。測試只證明當次請求成功，不代表所有帳戶或後續額度均可用：
 
 ```sh
 docker compose --env-file deploy/.env.ai -f deploy/compose.ai.yml --profile ai run --rm --no-deps ai-probe --live --session=whippet-conversation-001

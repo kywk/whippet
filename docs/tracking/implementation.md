@@ -84,4 +84,4 @@
 
 ## M1 後的模型預配置
 
-狀態：完成。Owner：Runtime t32（Codex sol／xhigh）、總指揮整合。M1 已先提交 `0b6f2f9`，再完成 OpenCode Go Muse Spark 1.3 Contributor／xhigh 的 Responses API 預配置、CLI 與獨立 Compose。TypeScript build、8 項 mock 測試、Worker Docker build 與容器離線 ai-check 通過。API key 尚未提供，未發送真實模型請求；訂閱資格與 live 呼叫待 key 到位後驗證，不視為 M3 AI 對話已完成。設定方式見 [OpenCode Go 指南](../guides/opencode-go.md)。
+狀態：完成。Owner：Runtime t32（Codex sol／xhigh）、總指揮整合。M1 已先提交 `0b6f2f9`，再完成 OpenCode Go Muse Spark 1.3 Contributor／xhigh 的 Responses API 預配置、CLI 與獨立 Compose。TypeScript build、8 項 mock 測試、Worker Docker build 與容器離線 ai-check 通過。2026-11-11 使用者提供 key 並授權實測，單次 live probe 成功（completed、264 字元、requests=1）；未輸出或提交 key，不視為 M3 AI 對話已完成。設定方式見 [OpenCode Go 指南](../guides/opencode-go.md)。
