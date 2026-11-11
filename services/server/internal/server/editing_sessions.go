@@ -174,16 +174,20 @@ func (p *Postgres) StartEditingSession(ctx context.Context, testID string) (Edit
           SELECT $1,id,'active',published_version_id,$3 FROM tests WHERE id=$2`, id, testID, conversationID); err != nil {
 			return s, false, err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO conversations(id,test_id,editing_session_id) VALUES($1,$2,$3)`, conversationID, testID, id); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO conversations(id,test_id,editing_session_id,workspace_id) SELECT $1,id,$3,workspace_id FROM tests WHERE id=$2`, conversationID, testID, id); err != nil {
 			return s, false, err
 		}
-		var script string
-		if err = tx.QueryRowContext(ctx, `SELECT COALESCE(v.script,'') FROM tests t LEFT JOIN test_versions v ON v.id=t.published_version_id WHERE t.id=$1`, testID).Scan(&script); err != nil {
+		var script, origin string
+		if err = tx.QueryRowContext(ctx, `SELECT COALESCE(v.script,''),COALESCE(v.script_origin,'legacy') FROM tests t LEFT JOIN test_versions v ON v.id=t.published_version_id WHERE t.id=$1`, testID).Scan(&script, &origin); err != nil {
 			return s, false, err
 		}
 		var revision int
-		if err = tx.QueryRowContext(ctx, `INSERT INTO draft_revisions(test_id,revision,script,script_hash,timeout_ms,workspace_settings)
-          SELECT $1,COALESCE(MAX(revision),0)+1,$2,$3,$4,$5 FROM draft_revisions WHERE test_id=$1 RETURNING revision`, testID, script, scriptHash(script), settings.TimeoutMS, settingsJSON(settings)).Scan(&revision); err != nil {
+		workspaceContext, contextErr := contextForTest(ctx, tx, testID)
+		if contextErr != nil {
+			return s, false, contextErr
+		}
+		if err = tx.QueryRowContext(ctx, `INSERT INTO draft_revisions(test_id,revision,script,script_hash,timeout_ms,workspace_settings,workspace_context,script_origin)
+          SELECT $1,COALESCE(MAX(revision),0)+1,$2,$3,$4,$5,$6,$7 FROM draft_revisions WHERE test_id=$1 RETURNING revision`, testID, script, scriptHash(script), settings.TimeoutMS, settingsJSON(settings), jsonText(workspaceContext), origin).Scan(&revision); err != nil {
 			return s, false, err
 		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO drafts(test_id,current_revision,editing_session_id) VALUES($1,$2,$3)`, testID, revision, id); err != nil {

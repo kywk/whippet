@@ -1,25 +1,28 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { errorMessage } from './api';
+import { executionCapabilityForScript, scriptOriginLabel } from './capabilities';
 import { Loading, Notice } from './components';
 import { DraftEditor } from './DraftEditor';
 import { LiveView } from './LiveView';
 import { RunHistory } from './RunHistory';
 import { DiscardSessionDialog } from './DiscardSessionDialog';
 import { VersionHistory } from './TestActions';
+import { CapabilityStatus } from './WorkspaceSettings';
 import { useResource, useRuns } from './hooks';
-import type { ActiveEditingSession, Draft, EditingSession, Run, Test, Version, WhippetApi } from './types';
+import type { ActiveEditingSession, Draft, EditingSession, Run, Test, Version, WhippetApi, WorkspaceCapabilities } from './types';
 
 interface Props {
   testId: string;
   api: WhippetApi;
   apiBase: string;
   initialEditing: boolean;
+  capabilities: WorkspaceCapabilities | undefined;
   settingsRefresh: number;
   onDirtyChange: (dirty: boolean) => void;
   onTestUpdated: (test: Test) => void;
 }
 
-export function TestWorkspace({ testId, api, apiBase, initialEditing, settingsRefresh, onDirtyChange, onTestUpdated }: Props) {
+export function TestWorkspace({ testId, api, apiBase, initialEditing, capabilities, settingsRefresh, onDirtyChange, onTestUpdated }: Props) {
   const loadTest = useCallback((signal: AbortSignal) => api.getTest(testId, signal), [api, testId]);
   const loadVersions = useCallback((signal: AbortSignal) => api.listVersions(testId, signal), [api, testId]);
   const test = useResource(loadTest);
@@ -63,6 +66,9 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, settingsRe
   const formalRuns = history.runs.filter((run) => !run.kind || run.kind === 'run');
   const editingRuns = history.runs.filter((run) => run.editingSessionId === session?.id && (run.kind === 'author' || run.kind === 'validation'));
   const publishedId = test.data?.publishedVersionId;
+  const publishedVersion = versions.data?.find((version) => version.id === publishedId);
+  const formalCapability = executionCapabilityForScript(capabilities, publishedVersion?.scriptOrigin);
+  const executionAvailable = formalCapability?.available === true;
   const viewingVersionId = selectedVersionId ?? publishedId;
   const selectedVersion = versions.data?.find((version) => version.id === viewingVersionId);
   const historical = Boolean(selectedVersionId && selectedVersionId !== publishedId);
@@ -172,7 +178,7 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, settingsRe
   const liveView = liveRun ? <LiveView key={`${liveRun.id}:${liveRequest}`} run={liveRun} apiBase={apiBase} onClose={() => setLiveSelection(undefined)} /> : null;
 
   async function runTest() {
-    if (submitLock.current || !publishedId) return;
+    if (submitLock.current || !publishedId || !executionAvailable) return;
     submitLock.current = true; setSubmitting(true); setSubmitError(undefined);
     const controller = new AbortController(); submitController.current = controller;
     try { const run = await api.createRun(testId, controller.signal); if (!controller.signal.aborted) history.addRun(run); }
@@ -193,8 +199,9 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, settingsRe
     <div className="test-mode general-mode" hidden={mode !== 'general'} role="region" aria-label="測試一般模式" data-mode="general">
       <div className="detail-heading"><div><h2>{test.data?.name ?? '測試詳情'}</h2><p className="mode-label">{publishedId ? '已發佈' : test.loading ? '載入中' : !test.data ? '狀態尚未確認' : '尚未發佈'}</p></div><div className="detail-actions">
         <button className="button secondary" disabled={sessionBusy || !test.data} onClick={() => { void edit(); }}>{sessionBusy ? '處理中…' : activeInfo?.status === 'discarding' ? '查看放棄進度' : activeInfo ? '繼續修改' : activeInfo === undefined ? '開啟編輯工作區' : '修改腳本'}</button>
-        <button className="button primary" disabled={submitting || !publishedId} onClick={runTest}>{submitting ? '送出中…' : '執行正式版本'}</button>
+        <button className="button primary" disabled={submitting || !publishedId || !executionAvailable} onClick={runTest}>{submitting ? '送出中…' : '執行正式版本'}</button>
       </div></div>
+      {publishedId ? <div className="formal-capability"><p className="inline-hint">目前正式版本來源：{scriptOriginLabel(publishedVersion?.scriptOrigin)}。執行能力依目前正式版本判斷，不隨歷史版本檢視切換。</p><CapabilityStatus label="正式版本執行" capability={formalCapability} /></div> : null}
       <section className="version-description" aria-labelledby="version-description-title"><h3 id="version-description-title">版本說明</h3>
         <p className="version-description-content">{test.loading || versions.loading ? '正在載入正式版本資訊…' : !publishedId ? '尚未發佈，尚無正式版本說明。請先在對話工作區完成修改、驗證與確認發佈。' : selectedVersion?.description ?? '此版本尚無版本說明（舊資料）。'}</p>
         {selectedVersion ? <details className="version-background"><summary>查看版本背景摘要</summary><p className="summary-content">{selectedVersion.backgroundSummary ?? '此版本尚無背景摘要（舊資料）。'}</p></details> : null}
@@ -206,7 +213,7 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, settingsRe
       <section className="published-script-section" aria-labelledby="published-script-title" id="published-script-panel">
         <div className="section-heading"><h3 id="published-script-title">{historical ? '歷史版本唯讀腳本' : '正式版本唯讀腳本'}</h3>{historical ? <button className="button secondary compact" onClick={() => setSelectedVersionId(undefined)}>回到目前正式版本</button> : null}</div>
         {test.loading || versions.loading ? <Loading text="正在載入版本腳本…" /> : selectedVersion ? <>
-          <p className="script-version-label">{historical ? '歷史版本' : '目前正式版本'} · revision {selectedVersion.revision}</p><p className="version-id identifier">{selectedVersion.id}</p>
+          <p className="script-version-label">{historical ? '歷史版本' : '目前正式版本'} · revision {selectedVersion.revision}</p><p className="inline-hint">版本腳本來源：{scriptOriginLabel(selectedVersion.scriptOrigin)}</p><p className="version-id identifier">{selectedVersion.id}</p>
           <textarea className="script-editor readonly-script" readOnly rows={12} value={selectedVersion.script} spellCheck={false} aria-label={historical ? '歷史版本腳本（唯讀）' : '正式版本腳本（唯讀）'} />
         </> : !publishedId ? <p className="mode-empty">尚無正式版本腳本。草稿只會在編輯模式顯示。</p> : versions.error ? <p className="muted">版本載入失敗，請從歷史版本區重新載入。</p> : <Notice message="未取得所選版本的腳本，請重新載入版本。" retry={versions.retry} />}
       </section>
@@ -218,7 +225,7 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, settingsRe
         {session.status === 'discarding' ? <p className="inline-hint">{session.reclaimPending ? '等待執行節點確認回收，尚未完成放棄。' : '正在確認本週期所有任務已終止。'}待確認任務：{session.pendingRunIds.length}；正式執行不受影響。</p> : null}
         <div className="action-row"><button className="button quiet compact" disabled={sessionRefreshing} onClick={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }}>重新載入週期</button>{session.status === 'active' ? <button className="button quiet compact" disabled={sessionBusy} onClick={() => { void askDiscard(); }}>刪除草稿</button> : null}</div>
       </section> : sessionBusy ? <Loading text="正在開始或接續編輯週期…" /> : <div className="mode-empty"><p>尚未載入編輯週期。請重試開始或接續修改。</p><button className="button secondary" onClick={() => { void openEditor(); }}>開始或接續修改</button></div>}
-      {session && session.draft && (session.status === 'active' || session.status === 'discarding') ? <DraftEditor key={session.id} api={api} apiBase={apiBase} testId={testId} session={session} sessionRefreshing={sessionRefreshing} onRefreshSession={refreshSession} runs={editingRuns} onRun={history.addRun} onPublished={published} onDirtyChange={handleEditorGuard} onRefreshRuns={history.refresh} settingsRefresh={settingsRefresh} onDraftChange={setKnownDraft}>
+      {session && session.draft && (session.status === 'active' || session.status === 'discarding') ? <DraftEditor key={session.id} api={api} apiBase={apiBase} testId={testId} capabilities={capabilities} session={session} sessionRefreshing={sessionRefreshing} onRefreshSession={refreshSession} runs={editingRuns} onRun={history.addRun} onPublished={published} onDirtyChange={handleEditorGuard} onRefreshRuns={history.refresh} settingsRefresh={settingsRefresh} onDraftChange={setKnownDraft}>
         <RunHistory {...runHistoryProps} runs={editingRuns} group="editing" liveView={mode === 'editing' ? liveView : null} />
       </DraftEditor> : null}
     </div> : null}

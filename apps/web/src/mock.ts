@@ -1,10 +1,10 @@
 import { ApiError } from './api';
 import { isActiveRun } from './types';
-import type { Draft, Run, Test, Version, WhippetApi } from './types';
+import type { Draft, Run, Test, Version, WhippetApi, WorkspaceDetail } from './types';
 
 // 明確 opt-in 的 UI 示範；不與真實 API 自動互相切換。
 export function createMockApi(): WhippetApi {
-  const workspace = { id: '00000000-0000-4000-8000-000000000001', name: '示範 Workspace' };
+  const workspace: WorkspaceDetail = { id: '00000000-0000-4000-8000-000000000001', name: '示範 Workspace', revision: 1, sites: [], defaultTestUrl: '', timeoutMs: 60000, lifecycle: 'needs_confirmation', authorizationRevision: 0, scopeStatus: 'unconfirmed', settings: null, conversationId: 'mock-unavailable', activeRunId: null, currentProposal: null, roles: [], secretsAvailable: false, executionAvailable: false, unavailableReason: 'mock_unavailable' };
   const tests: Test[] = [
     {
       id: '00000000-0000-4000-8000-000000000011', workspaceId: workspace.id,
@@ -165,5 +165,15 @@ test('本機頁面', async ({ page }) => {
     async getEditingSession() { throw new ApiError('示範模式未提供編輯週期狀態。', 'MOCK_SESSION_UNAVAILABLE', 400); },
     async discardEditingSession() { throw new ApiError('示範模式不會放棄草稿。', 'MOCK_SESSION_UNAVAILABLE', 400); },
     async requestSummary() { throw new ApiError('示範模式不產生驗收摘要，請使用真實 API。', 'MOCK_SUMMARY_UNAVAILABLE', 400); },
+    async getWorkspace() { throw new ApiError('M8 設定對話請使用真實 API。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
+    async createWorkspace() { throw new ApiError('示範模式不會建立 Workspace。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
+    async getWorkspaceConversation() { throw new ApiError('示範模式沒有持久設定對話。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
+    async sendWorkspaceMessage() { throw new ApiError('示範模式不會送出設定訊息。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
+    async getWorkspaceProposal() { throw new ApiError('示範模式沒有真實提案。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
+    async confirmWorkspaceScope() { throw new ApiError('示範模式不會確認範圍。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
+    async confirmWorkspaceProposal() { throw new ApiError('示範模式不會套用提案。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
+    async cancelWorkspaceProposal() { throw new ApiError('示範模式不會取消提案。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
+    async saveWorkspaceCredentials() { throw new ApiError('示範模式不收集登入資料。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
+    async revokeWorkspaceCredentials() { throw new ApiError('示範模式沒有登入資料。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
   };
 }

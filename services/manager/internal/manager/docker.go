@@ -25,7 +25,7 @@ type containerRuntime interface {
 	Remove(context.Context, record) error
 }
 
-type dockerCLI struct{ cfg Config }
+type dockerCLI struct{ cfg Config; remember func(record,credentialValues)error }
 
 func (d dockerCLI) name(r record) string {
 	owner := sha256.Sum256([]byte(d.cfg.ManagerID))
@@ -50,7 +50,7 @@ func (d dockerCLI) Execute(ctx context.Context, r record, taskDir string, emit f
 
 func (d dockerCLI) createArgs(r record, taskDir string) []string {
 	args := []string{
-		"create", "--pull=never", "--name", d.name(r), "--init",
+		"create", "--pull=never", "--name", d.name(r), "--init", "--interactive",
 		"--label", "whippet.manager.id=" + d.cfg.ManagerID,
 		"--label", "whippet.run.id=" + r.RunID,
 		"--label", "whippet.attempt.id=" + r.AttemptID,
@@ -77,8 +77,11 @@ func (d dockerCLI) attach(ctx context.Context, r record, emit func(string, strin
 	// independent Manager watchdog force-removes the container.
 	runCtx, runCancel := context.WithTimeout(ctx, time.Duration(r.TimeoutMS)*time.Millisecond+30*time.Second)
 	defer runCancel()
-	cmd := dockerCommand(runCtx, "start", "--attach", d.name(r))
-	cmd.Stdout = &lineWriter{emit: emit}
+	cmd := dockerCommand(runCtx, "start", "--attach", "--interactive", d.name(r))
+	stdin,err:=cmd.StdinPipe();if err!=nil{return execution{ExitCode:-1,Error:"credential stdin unavailable"}}
+	defer stdin.Close()
+	channel:=&credentialChannel{ctx:runCtx,cfg:d.cfg,r:r,input:stdin,client:newHTTPClient(),remember:func(values credentialValues)error{if d.remember!=nil{return d.remember(r,values)};return nil}}
+	cmd.Stdout = &lineWriter{emit: emit, intercept:channel.handle}
 	cmd.Stderr = &lineWriter{emit: emit, stderr: true}
 	if err := cmd.Start(); err != nil {
 		return execution{ExitCode: -1, Error: "docker start: " + err.Error()}
@@ -134,6 +137,7 @@ type lineWriter struct {
 	buf    []byte
 	emit   func(string, string)
 	stderr bool
+	intercept func(string)bool
 }
 
 func (w *lineWriter) Write(p []byte) (int, error) {
@@ -143,16 +147,18 @@ func (w *lineWriter) Write(p []byte) (int, error) {
 	for len(p) > 0 {
 		i := bytes.IndexByte(p, '\n')
 		if i < 0 {
-			w.buf = append(w.buf, p[:min(len(p), max(0, 8192-len(w.buf)))]...)
+			w.buf = append(w.buf, p[:min(len(p), max(0, credentialFrameLimit+1-len(w.buf)))]...)
 			break
 		}
-		w.buf = append(w.buf, p[:min(i, max(0, 8192-len(w.buf)))]...)
+		w.buf = append(w.buf, p[:min(i, max(0, credentialFrameLimit+1-len(w.buf)))]...)
 		line := strings.TrimSpace(string(w.buf))
 		w.buf = w.buf[:0]
 		p = p[i+1:]
 		if line == "" {
 			continue
 		}
+		if len(line)>credentialFrameLimit {continue}
+		if !w.stderr&&w.intercept!=nil&&w.intercept(line){continue}
 		var event struct {
 			Kind    string `json:"kind"`
 			Message string `json:"message"`

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { errorMessage } from './api';
 import { formatDate, Loading, Notice, ReportLink } from './components';
 import { isActiveRun } from './types';
+import { scriptOriginLabel } from './capabilities';
 import type { ActiveEditingSession, Draft, Run, Version, WhippetApi } from './types';
 
 export function CancelRunButton({ api, run, onUpdated }: { api: WhippetApi; run: Run; onUpdated: (run: Run) => void }) {
@@ -46,6 +47,7 @@ export function VersionHistory({ api, apiBase, versions, runs, publishedVersionI
       {versions ? [...versions].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).map((version) => <li key={version.id} className={selectedVersionId === version.id ? 'selected-version' : undefined} data-version-id={version.id}>
       <div className="version-heading"><strong>revision {version.revision}{publishedVersionId === version.id ? ' · 目前版本' : ''}</strong><VersionReport api={api} apiBase={apiBase} runId={version.validationRunId} run={runs.find((run) => run.id === version.validationRunId)} /></div>
       <p className="muted">{formatDate(version.createdAt)}</p><p className="version-id identifier">{version.id}</p>
+      <p className="inline-hint">版本腳本來源：{scriptOriginLabel(version.scriptOrigin)}</p>
       {version.workspaceSettings ? <p className="inline-hint">版本固定設定 {version.workspaceSettings.revision} · 執行逾時 {version.workspaceSettings.timeoutMs.toLocaleString('zh-TW')} 毫秒</p> : null}
       {onSelectVersion ? <button className="button quiet compact" aria-label={`檢視版本 ${version.id}`} aria-pressed={selectedVersionId === version.id} aria-controls="published-script-panel" onClick={() => onSelectVersion(version)}>檢視版本</button> : <details className="version-script"><summary>查看此版本腳本（唯讀）</summary><pre>{version.script || '空腳本'}</pre></details>}
     </li>) : null}</ul>

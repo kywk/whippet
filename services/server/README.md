@@ -1,6 +1,6 @@
 # Whippet Server
 
-Go 單一服務，依 [`mvp-v1`](../../contracts/mvp-v1.md)～[`mvp-v7`](../../contracts/mvp-v7.md) 提供 HTTP API、PostgreSQL 佇列、Manager WebSocket gateway、持久對話、報告附件與即時監看。M1～M6 已有本機整合證據；M7 Server 編輯週期／摘要已通過相關 Go 與 PM 獨立 PostgreSQL 檢查，Web／Runtime 主流程隔離整合待 PM 安排。
+Go 單一服務，依 [`mvp-v1`](../../contracts/mvp-v1.md)～[`mvp-v8`](../../contracts/mvp-v8.md) 提供 HTTP API、PostgreSQL 佇列、Manager WebSocket gateway、持久對話、報告附件與即時監看。M1～M6 已有本機整合證據；M7 Server 編輯週期／摘要已通過相關 Go 與 PM 獨立 PostgreSQL 檢查，M7 整體 UI／真 AI 驗收尚未完成。M8 A 提供 Workspace 訪談、提案與機密保存接線；B Server 已恢復完整 runner、加入可信 scriptOrigin／獨立能力／TLS 單次角色 resolve，已通過定向 Go 與 PM 隔離 DB 檢查。B 的 Runtime／真 AI／登入／報告全鏈仍待整合，未更新共享部署。
 
 M1 已於 2026-11-11 驗收完成。總指揮與 Muse 已確認真實成功 Run、斷言失敗 Run 及兩份 HTML report 正常；storage shim 修正後成功報告顯示 Passed 1／Failed 0，失敗報告顯示 Passed 0／Failed 1。完整 Run ID 與驗證來源見 [DELIVERY.md](DELIVERY.md)。
 
@@ -27,7 +27,9 @@ go run -mod=readonly ./cmd/server
 | `DATABASE_URL` | 必填，PostgreSQL connection URL |
 | `MANAGER_TOKEN` | 必填，Manager WS 與附件上傳共用 bearer token |
 | `ARTIFACT_DIR` | `./data/artifacts`；需持久化並由 Server OS 使用者獨占寫入 |
-| `PORT` | `8080` |
+| `PORT` | `8080`；HTTP 或 TLS 共用此單一 listener |
+| `TLS_CERT_FILE`、`TLS_KEY_FILE` | 選填，必須成對；部署提供 PEM 憑證鏈／私鑰檔案。缺一或載入失敗則啟動失敗，不降級 HTTP |
+| `WHIPPET_SECRET_MASTER_KEY` | 選填；部署提供 base64 編碼的 32-byte AES-256 key。未配置或格式錯誤時一般資料 API 可用，但 secretsAvailable=false、機密寫入／撤銷回 503 secrets_unavailable；沒有明文替代儲存 |
 | `WHIPPET_LIVE_ICE_SERVERS` | `[]`；專用 STUN／TURN RTCIceServer JSON 陣列，不使用 Manager／AI 憑證 |
 
 `POST /api/dev-login` 回固定 `dev-admin`／`superadmin`，不建立 cookie 或 token；M1 的一般 API 共用固定開發身分。這個服務尚未提供真實登入與租戶隔離。SPA 透過相同 origin 的 `/api` 反向代理串接，沒有開放跨來源 CORS。
@@ -42,7 +44,7 @@ docker build -t whippet-server:m1 services/server
 
 上述命令從 repo 根目錄執行。Dockerfile 於 build stage 下載固定依賴，使用 `-mod=readonly` 產生靜態 binary，runtime 使用 distroless nonroot。掛載 `/data` 保存附件，並另行持久化 PostgreSQL。使用 bind mount 時需讓 UID/GID `65532:65532` 可寫入 `/data/artifacts`。本機 Compose 位於 [compose.server.yml](../../deploy/compose.server.yml)，預設 Server 對主機為 `127.0.0.1:18081`。
 
-`GET /healthz` 為程序存活檢查，`GET /readyz` 檢查 DB。映像內可執行 `/app/whippet-server healthcheck`，以 3 秒期限查詢本機 `/readyz`，供 distroless 的 Compose healthcheck 使用。Server 不在程序內處理 TLS；遠端部署由入口代理終止 HTTPS/WSS，代理需支援 WS upgrade 並允許超過 60 秒的連線。
+`GET /healthz` 為程序存活檢查，`GET /readyz` 檢查 DB。映像內可執行 `/app/whippet-server healthcheck`，以 3 秒期限查詢本機 `/readyz`，供 distroless 的 Compose healthcheck 使用。兩個 TLS 路徑皆未設定時沿用 HTTP；皆有設定時使用原生 HTTPS/WSS（TLS 1.2 以上），同一 PORT 不另開明文健康檢查埠。healthcheck 自動改用 HTTPS，從配置的公開憑證鏈建立信任並驗證 SAN／hostname，不關閉驗證。憑證須有 DNS／IP SAN，檔案須讓 nonroot 程序可讀；入口代理到 Server 的 HTTPS 也須驗證正確 CA／名稱。代理需支援 WS upgrade 並允許超過 60 秒的連線。本輪未變更 Compose／共享部署。
 
 ## 種子與 HTTP
 
@@ -60,17 +62,17 @@ docker build -t whippet-server:m1 services/server
 | POST | `/api/dev-login` | 固定 `{user:{id,role}}` |
 | GET | `/api/workspaces` | `{items:[Workspace]}` |
 | GET | `/api/workspaces/:id` | Workspace 設定與 revision |
-| PATCH | `/api/workspaces/:id` | 更新設定，核對 revision |
+| PATCH | `/api/workspaces/:id` | 405 proposal_required；Allow: GET |
 | GET | `/api/workspaces/:id/tests` | `{items:[Test]}` |
 | GET | `/api/tests/:id` | Test |
-| POST | `/api/tests/:id/runs` | `202` Run |
+| POST | `/api/tests/:id/runs` | 202 Run；依 scriptOrigin 核對適用能力及範圍 |
 | GET | `/api/tests/:id/runs` | `{items:[Run]}`，新到舊 |
 | GET | `/api/runs/:id` | Run |
 | POST | `/api/runs/:id/cancel` | Run；queued 立即 cancelled，已派送者進入 cancelling |
 | GET | `/api/runs/:id/artifacts` | `{items:[{name,size,contentType,url}]}`，當前 attempt 的已保存附件 |
 | GET | `/api/runs/:id/artifacts/:name` | 已保存附件 |
 
-錯誤使用 `{error:{code,message}}`；無效 UUID 為 400、不存在資源 404、狀態或 attempt 衝突 409。Run 的 `reportUrl` 在 `report.html` 已保存後出現。再次 POST 建立 Run 會產生新 Run；HTTP 建立請求尚無 idempotency key。
+錯誤使用 `{error:{code,message}}`；無效 UUID 為 400、不存在資源 404、狀態或 attempt 衝突 409。歷史 Run 的 `reportUrl` 在 `report.html` 已保存後出現。B 已恢復建立新的正式 Run；manual 不受 AI 網站政策限制，ai／legacy 缺有效確認範圍時回 409 scope_confirmation_required。
 
 ```sh
 curl -X POST http://localhost:8080/api/dev-login
@@ -79,51 +81,65 @@ curl http://localhost:8080/api/workspaces/00000000-0000-4000-8000-000000000001/t
 curl -X POST http://localhost:8080/api/tests/10000000-0000-4000-8000-000000000001/runs
 ```
 
-## Workspace 設定與快照（M5）
+## M8 B：腳本來源、能力與登入
 
-GET `/api/workspaces/:id` 回傳 `{id,name,revision,sites:[{name,url}],defaultTestUrl,timeoutMs}`。初始 revision 為 1，sites 為 []、defaultTestUrl 為空字串、timeoutMs 為 60000。Workspace name 本輪唯讀。
+本段覆蓋 A 的暫態全面503。保留完整 Playwright／Node、evaluate／函式／迴圈，不建立 AST 子集或全通道網路代理。AI 的網站規則是瀏覽器工具與工作流防誤操作，不宣稱封鎖任意 Node 全部出站；Runtime 工具與證據遮蔽尚待 PM 全鏈驗收。
 
-PATCH 為部分更新，revision 必填，sites 提供時整份替換。例如：
+Draft／Version／Run 及 dispatch 頂層固定 `scriptOrigin:"ai"|"manual"|"legacy"`。Server 依可信寫入入口決定：人工 PUT 實際改 script bytes 才為 manual；AI 成功實際套用才為 ai；no-op／UI 切模式不增 revision、不洗來源。Start 複製正式版來源，設定／角色參照同步保留來源；validation／summary／發布／正式 Run 繼承快照並核對。舊資料及無腳本 Workspace author 為 legacy，不假造歷史作者。Web／author.json 不可自行指定 manual。
+
+manual 的 validation／正式 Run 不要求 targets 確認；AI 工具即使修人工稿仍受已確認範圍限制。ai／legacy 使用已確認 Workspace 的防誤操作規則，legacy 不被推定為工程師授權。舊 Version 缺 context 時，新 legacy Run 可固定當前已確認背景，原 Version／Run 不改。新版 ai 快照要求的範圍若已撤回，明確拒絕，不靜默改成更大許可。request_validation 在 AI 結果實際套用後，依新 Draft 的來源及 context 重新核對，不能沿用原 manual 豁免；不合格時保存草稿與明確訊息，不排無效驗證。
+
+Workspace 新增 `capabilities:{aiExploration,aiExecution,manualExecution,credentialLogin}`，各項為 `{available:boolean,reason:string|null}`。manualExecution 不因缺網站或 key 而停用；aiExploration 需有效確認的正式或當前候選範圍，aiExecution 需正式確認範圍，缺值 reason=scope_confirmation_required。credentialLogin 獨立核對 TLS／key／確認的 login origin／角色，回 protected_transport_required／secrets_unavailable／scope_confirmation_required／credentials_required。能力不是模型／Manager 即時健康保證；仍沿 FIFO。舊 executionAvailable 為 manualExecution OR aiExecution 的相容投影，true 時 unavailableReason=null，新版 Web 依來源選擇對應能力。
+
+confirm-scope 後的新 Workspace author 固定該確認候選內容與角色到本次 workspaceContext；Server 內部保存 scope_proposal_id／authorization_revision，不另傳 policy 物件。新訊息使提案不可再套用，與同 scopeHash 的確認是否有效分開；stale/context_changed 且仍有效確認的角色不會憑空消失。取消／改變範圍會撤回 AI 工作，普通 manual 任務不因網站縮限被取消。Workspace author 有 browser 工具才可沿既有 LiveHub 監看；純訪談／summary 不可監看。
+
+Manager 單次解析端點：`POST /api/manager/runs/:runId/attempts/:attemptId/credentials/resolve`，只接受 Manager bearer 與 **Server 實際 TLS**，連 loopback HTTP 也拒絕；不信任 forwarded header、不設長 lease。body 僅 `{roleId,secretRef,secretVersion}`，200 裸回 `{workspaceId,runId,attemptId,roleId,secretRef,secretVersion,loginOrigin,username,password}`，Cache-Control:no-store，值各1..4096 UTF-8 bytes。Server 核對目前 ready 控制 session、assigned 活躍 attempt／owner、固定 roleRefs、同 Workspace 當前未撤銷版本及已確認 login origin；角色未允許／跨 scope404、舊 attempt／撤銷409 credential_unavailable、缺 key503。
+
+resolve 只供 Manager 可信登入 helper，不是一般帳密讀回。Manager 必須驗 CA/SAN、整組ID／origin且拒絕redirect；值不進 dispatch／input／journal／模型／env／argv／log。具體 stdio/loginAs IPC 由 Runtime 實作，不由 Server 建 broker 平台。manual 網站豁免不允許把平台憑證填到任意網站。Server 的 resolved_role_ids 只保存最多10個已交付角色ID；角色更新／撤銷使 active Draft 固定新 ref、產新 revision、清驗證摘要、保留來源，已使用該角色的任務取消／回收，未使用的人工任務保留。舊任務／Version 不能自動取新密碼；已使用的角色失效時舊證據不可發布。已交付值不能瞬間追回，清理與斷線偵測由 Manager／helper 完成，回收後才釋放 slot。
+
+Migration 010 保護來源及確認綁定的不可變快照；A 已 terminal 的工作不復活。原 hash／revision／session／context／timeout／成功驗證／真 HTML-results／成功摘要／人工 confirmed 發布條件保留，新增來源與實際使用角色核對。登入後仍可觀察及監看；Runtime 須遮蔽敏感輸入與已知值，無法安全保存的個別附件須明示，不能用假報告或假成功換通過。
+
+## Workspace 訪談、提案與快照（M8 A 基礎，B 覆蓋暫態限制）
+
+GET 列表／詳情／Conversation 均純讀。新增 Workspace 為 draft／unconfirmed、revision=1，獨立保存一個設定 Conversation；舊資料為 needs_confirmation、settings=null，不把 M5 網站清單當成已確認範圍。頂層 sites/defaultTestUrl/timeoutMs 保留唯讀投影，canonical 設定只有 settings。舊 PATCH 一律 405 proposal_required，不保留修改名稱／timeout 的例外。
+
+| Method | Path | 請求／權威回應 |
+| --- | --- | --- |
+| POST | `/api/workspaces` | `{name?}` → 201 裸 Workspace |
+| GET | `/api/workspaces` | `{items:Workspace[]}` |
+| GET | `/api/workspaces/:id` | 裸 Workspace：lifecycle/revision/authorizationRevision/scopeStatus/settings/conversationId/activeRunId/currentProposal/roles/secretsAvailable/executionAvailable/unavailableReason，含 M5 投影 |
+| GET | `/api/workspaces/:id/conversation` | 裸 Conversation：id/workspaceId/ownerType/contextRevision/conversationSummary/messages/activeRunId |
+| POST | `/api/workspaces/:id/messages` | `{content,revision,contextRevision}` → 202 `{run,conversationId}`；每 Workspace 最多一個活躍設定任務 |
+| GET | `/api/workspaces/:id/proposals/:proposalId` | 裸 Proposal；跨 Workspace 404 |
+| POST | `/api/workspaces/:id/proposals/:proposalId/confirm-scope` | `{baseRevision,confirmed:true}` → 裸 Proposal；確認不代表已探索 |
+| POST | `/api/workspaces/:id/proposals/:proposalId/confirm` | 同上 → `{workspace,proposal}`；交易套用設定／許可、使舊草稿驗證及摘要失效 |
+| POST | `/api/workspaces/:id/proposals/:proposalId/cancel` | 同上 → 裸 Proposal；保留現行設定及歷史 |
+| PUT | `/api/workspaces/:id/roles/:roleId/credentials` | `{expectedSecretVersion,username,password}` → 裸角色參照 |
+| DELETE | 同上 | `{expectedSecretVersion,confirmed:true}` → 裸角色參照；撤銷後保留版本 |
+
+設定只接受 name/purpose/backgroundSummary/targets/dependencies/excludedOrigins/exclusions/loginRoles/defaultTestUrl/timeoutMs。未知欄位、任意 env/headers/key/cookie、衝突 origin 或超限輸入皆拒絕，不截斷／合併。targets/dependencies 各最多 20、roles 10、excludedOrigins 40；名稱 trim 後 1..200 UTF-8 bytes，說明最多 8192 bytes。origin 採完整 HTTP(S) scheme/ASCII host/port 正規化，禁止 userinfo、wildcard、query、fragment、非根路徑；允許與排除集合彼此不重疊、各自不重複。dependency purpose 只允許 login/api/cdn。defaultTestUrl 可空，非空的 origin 須屬 target；URL 最多 2048 Unicode 字元，timeout 為 1..3600000。正式 confirm 須至少一 target、非空 purpose/backgroundSummary；訪談可保留不完整提案，confirm-scope 也拒絕無 target。
+
+proposal 由 Server 綁定 Workspace/baseRevision/contextRevision/Run/attempt，狀態為 pending/applied/cancelled/stale/superseded；模型不能直接套用設定或產生 secretRef／確認旗標。新 user 訊息使前一 pending 提案過期，舊 revision/context 或遲到結果不能覆蓋新內容。同一 applied confirm 或 cancelled cancel 冪等；實際設定 no-op 不增 revision、不使草稿失效。roleId 為 null 時由 Server 分配，非 null 必屬同 Workspace。
+
+機密 API 只回 `{roleId,secretRef,secretVersion,configured}`，永不讀回帳密。expectedSecretVersion 必填非負整數，null／省略拒絕；首次 null 版本送 0，已有版本即使 configured=false 仍送該版本。交易內核對，過期 409；撤銷保留版本，後續保存遞增。密文使用 AES-256-GCM、獨立隨機 nonce 及 Workspace/role/ref/version AAD。機密不進一般訊息、Run、dispatch 或 journal。transport 必須是 Server 實際 TLS，或 Host 與 RemoteAddr 同時為 loopback；不信任 X-Forwarded-Proto 等任意 header，localhost→Nginx→bridge HTTP 仍會拒絕 protected_transport_required。
+
+Run.workspaceId 必填，Workspace 訪談 testId/editingSessionId 為 null、authorMode=workspace，不建立假 Test。dispatch 平面欄位沿契約：workspaceId/testId/workspaceContext、script=""，author.skillId=workspace-author、skillVersion="1"、allowedTools=[]、sourceVersion=null；A 不傳 requiredPolicyVersion。context 固定為 `{schemaVersion:"1",workspaceId,settingsRevision,config,roleRefs}`，與 M5 workspaceSettings 一起保存不可變快照。設定套用替 active Draft 建立新 revision，原腳本不變，清除驗證／摘要；Version、既有 Run 不改。所有 Test／Run／附件／live 由 DB 導出真實 Workspace owner，舊 URL 不必新增 query；若提供 workspaceId，必須吻合，跨 scope 404。開發 Superadmin 身分仍沿用現況，未提供正式 RBAC。
+
+A 當時使用全面503／離線三工具作暫態；B 已依上段恢復完整 runner、逐來源與確認範圍配置工具及單次 TLS resolve。A 已終止任務不復活，不再建舊強隔離提案的全網路 lease／proxy。M8 真實整合尚未驗收。
+
+### 隔離 PostgreSQL 檢查
+
+`TestM8BServerLifecycle` 僅使用明確提供的 TEST_DATABASE_URL，缺值 skip；在該隔離 DB 建立／清除隨機 schema，沒有 DATABASE_URL 或共用 DB fallback。請 PM 提供獨立 PostgreSQL 容器後，在 `services/server/` 執行：
 
 ```sh
-curl -X PATCH http://localhost:8080/api/workspaces/00000000-0000-4000-8000-000000000001 \
-  -H 'Content-Type: application/json' \
-  -d '{"revision":1,"sites":[{"name":"驗收網站","url":"https://example.test/"}],"defaultTestUrl":"https://example.test/start","timeoutMs":60000}'
-```
-
-- sites 最多 20 筆，名稱 trim 後為 1～100 字元；URL 最多 2048 字元，須完整 HTTP(S)，禁止 userinfo。defaultTestUrl 可空，非空使用相同 URL 規則，不要求列於 sites。
-- timeoutMs 為 1～3600000 整數。未知欄位（含巢狀欄位）、null、secrets／env／key 均拒絕；錯誤不回顯原始輸入。過期 revision 回 409，重新 GET 後再由使用者確認更新。
-- 相同設定的 PATCH 不增 revision、不清除驗證。實際變更時，在單一交易遞增 Workspace revision，替每份現存草稿建立新 revision（腳本不變），套用新設定並清除驗證資格。尚無草稿時，首次建立使用目前設定及原已發佈腳本。
-- Draft／Version／Run 與 dispatch 頂層帶 `workspaceSettings:{revision,sites,defaultTestUrl,timeoutMs}`。已發佈版本、既有 Run（含 queued／author）保留原快照；新的正式 Run 仍取已發佈版本。舊 author 結果遇到新草稿 revision 時保留候選稿與衝突訊息，不覆寫、不排驗證。
-- 發布仍須目前 revision、腳本與 hash、完整設定與 timeout 相符的成功驗證及已保存報告，另需人工確認。author 固定總限時 180000ms，續接 validation 使用草稿設定的 timeoutMs。
-- Migration 006 為歷史快照補空網站清單及預設 URL，保留各筆既有 timeout；author 的設定 timeout 取 base draft，其任務本身的總限時不變。快照 immutable trigger 仍生效。
-
-本批 Server 保存並派送完整快照。Manager／Worker 的設定轉送、author 網站上下文與 defaultTestUrl → Playwright baseURL 屬 Runtime 第二批；本模組通過不代表該端到端接線已驗收。
-
-### 隔離 PostgreSQL 驗證
-
-`TestPostgresWorkspaceSettingsSnapshots` 只使用明確提供的 `TEST_DATABASE_URL`；缺少時 skip，沒有預設連線。每個子案例建立並清除自己的隨機 schema。**只指定獨立測試 DB，不指定共用服務 DB。**
-
-PM 已使用快取 `postgres:16.11-bookworm` 完成 fresh 001→006 與 005 非預設 timeout 升級驗證。需要重驗時，從 repo 根目錄啟動獨立容器，確認 ready：
-
-```sh
-docker run --pull=never --rm -d --name whippet-m5-settings-pg \
-  -e POSTGRES_USER=whippet_test -e POSTGRES_PASSWORD=whippet_test \
-  -e POSTGRES_DB=whippet_test -p 127.0.0.1:15465:5432 postgres:16.11-bookworm
-docker exec whippet-m5-settings-pg pg_isready -U whippet_test -d whippet_test
-```
-
-確認 ready 後，在 `services/server/` 使用已備妥且 GOROOT 相符的 Go 工具鏈執行（下列帳密僅為此獨立容器的固定測試值）：
-
-```sh
-env GOPROXY=off GOSUMDB=off \
-  TEST_DATABASE_URL='postgres://whippet_test:whippet_test@127.0.0.1:15465/whippet_test?sslmode=disable' \
+env GOPROXY=off GOSUMDB=off TEST_DATABASE_URL='<隔離 PostgreSQL URL>' \
   go test -mod=readonly -tags=integration ./internal/server \
-  -run '^TestPostgresWorkspaceSettingsSnapshots$' -count=1 -v
-docker stop whippet-m5-settings-pg
+  -run '^TestM8BServerLifecycle$' -count=1 -v
 ```
 
-容器使用 `--rm`，停止即移除；不用掛共用資料卷。測試同時核對設定 no-op／失效、舊驗證禁止發布、版本／queued／author 快照保留、author 衝突去重，以及升級後歷史 timeout／腳本與 immutable trigger。
+PM 已於 2026-11-12 用獨立 PostgreSQL 實跑 TestM8BServerLifecycle PASS 無 skip，0.704s（test0.41s）；容器已移除、共享 DB 未碰。log=/private/tmp/whippet-m8b-db-check-retry.log。首跑因已確認候選在探索後變 stale/context_changed，被舊 roleEligible 的 pending-only 判斷誤拒撤銷而失敗；已統一有效確認判斷，保留原撤銷／consumer取消斷言後重跑通過。案例涵蓋 migration010、人工無targets的驗證／摘要／發布／正式Run、AI改人工稿後的資格重判、確認候選／live／resolve重送、角色撤銷及無關人工任務、legacy與immutable。此為真 DB 加合成腳本／附件 fixture，不是模型／Playwright 全鏈證據。
+
+本機定向 `go test -mod=readonly ./internal/server -run '^(TestM8B|TestPublicationRequiresCurrentValidatedRevisionAndReport|TestM7Summary)' -count=1` PASS；TLS listener／healthcheck 沿用 A 的既有合成憑證真驗證證據，本輪未重跑。歷史 M8 A 全面503案例只作該切片紀錄，不以它判定 B runner。詳細實際檢查與 Linux arm64 binary 見 DELIVERY。
 
 ## Manager 串接
 
@@ -149,7 +165,7 @@ Manager ID 於首次 hello 寫入 DB，之後僅接受相同 ID；同 ID 新連�
 
 M2 取消增補：Server 送相同 envelope 的 `type:"cancel"`、既有 runId／attemptId、`payload:{}`；最多每 5 秒重送一次。Manager 必須去重、停止／回收容器，再回報結果與 heartbeat。queued 取消不派送。取消與完成同時發生時，接受 Manager 實際的最終結果，因此 `cancelling` 仍可能收到 `succeeded`。
 
-若取消的 attempt 尚未 ACK，Server 會先重送相同 attempt 的 dispatch，再送 cancel，讓 Manager 可辨識該 attempt 並回報結果；不建立新的 attempt。
+若取消的 attempt 尚未 ACK，Server 對仍允許派送的任務先重送相同 attempt 的 dispatch，再送 cancel，讓 Manager 可辨識該 attempt 並回報結果；不建立新的 attempt。M8 A 已禁止的執行任務只送 cancel，不重送不安全 dispatch。
 
 ## M7 編輯週期與驗收摘要
 
@@ -180,8 +196,8 @@ Migration 008 保留真實未發布或仍有活躍／未回收任務的舊草稿
 | POST | `/api/workspaces/:id/tests` | `{name?,description?}` → 201；無 name 暫用「未命名測試」 |
 | GET | `/api/tests/:id/draft` | 純讀目前週期 Draft；無則 404 |
 | PUT | `/api/tests/:id/draft` | `{editingSessionId,revision,script}` → Draft；過期回 409 |
-| POST | `/api/tests/:id/draft/validate` | `{editingSessionId,revision}` → 202 validation Run |
-| POST | `/api/tests/:id/publish` | `{editingSessionId,revision,summaryRunId,confirmed:true}` → 201 Version |
+| POST | `/api/tests/:id/draft/validate` | `{editingSessionId,revision}` → 202 validation；依實際來源／context核對 |
+| POST | `/api/tests/:id/publish` | `{editingSessionId,revision,summaryRunId,confirmed:true}` → 201 Version；原真報告門檻及來源／角色核對，重送冪等 |
 | GET | `/api/tests/:id/versions` | `{items:[Version]}`，新到舊 |
 
 每個 Test 只有一筆 Draft。實際改動腳本才遞增 revision 並清除 validationRunId；相同內容儲存保留 revision，但仍核對 optimistic lock。腳本上限 2 MiB；空草稿可保存，不能驗證。每次 validate 固定腳本、SHA256 與 timeout 快照，並讓最新 validation Run 成為該草稿的發布依據。

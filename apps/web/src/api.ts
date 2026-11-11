@@ -1,5 +1,5 @@
 import { RUN_STATUSES } from './types';
-import type { AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, Workspace, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
+import type { AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
 
 export class ApiError extends Error {
   readonly code: string;
@@ -49,11 +49,6 @@ function parseStatus(value: unknown): RunStatus {
   return status as RunStatus;
 }
 
-function parseWorkspace(value: unknown): Workspace {
-  const data = record(value);
-  return { id: string(data.id), name: string(data.name) };
-}
-
 function parseWorkspaceSnapshot(value: unknown): WorkspaceSettingsSnapshot {
   const data = record(value);
   const settingsRevision = revision(data.revision);
@@ -72,6 +67,88 @@ function parseWorkspaceSettings(value: unknown): WorkspaceSettingsResponse {
   return { id: string(data.id), name: string(data.name), ...parseWorkspaceSnapshot(data) };
 }
 
+function bool(value: unknown): boolean {
+  if (typeof value !== 'boolean') throw new ApiError('API 布林欄位格式不符。', 'INVALID_RESPONSE');
+  return value;
+}
+
+function nullableString(value: unknown): string | null { return value === null ? null : string(value); }
+function array<T>(value: unknown, parse: (item: unknown) => T): T[] {
+  if (!Array.isArray(value)) throw new ApiError('API 清單欄位格式不符。', 'INVALID_RESPONSE');
+  return value.map(parse);
+}
+function choice<T extends string>(value: unknown, choices: readonly T[]): T {
+  if (typeof value !== 'string' || !choices.includes(value as T)) throw new ApiError('API 狀態欄位格式不符。', 'INVALID_RESPONSE');
+  return value as T;
+}
+
+function parseWorkspaceConfig(value: unknown): WorkspaceConfig {
+  const data = record(value);
+  const timeoutMs = revision(data.timeoutMs);
+  if (timeoutMs < 1 || timeoutMs > 3_600_000) throw new ApiError('Workspace 逾時格式不符。', 'INVALID_RESPONSE');
+  return {
+    name: string(data.name), purpose: string(data.purpose), backgroundSummary: string(data.backgroundSummary),
+    targets: array(data.targets, (value) => { const item = record(value); return { name: string(item.name), purpose: string(item.purpose), origin: string(item.origin) }; }),
+    dependencies: array(data.dependencies, (value) => { const item = record(value); return { name: string(item.name), purpose: choice(item.purpose, ['login', 'api', 'cdn'] as const), origin: string(item.origin) }; }),
+    excludedOrigins: array(data.excludedOrigins, string), exclusions: string(data.exclusions),
+    loginRoles: array(data.loginRoles, (value) => { const item = record(value); return { roleId: nullableString(item.roleId), name: string(item.name), loginMethod: choice(item.loginMethod, ['form'] as const), loginOrigin: string(item.loginOrigin) }; }),
+    defaultTestUrl: string(data.defaultTestUrl), timeoutMs,
+  };
+}
+
+function parseWorkspaceRole(value: unknown): WorkspaceRoleRef {
+  const data = record(value);
+  const role = { roleId: string(data.roleId), secretRef: nullableString(data.secretRef), secretVersion: data.secretVersion === null ? null : revision(data.secretVersion), configured: bool(data.configured) };
+  if (role.configured && (!role.secretRef || !role.secretVersion)) throw new ApiError('已設定角色缺少有效機密參照。', 'INVALID_RESPONSE');
+  return role;
+}
+
+function parseWorkspaceProposal(value: unknown): WorkspaceProposal {
+  const data = record(value);
+  return {
+    id: string(data.id), workspaceId: string(data.workspaceId), conversationId: string(data.conversationId), sourceRunId: string(data.sourceRunId),
+    baseRevision: revision(data.baseRevision), contextRevision: revision(data.contextRevision),
+    status: choice(data.status, ['pending', 'applied', 'cancelled', 'stale', 'superseded'] as const), content: parseWorkspaceConfig(data.content),
+    scopeHash: string(data.scopeHash), scopeConfirmed: bool(data.scopeConfirmed), invalidationReason: nullableString(data.invalidationReason),
+    appliedRevision: data.appliedRevision === null ? null : revision(data.appliedRevision), createdAt: string(data.createdAt),
+  };
+}
+
+function parseWorkspaceDetail(value: unknown): WorkspaceDetail {
+  const data = record(value);
+  const result: WorkspaceDetail = {
+    ...parseWorkspaceSettings(data), lifecycle: choice(data.lifecycle, ['draft', 'needs_confirmation', 'active'] as const),
+    authorizationRevision: revision(data.authorizationRevision), scopeStatus: choice(data.scopeStatus, ['unconfirmed', 'confirmed', 'revoking'] as const),
+    settings: data.settings === null ? null : parseWorkspaceConfig(data.settings), conversationId: string(data.conversationId), activeRunId: nullableString(data.activeRunId),
+    currentProposal: data.currentProposal === null ? null : parseWorkspaceProposal(data.currentProposal), roles: array(data.roles, parseWorkspaceRole),
+    secretsAvailable: bool(data.secretsAvailable), executionAvailable: bool(data.executionAvailable), unavailableReason: nullableString(data.unavailableReason),
+    capabilities: parseCapabilities(data.capabilities),
+  };
+  if (result.currentProposal && result.currentProposal.workspaceId !== result.id) throw new ApiError('提案所屬 Workspace 不符。', 'WORKSPACE_CONFLICT');
+  return result;
+}
+
+function parseCapabilities(value: unknown): WorkspaceCapabilities | undefined {
+  if (value == null) return undefined;
+  const data = record(value);
+  function capability(value: unknown): WorkspaceCapability | undefined {
+    if (value == null) return undefined;
+    const item = record(value);
+    if (item.available == null || item.reason === undefined) return undefined;
+    return { available: bool(item.available), reason: nullableString(item.reason) };
+  }
+  return { aiExploration: capability(data.aiExploration), aiExecution: capability(data.aiExecution), manualExecution: capability(data.manualExecution), credentialLogin: capability(data.credentialLogin) };
+}
+
+function parseWorkspaceConversation(value: unknown): WorkspaceConversationData {
+  const data = record(value);
+  return {
+    id: string(data.id), workspaceId: string(data.workspaceId), ownerType: choice(data.ownerType, ['workspace'] as const),
+    contextRevision: revision(data.contextRevision), conversationSummary: nullableString(data.conversationSummary),
+    messages: array(data.messages, parseMessage), activeRunId: nullableString(data.activeRunId),
+  };
+}
+
 function parseTest(value: unknown): Test {
   const data = record(value);
   return {
@@ -87,9 +164,9 @@ function parseRun(value: unknown): Run {
   if (data.kind != null && data.kind !== 'run' && data.kind !== 'validation' && data.kind !== 'author') {
     throw new ApiError('API Run kind 格式不符。', 'INVALID_RESPONSE');
   }
-  if (data.authorMode != null && data.authorMode !== 'edit' && data.authorMode !== 'summary') throw new ApiError('authorMode 格式不符。', 'INVALID_RESPONSE');
+  if (data.authorMode != null && data.authorMode !== 'edit' && data.authorMode !== 'summary' && data.authorMode !== 'workspace') throw new ApiError('authorMode 格式不符。', 'INVALID_RESPONSE');
   return {
-    id: string(data.id), testId: string(data.testId), status: parseStatus(data.status),
+    id: string(data.id), testId: nullableString(data.testId), workspaceId: string(data.workspaceId), status: parseStatus(data.status),
     createdAt: string(data.createdAt), startedAt: optionalString(data.startedAt),
     finishedAt: optionalString(data.finishedAt), error: optionalString(data.error),
     reportUrl: optionalString(data.reportUrl),
@@ -99,6 +176,7 @@ function parseRun(value: unknown): Run {
     workspaceSettings: data.workspaceSettings == null ? undefined : parseWorkspaceSnapshot(data.workspaceSettings),
     editingSessionId: optionalString(data.editingSessionId) ?? null,
     authorMode: data.authorMode as Run['authorMode'],
+    scriptOrigin: data.scriptOrigin == null ? undefined : choice(data.scriptOrigin, ['ai', 'manual', 'legacy'] as const),
   };
 }
 
@@ -111,6 +189,7 @@ function parseDraft(value: unknown): Draft {
     reportUrl: optionalString(data.reportUrl),
     workspaceSettings: data.workspaceSettings == null ? undefined : parseWorkspaceSnapshot(data.workspaceSettings),
     editingSessionId: optionalString(data.editingSessionId),
+    scriptOrigin: data.scriptOrigin == null ? undefined : choice(data.scriptOrigin, ['ai', 'manual', 'legacy'] as const),
   };
 }
 
@@ -122,6 +201,7 @@ function parseVersion(value: unknown): Version {
     workspaceSettings: data.workspaceSettings == null ? undefined : parseWorkspaceSnapshot(data.workspaceSettings),
     description: optionalString(data.description) ?? null, backgroundSummary: optionalString(data.backgroundSummary) ?? null,
     summaryRunId: optionalString(data.summaryRunId) ?? null, editingSessionId: optionalString(data.editingSessionId) ?? null,
+    scriptOrigin: data.scriptOrigin == null ? undefined : choice(data.scriptOrigin, ['ai', 'manual', 'legacy'] as const),
   };
 }
 
@@ -195,7 +275,7 @@ function items<T>(value: unknown, parse: (item: unknown) => T): T[] {
 export function createHttpApi(apiBase = '/api'): WhippetApi {
   const base = apiBase.replace(/\/+$/, '');
 
-  async function request(path: string, method = 'GET', signal?: AbortSignal, body?: unknown): Promise<unknown> {
+  async function request(path: string, method = 'GET', signal?: AbortSignal, body?: unknown, sensitive = false): Promise<unknown> {
     const controller = new AbortController();
     const abort = () => controller.abort();
     signal?.addEventListener('abort', abort, { once: true });
@@ -206,6 +286,7 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     try {
       const response = await fetch(`${base}${path}`, {
         method, credentials: 'include',
+        cache: sensitive ? 'no-store' : 'default', redirect: sensitive ? 'error' : 'follow',
         headers: body === undefined ? { Accept: 'application/json' } : { Accept: 'application/json', 'Content-Type': 'application/json' },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
@@ -217,6 +298,10 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
       if (!response.ok) {
         const body = data && typeof data === 'object' ? (data as Record<string, unknown>).error : null;
         const details = body && typeof body === 'object' ? body as Record<string, unknown> : {};
+        if (sensitive) {
+          if (details.code === 'protected_transport_required') throw new ApiError('Server 尚未確認此連線的傳輸保護，無法保存或撤銷登入資料。', 'PROTECTED_TRANSPORT_REQUIRED', response.status);
+          throw new ApiError(response.status === 409 ? '登入資料版本已變更，請重新載入角色狀態後再試。' : response.status === 503 ? '機密保存服務目前不可用。' : '登入資料操作失敗，請重新載入角色狀態確認結果。', 'CREDENTIALS_ERROR', response.status);
+        }
         throw new ApiError(
           typeof details.message === 'string' ? details.message : `API 請求失敗（HTTP ${response.status}）。`,
           typeof details.code === 'string' ? details.code : `HTTP_${response.status}`,
@@ -237,6 +322,12 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
   }
 
   const id = encodeURIComponent;
+  const proposalPath = (workspaceId: string, proposalId: string) => `/workspaces/${id(workspaceId)}/proposals/${id(proposalId)}`;
+  function ownedProposal(value: unknown, workspaceId: string) {
+    const proposal = parseWorkspaceProposal(value);
+    if (proposal.workspaceId !== workspaceId) throw new ApiError('提案所屬 Workspace 不符。', 'WORKSPACE_CONFLICT');
+    return proposal;
+  }
   return {
     async login(signal) {
       const data = record(await request('/dev-login', 'POST', signal));
@@ -244,7 +335,7 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
       return { id: string(user.id), role: string(user.role) } satisfies DevUser;
     },
     async listWorkspaces(signal) {
-      return items(await request('/workspaces', 'GET', signal), parseWorkspace);
+      return items(await request('/workspaces', 'GET', signal), parseWorkspaceDetail);
     },
     async listTests(workspaceId, signal) {
       return items(await request(`/workspaces/${id(workspaceId)}/tests`, 'GET', signal), parseTest);
@@ -314,6 +405,45 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     async requestSummary(testId, editingSessionId, revision, validationRunId, signal) {
       return parseRun(record(await request(`/tests/${id(testId)}/draft/summary`, 'POST', signal, { editingSessionId, revision, validationRunId })).run);
     },
+    async getWorkspace(workspaceId, signal) {
+      const workspace = parseWorkspaceDetail(await request(`/workspaces/${id(workspaceId)}`, 'GET', signal));
+      if (workspace.id !== workspaceId) throw new ApiError('Workspace 回應不符。', 'WORKSPACE_CONFLICT');
+      return workspace;
+    },
+    async createWorkspace(name, signal) { return parseWorkspaceDetail(await request('/workspaces', 'POST', signal, name?.trim() ? { name: name.trim() } : {})); },
+    async getWorkspaceConversation(workspaceId, signal) {
+      const conversation = parseWorkspaceConversation(await request(`/workspaces/${id(workspaceId)}/conversation`, 'GET', signal));
+      if (conversation.workspaceId !== workspaceId) throw new ApiError('設定對話所屬 Workspace 不符。', 'WORKSPACE_CONFLICT');
+      return conversation;
+    },
+    async sendWorkspaceMessage(workspaceId, input, signal) {
+      const data = record(await request(`/workspaces/${id(workspaceId)}/messages`, 'POST', signal, { content: input.content, revision: input.revision, contextRevision: input.contextRevision }));
+      const run = parseRun(data.run);
+      if (run.workspaceId !== workspaceId || run.testId !== null || run.authorMode !== 'workspace') throw new ApiError('設定任務所屬 Workspace 不符。', 'WORKSPACE_CONFLICT');
+      return { run, conversationId: string(data.conversationId) };
+    },
+    async getWorkspaceProposal(workspaceId, proposalId, signal) { return ownedProposal(await request(proposalPath(workspaceId, proposalId), 'GET', signal), workspaceId); },
+    async confirmWorkspaceScope(workspaceId, proposalId, baseRevision, signal) { return ownedProposal(await request(`${proposalPath(workspaceId, proposalId)}/confirm-scope`, 'POST', signal, { baseRevision, confirmed: true }), workspaceId); },
+    async confirmWorkspaceProposal(workspaceId, proposalId, baseRevision, signal) {
+      const data = record(await request(`${proposalPath(workspaceId, proposalId)}/confirm`, 'POST', signal, { baseRevision, confirmed: true }));
+      const workspace = parseWorkspaceDetail(data.workspace);
+      if (workspace.id !== workspaceId) throw new ApiError('Workspace 回應不符。', 'WORKSPACE_CONFLICT');
+      return { workspace, proposal: ownedProposal(data.proposal, workspaceId) };
+    },
+    async cancelWorkspaceProposal(workspaceId, proposalId, baseRevision, signal) { return ownedProposal(await request(`${proposalPath(workspaceId, proposalId)}/cancel`, 'POST', signal, { baseRevision, confirmed: true }), workspaceId); },
+    async saveWorkspaceCredentials(workspaceId, roleId, input, signal) {
+      if (!isProtectedCredentialTransport(base, window.location.href)) throw new ApiError('需 HTTPS 或明確的 loopback 本機連線才能保存登入資料。', 'INSECURE_TRANSPORT');
+      if (!Number.isSafeInteger(input.expectedSecretVersion) || input.expectedSecretVersion < 0) throw new ApiError('需提供有效的登入資料版本。', 'INVALID_CREDENTIAL_VERSION');
+      const role = parseWorkspaceRole(await request(`/workspaces/${id(workspaceId)}/roles/${id(roleId)}/credentials`, 'PUT', signal, { expectedSecretVersion: input.expectedSecretVersion, username: input.username, password: input.password }, true));
+      if (role.roleId !== roleId || !role.configured) throw new ApiError('角色回應不符。', 'INVALID_RESPONSE');
+      return role;
+    },
+    async revokeWorkspaceCredentials(workspaceId, roleId, expectedSecretVersion, signal) {
+      if (!Number.isSafeInteger(expectedSecretVersion) || expectedSecretVersion < 0) throw new ApiError('需提供有效的登入資料版本。', 'INVALID_CREDENTIAL_VERSION');
+      const data = record(await request(`/workspaces/${id(workspaceId)}/roles/${id(roleId)}/credentials`, 'DELETE', signal, { expectedSecretVersion, confirmed: true }, true));
+      if (string(data.roleId) !== roleId || bool(data.configured)) throw new ApiError('角色撤銷回應不符。', 'INVALID_RESPONSE');
+      return { roleId, secretRef: nullableString(data.secretRef), configured: false };
+    },
     async getWorkspaceSettings(workspaceId, signal) {
       return parseWorkspaceSettings(await request(`/workspaces/${id(workspaceId)}`, 'GET', signal));
     },
@@ -327,6 +457,15 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
       return parseWorkspaceSettings(await request(`/workspaces/${id(workspaceId)}`, 'PATCH', signal, body));
     },
   };
+}
+
+export function isProtectedCredentialTransport(apiBase: string, pageUrl: string): boolean {
+  try {
+    const page = new URL(pageUrl);
+    const api = new URL(apiBase, page);
+    const loopback = (url: URL) => ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname.toLowerCase());
+    return !api.username && !api.password && (page.protocol === 'https:' || (page.protocol === 'http:' && loopback(page))) && (api.protocol === 'https:' || (api.protocol === 'http:' && loopback(api) && loopback(page)));
+  } catch { return false; }
 }
 
 export function resolveReportUrl(reportUrl: string | undefined, apiBase: string, pageUrl: string): string | null {

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { errorMessage } from './api';
 import { Loading, Notice } from './components';
-import { WorkspaceSettings } from './WorkspaceSettings';
+import { WorkspaceConversation } from './WorkspaceConversation';
+import { WorkspaceAvailability } from './WorkspaceSettings';
 import { TestWorkspace } from './TestWorkspace';
 import { useResource } from './hooks';
-import type { DevUser, Test, WhippetApi, Workspace } from './types';
+import type { DevUser, Test, WhippetApi, WorkspaceDetail } from './types';
 
 interface AppProps {
   api: WhippetApi;
@@ -71,33 +72,55 @@ export function App({ api, apiBase, mock }: AppProps) {
 function WorkspaceView({ api, apiBase, onDirtyChange, confirmNavigation, onSettingsDirtyChange, confirmTestNavigation }: Pick<AppProps, 'api' | 'apiBase'> & EditingGuard & { onSettingsDirtyChange: (dirty: boolean) => void; confirmTestNavigation: () => boolean }) {
   const workspaces = useResource(api.listWorkspaces);
   const [selectedId, setSelectedId] = useState('');
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsRefresh, setSettingsRefresh] = useState(0);
-  const settingsSaved = useCallback(() => setSettingsRefresh((value) => value + 1), []);
-  const workspace = workspaces.data?.find((item) => item.id === selectedId) ?? workspaces.data?.[0];
+  const [surface, setSurface] = useState<'tests' | 'settings'>('tests');
+  const [setupTarget, setSetupTarget] = useState<WorkspaceDetail | 'create'>();
+  const [workspaceOverrides, setWorkspaceOverrides] = useState<Record<string, WorkspaceDetail>>({});
+  const setupDirty = useRef(false);
+  const reportSetupGuard = useCallback((dirty: boolean) => { setupDirty.current = dirty; onSettingsDirtyChange(dirty); }, [onSettingsDirtyChange]);
+  const selectedTests = useRef<Record<string, string>>({});
+  const allWorkspaces = [...new Map([...(workspaces.data ?? []), ...Object.values(workspaceOverrides)].map((item) => [item.id, item])).values()];
+  const workspace = allWorkspaces.find((item) => item.id === selectedId) ?? allWorkspaces[0];
+  const updateWorkspace = useCallback((next: WorkspaceDetail) => {
+    setWorkspaceOverrides((previous) => ({ ...previous, [next.id]: next }));
+    setSetupTarget((previous) => previous !== 'create' && previous?.id === next.id ? next : previous);
+  }, []);
+  const createdWorkspace = useCallback((next: WorkspaceDetail) => {
+    setWorkspaceOverrides((previous) => ({ ...previous, [next.id]: next })); setSelectedId(next.id); setSetupTarget(next); setSurface('settings'); workspaces.retry();
+  }, [workspaces.retry]);
+  const rememberTest = useCallback((id: string) => { if (workspace) selectedTests.current[workspace.id] = id; }, [workspace?.id]);
+  function openSetup(create = false) {
+    if (surface === 'tests' && !confirmTestNavigation()) return;
+    const target = create ? 'create' : workspace;
+    if (!target) return;
+    const same = target === 'create' ? setupTarget === 'create' : setupTarget !== 'create' && setupTarget?.id === target.id;
+    if (!same && setupDirty.current && !window.confirm('切換設定對話會放棄目前未送出的 Workspace 內容；尚未保存的文字將遺失，確定繼續？')) return;
+    if (!same) setSetupTarget(target);
+    setSurface('settings');
+  }
   return (
     <main id="main" className="workspace-layout">
       <div className="workspace-heading">
-        <div><h1>測試</h1><p>選擇測試，查看詳情與執行結果。</p></div>
-        {workspace ? <div className="workspace-controls"><label className="workspace-select">Workspace
-          <select value={workspace.id} onChange={(event) => { if (confirmNavigation()) setSelectedId(event.target.value); }}>
-            {workspaces.data?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+        <div><h1>{surface === 'tests' ? '測試' : 'Workspace 對話設定'}</h1><p>{surface === 'tests' ? '選擇測試，查看詳情與執行結果。' : '先整理目標與背景，再確認範圍和設定提案。'}</p></div>
+        <div className="workspace-controls">{workspace ? <label className="workspace-select">Workspace
+          <select value={workspace.id} onChange={(event) => { if (event.target.value === workspace.id || !confirmNavigation()) return; setSelectedId(event.target.value); setSetupTarget(undefined); setSurface('tests'); }}>
+            {allWorkspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
-        </label><button className="button secondary" aria-controls="workspace-settings" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(true)}>Workspace 設定</button></div> : null}
+        </label> : null}<button className="button secondary" aria-controls="workspace-conversation" aria-expanded={surface === 'settings' && setupTarget === 'create'} onClick={() => openSetup(true)}>建立 Workspace</button>{workspace ? <button className="button secondary" aria-controls="workspace-conversation" aria-expanded={surface === 'settings' && setupTarget !== 'create'} onClick={() => openSetup()}>Workspace 設定</button> : null}</div>
       </div>
       {workspaces.loading ? <Loading text="正在載入 Workspace…" /> : null}
       {workspaces.error ? <Notice message={workspaces.error} retry={workspaces.retry} /> : null}
-      {workspaces.data?.length === 0 ? <Empty title="尚無 Workspace" text="請確認 Server 已完成 M1 種子資料初始化，再重新載入。" retry={workspaces.retry} /> : null}
-      {workspace && settingsOpen ? <WorkspaceSettings key={workspace.id} api={api} workspace={workspace} onClose={() => setSettingsOpen(false)} onSaved={settingsSaved} onDirtyChange={onSettingsDirtyChange} /> : null}
-      {workspace ? <TestBrowser key={workspace.id} workspace={workspace} api={api} apiBase={apiBase} onDirtyChange={onDirtyChange} confirmNavigation={confirmTestNavigation} settingsRefresh={settingsRefresh} /> : null}
+      {surface === 'tests' && !workspaces.loading && !allWorkspaces.length && !workspaces.error ? <Empty title="尚無 Workspace" text="按「建立 Workspace」，開始獨立的設定訪談。" retry={workspaces.retry} /> : null}
+      {setupTarget ? <div className="workspace-setup-view" hidden={surface !== 'settings'} data-surface="workspace"><WorkspaceConversation key={setupTarget === 'create' ? 'create' : setupTarget.id} api={api} apiBase={apiBase} active={surface === 'settings'} workspace={setupTarget === 'create' ? undefined : setupTarget} onReturn={() => setSurface('tests')} onDirtyChange={reportSetupGuard} onCreated={createdWorkspace} onWorkspaceUpdated={updateWorkspace} onRefreshList={workspaces.retry} /></div> : null}
+      {surface === 'tests' && workspace ? <WorkspaceAvailability workspace={workspace} /> : null}
+      {surface === 'tests' && workspace ? <TestBrowser key={workspace.id} workspace={workspace} api={api} apiBase={apiBase} onDirtyChange={onDirtyChange} confirmNavigation={confirmTestNavigation} settingsRefresh={0} initialSelectedId={selectedTests.current[workspace.id] ?? ''} onSelected={rememberTest} /> : null}
     </main>
   );
 }
 
-function TestBrowser({ workspace, api, apiBase, onDirtyChange, confirmNavigation, settingsRefresh }: { workspace: Workspace; settingsRefresh: number } & Pick<AppProps, 'api' | 'apiBase'> & EditingGuard) {
+function TestBrowser({ workspace, api, apiBase, onDirtyChange, confirmNavigation, settingsRefresh, initialSelectedId, onSelected }: { workspace: WorkspaceDetail; settingsRefresh: number; initialSelectedId: string; onSelected: (id: string) => void } & Pick<AppProps, 'api' | 'apiBase'> & EditingGuard) {
   const loadTests = useCallback((signal: AbortSignal) => api.listTests(workspace.id, signal), [api, workspace.id]);
   const tests = useResource(loadTests);
-  const [selectedId, setSelectedId] = useState('');
+  const [selectedId, setSelectedId] = useState(initialSelectedId);
   const [search, setSearch] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string>();
@@ -128,7 +151,7 @@ function TestBrowser({ workspace, api, apiBase, onDirtyChange, confirmNavigation
     try {
       const test = await api.createTest(workspace.id, {}, controller.signal);
       if (controller.signal.aborted) return;
-      updateTest(test); setSelectedId(test.id); setAutoEditId(test.id); setSearch('');
+      updateTest(test); setSelectedId(test.id); onSelected(test.id); setAutoEditId(test.id); setSearch('');
     } catch (cause) { if (!controller.signal.aborted) setCreateError(`${errorMessage(cause)} 若結果不明，請先重新載入列表確認是否已建立，避免重複新增。`); }
     finally { if (!controller.signal.aborted) setCreating(false); createLock.current = false; }
   }
@@ -150,7 +173,7 @@ function TestBrowser({ workspace, api, apiBase, onDirtyChange, confirmNavigation
         {allTests.length > 0 && filtered.length === 0 ? <p className="list-empty">找不到符合的測試，請調整搜尋內容。</p> : null}
         <ul className="test-list">
           {filtered?.map((test) => <li key={test.id}>
-            <button className={`test-item${selected?.id === test.id ? ' selected' : ''}`} disabled={creating} aria-current={selected?.id === test.id ? 'true' : undefined} onClick={() => { if (selected?.id === test.id || !confirmNavigation()) return; setSelectedId(test.id); setAutoEditId(undefined); }}>
+            <button className={`test-item${selected?.id === test.id ? ' selected' : ''}`} disabled={creating} aria-current={selected?.id === test.id ? 'true' : undefined} onClick={() => { if (selected?.id === test.id || !confirmNavigation()) return; setSelectedId(test.id); onSelected(test.id); setAutoEditId(undefined); }}>
               <span className="test-name">{test.name}<ChevronIcon /></span>
               <span className="test-description">{test.description || '尚無測試描述'}</span>
               <span className="version-label">{test.publishedVersionId ? '已發佈' : '尚未發佈'}</span>
@@ -159,7 +182,7 @@ function TestBrowser({ workspace, api, apiBase, onDirtyChange, confirmNavigation
         </ul>
       </aside>
       <section className="detail-panel" aria-label="測試詳情">
-        {selected ? <TestWorkspace key={selected.id} testId={selected.id} api={api} apiBase={apiBase} onDirtyChange={reportEditorGuard} onTestUpdated={updateTest} settingsRefresh={settingsRefresh} initialEditing={autoEditId === selected.id} />
+        {selected ? <TestWorkspace key={selected.id} testId={selected.id} api={api} apiBase={apiBase} onDirtyChange={reportEditorGuard} onTestUpdated={updateTest} settingsRefresh={settingsRefresh} initialEditing={autoEditId === selected.id} capabilities={workspace.capabilities} />
           : <Empty title="在這裡查看測試" text="從左側列表選擇一個測試，查看版本、執行狀態與報告。" />}
       </section>
     </div>

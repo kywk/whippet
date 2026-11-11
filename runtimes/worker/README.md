@@ -1,5 +1,7 @@
 # Whippet Playwright Worker（M1）
 
+最新 M8 A：新增 `workspace-author@1` 純訪談，沿用 `node dist/author/main.js`；交付見 [Manager DELIVERY](../../services/manager/DELIVERY.md)。這不代表 M8 受限網站執行已完成，舊版自由 spec 執行方式亦不代表新版網路授權。
+
 一次性 Node.js／TypeScript Worker，以真正的 Playwright Test Runner 執行完整 spec，輸出內建 HTML／JSON reporter 結果。映像及 `@playwright/test` 同為 **1.64.1**，依 [Playwright Docker 文件](https://playwright.dev/docs/docker) 保持版本一致；HTML／JSON 與自訂 NDJSON reporter 依 [官方 reporter 介面](https://playwright.dev/docs/test-reporters) 設定。
 
 ## 輸入與輸出

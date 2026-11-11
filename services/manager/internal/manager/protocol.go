@@ -24,16 +24,45 @@ type Envelope struct {
 }
 
 type Dispatch struct {
+	ScriptOrigin      string          `json:"scriptOrigin,omitempty"`
 	Kind              string          `json:"kind"`
 	Script            string          `json:"script"`
 	TimeoutMS         int64           `json:"timeoutMs"`
 	Author            *AuthorTask     `json:"author,omitempty"`
 	WorkspaceSettings json.RawMessage `json:"workspaceSettings,omitempty"`
+	WorkspaceID       string          `json:"workspaceId,omitempty"`
+	TestID            json.RawMessage `json:"testId,omitempty"`
+	WorkspaceContext  json.RawMessage `json:"workspaceContext,omitempty"`
+}
+
+func (d *Dispatch) UnmarshalJSON(data []byte) error {
+	type fields Dispatch
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	return decoder.Decode((*fields)(d))
 }
 
 type AuthorMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
+}
+
+func (m *AuthorMessage) UnmarshalJSON(data []byte) error {
+	type fields AuthorMessage
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode((*fields)(m)); err != nil {
+		return err
+	}
+	if !exactWorkspaceObject(data, "role", "content") {
+		return fmt.Errorf("invalid author message fields")
+	}
+	var raw map[string]json.RawMessage
+	json.Unmarshal(data, &raw)
+	if bytes.Equal(raw["content"], []byte("null")) {
+		return fmt.Errorf("invalid author message content")
+	}
+	return nil
 }
 
 type AuthorTask struct {
@@ -67,7 +96,26 @@ func (a *AuthorTask) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("incomplete author skill pin")
 		}
 	}
+	if workspaceAuthor(a) && !bytes.Equal(bytes.TrimSpace(keys["editingSessionId"]), []byte("null")) {
+		return fmt.Errorf("workspace author requires null editingSessionId")
+	}
+	if workspaceAuthor(a) {
+		if _, exists := keys["validationEvidence"]; exists {
+			return fmt.Errorf("workspace interview has no validation evidence")
+		}
+	}
 	return nil
+}
+
+func (a AuthorTask) MarshalJSON() ([]byte, error) {
+	type fields AuthorTask
+	if workspaceAuthor(&a) {
+		return json.Marshal(struct {
+			fields
+			EditingSessionID *string `json:"editingSessionId"`
+		}{fields(a), a.EditingSessionID})
+	}
+	return json.Marshal(fields(a))
 }
 
 type AuthorValidationEvidence struct {
@@ -109,6 +157,7 @@ type AuthorValidation struct {
 }
 
 type WorkerInput struct {
+	ScriptOrigin      string          `json:"scriptOrigin,omitempty"`
 	RunID             string          `json:"runId"`
 	AttemptID         string          `json:"attemptId"`
 	Script            string          `json:"script"`
@@ -116,6 +165,9 @@ type WorkerInput struct {
 	Kind              string          `json:"kind,omitempty"`
 	Author            *AuthorTask     `json:"author,omitempty"`
 	WorkspaceSettings json.RawMessage `json:"workspaceSettings,omitempty"`
+	WorkspaceID       string          `json:"workspaceId,omitempty"`
+	TestID            json.RawMessage `json:"testId,omitempty"`
+	WorkspaceContext  json.RawMessage `json:"workspaceContext,omitempty"`
 }
 
 type Result struct {

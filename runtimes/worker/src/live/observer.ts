@@ -21,6 +21,10 @@ export class LiveObserver {
   private frameBusy = false;
   private failedMode?: string;
   private lastState = "";
+  private sensitive=false;
+
+  async pauseSensitive():Promise<void>{this.sensitive=true;await this.stopMedia();if(this.control)await this.state('waiting','sensitive_input');}
+  resumeSensitive():void{this.sensitive=false;}
 
   constructor(workDir = process.env.WHIPPET_WORK_DIR ?? "/work") {
     this.dir = join(resolve(workDir), "live");
@@ -73,6 +77,7 @@ export class LiveObserver {
     this.busy = true;
     try {
       const control = await readControl(this.dir);
+      if(this.sensitive){await this.stopMedia();return;}
       if (!control) {
         await this.stopMedia(); this.control = undefined; return;
       }

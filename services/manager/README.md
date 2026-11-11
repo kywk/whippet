@@ -1,5 +1,7 @@
 # Whippet Manager（M1／M2／M3）
 
+最新 M8 A：Manager 接受平面 `workspaceId`／`testId:null`／`workspaceContext` 的 `workspace-author@1` 訪談，保留 null 與非機密背景到 input／journal；嚴格提案輸出，不提供 browser/live。`test-author` 可只讀稿／已存驗證摘要／更新候選，但不可 request_validation。新版正式 run 或需 browser／validation 的 author 在 B 未就緒時明確拒絕 `security_unavailable`，不退回舊 bridge。舊無 M8 欄位的任務保持相容。最新產物、檢查與限制見 [DELIVERY](DELIVERY.md)；不以 A 交付宣稱 M8 完成。
+
 Go Manager 主動連線 Server，以一次性 Docker Worker 執行 TypeScript spec 或 author 工具迴圈；run／validation／author 共用 MAX_WORKERS 上限。WS／HTTP 欄位依 [MVP v1](../../contracts/mvp-v1.md)、[M2](../../contracts/mvp-v2.md) 與 [M3 契約](../../contracts/mvp-v3.md)。本目錄只負責 runtime；FIFO 排隊、Server、種子測試及 Compose 由各自 owner 維護。
 
 ## 設定

@@ -99,7 +99,7 @@ func (m *Manager) startLive(ctx context.Context, env Envelope) error {
 	r, exists := m.records[env.AttemptID]
 	active := exists && r.RunID == env.RunID && r.holdsSlot() && (r.Phase == "accepted" || r.Phase == "running") && !r.CancelRequested
 	m.mu.Unlock()
-	if !active {
+	if !active || r.Author != nil && !authorWantsBrowser(r.Author) {
 		return errors.New("live attempt is not active")
 	}
 	m.liveMu.Lock()

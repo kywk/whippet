@@ -201,7 +201,7 @@ func collectAttemptResult(r record, taskDir string, outcome execution) (Result, 
 	}
 	var artifacts []string
 	if result.Status == "succeeded" {
-		if !validAuthorArtifact(taskDir, r.Author) {
+		if !validAuthorArtifact(taskDir, r.Author, r.WorkspaceContext) {
 			result.Status = "failed"
 		} else {
 			artifacts = []string{"author.json"}

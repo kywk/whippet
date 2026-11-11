@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -144,62 +145,24 @@ func scanWorkspace(row scanner) (Workspace, error) {
 }
 
 func (p *Postgres) Workspace(ctx context.Context, id string) (Workspace, error) {
-	return scanWorkspace(p.DB.QueryRowContext(ctx, `SELECT `+workspaceColumns+` FROM workspaces WHERE id=$1`, id))
-}
-
-func (p *Postgres) PatchWorkspace(ctx context.Context, id string, patch WorkspacePatch) (Workspace, error) {
-	tx, err := p.DB.BeginTx(ctx, nil)
+	tx, err := p.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
 		return Workspace{}, err
 	}
 	defer tx.Rollback()
-	w, err := scanWorkspace(tx.QueryRowContext(ctx, `SELECT `+workspaceColumns+` FROM workspaces WHERE id=$1 FOR UPDATE`, id))
+	w, pid, err := readWorkspaceCore(ctx, tx, id, false)
 	if err != nil {
-		return Workspace{}, err
+		return w, err
 	}
-	next, changed, err := applyWorkspacePatch(w.WorkspaceSettings, patch)
+	w, err = fillWorkspace(ctx, tx, w, pid, p.Secrets != nil, p.CredentialTLS)
 	if err != nil {
-		return Workspace{}, err
+		return w, err
 	}
-	if changed {
-		// Every draft writer first holds this Workspace's share lock. Lock Test
-		// rows in a stable order, without changing queued tasks or published versions.
-		rows, err := tx.QueryContext(ctx, `SELECT id FROM tests WHERE workspace_id=$1 ORDER BY id FOR UPDATE`, id)
-		if err != nil {
-			return Workspace{}, err
-		}
-		for rows.Next() {
-			var testID string
-			if err := rows.Scan(&testID); err != nil {
-				rows.Close()
-				return Workspace{}, err
-			}
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return Workspace{}, err
-		}
-		data := settingsJSON(&next)
-		if _, err := tx.ExecContext(ctx, `UPDATE workspaces SET settings=$2 WHERE id=$1`, id, data); err != nil {
-			return Workspace{}, err
-		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO draft_revisions(test_id,revision,script,script_hash,timeout_ms,workspace_settings)
-		    SELECT dr.test_id,dr.revision+1,dr.script,dr.script_hash,$2,$3 FROM drafts d
-		    JOIN tests t ON t.id=d.test_id JOIN draft_revisions dr ON dr.test_id=d.test_id AND dr.revision=d.current_revision
-		    JOIN editing_sessions e ON e.id=d.editing_session_id
-		    WHERE t.workspace_id=$1 AND e.status='active'`, id, next.TimeoutMS, data); err != nil {
-			return Workspace{}, err
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE drafts d SET current_revision=current_revision+1,validation_run_id=NULL,
-            summary_run_id=NULL,summary_description=NULL,summary_background=NULL,summary_name=NULL,updated_at=now()
-		    FROM tests t,editing_sessions e WHERE d.test_id=t.id AND t.workspace_id=$1 AND e.id=d.editing_session_id AND e.status='active'`, id); err != nil {
-			return Workspace{}, err
-		}
-		w.WorkspaceSettings = next
-	}
-	if err := tx.Commit(); err != nil {
-		return Workspace{}, err
+	if err = tx.Commit(); err != nil {
+		return w, err
 	}
 	return w, nil
+}
+func (p *Postgres) PatchWorkspace(context.Context, string, WorkspacePatch) (Workspace, error) {
+	return Workspace{}, ErrProposalRequired
 }

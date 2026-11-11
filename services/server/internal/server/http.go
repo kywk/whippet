@@ -52,6 +52,13 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 		writeJSON(w, 200, map[string]any{"user": map[string]string{"id": "dev-admin", "role": "superadmin"}})
 	})
 	mux.HandleFunc("GET /api/workspaces", a.workspaces)
+	mux.HandleFunc("POST /api/workspaces", a.createWorkspace)
+	mux.HandleFunc("GET /api/workspaces/{id}/conversation", a.workspaceConversation)
+	mux.HandleFunc("POST /api/workspaces/{id}/messages", a.workspaceMessage)
+	mux.HandleFunc("GET /api/workspaces/{id}/proposals/{proposalId}", a.workspaceProposal)
+	mux.HandleFunc("POST /api/workspaces/{id}/proposals/{proposalId}/{action}", a.workspaceProposalAction)
+	mux.HandleFunc("PUT /api/workspaces/{id}/roles/{roleId}/credentials", a.workspaceCredentials)
+	mux.HandleFunc("DELETE /api/workspaces/{id}/roles/{roleId}/credentials", a.workspaceCredentials)
 	mux.HandleFunc("GET /api/workspaces/{id}", a.workspace)
 	mux.HandleFunc("PATCH /api/workspaces/{id}", a.patchWorkspace)
 	mux.HandleFunc("GET /api/workspaces/{id}/tests", a.tests)
@@ -75,6 +82,7 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	mux.HandleFunc("GET /api/runs/{id}/artifacts", a.listArtifacts)
 	mux.HandleFunc("POST /api/runs/{id}/cancel", a.cancel)
 	mux.HandleFunc("POST /api/manager/runs/{id}/artifacts/{name...}", a.upload)
+	mux.Handle("POST /api/manager/runs/{id}/attempts/{attemptId}/credentials/resolve", a.ManagerAuth(http.HandlerFunc(a.resolveCredentials)))
 	mux.HandleFunc("GET /api/runs/{id}/artifacts/{name...}", a.artifact)
 	if managerConnect != nil {
 		mux.Handle("GET /api/manager/connect", a.ManagerAuth(managerConnect))
@@ -98,6 +106,9 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 			defer cancel()
 			r = r.WithContext(ctx)
+		}
+		if !a.authorizeResource(w, r) {
+			return
 		}
 		mux.ServeHTTP(w, r)
 	})
@@ -334,6 +345,17 @@ func (a *API) artifact(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) fail(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ErrScopeConfirmation):
+		writeError(w, 409, "scope_confirmation_required", "Confirm the Workspace scope before this AI workflow can run")
+	case errors.Is(err, ErrCredentialUnavailable):
+		writeError(w, 409, "credential_unavailable", "The current attempt or confirmed role is no longer available")
+	case errors.Is(err, ErrSecretsUnavailable):
+		writeError(w, 503, "secrets_unavailable", "Workspace credential storage is unavailable")
+	case errors.Is(err, ErrSecurityUnavailable):
+		writeError(w, 503, "security_unavailable", "Settings can be saved; restricted exploration and execution are not ready")
+	case errors.Is(err, ErrProposalRequired):
+		w.Header().Set("Allow", "GET")
+		writeError(w, 405, "proposal_required", "Workspace changes require a confirmed proposal")
 	case errors.Is(err, ErrNotFound):
 		writeError(w, 404, "not_found", "resource not found")
 	case errors.Is(err, ErrConflict):

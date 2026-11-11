@@ -3,8 +3,9 @@ import type { FormEvent } from 'react';
 import { ApiError, errorMessage } from './api';
 import { formatDate, Loading, Notice, ReportLink, RunStatusBadge } from './components';
 import { CancelRunButton } from './TestActions';
+import { CapabilityStatus } from './WorkspaceSettings';
 import { isActiveRun } from './types';
-import type { Conversation, Draft, EditingSession, Message, Run, WhippetApi } from './types';
+import type { Conversation, Draft, EditingSession, Message, Run, WhippetApi, WorkspaceCapability } from './types';
 
 interface Props {
   api: WhippetApi;
@@ -18,13 +19,15 @@ interface Props {
   onRefreshRuns: () => void;
   onSynchronized: (draft: Draft) => void;
   onUseCandidate: (script: string) => boolean;
+  onOpenManual: () => void;
+  aiExploration: WorkspaceCapability | undefined;
   onGuardChange: (guarded: boolean) => void;
   editingSessionId: string;
   onConversationChanged: () => void;
   onRefreshSession: () => Promise<EditingSession | undefined>;
 }
 
-export function ConversationPanel({ api, apiBase, testId, editingSessionId, draft, draftDirty, draftBusy, runs, onRun, onRefreshRuns, onSynchronized, onUseCandidate, onGuardChange, onConversationChanged, onRefreshSession }: Props) {
+export function ConversationPanel({ api, apiBase, testId, editingSessionId, draft, draftDirty, draftBusy, runs, onRun, onRefreshRuns, onSynchronized, onUseCandidate, onOpenManual, onGuardChange, onConversationChanged, onRefreshSession, aiExploration }: Props) {
   const [conversation, setConversation] = useState<Conversation>();
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
@@ -145,8 +148,10 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
 
   return <section className="conversation-panel" aria-labelledby="conversation-title">
     <div className="section-heading"><h3 id="conversation-title">AI 測試對話</h3>
-      <button className="button secondary compact" disabled={refreshing || submitting || synchronizing} onClick={() => { setRefreshRevision((value) => value + 1); onRefreshRuns(); }}>重新整理對話</button></div>
+      <div className="detail-actions"><button className="button secondary compact" disabled={draftBusy || submitting || synchronizing} onClick={onOpenManual}>工程師手動修改</button><button className="button secondary compact" disabled={refreshing || submitting || synchronizing} onClick={() => { setRefreshRevision((value) => value + 1); onRefreshRuns(); }}>重新整理對話</button></div></div>
     <p className="inline-hint">對話由 Server 保存。說明測試需求或修改方式，AI 產生的內容仍需驗證並由你確認發佈。</p>
+    <CapabilityStatus label="AI 探索工具" capability={aiExploration} />
+    {aiExploration?.available !== true ? <p className="inline-hint">AI 探索尚未確認可用，仍可送出離線訪談與改稿需求；不代表已造訪網站。</p> : null}
     {loading ? <Loading text="正在載入對話…" /> : null}
     {loadError ? <Notice message={loadError} /> : null}
     {syncError ? <Notice message={syncError} /> : null}
@@ -165,7 +170,7 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
     <form className="conversation-composer" onSubmit={send}>
       <label className="field-label" htmlFor="author-message">測試需求或修改訊息</label>
       <textarea id="author-message" className="text-input" rows={4} value={content} disabled={submitting} onChange={(event) => setContent(event.target.value)} aria-describedby="author-message-help" />
-      <p id="author-message-help" className="inline-hint">使用已儲存 revision {draft.revision} · {characterCount.toLocaleString('zh-TW')} / 16,000 字元</p>
+      <p id="author-message-help" className="inline-hint">AI 續編使用已儲存 revision {draft.revision} · {characterCount.toLocaleString('zh-TW')} / 16,000 字元。無論原稿由誰修改，AI 探索工具仍以 Workspace 已確認網站及必要相依服務為範圍。</p>
       {draftDirty ? <p className="blocked-hint" role="status">有未儲存的腳本編輯，請先儲存草稿再送出訊息。</p> : draftBusy ? <p className="blocked-hint">請先完成草稿操作、同步或處理 revision 衝突，再送出訊息。</p> : null}
       {characterCount > 16_000 ? <p className="blocked-hint">訊息超過 16,000 字元，請縮短內容後再送出。</p> : null}
       <div className="action-row"><button className="button primary" type="submit" disabled={blocked || !content.trim() || characterCount > 16_000}>{submitting ? '送出中…' : authorActive ? 'AI 任務進行中' : '送出訊息'}</button></div>

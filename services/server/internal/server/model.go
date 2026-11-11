@@ -21,6 +21,18 @@ type Workspace struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	WorkspaceSettings
+	Lifecycle             string                `json:"lifecycle"`
+	AuthorizationRevision int64                 `json:"authorizationRevision"`
+	ScopeStatus           string                `json:"scopeStatus"`
+	Settings              *WorkspaceConfig      `json:"settings"`
+	ConversationID        string                `json:"conversationId"`
+	ActiveRunID           *string               `json:"activeRunId"`
+	CurrentProposal       *WorkspaceProposal    `json:"currentProposal"`
+	Roles                 []RoleRef             `json:"roles"`
+	SecretsAvailable      bool                  `json:"secretsAvailable"`
+	ExecutionAvailable    bool                  `json:"executionAvailable"`
+	UnavailableReason     *string               `json:"unavailableReason"`
+	Capabilities          WorkspaceCapabilities `json:"capabilities"`
 }
 
 type Test struct {
@@ -33,23 +45,30 @@ type Test struct {
 }
 
 type Run struct {
-	ID                string             `json:"id"`
-	TestID            string             `json:"testId"`
-	Status            string             `json:"status"`
-	CreatedAt         time.Time          `json:"createdAt"`
-	StartedAt         *time.Time         `json:"startedAt,omitempty"`
-	FinishedAt        *time.Time         `json:"finishedAt,omitempty"`
-	Error             string             `json:"error,omitempty"`
-	ReportURL         string             `json:"reportUrl,omitempty"`
-	Kind              string             `json:"kind"`
-	DraftRevision     *int               `json:"draftRevision,omitempty"`
-	VersionID         *string            `json:"versionId,omitempty"`
-	WorkspaceSettings *WorkspaceSettings `json:"workspaceSettings,omitempty"`
-	EditingSessionID  *string            `json:"editingSessionId"`
-	AuthorMode        string             `json:"authorMode,omitempty"`
+	ScriptOrigin          string `json:"scriptOrigin"`
+	authorizationRevision *int64
+	scopeProposalID       *string
+	WorkspaceID           string             `json:"workspaceId"`
+	ID                    string             `json:"id"`
+	TestID                *string            `json:"testId"`
+	WorkspaceContext      *WorkspaceContext  `json:"workspaceContext,omitempty"`
+	Status                string             `json:"status"`
+	CreatedAt             time.Time          `json:"createdAt"`
+	StartedAt             *time.Time         `json:"startedAt,omitempty"`
+	FinishedAt            *time.Time         `json:"finishedAt,omitempty"`
+	Error                 string             `json:"error,omitempty"`
+	ReportURL             string             `json:"reportUrl,omitempty"`
+	Kind                  string             `json:"kind"`
+	DraftRevision         *int               `json:"draftRevision,omitempty"`
+	VersionID             *string            `json:"versionId,omitempty"`
+	WorkspaceSettings     *WorkspaceSettings `json:"workspaceSettings,omitempty"`
+	EditingSessionID      *string            `json:"editingSessionId"`
+	AuthorMode            string             `json:"authorMode,omitempty"`
 }
 
 type Draft struct {
+	ScriptOrigin      string             `json:"scriptOrigin"`
+	WorkspaceContext  *WorkspaceContext  `json:"workspaceContext,omitempty"`
 	EditingSessionID  string             `json:"editingSessionId"`
 	TestID            string             `json:"testId"`
 	Revision          int                `json:"revision"`
@@ -62,6 +81,8 @@ type Draft struct {
 }
 
 type Version struct {
+	ScriptOrigin      string             `json:"scriptOrigin"`
+	WorkspaceContext  *WorkspaceContext  `json:"workspaceContext,omitempty"`
 	Description       *string            `json:"description"`
 	BackgroundSummary *string            `json:"backgroundSummary"`
 	SummaryRunID      *string            `json:"summaryRunId"`
@@ -145,6 +166,25 @@ type Assignment struct {
 	Author    *AuthorInput
 }
 
+func stringPointer(value string) *string { return &value }
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func (a AuthorInput) MarshalJSON() ([]byte, error) {
+	type wire AuthorInput
+	if a.SkillID == "workspace-author" {
+		return json.Marshal(struct {
+			wire
+			EditingSessionID *string `json:"editingSessionId"`
+		}{wire(a), nil})
+	}
+	return json.Marshal(wire(a))
+}
+
 type ActiveAttempt struct {
 	RunID     string `json:"runId"`
 	AttemptID string `json:"attemptId"`
@@ -202,6 +242,14 @@ type Store interface {
 	Workspaces(context.Context) ([]Workspace, error)
 	Workspace(context.Context, string) (Workspace, error)
 	PatchWorkspace(context.Context, string, WorkspacePatch) (Workspace, error)
+	CreateWorkspace(context.Context, string) (Workspace, error)
+	WorkspaceConversation(context.Context, string) (WorkspaceConversation, error)
+	CreateWorkspaceAuthor(context.Context, string, string, int, int64) (AuthorSubmission, error)
+	WorkspaceProposal(context.Context, string, string) (WorkspaceProposal, error)
+	ActWorkspaceProposal(context.Context, string, string, string, int) (Workspace, WorkspaceProposal, error)
+	SaveWorkspaceCredentials(context.Context, string, string, int, credentialValues) (RoleRef, error)
+	RevokeWorkspaceCredentials(context.Context, string, string, int) (RoleRef, error)
+	ResolveWorkspaceCredentials(context.Context, string, string, string, CredentialRequest) (CredentialResolution, error)
 	Tests(context.Context, string) ([]Test, error)
 	Test(context.Context, string) (Test, error)
 	CreateTest(context.Context, string, string, string) (Test, error)

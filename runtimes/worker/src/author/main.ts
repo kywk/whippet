@@ -3,7 +3,9 @@ import { join, resolve } from "node:path";
 import { readAIConfig } from "../ai/config.js";
 import { runAuthor } from "./loop.js";
 import { explorationBrowser, type ExplorationBrowser } from "./tools.js";
-import { AuthorError, isSummary, validateAuthorInput } from "./types.js";
+import { AuthorError, authorNeedsBrowser, validateAuthorInput } from "./types.js";
+import {CredentialClient} from '../login/client.js';
+import {unconfirmedBrowserScope} from './scope.js';
 
 const workDir = resolve(process.env.WHIPPET_WORK_DIR ?? "/work");
 const outputDir = join(workDir, "output");
@@ -18,16 +20,19 @@ async function save(name: string, data: unknown): Promise<void> {
 
 async function main(): Promise<void> {
   let browser: ExplorationBrowser | undefined;
+  let credentials:CredentialClient|undefined;
   let result: { status: "succeeded" | "failed" | "timed_out" | "cancelled"; error?: string };
   try {
     await mkdir(outputDir);
     const info = await lstat(join(workDir, "input.json"));
     if (!info.isFile() || info.size > 13 * 1024 * 1024) throw new AuthorError("invalid_input");
     const input = validateAuthorInput(JSON.parse(await readFile(join(workDir, "input.json"), "utf8")) as unknown);
-    if (!isSummary(input)) browser = explorationBrowser(process.env);
+    if(input.workspaceId)credentials=new CredentialClient(input);
+    if (authorNeedsBrowser(input)) browser = explorationBrowser(process.env,{scope:input.workspaceContext?.config??unconfirmedBrowserScope(),credentials});
     const output = await runAuthor(input, readAIConfig(process.env), browser, {
       signal: stop.signal,
       progress: (message) => process.stdout.write(`${JSON.stringify({ kind: "log", message })}\n`),
+      secrets:credentials?.secrets,
     });
     if (stop.signal.aborted) throw new AuthorError("cancelled");
     await save("author.json", output);
@@ -36,6 +41,7 @@ async function main(): Promise<void> {
     const safe = error instanceof AuthorError ? error : new AuthorError("provider_failed");
     result = { status: stop.signal.aborted || safe.code === "cancelled" ? "cancelled" : safe.code === "timed_out" ? "timed_out" : "failed", error: safe.message };
   } finally {
+    credentials?.close();
     // Manager independently reclaims the container even if the browser hangs.
     let timer: NodeJS.Timeout | undefined;
     try { if (browser) await Promise.race([browser.close().catch(() => undefined), new Promise<void>((resolve) => { timer = setTimeout(resolve, 1000); })]); }

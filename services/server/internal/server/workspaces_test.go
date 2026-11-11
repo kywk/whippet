@@ -90,7 +90,7 @@ func (s *workspaceHTTPStore) PatchWorkspace(ctx context.Context, id string, patc
 	return w, err
 }
 
-func TestWorkspaceHTTPRejectsSecretUnknownAndNullFields(t *testing.T) {
+func TestWorkspaceHTTPRejectsLegacyMutation(t *testing.T) {
 	store := &workspaceHTTPStore{w: Workspace{ID: NewID(), Name: "Default", WorkspaceSettings: WorkspaceSettings{Revision: 1, Sites: []WorkspaceSite{}, TimeoutMS: 60000}}}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	handler := NewAPI(store, nil, NewEngine(store, log), "test", log).Handler(nil)
@@ -110,17 +110,17 @@ func TestWorkspaceHTTPRejectsSecretUnknownAndNullFields(t *testing.T) {
 		`{"revision":1,"defaultTestUrl":"https://user:sensitive-sentinel@example.test/"}`,
 	} {
 		w := request("PATCH", store.w.ID, body)
-		if w.Code != 400 || strings.Contains(w.Body.String(), "sensitive-sentinel") {
-			t.Fatalf("expected safe 400: %d %s", w.Code, w.Body)
+		if w.Code != 405 || w.Header().Get("Allow") != "GET" || !strings.Contains(w.Body.String(), "proposal_required") || strings.Contains(w.Body.String(), "sensitive-sentinel") {
+			t.Fatalf("expected safe 405: %d %s", w.Code, w.Body)
 		}
 	}
 	for _, tc := range []struct {
 		method, body string
 		status       int
 	}{
-		{"GET", "", 200}, {"PATCH", `{"revision":1}`, 200},
-		{"PATCH", `{"revision":1,"timeoutMs":23456}`, 200},
-		{"PATCH", `{"revision":1,"timeoutMs":34567}`, 409},
+		{"GET", "", 200}, {"PATCH", `{"revision":1}`, 405},
+		{"PATCH", `{"revision":1,"timeoutMs":23456}`, 405},
+		{"PATCH", `{"revision":1,"timeoutMs":34567}`, 405},
 		{"GET", "", 200},
 	} {
 		w := request(tc.method, store.w.ID, tc.body)
@@ -128,8 +128,8 @@ func TestWorkspaceHTTPRejectsSecretUnknownAndNullFields(t *testing.T) {
 			t.Fatalf("%s: expected %d, got %d %s", tc.method, tc.status, w.Code, w.Body)
 		}
 	}
-	if store.w.Revision != 2 || store.w.TimeoutMS != 23456 {
-		t.Fatalf("stale PATCH overwrote settings: %+v", store.w)
+	if store.w.Revision != 1 || store.w.TimeoutMS != 60000 {
+		t.Fatalf("legacy PATCH overwrote settings: %+v", store.w)
 	}
 	if w := request("GET", NewID(), ""); w.Code != 404 {
 		t.Fatal("unknown Workspace must be 404")

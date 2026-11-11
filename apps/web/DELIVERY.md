@@ -1,8 +1,166 @@
-# Web M1／M2／M3／M4／M5／M6／M7 交付紀錄
+# Web M1–M8 交付紀錄
 
 最新日期：2026-11-12（Asia/Taipei）。Owner：Web Agent（t30）。所有新增與修改均位於 `apps/web/`；未執行 Git、未啟動其他 Agent。進度主檔、整合與 commit 由總指揮彙整。M1 整合時由總指揮完成依賴安裝並保留 lockfile；後續沿用既有依賴。下方 M1–M6 保留原階段證據；M7 對編輯週期、草稿建立及發布門檻的覆蓋，以最新契約及本節為準。
 
-## M7 最新交付：一般／編輯模式與明確編輯週期
+## M8 B 來源與分能力接線（模組檢查通過，整合待驗）
+
+日期：2026-11-12。依 PM t36 固定的 v8「B 來源、能力與確認快照」接線，只改 `apps/web/`。本輪完成 Web 欄位解析、動作判斷與顯示，不表示 M8 B 真登入／執行／監看全鏈或 M7 尚缺整合已驗收。18086 未由本 Agent 部署、重啟或當作 B 新版證據。
+
+### 權威來源及動作判斷
+
+- Draft／Version／Run parser 接 `scriptOrigin=ai/manual/legacy`，只採 Server 回傳；缺值保留 unknown，非法列舉拒絕。顯示「工程師手動修改」、「AI 修改」、「來源未記錄（不視為人工）」或「來源未知（API 尚未提供）」，legacy 不默認人工來源。
+- Workspace 接四項 `capabilities.{aiExploration,aiExecution,manualExecution,credentialLogin}`，各含 available／nullable reason。缺整組、單項或必要值時顯示未知，不從舊 OR 旗標、設定是否已確認、是否有密文、AI 文字或本機入口推算允許。舊 executionAvailable／unavailableReason 只解析為相容資料，已不參與 UI 執行 gate。
+- 手動來源選 manualExecution；ai 與 legacy 選 aiExecution；來源未知不選任何執行能力。草稿 validate／publish 使用目前草稿的權威來源；正式 Run 使用目前發佈 Version 的來源。檢視另一個歷史版本不會改變正式執行的能力判斷。
+- 相應能力 available=true 時恢復動作，但仍保留已發布指標、revision／設定衝突、未存內容、真 validation／HTML 報告、有效摘要與 QA 勾選等原門檻。handler 也檢查資格；不是只換按鈕樣式。來源改變或對應可用狀態改變會清除原 QA 確認。Workspace 能力不是個別 Run 通行證，最終快照／角色一致性由 Server 逐次核對。
+- 工程師入口與本機操作模式不寫來源。PUT 草稿、訊息、validate、summary、publish 請求都不增加 scriptOrigin；原樣儲存回應仍沿 Server 原來源／revision，實際變更後也只顯示 Server 接受的來源。設定／角色同步同樣沿 Server 回應，不因新增 revision 自行改為人工。
+- 已保存來源與本機尚未儲存的手動／候選操作分開提示。一般模式腳本仍唯讀；草稿、各歷史 Version 及 Run 快照均顯示來源，避免把 AI 撰寫 Run 的輸入快照誤當成已接受輸出。
+
+### AI 探索與角色登入分開顯示
+
+- Workspace 能力區逐項顯示 AI 探索、AI 腳本執行、工程師腳本執行及角色登入的真狀態／原因。測試對話及提案範圍確認區一律顯示 aiExploration，人工來源不會讓 AI 工具繞過此能力。
+- aiExploration 不可用或未知不封鎖純訪談／離線改稿；沒有把 scope 確認、訊息送出或摘要完成當成已探索、通過測試或可發布。沒有新增私有登入 schema、Manager 解析端點或憑證傳遞協定。
+- credentialLogin 與帳密保存分開。專用表單仍依 secretsAvailable、保護傳輸及真角色版本保存；不能因 helper 尚未就緒而假稱不能保存，也不能因 credentialLogin=true 就把每個 role 當成 configured。逐角色 ref／version／configured 仍由 API 回傳，實際登入許可另由 Server 核對。
+- 沒有加入 AST 子集、network=none／代理平台、HTTP 協定降級或登入後全面禁 DOM／影像。既有 LiveView 媒體成功條件與敏感值專用流程沒有修改，未削弱 M7 真報告／人工發布條件。
+
+### 檔案與實際檢查
+
+新增 `src/capabilities.ts`。修改 `src/types.ts`、`src/api.ts`、`src/App.tsx`、`src/TestWorkspace.tsx`、`src/DraftEditor.tsx`、`src/ConversationPanel.tsx`、`src/WorkspaceSettings.tsx`、`src/WorkspaceProposal.tsx`、`src/WorkspaceCredentials.tsx`、`src/RunHistory.tsx`、`src/TestActions.tsx`、`src/styles.css`、`scripts/check-workspace-api.mjs`、本紀錄。後端／Runtime、契約／docs、部署、依賴／lockfile、LiveView／live.ts 及摘要生成元件均未修改。
+
+- **最終 build PASS**：`npm run build`（`tsc --noEmit`＋Vite `7.1.9`），退出碼 0；50 modules，HTML 0.55 kB、CSS 23.49 kB、JS 317.45 kB（gzip 96.27 kB）。通過後僅補交付紀錄，不追加無變動重建。
+- **定向 API／能力檢查 PASS**：`node scripts/check-workspace-api.mjs`，48 checks、退出碼 0，全為合成 fetch／純函式，沒有連網或真秘密。新增檢查涵蓋 OR=true 但 manual 可執行／ai 與 legacy 不可、AI 探索不替代 AI 執行、來源／能力／reason 缺值不放行、partial 能力獨立保留、非法來源拒絕、Draft／Version／Run 來源解析，以及 no-op／真變更的合成 Server 回應被保留且請求不帶來源。這些不代替 Server 真資料庫的來源交易測試。
+- 唯讀核對 Server `model.go`、`execution_gate.go`、`drafts.go`：目前新增 JSON 欄位命名及四項 `{available,reason}` 與固定契約相符；來源由 Server 寫入路徑／快照決定。未假定 Server 已部署，沒有未決欄位差異。
+- 未安裝、Git、讀 env／真憑證、呼叫模型、部署／重啟共享服務、啟動其他 Agent、跑瀏覽器或無關全套測試。新版真 API／瀏覽器與 Runtime 整合仍交由 PM 固定產物環境驗收；本輪沒有補稱來源遷移、角色登入或真站操作通過。
+
+### B 黑箱可見標籤
+
+| 對象 | 標籤／scope | 預期 |
+| --- | --- | --- |
+| 四項能力 | region `Workspace 能力狀態` | 分開顯示 `AI 探索`／`AI 腳本執行`／`工程師腳本執行`／`角色登入`，狀態為可用、尚未就緒或未知 |
+| 正式版本 | region `測試一般模式` 內 `目前正式版本來源：…`、`正式版本執行：…` | button `執行正式版本` 依目前發布版，選歷史版不洗 gate |
+| 草稿來源 | region `對話編輯工作區` 內 `已儲存腳本來源：…` | 與 `本機操作：…尚未儲存` 分開；進階入口切換不改來源 |
+| 草稿能力 | `此草稿對應執行能力：…` | manual 用 manualExecution；ai／legacy 用 aiExecution；unknown 暫停 validate／publish |
+| AI 續編 | region `AI 測試對話` 內 `AI 探索工具：…` | 不能因人工來源放寬 AI 工具，未知／false 時仍可離線訪談 |
+| 歷史 Version | `[data-version-id="<UUID>"]` 內 `版本腳本來源：…` | legacy 明示不視為人工，唯讀檢視不改歷史來源 |
+| Run 快照 | 正式／編輯 Run region，table `[data-run-id="<UUID>"]` | 顯示 Server 快照來源；歷史結果不依目前草稿重算 |
+| 登入與保存 | region `專用登入資料` 內 `角色登入：…` | 登入能力／保存傳輸／逐角色 configured 各自判斷，不假登入成功 |
+
+## M8 B 前次介面準備：工程師手動入口與 AI 續編（固定 wire 前）
+
+日期：2026-11-12。依 PM t36 最新派工及 `requirements/ai-workspace.md`／`design.md`／`contracts/mvp-v8.md` 頂部 B 裁定，僅整理不依賴新 API 的編輯介面。工程師腳本不套 AI 網站範圍限制；保留完整 Playwright／Node，以及原 revision、真報告與 QA 發布條件。沒有沿用舊全代理／network=none／AST 子集方案，也沒有把本輪準備宣稱為 B 執行功能完成。
+
+- 編輯模式的 AI 對話標題旁加入「工程師手動修改」，直接展開「工程師手動修改（進階）」並將焦點移到腳本。一般模式正式／歷史腳本仍唯讀，沒有在一般模式增加寫入入口。
+- 手動區加入「回到 AI 續編」：只回到既有對話輸入，不自動保存、放棄或送出內容。AI 續編繼續使用已保存 revision；本機未存腳本仍阻擋送訊息，原 revision／設定衝突保護不變。
+- 只記錄本頁 UI 操作方式（手動修改／帶入 AI 候選），明示尚未儲存；已保存來源明示「目前 API 尚未提供」。開啟／切回入口不改變已存來源或取得執行許可。沒有新增 `scriptOrigin` 或其他私有 wire 欄位，也不把本機 manual 字樣當權威來源。
+- AI 續編提示：無論原稿來源，AI 探索工具仍以 Workspace 已確認網站與必要相依服務為範圍。手動區保留完整腳本輸入，不新增語法／AST／協定限制。
+- 原 `executionAvailable` 是讀 Server 的動態值，並非永久寫死 false；尚未固定分能力欄位前沒有猜測 fallback。PM 已確認將一次固定 AI 探索／AI 執行／工程師執行的個別能力，以及 Draft／Version／Run 的 ai／manual／legacy 權威來源；固定後再接線，legacy 不自行當成 manual。
+- 專用帳密流程、LiveView 及 Runtime 敏感輸入遮蔽邊界沒有修改；沒有把登入後 DOM／影像一律停用。18086 A 預覽維持原產物，沒有部署。
+
+本輪修改：`src/DraftEditor.tsx`、`src/ConversationPanel.tsx`、`src/WorkspaceSettings.tsx`、本紀錄。未改 API／型別／後端／Runtime／契約／部署。
+
+**實際檢查：** `npm run typecheck`（`tsc --noEmit`）PASS、退出碼 0；直接檢視入口、焦點跳轉與原導覽防護的程式路徑。本輪沒有重建 Vite／全站、重跑 API smoke、啟動瀏覽器、安裝、Git、讀真憑證或重啟服務。前一節 A 的 build 證據只證明 A 當時產物，不當成本輪新畫面或 B 的真 API／UI 驗收。介面目視及分能力／來源接線仍待後續整合。
+
+黑箱標籤：編輯模式可見 button `工程師手動修改` → details `工程師手動修改（進階）` → textbox `Playwright TypeScript 腳本`；button `回到 AI 續編` 導向 textbox `測試需求或修改訊息`。保留 button `儲存草稿`／`送出訊息`；來源提示清楚分開「已儲存腳本來源：目前 API 尚未提供。」與「本機操作：…，尚未儲存。」。一般模式 textbox `正式版本腳本（唯讀）`／`歷史版本腳本（唯讀）` 仍 readOnly。
+
+## M8.2 前次 A 接線交付（模組檢查通過，真實整合待驗）
+
+日期：2026-11-12。PM：t36；Web owner：t30，只修改 `apps/web/`。依 `contracts/mvp-v8.md` 頂部 A／B 裁定、固定 HTTP 包裝、共同界限與 credentials 版本規則接線。**本節只交付 Web 的 A 實作與模組證據；M8 未完成，B 的受限探索／登入／安全證據仍待完成，M7 整體 UI／真 AI 全鏈驗收也仍待補。** 沒有將 18085 當作新版 M8 或將本機 build 當作整合成功。
+
+### 目前可操作的接線
+
+- 真 `POST /workspaces {name?}` 建立 draft／unconfirmed 工作區，再載入專屬設定對話。名稱可留空交 Server 命名；非空輸入先檢查 trim 後最多 200 UTF-8 bytes，不截斷。建立結果未確認時保留輸入並提示先查真列表，沒有假建立成功。
+- 真 `GET /workspaces` 列表／切換與建立回應合併，所有 Workspace 狀態來自 API。設定對話用自己的 GET／POST messages，送設定 revision 與 contextRevision，不用假 Test／EditingSession，不混入測試對話。
+- Workspace 訊息由 Server 持久保存，重開／重新登入／切換後可 GET 恢復。送出後追蹤真 `Run.workspaceId`、nullable testId 與 authorMode=workspace；讀取回應不符合 owner 時拒絕。每 2 秒只對已知 Run 做短輪詢，終態再重載真對話／設定／提案；可取消任務，不提供 Workspace 訪談的瀏覽器監看或測試報告。失敗要使用者明確再送訊息，不自動重跑 POST。
+- 待審提案與「目前正式設定（唯讀）」分開；完整列出名稱、驗測目的、背景、target／dependency 用途及 origin、排除項、角色、預設 URL／timeout。提案 pending／applied／cancelled／stale／superseded、scopeConfirmed、invalidationReason、appliedRevision 都讀 Server，不從 AI 文字判定確認完成。
+- 操作送固定的 proposalId／baseRevision／confirmed:true。QA 勾選已檢視範圍／角色後才可確認範圍或套用；scope 確認只顯示確認已保存，明示**不代表已探索或啟用設定**。正式套用以真 `{workspace,proposal}` 更新；取消先明確確認，現行設定不被候選稿取代。409／未知結果不自動重送，要求重載最新權威狀態。
+- 套用前明示現有草稿須重新驗證、歷史版本／Run 快照不改；缺 target、驗測目的或背景時阻擋正式套用並提示透過對話補齊。候選內容不由前端截斷、合併或移除 origin；Server 拒絕欄位／集合衝突時顯示錯誤及修正提示，不放寬範圍。
+- `executionAvailable=false` 明示「設定可保存，受限探索／執行尚未就緒。」並顯示真 unavailableReason；scopeStatus=revoking 不宣稱既有連線已全停止。正式 Run、草稿 validate 與新 publish 停用，且動作 handler 亦檢查。仍可離線對話讀稿／改稿及讀歷史；摘要完成不表示可發佈。Server 的 `503 security_unavailable` 沿錯誤路徑顯示，不當成空資料、成功測試或假排程，不自動重試寫入。
+- 舊設定只讀 canonical settings；settings=null 時獨立呈現 legacy sites／URL／timeout，明示尚無已確認設定，不推定 scope。沒有 M5 可寫表單或 PATCH 呼叫入口；舊 API 宣告暫留，Server 的 405 proposal_required 為最終權威。
+
+### 專用登入資料與傳輸
+
+- `Workspace.roles` 是唯一可操作角色參照；角色名稱／login origin 只從正式設定或提案讀取，不讓使用者／AI 自填別的 Workspace secret ref。專用表單只收 username/password，PUT body 不包含一般訊息、設定或任意欄位；GET 只顯示 ref／version／configured，不讀回帳密。
+- expectedSecretVersion 必為非負整數。GET secretVersion=null 時首次請求送 0，但畫面仍顯示「尚無」保存版本；已有版本即使 configured=false 也送原版本，不因撤銷重設 0。版本過期 409 不自動重送，重載角色後才能明確重試。
+- UI 與 API 方法兩層檢查 HTTPS 或明確 localhost／127.0.0.1／[::1] loopback；任意遠端明文 HTTP 不接受輸入／保存。不信任主機名稱前綴或 userinfo。敏感 fetch 設 `redirect:error`、`cache:no-store`，不跟隨重新導向轉送秘密 body。
+- 帳密只留必要表單記憶體與專用 request body，不進一般對話、URL、localStorage／sessionStorage、console、模型、腳本或提案。成功立即清空；離開 Workspace 畫面會卸載機密表單並清空，未存帳密先確認；一般未送訊息則可保持掛載。回應錯誤使用固定安全文案，不把可能回顯 body 的錯誤 message 插入 DOM。
+- `secretsAvailable=false` 阻擋保存，configured=true 只表示已有密文，不等於目前可解密或登入。撤銷要確認並送回目前版本，收到權威回應後重載 refs；不宣稱已完成 B 的租約、登入或既有連線回收。
+- **部署接縫（已回報且 PM 確認）**：Server 現行 `protectedCredentialTransport` 只信 r.TLS，或 Host 與 RemoteAddr 都為 loopback。瀏覽器 localhost→Nginx→bridge Server 不保證通過；Web 預檢不是 Server 授權。API 若回 protected_transport_required，顯示需部署者提供受保護入口，沒有信任任意 forwarded header 或放寬 remoteaddr。TLS／healthcheck 由 Server owner 與 PM 處理，本輪沒有自行部署。
+
+### 產物、實際檢查與剩餘限制
+
+新增 `src/WorkspaceProposal.tsx`、`src/WorkspaceCredentials.tsx`、`scripts/check-workspace-api.mjs`。修改 `src/WorkspaceConversation.tsx`、`src/WorkspaceSettings.tsx`、`src/App.tsx`、`src/types.ts`、`src/api.ts`、`src/components.tsx`、`src/TestWorkspace.tsx`、`src/DraftEditor.tsx`、`src/mock.ts`、`src/styles.css`、本紀錄。沒有改 `LiveView`／`live.ts`／摘要生成元件、後端／Runtime、契約／docs、Docker／Nginx 或依賴／lockfile。新增 publish 能力門檻保留 M7 原有真驗證／報告／摘要／QA 門檻，沒有弱化。
+
+- **最後程式版本 build PASS**：`npm run build`＝`tsc --noEmit`＋Vite `7.1.9`，退出碼 0；49 modules，HTML 0.55 kB、CSS 23.27 kB、JS 312.84 kB（gzip 94.84 kB）。原建置後 PM 新增安全能力下 publish 限制，完成這項受影響修改後取得此最終建置證據；通過後不做無變動重建。
+- **定向 API 邊界檢查 PASS**：`node scripts/check-workspace-api.mjs`，29 項合成檢查、退出碼 0。沿用已宣告 TypeScript 工具，stub fetch、不連網、不使用真憑證。檢查固定單一回應包裝、Workspace Run owner／null testId、缺必要欄位拒絕、POST body、credential HTTPS／loopback 與假 loopback 拒絕、0／既有版本、null 版本拒絕、不跟隨 redirect／no-store、錯誤不回顯合成秘密、409 只送一次。加入敏感 redirect 保護後更新相應檢查；未重跑無關全套。
+- 唯讀核對 Server `workspace_http.go`、`workspace_store.go`、`workspace_interviews.go`、`workspace_config.go` 的包裝／欄位／scope 與 credential 交易。發現首次 expectedSecretVersion 差異後已由 PM 固定 0 規則，Web 同步；目前無未決 wire shape 差異。
+- opt-in mock 對新建／持久設定對話／proposal／credentials 明確回 MOCK_WORKSPACE_UNAVAILABLE，不假保存或假確認；沒有真 API 失敗自動切 mock。mock 靜態舊 Workspace 亦標 needs_confirmation／executionAvailable=false。
+- **尚未執行新版真 API／PostgreSQL／瀏覽器／真模型 A 整合**：本輪證據是模組 build 與合成 API 邊界，不是 UI 操作或 AEAD／多 Workspace 真實隔離驗收。待 PM 以新版 Server／Runtime 的隔離環境接續，受保護 credential 入口也待部署安排。18080／18085 未被更新或當成本輪驗收來源。
+- 未安裝、Git、讀印 env／真憑證、部署、重啟共享服務、啟動其他 Agent 或呼叫模型。B 的受控網站探索／帳密登入／lease／可信 IPC／安全證據仍未由本模組宣稱完成；M8 不因 A 接線或停用執行而結案。
+
+### A 黑箱標籤／locator
+
+| 對象 | Accessible 名稱／屬性 | 驗收重點 |
+| --- | --- | --- |
+| 真建立 | button `建立 Workspace` → textbox `Workspace 名稱（選填）` → button `建立並開始訪談` | 真 POST，draft，不探索／不啟用；未知結果保留輸入 |
+| 列表切換 | combobox `Workspace` | 真 GET 列表及建立結果；切換有未存防護 |
+| 持久工作區 | button `Workspace 設定`；region `Workspace 對話：<名稱>` | 設定訪談與 Test 對話分開，重開 GET 恢復 |
+| 重載 | button `重新載入設定對話` | 純讀權威 Workspace／Conversation；409 後先重載 |
+| 訊息 | list `已儲存的 Workspace 訊息`；textbox `Workspace 需求或修改訊息`；button `送出 Workspace 訊息` | 帶 revision/contextRevision；不附專用帳密 |
+| 真任務 | `設定訪談狀態`、`訪談完成`；button `取消 Run <UUID>` | Workspace owner、null testId、無監看／假報告 |
+| 提案 | region `設定提案（待審內容）`；`data-proposal-id=<UUID>` | 真狀態、完整內容、base revision／失效原因，與正式設定分開 |
+| QA | checkbox `我已檢視目標、相依範圍、角色與設定提案` | 未勾選不可 scope／apply；未完整提案不能正式套用 |
+| 範圍確認 | button `確認提案範圍` | 真 scopeConfirmed；訊息明示不代表已探索 |
+| 套用／取消 | button `確認並套用提案`／`取消提案` | 套用真回應；取消另需原生確認，正式設定不被候選稿取代 |
+| 正式設定 | details `查看目前正式設定（唯讀）`；region `目前正式設定（唯讀）` | settings 為 canonical，null 時只顯示舊資料並標範圍未確認 |
+| 能力未就緒 | status `設定可保存，受限探索／執行尚未就緒。` | 正式 Run／validate／publish disabled；摘要不是可發布證明 |
+| 角色參照 | region `專用登入資料`；combobox `登入角色` | 只操作真角色 ID，顯示 ref/version/configured，不能讀回明文 |
+| 專用保存 | textbox `登入帳號`、密碼 label `登入密碼`、button `保存登入資料` | 僅保護傳輸可啟用；預檢通過仍可被 Server 拒絕 |
+| 撤銷 | button `撤銷登入資料` | 原生確認、版本不重設 0、沒有自動重送 |
+| 返回 | button `返回測試工作台` | 一般未送文字保留；未存帳密確認後清空；進行中的寫入完成前 disabled |
+
+## M8.2 前次首切片（v8 固定前）：Workspace 對話工作區結構
+
+日期：2026-11-12。PM：t36；Owner：Web t30，僅 `apps/web/`。依最新派工與 Workspace 規格準備 UI；本輪尚無固定 `contracts/mvp-v8.md`，沒有發明 HTTP／模型輸出／secret wire schema。M7 現況雖已由 PM 提交 `bc5f86d`，**M7 整體 UI／真 AI 全鏈驗收仍未完成**；本切片不改寫該狀態，也不代表 M8 功能完成。
+
+### 本切片產物
+
+- 新增 `src/WorkspaceConversation.tsx`：獨立建立／修改工作區，與 Test 腳本對話分開。包含 Workspace 名稱、網站用途與驗測目標、非機密背景／排除事項、分開的目標網站與必要相依服務備忘、一般訊息輸入、提案確認卡片與未開放的專用機密區。
+- 上述輸入只是本頁 React 記憶體備忘，不是已保存設定、不會送入模型／HTTP／URL／localStorage／console。可新增／移除網站備忘及確認清除本頁內容。目標與相依服務明確分組，填寫 origin 不視為探索授權。
+- 「送出 Workspace 訊息」、「確認初始目標並探索」、「確認並套用提案」、「取消提案」及「新增登入資料」全部停用。明示服務尚未串接，尚未送出、建立或保存；沒有假訊息、假 Run、假提案、假確認、假成功或假範圍限制。
+- 機密區沒有可輸入秘密值的 input。一般訊息／背景／網址欄位說明不可填帳密、token 或 key；尚未實作 secret 保存／取得，也不收集真憑證。
+- 依 PM 本回合裁定，`src/WorkspaceSettings.tsx` 由 M5 寫入表單改為唯讀的「目前設定摘要」。只沿用既有 GET 設定快照，明示「既有設定／新版範圍尚未確認」，不將舊 sites 推論成 target/dependency 或已授權 scope。移除舊表單的可操作寫入路徑；不以 PATCH 繞過提案確認。API 層的舊 PATCH 宣告暫留，待 v8 裁定相容／拒絕策略，UI 沒有呼叫入口。
+- `src/App.tsx` 加入「建立 Workspace」及既有「Workspace 設定」轉接。Workspace 與測試工作台一次只顯示一種對話；進 Workspace 前沿用 Test 的未存腳本／未送訊息／進行中操作確認，接受離開後卸載測試工作台，原有監看依既有卸載流程清理，沒有修改 LiveView／summary。
+- Workspace 本頁內容在「返回測試工作台」後仍保持掛載但隱藏，重開同一工作區可取回未送出備忘；beforeunload 保護持續有效。換 Workspace、切換建立／修改目標、返回登入／首頁時，對將遺失的內容提示確認。只以記憶體記住各 Workspace 上次選定 Test，返回測試工作台時重新讀取 Server 保存資料；接受離開確認的 Test 本機未存編輯不宣稱已保存。
+- `src/styles.css` 沿用既有色彩、字級與控制項，Workspace 區使用訪談／提案兩欄，窄螢幕合併單欄。沒有重設全站或新增依賴。
+
+修改檔案：新增 `src/WorkspaceConversation.tsx`；修改 `src/App.tsx`、`src/WorkspaceSettings.tsx`、`src/styles.css`、本紀錄。未修改契約／docs／後端／Runtime、M7 編輯與摘要元件、LiveView、Docker／Nginx 或依賴／lockfile。
+
+### 實際檢查與待接線
+
+- **必要 Web build 一次 PASS**：`npm run build`，完整 `tsc --noEmit`＋Vite `7.1.9`，退出碼 `0`；47 modules，HTML 0.55 kB、CSS 22.61 kB、JS 290.48 kB（gzip 88.97 kB）。通過後僅補文件，未無變動重建、未跑無關全套測試。
+- 直接檢視本切片 source，並以 `rg` 確認 Workspace 元件與 App 沒有 `updateWorkspaceSettings` UI 呼叫、直接 fetch、新 API 字串、localStorage／sessionStorage、console 或 password input。這是靜態檢查，不等於瀏覽器或資料外洩測試通過。
+- 本輪未安裝套件、Git、讀印 env／真憑證、呼叫模型、啟動瀏覽器、部署或重啟 `18080`／`18085`。新版 UI 目視、切換／離開確認與黑箱操作尚未實跑；不得以舊部署或本機建置取代整合驗收。
+- 已透過 `hc send t36` 回報 UI 需用欄位：Workspace lifecycle／目前 revision、設定對話 ID／訊息／active Run、目標與相依 origin／用途／確認狀態、proposal ID／base revision／真狀態／內容／失效原因、非機密登入角色與 secret ref／是否設定、確認／取消／重試的權威結果。這是 UI 所需語意，不是自行固定 wire schema。
+- 待 PM 固定 v8 後：串接持久對話／建立與修改、目標確認、真探索 Run 狀態、proposal revision 衝突與明確確認、secret 專用保存與僅參照顯示、多 Workspace 授權隔離。現有唯讀 GET 未具備的新欄位一律顯示尚未提供，不以備忘或舊設定補造。
+
+### 首切片黑箱標籤
+
+| 對象 | Accessible 名稱／可見文字 | 目前可觀察行為 |
+| --- | --- | --- |
+| 工作區切換 | combobox `Workspace` | 真列表；切換前保護會遺失的未送出內容 |
+| 建立入口 | button `建立 Workspace` | 開本頁備忘，沒有建立請求或成功通知 |
+| 修改入口 | button `Workspace 設定` | 轉接獨立對話，不開舊可寫表單 |
+| 設定工作區 | region `建立 Workspace`／`修改 Workspace：<名稱>`；`#workspace-conversation` | 與 Test 對話分開顯示 |
+| 返回 | button `返回測試工作台` | 保留 Workspace 本頁文字，重新讀取已保存 Test |
+| 未接線狀態 | status 文字 `尚未串接 Workspace 對話服務。…` | 不會標示 AI／儲存／探索完成 |
+| 本頁目標與背景 | textbox `Workspace 名稱`、`網站用途與驗測目標`、`非機密背景與排除事項` | 本頁記憶體，不是已保存資料 |
+| 網站分組 | details `預計目標網站與必要相依服務`；button `加入目標網站備忘`／`加入相依服務備忘` | 分開記錄名稱／origin／用途，不授權探索 |
+| 一般訊息 | textbox `Workspace 需求或修改訊息` | 可保留未送出文字，送出按鈕 disabled |
+| 提案區 | region `設定提案` | 真提案尚未取得；探索／套用／取消均 disabled |
+| 專用機密區 | region `專用機密輸入`；button `新增登入資料` | disabled，沒有秘密值輸入欄位 |
+| 舊設定 | region `目前設定摘要`；button `重新載入設定摘要` | 僅真 GET，明示舊資料／範圍未確認，沒有儲存按鈕 |
+| 清除備忘 | button `清除本頁未送出內容` | 確認後只清本頁，現有設定不變 |
+
+## M7 前次交付：一般／編輯模式與明確編輯週期（模組建置，整合待驗）
 
 Owner：Web；PM：t36。依 `docs/requirements/ai-workspace.md`、實作計畫 M7 與 `contracts/mvp-v7.md` 頂部固定決策實作，載入 impeccable 與 React best practices 技能。沿用既有 React／Vite 依賴；未安裝套件、Git、讀取 env／憑證、呼叫模型、部署或重啟任何服務，未擴張 M8。沒有把 `18080` 的舊部署當作新版驗收。
 

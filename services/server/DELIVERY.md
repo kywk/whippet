@@ -1,6 +1,90 @@
 # Server 交付
 
-Owner：Whippet Server Agent t31。最新交付：M7.2 編輯週期與驗收摘要（2026-11-12）；既有里程碑紀錄保留於下方。
+Owner：Whippet Server Agent t31。最新交付：M8 B 來源／能力／原 runner 恢復／TLS 任務角色解析（2026-11-12）；既有里程碑紀錄保留於下方。
+
+## M8 B Server 交付
+
+**Server 接線、必要定向檢查、PM 獨立 DB 案例與 Linux arm64 binary 已交付；B Runtime／真 AI／登入及報告全鏈仍待整合，未宣稱 M8 完成。** 依 `contracts/mvp-v8.md` 最新 B 裁定，覆蓋 A 暫態全面503／三工具限制。僅修改 `services/server/`；一次提案已交 `/private/tmp/whippet-m8b-server-revised.md` 並由 PM 固定。未安裝、執行 Git、讀印真憑證、呼叫模型、部署或重啟共享服務。
+
+### 產物與行為
+
+- `010_script_origin_and_login.sql`：DraftRevision／Version／Run 的 script_origin CHECK ai/manual/legacy，既有資料一律 legacy，不猜歷史作者或改腳本／attempt。新增不可變 authorization_revision／scope_proposal_id，以及 mutable resolved_role_ids（最多10角色ID、無值）。原 snapshot trigger 擴充來源／確認綁定，既有版本／revision 不可變保留；A 已終止工作不復活。
+- `model.go`、`drafts.go`、`editing_sessions.go`、`author.go`、`summaries.go`：公開 Draft／Version／Run、dispatch 頂層新增 scriptOrigin。人工 PUT 實際 script bytes 改變才 manual，AI 真正套用才 ai；no-op／模式切換不洗來源，設定／角色同步 revision 保留來源。Start 複製正式版來源、無版空稿 legacy。模型／Web 不能自報 manual；衝突仍保留 proposedScript，不套用不驗證。validation／summary／發布核對來源及原完整門檻。
+- `execution_gate.go`、`postgres.go`：恢復原完整 Playwright FIFO／Run／validate／publish，不做 AST 子集或全網路代理。manual 不要求 targets 確認；ai／legacy 按有效確認背景及必要 origin／dependency 用途核對，legacy 不自動取得工程師豁免。舊 Version 缺 context 時，新 legacy Run 可固定當前確認背景，歷史不變；新版 ai 必要範圍撤回則拒絕，不能默默擴權。
+- request_validation 在 AI 結果實際套用後，依新 Draft 的來源及 context 重新判斷；原輸入為 manual 不代表改成 ai 的新稿可無範圍驗證。拒絕時草稿及說明保留、不排無效 Run。AI browser 對任何來源稿均須 Server 有效確認後才給工具，離線改稿／訪談仍可用；不靠非空 config 作授權。
+- Workspace 四項 capabilities：aiExploration／aiExecution／manualExecution／credentialLogin，各 `{available,reason:null|string}`。manual 不因無網站／key而停用；AI探索可用正式或當前有效確認候選，AI執行需正式確認；credentialLogin獨立檢查 TLS／key／確認 origin／角色。舊 executionAvailable 為 AI或manual 的相容 OR，true 時 unavailableReason=null，不作新版唯一 gate。能力不是模型／Manager 即時健康宣告。
+- Workspace author 的確認候選內容／角色固定入該 Run workspaceContext，settingsRevision=baseRevision；確認綁定留 DB，不新增 policy 物件。對話進展使候選不可再套用，與同 scopeHash 的探索確認分開；取消／scope改變撤回 AI 工作。`postgres_live.go` 允許有 browser 工具的 Workspace author 沿原 LiveHub 監看，純訪談／summary 不提供 live。
+- `credentials_resolve.go`：新增 Manager-only `POST /api/manager/runs/:runId/attempts/:attemptId/credentials/resolve {roleId,secretRef,secretVersion}`。必須實際 TLS＋既有 Manager bearer，不接受 loopback HTTP或forwarded header。核對目前 ready 控制session、assigned活躍attempt/owner、固定roleRefs、同Workspace未撤銷版本與已確認loginOrigin，並在回應前確認控制session未被取代。200裸回 `{workspaceId,runId,attemptId,roleId,secretRef,secretVersion,loginOrigin,username,password}`、no-store，各值非空且≤4096 UTF-8 bytes；不允許角色／跨scope404、過期／撤銷409 credential_unavailable、缺key503。
+- resolve 登記有界已交付角色ID供取消；保存／撤銷角色同步 active Draft 新 ref/revision、清驗證摘要、保留來源。已使用撤銷角色的 manual 任務也取消，未使用的人工任務不因網站政策／其他角色被取消；舊 Version／Run 不自動取得新密碼。發布另核對實際使用角色仍有效。既有 cancel／回收屏障保持，不能把 DB 更新當作已追回遠端值。
+- TLS listener／healthcheck 沿用 A 已通過接縫；Manager 的 CA/SAN／無redirect／ID-origin驗證及 stdio/loginAs/socket IPC、敏感DOM/live／附件遮蔽由 Runtime owner 處理。Server沒有長 lease／可解密一般API／秘密journal／代理平台。完整 Node 並非秘密沙箱；不承諾封鎖任意 Node 全部出站或自動識別未知秘密。登入後可觀察，原生報告仍須合格，不能改假成功換發布。
+
+### 實際檢查與已修缺陷
+
+- 只使用既有 Go1.23.12／配對 GOROOT、GOTOOLCHAIN=local、GOPROXY=off、GOSUMDB=off、既有 GOCACHE、`-mod=readonly`；沒有下載／套件變動。
+- `go test -mod=readonly ./internal/server -run '^(TestM8B|TestPublicationRequiresCurrentValidatedRevisionAndReport|TestM7Summary)' -count=1` **PASS 0.376s**。涵蓋四能力獨立、manual無targets可用、ai/legacy不能冒充manual、撤回範圍／確認候選、來源不符不可發布、模型不得自報來源、TLS-only／Manager認證／控制session／整組回應與no-store，並保留原發布／摘要相關單元。
+- `TestM8BServerLifecycle` integration-tag 已編譯；本機沒有 TEST_DATABASE_URL，實際 **SKIP（套件0.347s）**，未連任何 DB。只接受明確隔離 TEST_DATABASE_URL，沿現有 helper 建立／清除隨機 schema，沒有共用 DATABASE_URL fallback。
+- **PM首跑真DB FAIL（套件0.522s）：發現產品角色資格不一致。** confirm-scope 後新探索訊息使 proposal 為 stale/context_changed，已確認 scope 及 roleRefs 仍可供活躍Run解析，但舊 roleEligible 僅接受 pending，導致角色撤銷404。已統一為 pending 或仍有效 confirmedProposal（同base、確認未撤回、pending/applied/stale context_changed），cancelled不放行。保留原撤銷／consumer取消斷言；不是將測試改成任意錯誤可過。log `/private/tmp/whippet-m8b-db-check.log`。
+- 修復後只重跑受影響 `TestM8BScopeAndIndependentCapabilities`，**PASS 0.295s**，包含 stale確認角色保留與 cancelled拒絕。
+- **PM t36 同一真隔離 PostgreSQL 重跑 TestM8BServerLifecycle PASS、無skip，test0.41s／套件0.704s。** log `/private/tmp/whippet-m8b-db-check-retry.log`；臨時DB已清，共享DB未碰。本 Agent 沿用、不重跑。案例含010、人工無targets的驗證→摘要→發布→正式Run、no-op／來源繼承、AI改人工稿後不得沿用續驗資格、確認候選browser/live、resolve重送／role追蹤／跨scope／撤銷取消、無關人工任務保留、legacy新Run背景及immutable。使用合成腳本／真儲存的附件fixture，不是Playwright／模型登入全鏈證據。
+- 收尾將編輯結果來源不符移入原候選衝突分支，保留 proposedScript；summary／發布仍嚴格比來源。`TestM8WorkspaceDispatchAndExecutionGate|TestAuthorPlanAppliesOnlyMatchingRevision` 定向 **PASS 0.330s**，包括 scriptOrigin wire。未因此重跑 DB／全套；未把這項單元當併發真UI驗收。
+- **正式 build PASS**：`GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -mod=readonly -trimpath -o /private/tmp/whippet-server-m8-b ./cmd/server`。產物 **`/private/tmp/whippet-server-m8-b`**，包含010／resolve／roleEligible修正及最終來源處理；`file` 確認 statically linked ELF aarch64。`gofmt -l cmd/server internal/server migrations` 無輸出。
+- TLS listener／healthcheck沿用 A 已通過的成對／invalid cert-key／HTTP與合成憑證 HTTPS真驗證，不重跑Runtime或無關歷史測試。README 已同步 B 覆蓋A暫態、API／來源／能力／角色解析與原發布門檻。
+
+DB 重現命令（只供明確獨立DB；本次PM已通過，不再執行）：
+
+```sh
+cd services/server
+env GOPROXY=off GOSUMDB=off TEST_DATABASE_URL='<隔離 PostgreSQL URL>' \
+  go test -mod=readonly -tags=integration ./internal/server \
+  -run '^TestM8BServerLifecycle$' -count=1 -v
+```
+
+### 交接與限制
+
+PM 已收到 binary，並回報用固定快照＋既有映像離線 COPY 建立 whippet-server:m8b-qa 與 Web B 均 PASS，**尚未替換預覽、不是乾淨Dockerfile建置證據**。Runtime固定產物／真TLS Manager resolve／合成登入／AI範圍與原生報告／敏感sentinel全鏈由PM接續。原18080／18085未動，先前18086仍是A隔離預覽；不把主機200／Web合成checks／Server DB通過當作B整體驗收。文件完成後待命，不再build／重跑／部署。
+
+## M8 A Server 交付
+
+**Server 實作、定向檢查、正式 Linux arm64 build 與 PM 獨立 DB 案例完成；A 全鏈整合與 B 仍未完成。** 以 `contracts/mvp-v8.md` 頂部 A 裁定為準，只修改 `services/server/`。本輪未安裝套件、執行 Git、讀印真憑證、呼叫模型、部署或重啟共享服務。M7 整體 UI／真 AI 驗收也未因此視為完成。
+
+### 產物與介面
+
+- `migrations/009_workspace_interviews.sql`：Workspace lifecycle／canonical 設定／許可世代、獨立設定 Conversation／proposal／role／AEAD 密文，新增可信 Run.workspace_id 與不可變 workspace_context。Run.test_id 可空，只有 workspace-author@1 可無 Test；沒有假 Test／EditingSession。舊 Workspace 需重新確認、canonical 為 null，M5 投影、歷史 timeout／腳本與版本保持原值。
+- `workspace_config.go`／`workspace_store.go`／`workspace_interviews.go`：列表／建立／純讀、每 Workspace 一個持久對話及活躍設定任務、原 FIFO 排程、真 author.json 輸出讀取。嚴格輸出 message／optional proposal／conversationSummary；不接受模型生成 secretRef、確認狀態、mode 或未知安全欄位。新角色先驗證既有參照再分配 UUID，跨 Workspace 404。
+- Proposal 綁 baseRevision/contextRevision/Run/attempt；結果不能自動套用。confirm-scope 只保存明確範圍確認，不宣稱探索；confirm 交易套用 canonical／M5 投影，實際改動使 active Draft 建立新 revision、腳本不變、驗證／摘要失效；設定 no-op 不增 revision、不失效。同一已完成 confirm／cancel 冪等；舊 revision/context 409 並保存 stale 原因，取消／晚到／重複結果不覆蓋目前設定或重複套用。
+- `workspace_http.go`：固定 v8 HTTP 包裝；GET list 為 `{items}`、create/detail/conversation/proposal/scope/cancel 為裸物件、confirm 為 `{workspace,proposal}`、messages 為 `{run,conversationId}`、credentials 為裸 RoleRef。舊 PATCH 一律 405 proposal_required／Allow: GET。Test／Run／附件／live 由 DB 關聯導出 Workspace，再經共同授權接縫；舊 URL 不要求 query，但提供的 workspaceId 必須吻合。開發固定 Superadmin 沿用，未實作正式 RBAC。
+- config 驗證：名稱 trim 後 1..200 UTF-8 bytes；說明最多 8192 bytes；target/dependency 各20、角色10、排除40；URL2048 Unicode 字元、timeout1..3600000。正規化 scheme/host/port（含標準 port），三個 origin 集合互斥且各自不重複；拒絕矛盾輸入，不截斷／去重／默默移除。defaultTestUrl 非空須屬 target。確認須完整目的／背景及至少一 target；confirm-scope 也拒絕無 target。
+- `secret_vault.go`：標準庫 AES-256-GCM、每筆隨機 nonce、Workspace/role/ref/version AAD。專用 WHIPPET_SECRET_MASTER_KEY 接受 base64 32 bytes；缺失或無效時 secretsAvailable=false、保存／撤銷 503 secrets_unavailable，一般資料 API 可用。沒有明文 fallback 或解密／resolve HTTP API，不把值傳 Runtime／dispatch／journal。credentials expectedSecretVersion 必填非負整數，null／缺值拒絕；首次0，過期409；撤銷保留版本，後續遞增不重用。
+- `model.go` 及既有 Test 流程：Run.workspaceId／nullable testId、Workspace authorMode、平面 dispatch 及 typed `workspaceContext:{schemaVersion:"1",workspaceId,settingsRevision,config,roleRefs}`；M5 workspaceSettings 仍保存。Draft／Version／Run 快照不可變，設定修改不悄悄改已發布版本或沿用舊驗證。workspace-author 的 script 為空、editingSessionId/sourceVersion 為 null、allowedTools=[]；A 不傳 requiredPolicyVersion。
+- `execution_gate.go`：A executionAvailable=false／security_unavailable；正式 run／validate／新 publish 明確503，不排入舊 bridge。舊已成功 publish 的冪等讀回保留。純訪談與唯讀摘要可排，離線 test-author 僅 read_draft/read_validation_report/update_draft 子集；報告只讀已存有界摘要，不含 browser 或 request_validation。舊不安全 queued 任務標示失敗，已派送者走取消及原回收屏障。B 的受限執行／探索／登入、lease/resolve/broker 尚未實作；本切片不是網路測試完成。
+
+### TLS 與健康檢查部署接縫
+
+- `cmd/server/tls.go`／`main.go`：原先沒有原生 TLS，本輪加入選填 TLS_CERT_FILE/TLS_KEY_FILE。只配置一端或憑證／私鑰無法載入，於連 DB 前啟動失敗；不降級。皆未配置維持原 HTTP；皆有配置為同一 PORT 的 HTTPS/WSS、TLS1.2以上。沒有第二個明文健康檢查 listener 或自動產生 key。
+- `whippet-server healthcheck` 沿用本機 readyz／3秒期限：無 TLS 為 HTTP；有 TLS 改用 HTTPS、從配置的公開 PEM 鏈建立信任並驗 SAN／hostname，沒有 InsecureSkipVerify。憑證須有 SAN；nonroot 使用者須能讀配置的憑證鏈／私鑰。代理後段也須用正確 CA／名稱驗證 Server，Manager／媒體 URL 需相應採 WSS／HTTPS，由 PM 處理部署設定。
+- 機密傳輸判斷保留實際 r.TLS，或 Host 與 RemoteAddr **同時** loopback。localhost→Nginx→bridge HTTP 會拒絕 protected_transport_required；未信任任意 forwarded header、未放寬 RemoteAddr。PM 負責隔離 TLS 材料與真代理驗收；本 Agent 只使用測試框架合成憑證，未操作真憑證或部署。
+
+### 實際檢查與產物
+
+- 既有 Go1.23.12／配對 GOROOT、GOTOOLCHAIN=local、GOPROXY=off、GOSUMDB=off、`-mod=readonly`，使用既有 cache，沒有下載或依賴變動。
+- Server 定向單元：`go test -mod=readonly ./internal/server -run '^(TestM8|TestWorkspaceHTTPRejectsLegacyMutation)' -count=1` 所涵蓋案例 **PASS 0.304s**（實際由同次 Server/cmd 定向命令執行）。覆蓋 origin/大小/未知欄位、未完整提案門檻、AEAD合成key/綁定/篡改、缺key503、credentials版本必填／null、transport／scope與平面 wire、安全工具集合。補標準 port 數字正規化後，只重跑受影響 `TestM8ConfigurationBoundaries`，**PASS 0.383s**。
+- `go test -mod=readonly ./cmd/server -run '^TestTLS' -count=1` **PASS 0.408s**：成對設定、無效 cert/key 拒絕、HTTP readiness、合成憑證 HTTPS 真驗證及 hostname mismatch 拒絕。初次受 sandbox loopback bind 限制，允許測試監聽後通過；只監聽隨機 loopback port，未啟動／重啟共享服務。
+- `TestM8WorkspaceSliceA` integration-tag 已編譯，本機未提供 TEST_DATABASE_URL，實際缺值 **SKIP 0.272s**；沒有讀取／連接共用 DB。測試只用明確 TEST_DATABASE_URL 並建立／清除隨機 schema，沒有 DATABASE_URL fallback。
+- **PM t36 真隔離 PostgreSQL 證據：TestM8WorkspaceSliceA PASS、無 skip，test0.36s／套件0.706s。** log：`/private/tmp/whippet-m8a-db-check-retry.log`。獨立臨時容器已移除，共享 DB 未碰；本 Agent 沿用、不重跑。首跑0.292s FAIL 的原因是案例忘記先存非空腳本，尚未進到執行 gate；已先 SaveDraft 合法合成 spec 並更新 beforeDraft/revision，保留明確 ErrSecurityUnavailable 及無新增 Run 斷言，未弱化產品錯誤順序。首跑 log `/private/tmp/whippet-m8a-db-check.log` 保留。
+- DB 案例實際涵蓋 migration009／legacy未確認、雙Workspace／對話／角色隔離、真 author.json／重送、confirm-scope／confirm／no-op／stale原因／cancel／晚到防護、AEAD版本保存撤銷、舊 Run／Draft context immutable、新草稿快照與設定失效，以及 run/validate/publish A 503。沒有把 A 的離線檢查當網路執行驗收，未重跑 Runtime 或無關全套。
+- **正式 build PASS**：`GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -mod=readonly -trimpath -o /private/tmp/whippet-server-m8-a ./cmd/server`。binary **`/private/tmp/whippet-server-m8-a`**，含 migration009／TLS；`file` 確認 statically linked ELF aarch64。`gofmt -l cmd/server internal/server migrations` 無輸出。README 已更新 API／限制／環境變數與實際 healthcheck 模式。
+
+PM 重現 DB 命令（在 services/server/，只指定獨立 DB；配對現有 Go/GOROOT）：
+
+```sh
+env GOPROXY=off GOSUMDB=off TEST_DATABASE_URL='<隔離 PostgreSQL URL>' \
+  go test -mod=readonly -tags=integration ./internal/server \
+  -run '^TestM8WorkspaceSliceA$' -count=1 -v
+```
+
+### 待整合
+
+PM 已收到 binary，接手 A 的 Web→Server→Manager→Worker→提案／機密保存／TLS代理隔離整合。本 Agent 不部署、不重跑已通過 DB，文件交接後待命。B 執行方案、實際登入／允許網站探索仍未固定／完成；A 及 M8 整體尚不能宣稱驗收完成。
 
 ## M7.2 Server 交付
 

@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"encoding/json"
 	"errors"
 	"regexp"
 	"strings"
@@ -12,7 +13,7 @@ var authorEnvNames = []string{
 	"WHIPPET_AI_REASONING_EFFORT", "OPENCODE_API_KEY",
 }
 
-var authorProgressPattern = regexp.MustCompile(`^author:(model:[1-8]:(started|succeeded|failed)|tool:([1-9]|1[0-2]):(read_draft|read_validation_report|update_draft|browser_navigate|browser_snapshot|browser_click|browser_fill|request_validation|unknown):(succeeded|failed))$`)
+var authorProgressPattern = regexp.MustCompile(`^author:(model:[1-8]:(started|succeeded|failed)|tool:([1-9]|1[0-2]):(read_draft|read_validation_report|update_draft|browser_navigate|browser_snapshot|browser_click|browser_fill|browser_login|request_validation|unknown):(succeeded|failed))$`)
 
 func validDispatch(d Dispatch) error {
 	if err := validWorkspaceSettings(d.WorkspaceSettings); err != nil {
@@ -20,6 +21,22 @@ func validDispatch(d Dispatch) error {
 	}
 	if len(d.Script) > maxScriptBytes || d.TimeoutMS < 1 || d.TimeoutMS > 3600000 {
 		return errors.New("dispatch script/timeout out of range")
+	}
+	if err := validWorkspaceOwner(d.WorkspaceID, d.TestID, d.WorkspaceContext, d.Author); err != nil {
+		return err
+	}
+	if !validScriptOrigin(d.ScriptOrigin) {
+		return errors.New("invalid scriptOrigin")
+	}
+	if d.WorkspaceID != "" && (d.Kind == "run" && d.ScriptOrigin != "manual" || d.Author != nil && authorWantsBrowser(d.Author)) {
+		scope, err := parseWorkspaceContext(d.WorkspaceContext, d.WorkspaceID)
+		if err != nil || scope == nil {
+			return errors.New("scope_confirmation_required")
+		}
+		var config workspaceConfig
+		if json.Unmarshal(scope.Config, &config) != nil || len(config.Targets) == 0 {
+			return errors.New("scope_confirmation_required")
+		}
 	}
 	if d.Kind == "run" && d.Author == nil && strings.TrimSpace(d.Script) != "" {
 		return nil

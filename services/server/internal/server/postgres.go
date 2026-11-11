@@ -13,8 +13,10 @@ import (
 )
 
 type Postgres struct {
-	DB        *sql.DB
-	Artifacts ArtifactStorage
+	DB            *sql.DB
+	Artifacts     ArtifactStorage
+	Secrets       *SecretVault
+	CredentialTLS bool
 }
 
 // Migrate serializes startup migrations and records each file in the same transaction.
@@ -63,20 +65,33 @@ func (p *Postgres) Migrate(ctx context.Context) error {
 func (p *Postgres) Ping(ctx context.Context) error { return p.DB.PingContext(ctx) }
 
 func (p *Postgres) Workspaces(ctx context.Context) ([]Workspace, error) {
-	rows, err := p.DB.QueryContext(ctx, `SELECT `+workspaceColumns+` FROM workspaces ORDER BY id`)
+	rows, err := p.DB.QueryContext(ctx, `SELECT id FROM workspaces ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	items := []Workspace{}
+	ids := []string{}
 	for rows.Next() {
-		w, err := scanWorkspace(rows)
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	items := []Workspace{}
+	for _, id := range ids {
+		w, err := p.Workspace(ctx, id)
 		if err != nil {
 			return nil, err
 		}
 		items = append(items, w)
 	}
-	return items, rows.Err()
+	return items, nil
 }
 
 const testColumns = `id,workspace_id,name,description,published_version_id,
@@ -127,40 +142,64 @@ func (p *Postgres) Test(ctx context.Context, id string) (Test, error) {
 const runColumns = `r.id,r.test_id,r.status,r.created_at,r.started_at,r.finished_at,r.error,
     CASE WHEN EXISTS(SELECT 1 FROM artifacts a WHERE a.run_id=r.id AND a.attempt_id=r.attempt_id AND a.name='report.html')
     THEN '/api/runs/' || r.id::text || '/artifacts/report.html' ELSE '' END,
-    r.kind,r.draft_revision,r.version_id,r.workspace_settings,r.editing_session_id,
-    CASE WHEN r.kind='author' THEN CASE WHEN r.author_payload->>'skillId'='acceptance-summary' THEN 'summary' ELSE 'edit' END ELSE '' END`
+    r.kind,r.draft_revision,r.version_id,r.workspace_settings,r.editing_session_id,r.workspace_id,r.workspace_context,
+    CASE WHEN r.kind='author' THEN CASE WHEN r.author_payload->>'skillId'='acceptance-summary' THEN 'summary' WHEN r.author_payload->>'skillId'='workspace-author' THEN 'workspace' ELSE 'edit' END ELSE '' END,r.script_origin,r.authorization_revision,r.scope_proposal_id`
 
 func scanRun(row scanner) (Run, error) {
 	var r Run
-	var settings []byte
-	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL, &r.Kind, &r.DraftRevision, &r.VersionID, &settings, &r.EditingSessionID, &r.AuthorMode)
+	var settings, workspaceContext []byte
+	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL, &r.Kind, &r.DraftRevision, &r.VersionID, &settings, &r.EditingSessionID, &r.WorkspaceID, &workspaceContext, &r.AuthorMode, &r.ScriptOrigin, &r.authorizationRevision, &r.scopeProposalID)
 	if err == nil {
 		r.WorkspaceSettings, err = decodeSettings(settings)
+		if err == nil {
+			r.WorkspaceContext, err = decodeWorkspaceContext(workspaceContext)
+		}
 	}
 	r.CreatedAt = r.CreatedAt.UTC()
 	return r, dbError(err)
 }
 
 func (p *Postgres) CreateRun(ctx context.Context, testID string) (Run, error) {
-	// INSERT ... SELECT freezes the published version and its script in one statement.
-	id := NewID()
-	res, err := p.DB.ExecContext(ctx, `INSERT INTO runs(id,test_id,version_id,script_snapshot,timeout_ms,script_hash,workspace_settings)
-        SELECT $1,t.id,v.id,v.script,v.timeout_ms,v.script_hash,v.workspace_settings FROM tests t
-        JOIN test_versions v ON v.id=t.published_version_id AND v.test_id=t.id WHERE t.id=$2`, id, testID)
+	tx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return Run{}, err
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
+	defer tx.Rollback()
+	if _, err = lockEditingTest(ctx, tx, testID); err != nil {
 		return Run{}, err
 	}
-	if n == 0 {
-		if _, err := p.Test(ctx, testID); err != nil {
-			return Run{}, err
+	v, err := scanVersion(tx.QueryRowContext(ctx, `SELECT `+versionColumns+` FROM test_versions WHERE id=(SELECT published_version_id FROM tests WHERE id=$1)`, testID))
+	if err != nil {
+		if err == ErrNotFound {
+			return Run{}, ErrConflict
 		}
-		return Run{}, fmt.Errorf("%w: test has no published version", ErrConflict)
+		return Run{}, err
 	}
-	return p.Run(ctx, id)
+	w, err := workspaceForTest(ctx, tx, testID)
+	if err != nil {
+		return Run{}, err
+	}
+	snapshot := v.WorkspaceContext
+	if v.ScriptOrigin == "legacy" && (snapshot == nil || snapshot.Config == nil) {
+		snapshot, _ = selectedContext(w, false)
+	}
+	auth, proposal, err := executionBinding(w, v.ScriptOrigin, snapshot)
+	if err != nil {
+		return Run{}, err
+	}
+	id := NewID()
+	if _, err = tx.ExecContext(ctx, `INSERT INTO runs(id,test_id,workspace_id,version_id,script_snapshot,script_hash,timeout_ms,workspace_settings,workspace_context,script_origin,authorization_revision,scope_proposal_id)
+ VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, id, testID, w.ID, v.ID, v.Script, scriptHash(v.Script), v.WorkspaceSettings.TimeoutMS, settingsJSON(v.WorkspaceSettings), jsonText(snapshot), v.ScriptOrigin, auth, proposal); err != nil {
+		return Run{}, err
+	}
+	run, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs r WHERE r.id=$1`, id))
+	if err != nil {
+		return run, err
+	}
+	if err = tx.Commit(); err != nil {
+		return run, err
+	}
+	return run, nil
 }
 
 func (p *Postgres) Runs(ctx context.Context, testID string) ([]Run, error) {
@@ -206,7 +245,10 @@ func (p *Postgres) RegisterManager(ctx context.Context, id string, capacity int)
 }
 
 func (p *Postgres) Assignments(ctx context.Context, managerID string) ([]Assignment, error) {
-	rows, err := p.DB.QueryContext(ctx, `SELECT r.id,r.status,r.attempt_id,r.script_snapshot,r.timeout_ms,r.acknowledged_at IS NOT NULL,r.kind,COALESCE(r.author_payload::text,''),r.workspace_settings
+	if err := p.rejectUnsafeWork(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := p.DB.QueryContext(ctx, `SELECT r.id,r.status,r.attempt_id,r.script_snapshot,r.timeout_ms,r.acknowledged_at IS NOT NULL,r.kind,COALESCE(r.author_payload::text,''),r.workspace_settings,r.workspace_id,r.test_id,r.workspace_context,r.script_origin,r.authorization_revision,r.scope_proposal_id
         FROM runs r WHERE r.manager_id=$1 AND NOT r.slot_released ORDER BY r.queue_seq`, managerID)
 	if err != nil {
 		return nil, err
@@ -216,11 +258,14 @@ func (p *Postgres) Assignments(ctx context.Context, managerID string) ([]Assignm
 	for rows.Next() {
 		a := Assignment{ManagerID: managerID}
 		var authorPayload string
-		var settings []byte
-		if err := rows.Scan(&a.ID, &a.Status, &a.AttemptID, &a.Script, &a.TimeoutMS, &a.Acked, &a.Kind, &authorPayload, &settings); err != nil {
+		var settings, context []byte
+		if err := rows.Scan(&a.ID, &a.Status, &a.AttemptID, &a.Script, &a.TimeoutMS, &a.Acked, &a.Kind, &authorPayload, &settings, &a.WorkspaceID, &a.TestID, &context, &a.ScriptOrigin, &a.authorizationRevision, &a.scopeProposalID); err != nil {
 			return nil, err
 		}
 		a.WorkspaceSettings, err = decodeSettings(settings)
+		if err == nil {
+			a.WorkspaceContext, err = decodeWorkspaceContext(context)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -229,10 +274,30 @@ func (p *Postgres) Assignments(ctx context.Context, managerID string) ([]Assignm
 		}
 		items = append(items, a)
 	}
-	return items, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	for i := range items {
+		if permissionErr := p.assignmentAllowed(ctx, p.DB, items[i]); permissionErr != nil {
+			if permissionErr != ErrScopeConfirmation {
+				return nil, permissionErr
+			}
+			if _, err := p.DB.ExecContext(ctx, `UPDATE runs SET status='cancelling',error='scope_confirmation_required' WHERE id=$1 AND status IN ('dispatched','running','collecting')`, items[i].ID); err != nil {
+				return nil, err
+			}
+			if !Terminal(items[i].Status) {
+				items[i].Status = "cancelling"
+			}
+		}
+	}
+	return items, nil
 }
 
 func (p *Postgres) Claim(ctx context.Context, managerID string, capacity int) (*Assignment, error) {
+	if err := p.rejectUnsafeWork(ctx); err != nil {
+		return nil, err
+	}
 	tx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -254,9 +319,9 @@ func (p *Postgres) Claim(ctx context.Context, managerID string, capacity int) (*
 	}
 	a := Assignment{ManagerID: managerID, AttemptID: NewID()}
 	var authorPayload string
-	var settings []byte
-	err = tx.QueryRowContext(ctx, `SELECT id,script_snapshot,timeout_ms,kind,COALESCE(author_payload::text,''),workspace_settings FROM runs
-        WHERE status='queued' ORDER BY queue_seq FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&a.ID, &a.Script, &a.TimeoutMS, &a.Kind, &authorPayload, &settings)
+	var settings, context []byte
+	err = tx.QueryRowContext(ctx, `SELECT id,script_snapshot,timeout_ms,kind,COALESCE(author_payload::text,''),workspace_settings,workspace_id,test_id,workspace_context,script_origin,authorization_revision,scope_proposal_id FROM runs
+        WHERE status='queued' ORDER BY queue_seq FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&a.ID, &a.Script, &a.TimeoutMS, &a.Kind, &authorPayload, &settings, &a.WorkspaceID, &a.TestID, &context, &a.ScriptOrigin, &a.authorizationRevision, &a.scopeProposalID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -264,11 +329,23 @@ func (p *Postgres) Claim(ctx context.Context, managerID string, capacity int) (*
 		return nil, err
 	}
 	a.WorkspaceSettings, err = decodeSettings(settings)
+	if err == nil {
+		a.WorkspaceContext, err = decodeWorkspaceContext(context)
+	}
 	if err != nil {
 		return nil, err
 	}
 	if err := decodeAssignmentAuthor(&a, authorPayload); err != nil {
 		return nil, err
+	}
+	if permissionErr := p.assignmentAllowed(ctx, tx, a); permissionErr != nil {
+		if permissionErr != ErrScopeConfirmation {
+			return nil, permissionErr
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE runs SET status='failed',error='scope_confirmation_required',finished_at=now() WHERE id=$1`, a.ID); err != nil {
+			return nil, err
+		}
+		return nil, tx.Commit()
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE runs SET status='dispatched',manager_id=$2,attempt_id=$3,slot_released=false WHERE id=$1`, a.ID, managerID, a.AttemptID); err != nil {
 		return nil, err
@@ -343,16 +420,20 @@ func (p *Postgres) Complete(ctx context.Context, managerID, runID, attemptID str
 	if !result.Valid() {
 		return ErrInvalid
 	}
-	var kind, testID string
-	if err := p.DB.QueryRowContext(ctx, `SELECT kind,test_id FROM runs WHERE id=$1 AND manager_id=$2 AND attempt_id=$3`,
-		runID, managerID, attemptID).Scan(&kind, &testID); err != nil {
+	var kind, workspaceID string
+	var testID *string
+	if err := p.DB.QueryRowContext(ctx, `SELECT kind,test_id,workspace_id FROM runs WHERE id=$1 AND manager_id=$2 AND attempt_id=$3`,
+		runID, managerID, attemptID).Scan(&kind, &testID, &workspaceID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrConflict
 		}
 		return err
 	}
 	if kind == "author" {
-		return p.completeAuthor(ctx, testID, managerID, runID, attemptID, result)
+		if testID == nil {
+			return p.completeWorkspaceAuthor(ctx, workspaceID, managerID, runID, attemptID, result)
+		}
+		return p.completeAuthor(ctx, *testID, managerID, runID, attemptID, result)
 	}
 	tx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {

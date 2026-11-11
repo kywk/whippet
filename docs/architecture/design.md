@@ -120,11 +120,11 @@ Server 決定 skillId／skillVersion、sessionId、允許工具、Workspace 背�
 
 ### 網站與機密邊界
 
-設定分開保存 target origins 與依用途允許的 dependency origins；規則採明確 scheme／host／port，不用字串前綴判斷。預設拒絕未列入範圍的連線；探索與生成腳本的所有出站通道都須受控，包含 redirect、popup、API／非瀏覽器請求。Runtime owner 提出工具檢查與網路執行限制方案，PM 固定契約後落地；僅 Playwright route 攔截不等於任意 Node 腳本網路隔離。
+2026-11-12 使用者最新裁定：AI探索/產稿/修復以已確認target與必要dependency為範圍，透過工具、瀏覽器導覽/redirect/popup/request與產稿指引盡量避免越界；不建任意Node的網路沙箱。工程師手動修改的Playwright腳本保留完整能力，不套用AI網站範圍限制。來源由Server依寫入路徑記錄並快照至revision/version/run，不相信模型自報來源。
 
-機密獨立加密保存，部署金鑰不入 DB；API 僅回傳機密參照與是否已設定。Worker 透過限定任務的登入工具使用機密，不將值回傳模型；普通 run／validation 同樣可使用授權引用，不能取得模型 API key。機密不可寫入一般 dispatch journal／對話／腳本／版本快照；實際傳遞、暫存回收與輪替方式在 M8 契約固定。
+不採AST白名單直譯、network=none＋全通道代理平台或協定降級。保留既有Playwright runner與報告，手動腳本仍使用獨立Worker與既有資源/逾時/回收限制。AI探索工具對任何來源腳本都受範圍檢查；人工來源不代表可取得模型key、Manager token或跨Workspace機密。
 
-M5 的版本／Run 設定快照仍不可變；但已撤銷的網站許可或機密不可因舊快照繼續生效。執行前以快照與現行許可交集檢查，不符合則明確阻擋並要求更新／重新驗證，不靜默改寫歷史版本。既有無範圍設定的 Workspace 需補確認後才能使用新探索／執行流程。
+機密採A的AEAD/TLS/角色參照；任務限定登入工具不向模型回傳值。AI可讀登入後頁面內容、操作及監看，針對密碼/Token/cookie/已知敏感輸入遮蔽，不一律禁止登入後DOM或原生報告。真驗證結果與人工發佈門檻保持。憑證撤銷繼續生效；網站範圍撤銷不延伸成手動腳本出站限制。B機密任務傳遞由owner提出最小接縫後PM固定，不沿用已廢止的全代理租約平台需求。
 
 ### 契約交付界線
 

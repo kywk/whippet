@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { formatDate, Loading, Notice, ReportLink, RunStatusBadge, runKindLabel } from './components';
 import { RunArtifacts } from './RunArtifacts';
 import { CancelRunButton } from './TestActions';
+import { scriptOriginLabel } from './capabilities';
 import { isActiveRun } from './types';
 import type { Run, WhippetApi } from './types';
 
@@ -31,6 +32,7 @@ export function RunHistory({ api, apiBase, runs, group, loading, error, polling,
       {latest ? <article className="latest-run" aria-label={latestTitle}>
         <div className="latest-summary"><RunStatusBadge run={latest} /><span>{runKindLabel(latest)}</span><time dateTime={latest.createdAt}>{formatDate(latest.createdAt)}</time>{latest.kind === 'author' ? <span className="muted">{latest.authorMode === 'summary' ? '結果見驗收摘要' : '撰寫結果見對話'}</span> : <ReportLink reportUrl={latest.reportUrl} apiBase={apiBase} />}</div>
         <p className="run-id">Run <span className="identifier">{latest.id}</span></p>
+        <p className="inline-hint">任務快照來源：{scriptOriginLabel(latest.scriptOrigin)}</p>
         {latest.error ? <details className="error-details"><summary>查看錯誤</summary><pre className="run-error">{latest.error}</pre></details> : null}
         {isActiveRun(latest) ? <div className="action-row">{latest.authorMode !== 'summary' ? <button className="button secondary compact" onClick={() => onWatch(latest)}>開始監看</button> : null}<CancelRunButton api={api} run={latest} onUpdated={onRun} /></div> : null}
         {latest.kind !== 'author' ? <RunArtifacts key={latest.id} api={api} apiBase={apiBase} runId={latest.id} /> : null}
@@ -43,7 +45,7 @@ export function RunHistory({ api, apiBase, runs, group, loading, error, polling,
       {runs.length ? <div className="table-scroll"><table><caption className="sr-only">{historyTitle}，最新紀錄在前</caption>
         <thead><tr><th scope="col">狀態／Run</th>{formal ? null : <th scope="col">種類</th>}<th scope="col">建立時間</th><th scope="col">耗時</th><th scope="col">報告／操作</th></tr></thead>
         <tbody>{runs.map((run) => <tr key={run.id} data-run-id={run.id}>
-          <td><RunStatusBadge run={run} /><span className="table-run-id identifier" title={run.id}>{run.id.slice(0, 8)}</span>{run.error ? <details className="error-details"><summary>查看錯誤</summary><pre className="run-error">{run.error}</pre></details> : null}</td>
+          <td><RunStatusBadge run={run} /><span className="table-run-id identifier" title={run.id}>{run.id.slice(0, 8)}</span><span className="run-origin">{scriptOriginLabel(run.scriptOrigin)}</span>{run.error ? <details className="error-details"><summary>查看錯誤</summary><pre className="run-error">{run.error}</pre></details> : null}</td>
           {formal ? null : <td>{runKindLabel(run)}</td>}<td><time dateTime={run.createdAt}>{formatDate(run.createdAt)}</time></td><td>{duration(run)}</td>
           <td><div className="run-actions">{run.kind === 'author' ? <span className="muted">{run.authorMode === 'summary' ? '結果見驗收摘要' : '撰寫結果見對話'}</span> : <><ReportLink reportUrl={run.reportUrl} apiBase={apiBase} /><RunArtifacts api={api} apiBase={apiBase} runId={run.id} /></>}{isActiveRun(run) ? <>{run.authorMode !== 'summary' ? <button className="button secondary compact" aria-label={`開始監看 Run ${run.id}`} onClick={() => onWatch(run)}>開始監看</button> : null}<CancelRunButton api={api} run={run} onUpdated={onRun} /></> : null}</div></td>
         </tr>)}</tbody>

@@ -11,10 +11,14 @@ import (
 	"unicode/utf8"
 )
 
-var authorToolNames = []string{"read_draft", "read_validation_report", "update_draft", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "request_validation"}
+var authorToolNames = []string{"read_draft", "read_validation_report", "update_draft", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login", "request_validation"}
 
 func summaryAuthor(a *AuthorTask) bool {
 	return a != nil && a.SkillID != nil && *a.SkillID == "acceptance-summary"
+}
+
+func workspaceAuthor(a *AuthorTask) bool {
+	return a != nil && a.SkillID != nil && *a.SkillID == "workspace-author"
 }
 
 func validAuthorMetadata(a *AuthorTask, script *string) error {
@@ -26,8 +30,8 @@ func validAuthorMetadata(a *AuthorTask, script *string) error {
 		return nil
 	}
 	invalid := errors.New("invalid M7 author snapshot")
-	if a.SkillID == nil || (*a.SkillID != "test-author" && *a.SkillID != "acceptance-summary") || a.SkillVersion == nil || *a.SkillVersion != "1" || a.AllowedTools == nil ||
-		a.EditingSessionID == nil || !uuidPattern.MatchString(*a.EditingSessionID) || a.ContextRevision == nil || *a.ContextRevision < 0 || *a.ContextRevision > 9007199254740991 || a.BaseRevision < 1 || len(a.SourceVersion) == 0 || len(a.ConversationSummary) == 0 {
+	if a.SkillID == nil || (*a.SkillID != "test-author" && *a.SkillID != "acceptance-summary" && !workspaceAuthor(a)) || a.SkillVersion == nil || *a.SkillVersion != "1" || a.AllowedTools == nil ||
+		(!workspaceAuthor(a) && (a.EditingSessionID == nil || !uuidPattern.MatchString(*a.EditingSessionID))) || a.ContextRevision == nil || *a.ContextRevision < 0 || *a.ContextRevision > 9007199254740991 || a.BaseRevision < 1 || len(a.SourceVersion) == 0 || len(a.ConversationSummary) == 0 {
 		return invalid
 	}
 	var source *struct {
@@ -47,6 +51,16 @@ func validAuthorMetadata(a *AuthorTask, script *string) error {
 		var fields map[string]json.RawMessage
 		if json.Unmarshal(a.SourceVersion, &fields) != nil || len(fields) != 3 {
 			return invalid
+		}
+	}
+	if workspaceAuthor(a) && (a.EditingSessionID != nil || source != nil || a.Validation != nil || a.ValidationEvidence != nil || script != nil && *script != "") {
+		return invalid
+	}
+	if workspaceAuthor(a) {
+		for _, tool := range *a.AllowedTools {
+			if !strings.HasPrefix(tool, "browser_") {
+				return invalid
+			}
 		}
 	}
 	var conversation *string
@@ -84,13 +98,44 @@ func boundedAuthorText(value string, limit int, nonempty bool) bool {
 	return utf8.ValidString(value) && len(value) <= limit && !strings.ContainsRune(value, '\x00') && (!nonempty || strings.TrimSpace(value) != "")
 }
 
-func validAuthorArtifact(taskDir string, a *AuthorTask) bool {
+func validAuthorArtifact(taskDir string, a *AuthorTask, context json.RawMessage) bool {
 	var raw json.RawMessage
 	if readOutput(taskDir, "author.json", &raw) != nil {
 		return false
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
+	if workspaceAuthor(a) {
+		var out struct {
+			Message             *string         `json:"message"`
+			Proposal            json.RawMessage `json:"proposal,omitempty"`
+			ConversationSummary *string         `json:"conversationSummary,omitempty"`
+		}
+		if decoder.Decode(&out) != nil || out.Message == nil || !boundedAuthorText(*out.Message, 128000, true) || utf8.RuneCountInString(*out.Message) > 32000 ||
+			out.ConversationSummary != nil && !boundedAuthorText(*out.ConversationSummary, 8192, false) {
+			return false
+		}
+		// Explicit null is not a valid optional string/config in author output.
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(raw, &fields) != nil {
+			return false
+		}
+		if value, ok := fields["conversationSummary"]; ok && bytes.Equal(value, []byte("null")) {
+			return false
+		}
+		if len(out.Proposal) == 0 {
+			return true
+		}
+		snapshot, err := parseWorkspaceContext(context, "")
+		if err != nil || snapshot == nil {
+			return false
+		}
+		roles := map[string]bool{}
+		for _, role := range snapshot.RoleRefs {
+			roles[role.RoleID] = true
+		}
+		return validWorkspaceConfig(out.Proposal, roles) == nil
+	}
 	if summaryAuthor(a) {
 		var out struct {
 			Message           *string `json:"message"`

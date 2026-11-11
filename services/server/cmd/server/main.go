@@ -35,13 +35,31 @@ func main() {
 
 // The distroless image has no shell or curl; Compose probes readiness via this binary.
 func healthcheck() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+net.JoinHostPort("127.0.0.1", env("PORT", "8080"))+"/readyz", nil)
+	cert, _, err := tlsFiles(os.Getenv)
 	if err != nil {
 		return err
 	}
-	client := &http.Client{Transport: &http.Transport{}}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return probeReadiness(ctx, env("PORT", "8080"), cert)
+}
+
+func probeReadiness(ctx context.Context, port, cert string) error {
+	scheme := "http"
+	transport := &http.Transport{}
+	if cert != "" {
+		scheme = "https"
+		config, err := readinessTLS(cert)
+		if err != nil {
+			return err
+		}
+		transport.TLSClientConfig = config
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, scheme+"://"+net.JoinHostPort("127.0.0.1", port)+"/readyz", nil)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Transport: transport}
 	defer client.CloseIdleConnections()
 	response, err := client.Do(request)
 	if err != nil {
@@ -55,6 +73,14 @@ func healthcheck() error {
 }
 
 func run(log *slog.Logger) error {
+	certFile, keyFile, tlsErr := tlsFiles(os.Getenv)
+	if tlsErr != nil {
+		return tlsErr
+	}
+	tlsConfig, err := listenerTLS(certFile, keyFile)
+	if err != nil {
+		return err
+	}
 	databaseURL, token := os.Getenv("DATABASE_URL"), os.Getenv("MANAGER_TOKEN")
 	if databaseURL == "" || token == "" {
 		return errors.New("DATABASE_URL and MANAGER_TOKEN are required")
@@ -76,7 +102,11 @@ func run(log *slog.Logger) error {
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(30 * time.Minute)
-	store := &server.Postgres{DB: db}
+	store := &server.Postgres{DB: db, CredentialTLS: certFile != ""}
+	store.Secrets, err = server.NewSecretVault(os.Getenv("WHIPPET_SECRET_MASTER_KEY"))
+	if err != nil {
+		log.Warn("Workspace credential storage unavailable")
+	}
 	startupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := store.Ping(startupCtx); err != nil {
@@ -102,7 +132,8 @@ func run(log *slog.Logger) error {
 	live := &gateway.LiveGateway{Hub: liveHub}
 	api.WithLiveHandlers(http.HandlerFunc(live.Viewer), http.HandlerFunc(live.Media))
 	httpServer := &http.Server{
-		Addr: net.JoinHostPort("", port), Handler: api.Handler(ws),
+		TLSConfig: tlsConfig,
+		Addr:      net.JoinHostPort("", port), Handler: api.Handler(ws),
 		ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 90 * time.Second,
 		WriteTimeout: 90 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 32 << 10,
 	}
@@ -111,7 +142,15 @@ func run(log *slog.Logger) error {
 	serveErr := make(chan error, 1)
 	go func() {
 		log.Info("server listening", "port", port)
-		serveErr <- httpServer.ListenAndServe()
+		if certFile != "" {
+			err := httpServer.ListenAndServeTLS("", "")
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				err = errors.New("TLS listener failed")
+			}
+			serveErr <- err
+		} else {
+			serveErr <- httpServer.ListenAndServe()
+		}
 	}()
 	select {
 	case err := <-serveErr:

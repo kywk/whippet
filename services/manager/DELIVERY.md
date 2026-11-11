@@ -1,8 +1,92 @@
-# Runtime M7 與既有交付
+# Runtime M8 B 與既有交付
 
 更新：2026-11-12（Asia/Taipei）。Owner：Runtime Agent t32，gpt-6.1-sol／xhigh。
 
-## 最新 M7.3：兩個固定 skill 與唯讀驗收摘要
+## 最新 M8 B：完整 Playwright、AI scope 與角色登入
+
+依 `contracts/mvp-v8.md` **最新 B 裁定及固定來源／resolve／IPC**實作。本節覆蓋下方 A 暫態：不再全面禁止 run／validation／request_validation，不採 AST 子集、network=none 出站代理、HTTP1.1-only、全面禁 WS／登入後 DOM 或替代 reporter。**Runtime 隔離合成驗證通過，不代表 M8 整體或真 AI 全鏈已完成。** LiveView 敏感輸入的代表畫面及 Server→Manager 真 resolve／AI 串接仍待 PM。
+
+固定交付：
+
+- Worker：`runtimes/worker/dist/` **與完整 `skills/`**，含既有 adapter／recipe。沒有新增套件或 SDK，未改 lockfile／Dockerfile；ZIP codec 重用目前固定 Playwright **1.64.1** 的 `playwright-core/lib/utilsBundle` 內 yauzl/yazl，更新 Playwright 版本時需核對該接縫。
+- Manager：`/private/tmp/whippet-manager-m8b`，已確認為 Linux arm64／靜態連結 ELF。沿用既有 Go cache、`GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local`、`-mod=readonly`、`CGO_ENABLED=0`；未下載依賴。
+- 修訂接線提案：`/private/tmp/whippet-m8b-runtime-revised.md`；其中已被 PM 後續固定的內容，以契約和本節實作為準：來源叫 **scriptOrigin**，frame 是 **64 KiB**，正式 helper 採下列五參數形式。舊 `/private/tmp/whippet-m8b-runtime-proposal.md` 的 AST／強代理／禁觀察方案已撤銷，不能當作已同意需求。
+
+### 實作與邊界
+
+1. **來源與完整 runner**：Manager `protocol.go`／`manager.go`／`journal.go` 與 Worker `runner.ts`／author types 透傳、保存 `scriptOrigin=ai|manual|legacy`；缺欄按 legacy 解讀，不猜 manual。模型輸出 schema 不接受來源。manual 保留完整 Playwright／Node，runner 不套 AI 網站 gate、不要求 target 才可執行；資源 owner、角色授權、key 隔離與真報告門檻仍在。ai／legacy 使用已確認 config 的 browser fixture guard；舊無 context 輸入只具未確認空範圍，不能默默放行網頁探索。這不限制任意 Node 全部出站，也不宣稱是 OS 沙箱。
+2. **AI browser tools**：`src/author/scope.ts`／`tools.ts`／`main.ts` 使用 Server 固定的 allowedTools＋workspaceContext.config／有效 targets。任何稿件來源的 AI 工具均套同一 scope。target 可作驗測頁；api dependency 供 XHR/fetch/EventSource/WS，cdn 供 script/style/image/font/media 等子資源；login dependency 的頂層須經可信角色登入操作，不作一般 target。未知／排除／用途錯誤只回安全 origin、固定錯誤及先確認範圍的建議，不帶 URL query/body/header，不自行加許可。WS/WSS 對應 HTTP/HTTPS origin，未全面禁止正常 WS 或 HTTP2。
+3. **redirect／popup**：context route 在首次請求前驗 origin；唯讀核對目前 Playwright 版本發現 redirect chain 後續跳過 route callback，因此加 Chromium 固定 CDP response-stage Location 檢查，保留原生跳轉，不預送表單、不重送 request 或改寫最終頁 URL。新 page/popup 先 ready，再繼續；無法建立檢查時拒絕該次操作。AI context 的 service worker 為 block，避免其繞過 Playwright request interception；manual runner 不受此項設定限制。後續任意自建 browser／原生 Node／page route 改寫不屬全通道保證。
+4. **author 分支**：Workspace 訪談 tools=[] 仍不建 browser/live；Server 確認後可只授予 browser 工具並進最多 8 requests／12 tools。test-author 可按實際能力使用 browser／request_validation；summary 保持零工具／唯讀／單請求。`read_validation_report` 仍只讀保存摘要。skills 實際載入並要求 AI 產稿／修復守已確認範圍，保留完整 spec、有效斷言與人工發布，不讓模型自報 manual。一般 run 不取得 AI key，生成 spec 不在帶 key author 執行。
+5. **Manager resolve**：新增 `credentials.go`，只向設定 Server 的 HTTPS 專用端點 POST 本 attempt 角色參照；不 follow redirect，不弱化 TLS，核對 no-store、裸回應完整 Workspace/Run/attempt/role/ref/version／loginOrigin 與各 4096-byte 非空值。拒絕跨 scope、過期／錯版本與無權角色；不重試、不改用新版本或新 URL。Server 的 assigned/current attempt、控制 session、現行版本／撤銷核對由 Server 實作，Runtime 不以快照代替此權威查驗。
+6. **stdio／記憶體 IPC**：Docker create/start 使用 interactive attach；沿 Docker CLI 分離 stdout/stderr，不自行拼 raw Docker multiplex framing。stdout `credential_request` metadata 在 log 前攔下；秘密回覆只向該容器 stdin `credential_response`，綁 UUID requestId／attempt／固定 roleRefs。每 frame 64 KiB、decoded username/password 各 4096 bytes、單 pending、15 秒、每 attempt 最多 20 次；取消、錯 attempt、舊 requestId、結束後回覆均不套用。秘密不放一般 input、env、argv、journal 或 log。Worker／Manager 只在記憶體保留必要已知值供遮蔽，結束／回收後釋放參照，重連同 attempt 不重跑。
+7. **完整 spec 登入**：`src/login/client.ts`／`broker.ts`／`helper.ts`。父 runner 持有 Docker stdin；Playwright 子程序不直接繼承此 stdin，而經每 attempt 獨占 `/tmp` socket，父目錄 0700、socket 0600，只有 IPC、不存秘密檔案。既有 tsconfig paths 指向可信 shim：
+
+   ```ts
+   import { test, expect } from '@playwright/test';
+   import { loginAs } from 'whippet/login';
+
+   test('role login', async ({ page }) => {
+     await page.goto('/login');
+     const result = await loginAs(page, 'SERVER_SAVED_ROLE_UUID',
+       '#username', '#password', 'button[type=submit]');
+     expect(result).toEqual({ submitted: true });
+     await expect(page.getByRole('heading')).toHaveText('Authenticated');
+   });
+   ```
+
+   helper 由同 Workspace／attempt 的 roleRef 取得值，驗目前頁面及 form.action／formaction 是 Server 的 loginOrigin；manual 也不能把平台角色帳密填到任意站。回傳 **submitted，不是登入成功**，後續真斷言才判定。完整 Node 能觀察自身登入頁/session，這不是對惡意同任務程式的秘密沙箱，亦不授予跨 Workspace 或 Manager/key 權限。
+8. **敏感輸入與原生證據**：`login/privacy.ts`／LiveObserver 在敏感填寫前暫停 live 並清待送影格，固定 DOM 程式對 password／已知值欄位及文字做視覺遮罩，送出後恢復必要觀察；不全面停用登入後 DOM/PNG。snapshot 不帶 input value、移除 URL query/fragment；本次密碼、cookie／hidden 值只在可信記憶體登錄，模型請求及工具輸出按字串葉節點遮蔽，不給 cookie/storageState 工具。
+9. **真報告不造假**：Worker `login/artifacts.ts` 與 Manager `credential_artifacts.go` 檢查原生 HTML 內嵌 ZIP、trace ZIP、JSON／NDJSON／MD 的已知敏感文字；不只掃壓縮 bytes。每檔／entry 最多 64 MiB、每 archive 解壓總量最多 128 MiB、4096 entries、遞迴深度最多 2，禁止無界解壓；不解出任意路徑到檔案系統。只改字串葉節點／安全錯誤內容，**不改數值 stats、真斷言結果或 HTML 的靜態 JS shell**；更動 ZIP/MD 後重算 SHA1 檔名並同步原生引用，Manager 仍先附件後結果。Worker 無法安全處理的個別可選附件會省略、移除其引用並記固定警示；必要 HTML/results 不合格則 failed／不發布，絕不用假報告換通過。Manager recovery 若已用憑證但尚未完成安全處理且已失去記憶體值，保守不傳不明證據、不重跑；journal 只留非機密 used/sanitized 狀態。
+
+### 實際檢查
+
+- 正式 `npm run build` **PASS**。受影響 author mock（M7、M8 A、M8 B）同批 **13/13 PASS、無 skip**；最後 B 新檢查 **4/4 PASS**，包括用途／未知 origin、對模型的固定阻擋、single pending／錯 attempt／late reply／frame 上限，以及真正 ZIP 內容遮蔽保留 unexpected=1、expected=0 和原生 JS shell。沒有模型呼叫。
+- Manager `TestM8`＋`TestM7` **PASS，0.378s**；最後受影響 `TestM8B` 四項 **PASS，0.495s**，包括 source input/journal/default legacy、合成 TLS resolve／no-store／owner／redirect 拒絕、取消 metadata 不轉 log、不送 late 值、嵌入 ZIP 內容處理不變真失敗計數。首次預設沙箱因 loopback bind 禁止而中止，不算 PASS；其後以正常 approval 執行同一必要 TLS 測試，未碰共用服務或真憑證。Linux arm64 cross-build **PASS**。
+- PM 以既有 **whippet-worker:m1** 映像，掛最新 dist＋skills 唯讀、network=none（本測試網站全在同容器 loopback）、`/evidence` 跑以下單一真瀏覽器入口。此 network=none 只是隔離測試配置，**產品沒有改成 network=none**：
+
+   ```sh
+   WHIPPET_M8_BROWSER_TEST=1 WHIPPET_M8_EVIDENCE_DIR=/evidence \
+     node --test dist/login/m8-browser.test.js
+   ```
+
+- **首跑 FAIL**，0.846s：被阻擋 redirect 的非同步 chrome-error 導覽干擾同 page 的下一個 popup 步驟；尚未進入登入／報告，沒有算通過。僅修 fixture：redirect 後 close，popup 使用另一個 page 並 await ready，並明確設定合成站 HTML MIME；產品 gate 未放寬，所有後續斷言保留。只再正式 build PASS，未重跑 mock／其他測試。
+- PM **同一入口 retry PASS：1 test、0 skip、7.184s**。`foreignHits=0`；完整 `loginAs` 真成功為 **expected=1**，刻意斷言失敗為 **unexpected=1**。原生 HTML/results 與 ZIP **解壓內容**的合成敏感值檢查全部通過，沒有假造成功或壓縮 bytes 檢查替代內容驗證。
+- PM 已**目視 PNG**：Authenticated 與 alpha 一般內容可讀，合成敏感 span 已遮蔽；pass/fail PNG SHA256 相同。證據：`/private/tmp/whippet-m8b-runtime-evidence/summary.json`、同目錄 `pm-review.json` 及 pass/fail 子目錄。這是 PM 真容器執行與目視回報；本 Agent 未自行 Docker、模型、安裝、Git、讀印真實憑證、部署或重啟 18080／18085。隔離容器已 rm，預覽未改。
+
+### 剩餘整合與真實限制
+
+- **LiveView 的敏感輸入／恢復觀察畫面仍 pending**；不可把 PNG 目視、DOM CSS 斷言或 byte 掃描當 live 畫面證據。Server→Manager 真 TLS resolve→Worker／真 AI 對話→validation→summary→人工發布仍 pending。Server 的隔離 DB lifecycle PASS 不取代此全鏈。
+- 遮蔽針對可信來源已知的密碼／cookie/token、敏感輸入，不承諾任意網站未知秘密、canvas／圖片／所有編碼與第三方 widget 可自動識別。PNG/live 用來源視覺遮罩，需要代表畫面驗收；已知值 scanner 無法證明像素內容安全。對不能安全保留的證據如實省略／阻擋發布，不削弱報告與 revision 門檻。
+- scope 是 AI 工作流防誤操作，Node raw network、自建 context/browser、工程師任意完整腳本不屬 OS 全通道沙箱；manual 網站範圍豁免不等於角色／跨 Workspace／key 豁免。服務設定與 role 撤銷仍由 Server 權威取消，Manager 確認容器回收後才放名額，不宣稱可瞬間追回已送進同任務程序的值。
+- 本輪不再重建／重測或擴張實作；依 PM 指示只更新本 DELIVERY 後凍結，後續整合／提交由 PM 負責。下方 A／M7 等為歷史交付，以本節 B 裁定為準。
+
+## 最新 M8 A：Workspace 純訪談與非機密提案
+
+依 `contracts/mvp-v8.md` 頂部裁定及 PM 最新補充完成 Runtime A；**不是 M8 完成**。B 的網站探索、強制出站限制、登入與授權撤銷尚未實作；新版正式 run／validation／publish 仍須由 Server 回 `security_unavailable`，不能以訪談 succeeded 當 Playwright 成功。M7 整體 UI／真 AI 驗收也未因此補稱完成。
+
+交付：`runtimes/worker/dist/` **加完整 `runtimes/worker/skills/`**，以及 Linux arm64 binary `/private/tmp/whippet-manager-m8a`。本輪沒有 Docker／部署／重啟共用服務、安裝、Git、讀印真實憑證或模型呼叫。既有 adapter、180000 ms author 時限、author 專用 AI 環境白名單及一般 run 不帶 key 的隔離維持。
+
+- `skills/workspace-author/SKILL.md`、`src/author/skill.ts`：新增固定 `workspace-author@1` 映射，以 module URL 載入，不依賴 cwd；既有 Docker COPY skills 已涵蓋。純訪談不載入 Playwright recipe、不提供 browser／任何工具、不建 observer／live，只一次 Responses request，無自動重試。對話由呼叫者提供 conversationId，沿用既有 model／reasoningEffort／stateless transcript。
+- `src/workspace-context.ts`、`src/author/types.ts`、`loop.ts`：只接受平面 workspaceId／testId／workspaceContext；Workspace 任務 testId、editingSessionId、sourceVersion 均為 null，script 空字串，allowedTools=[]。config 可 null、roleRefs 僅參照；背景作 DATA 而非授權。**A 不接受 requiredPolicyVersion、owner、workspaceSessionId 或另一套 context**。
+- `services/manager/internal/manager/workspace_context.go`、`protocol.go`：有界固定 schema、未知欄位拒絕；name trim 後 1..200 UTF-8 bytes，說明最多 8192 bytes；targets／dependencies 各 20、roles 10、excludedOrigins 40；origin／default URL 2048 字元。正規化後三個 origin 集合互斥且各自去重檢查，矛盾直接失敗、不刪改輸入；dependency purpose 為 login/api/cdn。新角色可 roleId:null，非 null 僅允許快照同 Workspace roleRefs 中的 UUID。訪談 proposal 可尚未完整；正式確認的必填項與至少一 target 由 Server 再驗。
+- `manager.go`、`journal.go`、`artifacts.go`、`author_skill.go`：保存／透傳非機密 Workspace owner/context 與原 author 輸入；explicit null 與空陣列保留。回收後仍依 journal skill/schema 收集同 attempt 的 author.json，不相信模型 metadata；共用容量、取消、回收、重連與去重，不重跑 attempt。Workspace author 成功只收嚴格 `{message,proposal?,conversationSummary?}`（2 MiB），不要求 Playwright 報告；conversationSummary 最多 8192 bytes。拒絕 script、驗證旗標、確認／權限／秘密欄位、null proposal、跨 Workspace 角色及超限內容。
+- A 的 `test-author` 可只用 `read_draft`／`read_validation_report`／`update_draft` 子集維護候選；不建 browser/live。read_validation_report 只讀保存摘要、不抓 URL。新 Workspace 任務若宣告 browser 或 request_validation，Manager／Worker 都拒絕；即使模型私自呼叫未提供的 request_validation，也只得到 tool_failed，不排驗證、不回 true 旗標。summary 維持唯讀、零工具，typed Workspace context 可作背景。舊輸入沒有 M8 欄位仍保持既有相容行為；**新版欄位不得退回舊 bridge 執行**。
+
+實際檢查（只用合成資料、mock fetch／容器 driver）：
+
+1. 正式 `npm run build`：**PASS**；最新 dist 已更新。最後靜態檢視補上 origin 原始路徑／空 port 檢查，避免 WHATWG URL 將 `/a/..` 正規化後誤當根 origin；該最小對齊後只再正式 build 通過，依 PM 指示未重跑 mock／無關測試。下列 mock 結果為此前固定版本的實際執行結果。
+2. `node --test dist/author/m8.test.js`：**5/5 PASS、0 skip**。capture 證明 skill 內文確實進 instructions、平面 config:null／configured roleRefs 進 DATA、空 tools／相同 session／設定 effort、無 browser 動作；涵蓋提問／提案、欄位／scope／角色／byte 邊界、function_call 拒絕、M7 summary 背景與 no-browser edit／request_validation 禁止。沒有真模型。
+3. 受影響 `dist/author/m7.test.js`：**4/4 PASS**（本輪早期與 M8 mock 同次執行）；後續僅新增 M8 scoped 限制與 mock，未重跑無關 legacy 全套。
+4. Manager `go test -mod=readonly ./internal/manager -run '^TestM8|^TestM7|^TestM3Author' -count=1`：**PASS，0.701s**。3 項新 M8 覆蓋 dispatch→input→journal 的 null／owner、去重／取消／回收前占名額、拒絕 live、嚴格輸出與不回退舊 bridge；沿用受影響 M7／M3 key、輸出 schema、去重與回收測試。初次新測試因 mock Manager 沒有 WS 而收到預期 offline ACK 錯誤，已調整測試接收該固定錯誤，再以實際 driver／journal 驗證執行；沒有把此錯誤吞進產品流程。
+5. Linux arm64 交叉編譯：**PASS**，`/private/tmp/whippet-manager-m8a`。使用既有 GOCACHE、`GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local`、`-mod=readonly`、`CGO_ENABLED=0`，未下載依賴。
+6. 新 skill 人工核對 frontmatter 與實際 loader/request capture。skill-creator quick_validate 的 PyYAML 缺依賴限制沿 M7 紀錄，未重試、未安裝，**不宣稱該腳本 PASS**。
+
+整合接手：Server dispatch 必須帶同一已保存的 workspaceId／testId:null／workspaceContext，Workspace author editingSessionId 必須明確 null；成功輸出仍由 Server 核對 Run/attempt/baseRevision/contextRevision 再保存候選。秘密值不允許從專用 credentials API 轉入此通道。這批 schema 限制不能辨認自由文字中的所有秘密，也不是自動遮蔽系統；一般對話仍不得輸入帳密。A 沒有 lease／resolve／秘密值傳遞、網站探索或可宣稱的登入測試。
+
+B 最小受控真網站方案另交 `/private/tmp/whippet-m8b-runtime-proposal.md`，僅提案，等待 PM／使用者固定相容範圍、證據及部署接縫；本輪未先碼代理／IPC／租約框架。
+
+## M7.3：兩個固定 skill 與唯讀驗收摘要（歷史交付）
 
 依 `contracts/mvp-v7.md` **頂部固定決策**及 PM 補充實作；未採暫存提案的 context／mode 或 artifact metadata。只改 `services/manager/`、`runtimes/worker/`；未安裝套件、執行 Git、讀印真實憑證、啟動瀏覽器／Docker、呼叫真模型、部署或重啟服務，未修改 docs／contracts。
 

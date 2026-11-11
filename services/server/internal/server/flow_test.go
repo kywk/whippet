@@ -212,7 +212,7 @@ func newFlowStore() *flowStore {
 }
 
 func (s *flowStore) CreateRun(_ context.Context, testID string) (Run, error) {
-	r := Run{ID: NewID(), TestID: testID, Status: "queued", CreatedAt: time.Now().UTC()}
+	r := Run{ID: NewID(), TestID: stringPointer(testID), Status: "queued", CreatedAt: time.Now().UTC()}
 	s.runs[r.ID] = r
 	s.queue = append(s.queue, r.ID)
 	return r, nil

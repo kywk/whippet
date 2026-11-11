@@ -34,6 +34,7 @@ type Manager struct {
 	events   chan Envelope
 	liveMu   sync.Mutex
 	live     map[string]*liveSession
+	secrets  map[string][]string // attempt-local memory only, never journaled
 }
 
 func New(cfg Config) (*Manager, error) {
@@ -49,7 +50,9 @@ func New(cfg Config) (*Manager, error) {
 		lock.Close()
 		return nil, err
 	}
-	return &Manager{cfg: cfg, docker: dockerCLI{cfg}, http: newHTTPClient(), lock: lock, records: records, controls: make(map[string]context.CancelFunc), events: make(chan Envelope, 64)}, nil
+	m := &Manager{cfg: cfg, http: newHTTPClient(), lock: lock, records: records, controls: make(map[string]context.CancelFunc), events: make(chan Envelope, 64), secrets: make(map[string][]string)}
+	m.docker = dockerCLI{cfg: cfg, remember: m.rememberCredentials}
+	return m, nil
 }
 
 func (m *Manager) Close() error {
@@ -274,7 +277,8 @@ func (m *Manager) accept(ctx context.Context, env Envelope) error {
 		m.mu.Unlock()
 		return errors.New("Worker slot is occupied; MAX_WORKERS reached, including cleanup")
 	}
-	r := record{RunID: env.RunID, AttemptID: env.AttemptID, Phase: "accepted", TimeoutMS: dispatch.TimeoutMS, ResultMessageID: newID(), Kind: dispatch.Kind, Author: dispatch.Author}
+	r := record{RunID: env.RunID, AttemptID: env.AttemptID, Phase: "accepted", TimeoutMS: dispatch.TimeoutMS, ResultMessageID: newID(), Kind: dispatch.Kind, Author: dispatch.Author, ScriptOrigin: normalizedScriptOrigin(dispatch.ScriptOrigin),
+		WorkspaceID: dispatch.WorkspaceID, TestID: dispatch.TestID, WorkspaceContext: dispatch.WorkspaceContext}
 	err := atomicJSON(m.journalPath(r), r)
 	if err == nil {
 		m.records[r.AttemptID] = r
@@ -340,6 +344,19 @@ func (m *Manager) runAttempt(ctx, executionCtx context.Context, r record, dispat
 			return // The journal remains active for next startup's cleanup.
 		}
 	}
+	m.mu.Lock()
+	r.CredentialsUsed = r.CredentialsUsed || m.records[r.AttemptID].CredentialsUsed
+	values := append([]string{}, m.secrets[r.AttemptID]...)
+	m.mu.Unlock()
+	if r.CredentialsUsed && !r.CredentialsSanitized {
+		if err := sanitizeCredentialOutputs(m.taskDir(r), values); err != nil {
+			r.Result = &Result{Status: "failed", Error: "Credential evidence could not be safely retained"}
+			r.Artifacts = nil
+			dispatch = nil
+		} else {
+			r.CredentialsSanitized = true
+		}
+	}
 	if dispatch != nil {
 		result, artifacts := collectAttemptResult(r, m.taskDir(r), outcome)
 		if ctx.Err() != nil {
@@ -358,6 +375,9 @@ func (m *Manager) runAttempt(ctx, executionCtx context.Context, r record, dispat
 	if !m.storeUntil(ctx, r) {
 		return
 	}
+	m.mu.Lock()
+	delete(m.secrets, r.AttemptID)
+	m.mu.Unlock()
 	for _, name := range r.Artifacts {
 		for {
 			if err := m.upload(ctx, r, name); err == nil {
@@ -411,12 +431,14 @@ func (m *Manager) prepare(r record, dispatch Dispatch) error {
 	}
 	return atomicJSON(filepath.Join(m.taskDir(r), "input.json"), WorkerInput{
 		RunID: r.RunID, AttemptID: r.AttemptID, Script: dispatch.Script, TimeoutMS: dispatch.TimeoutMS,
-		Kind: dispatch.Kind, Author: dispatch.Author,
+		Kind: dispatch.Kind, Author: dispatch.Author, ScriptOrigin: normalizedScriptOrigin(dispatch.ScriptOrigin),
 		WorkspaceSettings: dispatch.WorkspaceSettings,
+		WorkspaceID:       dispatch.WorkspaceID, TestID: dispatch.TestID, WorkspaceContext: dispatch.WorkspaceContext,
 	})
 }
 
 func (m *Manager) emit(r record, kind, text string) {
+	text = m.redactCredentialLog(r.AttemptID, text)
 	if r.Kind == "author" {
 		if kind == "started" {
 			text = "Author Worker started"
@@ -457,6 +479,7 @@ func (m *Manager) store(r record) error {
 	defer m.mu.Unlock()
 	if existing, ok := m.records[r.AttemptID]; ok {
 		r.CancelRequested = r.CancelRequested || existing.CancelRequested
+		r.CredentialsUsed = r.CredentialsUsed || existing.CredentialsUsed
 	}
 	if r.CancelRequested && r.Result != nil {
 		result := Result{Status: "cancelled", Error: "Server requested cancellation of this attempt"}

@@ -57,20 +57,24 @@ func decodeSummaryOutput(data []byte) (summaryOutput, error) {
 func editingAuthorInput(s EditingSession, d draftState, skill string, messages []ChatMessage) AuthorInput {
 	tools := []string{}
 	if skill == "test-author" {
-		tools = []string{"read_draft", "read_validation_report", "update_draft", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "request_validation"}
+		tools = []string{"read_draft", "read_validation_report", "update_draft"}
 	}
 	return AuthorInput{SkillID: skill, SkillVersion: "1", AllowedTools: tools, EditingSessionID: s.ID, ContextRevision: s.ContextRevision,
 		SourceVersion: s.SourceVersion, ConversationSummary: s.ConversationSummary, ConversationID: s.ConversationID, BaseRevision: d.Revision, Messages: messages}
 }
 
-func enqueueAuthor(ctx context.Context, tx *sql.Tx, d draftState, input AuthorInput) (Run, error) {
+func enqueueAuthor(ctx context.Context, tx *sql.Tx, d draftState, input AuthorInput, bindings ...Run) (Run, error) {
 	payload, err := json.Marshal(input)
 	if err != nil {
 		return Run{}, err
 	}
 	id := NewID()
-	if _, err = tx.ExecContext(ctx, `INSERT INTO runs(id,test_id,kind,draft_revision,script_snapshot,script_hash,timeout_ms,author_payload,workspace_settings,editing_session_id)
- VALUES($1,$2,'author',$3,$4,$5,$6,$7,$8,$9)`, id, d.TestID, d.Revision, d.Script, d.hash, authorTimeoutMS, string(payload), settingsJSON(d.WorkspaceSettings), d.EditingSessionID); err != nil {
+	var binding Run
+	if len(bindings) > 0 {
+		binding = bindings[0]
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO runs(id,test_id,kind,draft_revision,script_snapshot,script_hash,timeout_ms,author_payload,workspace_settings,editing_session_id,workspace_id,workspace_context,script_origin,authorization_revision,scope_proposal_id)
+ SELECT $1,$2,'author',$3,$4,$5,$6,$7,$8,$9,workspace_id,$10,$11,$12,$13 FROM tests WHERE id=$2`, id, d.TestID, d.Revision, d.Script, d.hash, authorTimeoutMS, string(payload), settingsJSON(d.WorkspaceSettings), d.EditingSessionID, jsonText(d.WorkspaceContext), d.ScriptOrigin, binding.authorizationRevision, binding.scopeProposalID); err != nil {
 		return Run{}, err
 	}
 	return scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs r WHERE r.id=$1`, id))
@@ -88,16 +92,22 @@ func (p *Postgres) validationProof(ctx context.Context, tx *sql.Tx, d draftState
 	}
 	var key sql.NullString
 	var size sql.NullInt64
-	var settings []byte
+	var settings, context []byte
 	err := tx.QueryRowContext(ctx, `SELECT r.id,r.test_id,r.kind,r.draft_revision,r.script_snapshot,COALESCE(r.script_hash,''),r.timeout_ms,r.status,
- a.storage_key,a.size_bytes,r.workspace_settings,r.editing_session_id,COALESCE(r.attempt_id::text,'') FROM runs r
+ a.storage_key,a.size_bytes,r.workspace_settings,r.editing_session_id,COALESCE(r.attempt_id::text,''),r.workspace_context,r.script_origin FROM runs r
  LEFT JOIN artifacts a ON a.run_id=r.id AND a.attempt_id=r.attempt_id AND a.name='report.html' WHERE r.id=$1 FOR UPDATE OF r`, *d.ValidationRunID).
-		Scan(&v.id, &v.testID, &v.kind, &v.revision, &v.script, &v.hash, &v.timeoutMS, &v.status, &key, &size, &settings, &v.sessionID, &v.attemptID)
+		Scan(&v.id, &v.testID, &v.kind, &v.revision, &v.script, &v.hash, &v.timeoutMS, &v.status, &key, &size, &settings, &v.sessionID, &v.attemptID, &context, &v.scriptOrigin)
 	if err != nil {
 		return v, err
 	}
 	v.settings, err = decodeSettings(settings)
+	if err == nil {
+		v.workspaceContext, err = decodeWorkspaceContext(context)
+	}
 	v.reportReady = p.reportReady(key, size)
+	if err == nil {
+		err = loadRunRoles(ctx, tx, v.id)
+	}
 	return v, err
 }
 
@@ -122,8 +132,15 @@ func (p *Postgres) readArtifactBytes(ctx context.Context, tx *sql.Tx, runID, att
 	return data, nil
 }
 
-func summaryBindingMatches(s EditingSession, d draftState, input AuthorInput, script string, settings *WorkspaceSettings) bool {
+func summaryBindingMatches(s EditingSession, d draftState, input AuthorInput, script string, settings *WorkspaceSettings, contexts ...*WorkspaceContext) bool {
 	e := input.ValidationEvidence
+	var snapshot *WorkspaceContext
+	if len(contexts) > 0 {
+		snapshot = contexts[0]
+	}
+	if !sameWorkspaceContext(d.WorkspaceContext, snapshot) {
+		return false
+	}
 	return s.Status == "active" && s.ID == d.EditingSessionID && input.SkillID == "acceptance-summary" && input.SkillVersion == "1" && len(input.AllowedTools) == 0 &&
 		input.EditingSessionID == s.ID && input.ConversationID == s.ConversationID && input.ContextRevision == s.ContextRevision && input.BaseRevision == d.Revision &&
 		script == d.Script && sameWorkspaceSettings(settings, d.WorkspaceSettings) && e != nil && d.ValidationRunID != nil && e.RunID == *d.ValidationRunID &&
@@ -134,13 +151,13 @@ func readSummaryRun(ctx context.Context, q queryDB, id string, lock bool) (Run, 
 	var run Run
 	var input AuthorInput
 	var script string
-	var raw, settings []byte
+	var raw, settings, context []byte
 	suffix := ""
 	if lock {
 		suffix = " FOR UPDATE"
 	}
-	err := q.QueryRowContext(ctx, `SELECT id,status,test_id,script_snapshot,workspace_settings,author_payload FROM runs WHERE id=$1 AND kind='author'`+suffix, id).
-		Scan(&run.ID, &run.Status, &run.TestID, &script, &settings, &raw)
+	err := q.QueryRowContext(ctx, `SELECT id,status,test_id,script_snapshot,workspace_settings,author_payload,workspace_context,script_origin FROM runs WHERE id=$1 AND kind='author'`+suffix, id).
+		Scan(&run.ID, &run.Status, &run.TestID, &script, &settings, &raw, &context, &run.ScriptOrigin)
 	if err != nil {
 		return run, input, script, nil, dbError(err)
 	}
@@ -148,6 +165,9 @@ func readSummaryRun(ctx context.Context, q queryDB, id string, lock bool) (Run, 
 		return run, input, script, nil, ErrConflict
 	}
 	ws, err := decodeSettings(settings)
+	if err == nil {
+		run.WorkspaceContext, err = decodeWorkspaceContext(context)
+	}
 	return run, input, script, ws, err
 }
 
@@ -163,7 +183,7 @@ func readEditingSummary(ctx context.Context, q queryDB, s EditingSession, d draf
 	if input.ValidationEvidence != nil {
 		info.ValidationRunID = input.ValidationEvidence.RunID
 	}
-	info.ValidForCurrentDraft = run.TestID == s.TestID && run.Status == "succeeded" && d.summaryDescription != nil && d.summaryBackground != nil && summaryBindingMatches(s, d, input, script, settings)
+	info.ValidForCurrentDraft = effectiveScriptOrigin(run.ScriptOrigin) == effectiveScriptOrigin(d.ScriptOrigin) && stringValue(run.TestID) == s.TestID && run.Status == "succeeded" && d.summaryDescription != nil && d.summaryBackground != nil && summaryBindingMatches(s, d, input, script, settings, run.WorkspaceContext)
 	return info, nil
 }
 
@@ -176,7 +196,7 @@ func acceptedSummary(ctx context.Context, tx *sql.Tx, s EditingSession, d draftS
 	if err != nil {
 		return out, err
 	}
-	if run.TestID != s.TestID || run.Status != "succeeded" || !summaryBindingMatches(s, d, input, script, settings) || input.ValidationEvidence.AttemptID != proof.attemptID {
+	if effectiveScriptOrigin(run.ScriptOrigin) != effectiveScriptOrigin(d.ScriptOrigin) || stringValue(run.TestID) != s.TestID || run.Status != "succeeded" || !summaryBindingMatches(s, d, input, script, settings, run.WorkspaceContext) || input.ValidationEvidence.AttemptID != proof.attemptID {
 		return out, fmt.Errorf("%w: acceptance summary is stale", ErrConflict)
 	}
 	return summaryOutput{Description: *d.summaryDescription, BackgroundSummary: *d.summaryBackground, Name: d.summaryName}, nil
@@ -210,7 +230,7 @@ func (p *Postgres) CreateSummary(ctx context.Context, testID, sessionID string, 
 		if err != nil {
 			return Run{}, err
 		}
-		if summaryBindingMatches(s, d, input, script, settings) && (r.Status == "succeeded" || !Terminal(r.Status)) {
+		if effectiveScriptOrigin(r.ScriptOrigin) == effectiveScriptOrigin(d.ScriptOrigin) && summaryBindingMatches(s, d, input, script, settings, r.WorkspaceContext) && (r.Status == "succeeded" || !Terminal(r.Status)) {
 			return scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs r WHERE r.id=$1`, r.ID))
 		}
 	}

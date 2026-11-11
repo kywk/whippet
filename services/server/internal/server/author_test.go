@@ -184,7 +184,7 @@ func (conversationHTTPStore) CreateAuthor(_ context.Context, testID, _sessionID,
 	if revision != 2 {
 		return AuthorSubmission{}, ErrConflict
 	}
-	return AuthorSubmission{Run: Run{ID: NewID(), TestID: testID, Kind: "author", Status: "queued", DraftRevision: &revision}, ConversationID: NewID()}, nil
+	return AuthorSubmission{Run: Run{ID: NewID(), TestID: stringPointer(testID), Kind: "author", Status: "queued", DraftRevision: &revision}, ConversationID: NewID()}, nil
 }
 
 func TestConversationHTTPAndStoredDiffFields(t *testing.T) {

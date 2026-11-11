@@ -121,3 +121,17 @@ Owner：<角色>；可修改：<具體路徑>。
 5. 各 owner 回報檔案、介面、實際最小驗證及剩餘限制；PM 整合後才派 t33 跑主流程。無新變更則不重跑已通過檢查。
 
 M8 依相同方式先固定 proposal／機密／網路政策再並行；Runtime 不能只提供 prompt 禁止越界就宣稱交付。出站限制涉及 deploy 的部分由 t32 提出需求、PM 修改。無法在現有依賴完成的項目回報具體阻塞，不私自安裝。
+
+
+## M8 首波已派工（2026-11-12）
+
+使用者授權M7現況提交後直接推進M8；commit bc5f86d，尚未push，M7未完成的整合證據照實保留。t30/t31/t32皆已核對sol/xhigh；現有scope不變。
+
+- t31：一次最小Server提案（Workspace/設定對話/proposal/明確確認/資源scope/AEAD機密與任務授權），PM固定v8前不改共同介面。
+- t32：一次最小Runtime提案（workspace-author@1/登入工具/全通道出站限制/機密生命週期及證據處理），列出deploy必要接縫，不以提示詞或browser route冒充隔離。
+- t30：Workspace建立/修改對話與切換首切片，先做不依賴新API的結構；秘密欄位獨立、不進一般對話或瀏覽器持久儲存。新API/proposal/保存等v8固定，不假造成功。
+- PM：對齊兩提案，固定一次契約後派實作；M7隔離18085維持供後續整合。t33不提前重跑；可操作切片完成再派黑箱。
+
+## M8 下一波：全鏈整合
+
+沿用 t30/t31/t32 sol/xhigh 與原owner界線。PM管隔離部署、整合與docs/contracts；t32提供真Manager→Worker登入/LiveView最短接線並修Runtime阻塞；t31提供真API生命週期接線並修Server阻塞；t30提供一條QA旅程操作清單並修Web阻塞。三位不另跑已通過檢查、不自行部署/Git。真環境就緒再交t33 Muse黑箱；無模型resolve切片先行，真AI及人工作業最後驗收。

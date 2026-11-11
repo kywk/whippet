@@ -111,13 +111,13 @@ M4 真實網站補充驗收：依使用者要求改以 Whippet 登入→搜尋�
 | M7.2 編輯週期與版本背景 | 完成（模組與隔離DB驗證，未全鏈整合）／t31 | migration008、純讀/start/scope、摘要/發布/discard交付；定向單元PASS0.264s、PM隔離DB兩案PASS0.521s；Linux arm64產物 /private/tmp/whippet-server-m7 |
 | M7.3 測試編輯／驗收摘要 skills | 完成（模組驗證，未整合）／t32 | author mock13/13、Manager TestM7三項及TestM3Author、Worker build與Linux arm64 cross-build PASS；dist＋skills需一起部署；quick_validate缺PyYAML未成功，不安裝 |
 | M7.4 主流程整合 | 進行中／PM＋t33 | 既有 Workspace 建測試→驗證→摘要→人工發佈→正式執行→重開續編／放棄一次；不重跑 M1–M6 |
-| M8.0 Workspace 與安全執行契約 | 待辦／PM，t31／t32 提案 | 固定 proposal／revision、target／dependency、機密引用與回收、出站限制及舊資料遷移；不做通用治理平台 |
-| M8.1 Multi-workspace 與設定提案 API | 待辦／t31 | 建立／切換／更新、獨立對話、機密保存、統一 workspace scope；兩工作區隔離檢查 |
-| M8.2 Workspace 對話 UI | 待辦／t30 | 建立／修改背景、範圍確認、專用機密輸入、提案確認；build＋最小操作 |
-| M8.3 Workspace skill 與受限登入探索 | 待辦／t32 | 訪談、確認後探索、帳密表單工具、出站限制與證據遮蔽；合成網站成功／越界拒絕及機密不外洩檢查 |
+| M8.0 Workspace 與安全執行契約 | 進行中（A契約固定，B執行邊界待定）／PM | contracts/mvp-v8.md固定Workspace/訪談/proposal/AEAD第一切片；受限探索/登入測試仍須完成，不接受永久阻擋一般網站測試作M8交付 |
+| M8.1 Multi-workspace 與設定提案 API | 進行中／t31 | 建立／切換／更新、獨立對話、機密保存、統一 workspace scope；兩工作區隔離檢查 |
+| M8.2 Workspace 對話 UI | 完成（A模組接線，整合待驗）／t30 | 真Workspace/對話/Proposal/角色與credentials接線交付；最後build PASS（49 modules），合成API邊界29 checks PASS。TLS代理/真API/瀏覽器/AI整合未驗，B未完成 |
+| M8.3 Workspace skill 與受限登入探索 | 進行中（先訪談skill）／t32 | 訪談、確認後探索、帳密表單工具、出站限制與證據遮蔽；合成網站成功／越界拒絕及機密不外洩檢查 |
 | M9 背景串接與完整操作交付 | 待辦／PM＋各 owner，t33 黑箱 | 新 Workspace→對話設定→新測試→驗證／監看→摘要／發佈→修改設定與續編；既有版本快照不被覆寫、撤銷許可有效 |
 
-推進順序：M7.0 → M7.1／M7.2／M7.3 並行 → M7.4 → M8.0 → M8.1／M8.2／M8.3 並行 → M9。Web 可先依已固定契約製作畫面，不等待所有後端功能；Runtime 範圍限制方案可在 M7 交付後先查核，避免 M8 晚期才發現阻塞。
+推進順序（使用者最新授權允許M7待驗與M8開發並行）：M7.0 → M7.1／M7.2／M7.3 並行 → M7.4整合保留；M8.0 → M8.1／M8.2／M8.3 並行 → M9。Web 可先依已固定契約製作畫面，不等待所有後端功能；Runtime 範圍限制方案可在 M7 交付後先查核，避免 M8 晚期才發現阻塞。
 
 完成以可操作切片與必要檢查為準；文件建立不算功能完成。只針對修改模組建置、核心狀態測試與一條主要流程，通過後推進。黑箱使用合成網站／帳密，不把真機密或專案原始碼傳給 Contributor。
 
@@ -142,3 +142,41 @@ M7契約裁定：Worker 遠端歷史按需檢索延至 M9；M7 先使用週期�
 M7隔離UI環境已啟動：18085，whippet-m7-web/server/postgres及內部network whippet-m7-qa；既有映像＋最新binary/dist建立m7-qa，非乾淨Dockerfile建置。Manager/AI尚未接入。t33已派一般/編輯/續編/放棄首切片黑箱，證據預定/private/tmp/whippet-m7-ui-evidence；原18080未動，整合結束需移除隔離容器/網路。Server最終Linux arm64與Web最終build皆由owner回報PASS，完整AI主流程尚待驗證。
 
 M7預覽連線修正：Web僅掛internal網路時HostConfig雖有18085，實際NetworkSettings.Ports為null，主機curl拒絕連線。新增whippet-m7-preview橋接網路並僅接Web後映射生效；主機Web及API均HTTP200。清理時需一併移除此preview網路。先前只檢查容器內healthcheck不足以證明主機可達，後續預覽交付必須核對主機HTTP。
+
+2026-11-12 使用者授權提交並推進M8：M7現況已提交bc5f86d，未push。M7 UI黑箱僅腳本交付、AI全鏈仍待驗，不以提交代表整合完成。M8首波已派t31/t32一次最小契約提案（/private/tmp/whippet-m8-{server,runtime}-proposal.md），t30開始不依賴新HTTP的Workspace對話介面；三位核對sol/xhigh。PM固定v8後才啟動跨模組API/安全執行接線；未實現的強制範圍限制不可默認放行。
+
+M8契約A已固定：t31 Workspace資料/訪談/proposal/機密AEAD保存，t30接線，t32 workspace-author@1無browser訪談先交付。B受限探索/實際網路腳本/登入證據仍未固定與未交付；Runtime的offline-only提案不能代表使用者同意刪除網路測試。不得將M8或完整產品驗收標完成。
+
+M8 A Server主接線已交付至必要檢查階段：Workspace/proposal/AEAD與TLS listener/healthcheck；尚未A整合驗收。A允許test-author三個離線安全工具，不建browser，不允許request_validation；run/validate/新publish在安全執行未就緒時503。此限制為暫態，B真網站執行仍為必要交付。
+
+M8 Runtime A owner回報固定可整合：Worker build及M8 mock5/5 PASS；Manager TestM8/TestM7/TestM3Author PASS0.701s；Linux arm64產物/private/tmp/whippet-manager-m8a，Worker部署須包含dist＋完整skills。含workspace-author/無browser edit/request_validation拒絕/owner與journal/schema檢查。DELIVERY收尾中，未真模型或Docker整合；B受控真網站執行提案仍待定，不標M8完成。
+
+M8 B提案已收到（/private/tmp/whippet-m8b-runtime-proposal.md），尚未批准：受控TS子集會拒絕任意Node/evaluate/迴圈等，登入後停DOM/影像會限制AI探索，PM已向使用者釐清這兩項產品相容性。HTTP1.1/無WS限制亦未定案。A整合可獨立繼續；B未開始實作，不把提案當使用者授權。
+
+M8 A PM真隔離DB首跑TestM8WorkspaceSliceA FAIL0.292s：案例以空草稿驗證，先回ErrInvalid，未到預期security_unavailable；已交t31補合法非空合成腳本再測原安全斷言，不能以任意error當PASS。log=/private/tmp/whippet-m8a-db-check.log；臨時DB已移除，尚未記A DB通過。
+
+M8 A DB修正後實跑PASS：TestM8WorkspaceSliceA無skip，test0.36s／套件0.706s，log=/private/tmp/whippet-m8a-db-check-retry.log。涵蓋migration009/雙Workspace/proposal/AEAD與scope及有效非空腳本security gate且未排Run。僅修正測試前置，產品錯誤順序與安全斷言未弱化；臨時DB已移除。Server Linux arm64產物/private/tmp/whippet-server-m8-a（含TLS）已交付，A Web/真AI/TLS代理整合仍待驗，B待使用者產品邊界決策。
+
+M8 A隔離預覽已啟動於http://127.0.0.1:18086：whippet-m8a-web/server/postgres，內網whippet-m8a-internal與Web橋接whippet-m8a-preview；Nginx至Server HTTPS verify on/固定SAN/合成短效測試憑證，主機Web/API皆HTTP200。使用快取映像＋固定binary/dist，不是乾淨建置；18080/18085未改。尚無Manager/AI，專用credentials真保存與瀏覽器對話全鏈仍待驗。測試資料與TLS材料只在/private/tmp/whippet-m8a-preview及隔離容器，整合結束需移除；未讀/輸出真憑證。
+
+使用者已裁定M8 B：AI工作流盡量限於測試網站，工程師手動修改的Playwright不套網站限制；其他依PM建議，允許AI探索登入後頁面但不取得密碼/Token。受控AST子集/全部network=none/登入後禁DOM影像/協定降級不採用。B改沿既有runner與真報告，以AI工具範圍檢查/來源辨識/專用登入及敏感資料處理交付；不再等待先前選項答案。下一步一次對齊來源與credential wire後實作。
+
+M8 B Web無新wire介面準備已交付：工程師手動修改/回AI續編入口，僅切本機操作方式、不改來源或權限；一般仍唯讀。typecheck PASS，未重跑Vite/瀏覽器；待Server來源/分能力契約固定再接線。t31修訂提案與t32 AI工具origin gate持續進行；18086仍A固定預覽。
+
+M8 B來源/四capabilities/確認快照契約已固定（v8 B段）：ai/manual/legacy由Server寫入路徑裁定，legacy保守範圍、人工完整執行，no-op不洗來源。t31啟動migration010及能力/runner/發布恢復、t30接權威欄位、t32接scriptOrigin與登入helper。保留A通過證據；B僅做新分支必要檢查與合成真登入流程，不重跑全套。
+
+M8 B Web分來源/四能力接線已交付：scriptOrigin ai/manual/legacy與unknown語義、各能力gate、正式Run依發布版本、離線對話可用；最後build PASS（50 modules），定向API/能力合成48 checks PASS。未部署/真API/瀏覽器整合，18086仍A。Server B主流程已落碼（010/來源/能力/確認context/resolve/角色取消），定向單元與TestM8BServerLifecycle隔離DB待驗，不標B完成。
+
+M8 B隔離DB首跑FAIL：TestM8BServerLifecycle於line252撤銷已供候選探索Run使用的role回resource not found，套件0.522s；前置resolve與同attempt重送已過。已交t31查role可見性/候選stale與撤銷邊界，保留原取消consumer斷言。log=/private/tmp/whippet-m8b-db-check.log；臨時DB已清，B DB未通過。
+
+M8 B DB修正後PASS：TestM8BServerLifecycle無skip，test0.41s／套件0.704s；log=/private/tmp/whippet-m8b-db-check-retry.log。根因roleEligible與confirmedProposal對同範圍stale/context_changed判定不一致，已修正並保留跨owner/撤銷限制。臨時DB已移除；Server需交修正後新binary。Runtime B主接線已落碼、Node build PASS，必要mock與合成登入真報告入口收尾中；真容器/模型/瀏覽器全鏈仍待驗。
+
+Server B修正後固定binary已交付/private/tmp/whippet-server-m8-b（Linux arm64 CGO0，含010/resolve/roleEligible），沿用PM DB0.704s與owner定向單元。PM已快照Server及Web B到/private/tmp/whippet-m8b-images，準備m8b-qa映像；未替換18085/18086、非乾淨依賴建置。Runtime固定產物尚待交付，B環境/全鏈未完成。
+
+M8 B Runtime固定產物已交付（dist＋完整skills、/private/tmp/whippet-manager-m8b）；PM以快取Worker映像、network=none、容器內合成網站跑單一真瀏覽器案例。首跑FAIL0.846s：被阻擋redirect後chrome-error導覽打斷下一popup導覽，尚未執行登入/報告斷言；已交t32隔離測試page並保留原斷言，待固定後重跑。未用模型/key/DB/共享服務，PNG/live仍待驗，不記B完成。
+
+M8 B Runtime合成真瀏覽器retry PASS：fixture隔離redirect/popup page後，同一入口1 test/0 skip，7.184s；未改產品origin gate或弱化斷言。未知origin命中0、loginAs完整spec真成功與刻意斷言失敗、原生HTML/results及解壓ZIP已知合成敏感值檢查通過。證據/private/tmp/whippet-m8b-runtime-evidence/summary.json；PM目視PNG的Authenticated/alpha可讀且敏感文字遮蔽，成功/失敗附件SHA256相同，pm-review.json記錄。僅容器內合成網站及stdin合成resolve回應，未驗實際Server→Manager resolve/真AI/LiveView，B全鏈仍待驗；容器已自動移除，既有預覽未變更。
+
+## 下一波：M8 全鏈整合（2026-11-12）
+
+狀態：進行中。使用者授權先 commit M8 A/B 固定成果，再推進下一波。沿用既有模組與隔離測試證據，不重跑全套。PM負責獨立B環境及部署；t32負責真Manager TLS resolve到Worker loginAs與LiveView接線；t31負責提供最短真API建置/設定/草稿驗證/摘要/發布流程及修正整合阻塞；t30負責新版Web單一QA旅程的操作接縫及修正UI阻塞。先完成無模型金鑰的真resolve登入/報告/回收，再接真AI對話到驗收摘要/人工發布與LiveView。t33待可操作環境就緒後黑箱驗收。不得把mock或直接runner合成回應當成全鏈；不安裝、不輸出機密、不動舊預覽、不push。M9歷史retrieval不搶先擴張。

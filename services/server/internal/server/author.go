@@ -111,11 +111,11 @@ func (p *Postgres) completeAuthor(ctx context.Context, testID, managerID, runID,
 	}
 	var reported sql.NullString
 	var baseRevision int
-	var rawInput, rawSettings []byte
+	var rawInput, rawSettings, rawContext []byte
 	var sessionID *string
-	var script string
-	if err = tx.QueryRowContext(ctx, `SELECT author_reported_status,draft_revision,author_payload,editing_session_id,script_snapshot,workspace_settings FROM runs WHERE id=$1`, runID).
-		Scan(&reported, &baseRevision, &rawInput, &sessionID, &script, &rawSettings); err != nil {
+	var script, origin string
+	if err = tx.QueryRowContext(ctx, `SELECT author_reported_status,draft_revision,author_payload,editing_session_id,script_snapshot,workspace_settings,workspace_context,script_origin FROM runs WHERE id=$1`, runID).
+		Scan(&reported, &baseRevision, &rawInput, &sessionID, &script, &rawSettings, &rawContext, &origin); err != nil {
 		return err
 	}
 	result, duplicate, err := authorResultDisposition(status, reported.String, incoming)
@@ -142,6 +142,10 @@ func (p *Postgres) completeAuthor(ctx context.Context, testID, managerID, runID,
 			} else {
 				var input AuthorInput
 				settings, settingsErr := decodeSettings(rawSettings)
+				runContext, contextErr := decodeWorkspaceContext(rawContext)
+				if settingsErr == nil {
+					settingsErr = contextErr
+				}
 				if json.Unmarshal(rawInput, &input) != nil || settingsErr != nil || input.BaseRevision != baseRevision || input.ConversationID != session.ConversationID {
 					result = Result{Status: "failed", Error: authorFailureMessage}
 				} else if input.SkillID == "acceptance-summary" {
@@ -154,7 +158,7 @@ func (p *Postgres) completeAuthor(ctx context.Context, testID, managerID, runID,
 						result = Result{Status: "failed", Error: authorFailureMessage}
 					} else {
 						proof, proofErr := p.validationProof(ctx, tx, d)
-						if proofErr != nil || checkPublication(d.Revision, true, d, proof) != nil || !summaryBindingMatches(session, d, input, script, settings) ||
+						if effectiveScriptOrigin(origin) != effectiveScriptOrigin(d.ScriptOrigin) || proofErr != nil || checkPublication(d.Revision, true, d, proof) != nil || !summaryBindingMatches(session, d, input, script, settings, runContext) ||
 							input.ValidationEvidence.AttemptID != proof.attemptID || d.summaryRunID == nil || *d.summaryRunID != runID {
 							result = Result{Status: "failed", Error: "Acceptance summary no longer matches the current editing session."}
 						} else if _, err = tx.ExecContext(ctx, `UPDATE drafts SET summary_description=$2,summary_background=$3,summary_name=$4 WHERE test_id=$1 AND summary_run_id=$5`, testID, out.Description, out.BackgroundSummary, out.Name, runID); err != nil {
@@ -173,7 +177,7 @@ func (p *Postgres) completeAuthor(ctx context.Context, testID, managerID, runID,
 						result = Result{Status: "failed", Error: authorFailureMessage}
 					} else {
 						contextMatches := input.SkillID == "" || input.ContextRevision == session.ContextRevision
-						snapshotMatches := contextMatches && d.Revision == baseRevision && script == d.Script && sameWorkspaceSettings(settings, d.WorkspaceSettings)
+						snapshotMatches := effectiveScriptOrigin(origin) == effectiveScriptOrigin(d.ScriptOrigin) && contextMatches && d.Revision == baseRevision && script == d.Script && sameWorkspaceSettings(settings, d.WorkspaceSettings) && sameWorkspaceContext(runContext, d.WorkspaceContext)
 						if !snapshotMatches {
 							plan.changed = false
 							plan.requestValidation = false
@@ -183,7 +187,7 @@ func (p *Postgres) completeAuthor(ctx context.Context, testID, managerID, runID,
 						}
 						var appliedRevision *int
 						if plan.changed {
-							d, err = saveDraftScript(ctx, tx, d, plan.script)
+							d, err = saveDraftScript(ctx, tx, d, plan.script, "ai")
 							if err != nil {
 								return err
 							}
@@ -191,6 +195,15 @@ func (p *Postgres) completeAuthor(ctx context.Context, testID, managerID, runID,
 							appliedRevision = &applied
 						}
 						var validationID *string
+						if plan.requestValidation {
+							if _, _, permissionErr := executionForDraft(ctx, tx, d); permissionErr != nil {
+								if !errors.Is(permissionErr, ErrScopeConfirmation) {
+									return permissionErr
+								}
+								plan.requestValidation = false
+								plan.message += "\n\nscope_confirmation_required：AI 套用後的草稿尚無有效確認範圍，未排驗證；草稿已保存。"
+							}
+						}
 						if plan.requestValidation {
 							validation, err := enqueueValidation(ctx, tx, d)
 							if err != nil {

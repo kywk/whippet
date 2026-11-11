@@ -10,8 +10,14 @@ import { exportHTMLReport } from "./report-artifacts.js";
 import { exportFailureArtifacts } from "./failure-artifacts.js";
 import { fixtureBridge } from "./live/fixture-bridge.js";
 import { validateWorkspaceSettings, type WorkspaceSettings } from "./workspace.js";
+import {validateWorkspaceContext,type WorkspaceContext} from './workspace-context.js';
+import {CredentialClient} from './login/client.js';
+import {loginBroker} from './login/broker.js';
+import {sanitizeLoginOutputs} from './login/artifacts.js';
+import {unconfirmedBrowserScope} from './author/scope.js';
 
 interface Input {
+  workspaceId?:string;testId?:string|null;workspaceContext?:WorkspaceContext|null;scriptOrigin?:'ai'|'manual'|'legacy';
   runId: string;
   attemptId: string;
   script: string;
@@ -26,9 +32,11 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 let child: ChildProcess | undefined;
 let cancelled = false;
 let killTimer: NodeJS.Timeout | undefined;
+let credentials:CredentialClient|undefined;
+let broker:Awaited<ReturnType<typeof loginBroker>>|undefined;
 
 function log(message: string): void {
-  process.stdout.write(`${JSON.stringify({ kind: "log", message: message.slice(0, 8192) })}\n`);
+  process.stdout.write(`${JSON.stringify({ kind: "log", message: (credentials?.secrets.redact(message)??message).slice(0, 8192) })}\n`);
 }
 
 function stopChild(): void {
@@ -55,7 +63,13 @@ function validateInput(value: unknown): Input {
     typeof input.timeoutMs !== "number" || !Number.isInteger(input.timeoutMs) || input.timeoutMs < 1 || input.timeoutMs > 3600000
   ) throw new Error("input.json requires UUID runId/attemptId, a script <=2MiB and timeoutMs in 1..3600000");
   validateWorkspaceSettings(input.workspaceSettings);
-  return input as Input;
+  if(input.scriptOrigin!==undefined&&!['ai','manual','legacy'].includes(input.scriptOrigin))throw new Error('invalid_script_origin');
+  if(input.workspaceId!==undefined){
+    if(!uuid.test(input.workspaceId)||typeof input.testId!=='string'||!uuid.test(input.testId))throw new Error('invalid_workspace_owner');
+    validateWorkspaceContext(input.workspaceContext,input.workspaceId);
+    if(input.scriptOrigin!=='manual'&&!input.workspaceContext?.config?.targets.length)throw new Error('scope_confirmation_required');
+  }
+  return {...input,scriptOrigin:input.scriptOrigin??'legacy'} as Input;
 }
 
 async function readJSON(path: string): Promise<unknown> {
@@ -90,9 +104,10 @@ async function execute(input: Input, taskDir: string): Promise<WorkerResult> {
   await writeFile(join(taskDir, "package.json"), '{"type":"commonjs"}\n', "utf8");
   await writeFile(join(taskDir, "run.spec.ts"), input.script, "utf8");
   const bridgePath = join(taskDir, "live-fixture.cjs");
-  await writeFile(bridgePath, fixtureBridge(new URL("./live/observer.js", import.meta.url).href), "utf8");
+  await writeFile(bridgePath, fixtureBridge(new URL("./live/observer.js", import.meta.url).href,{scopeURL:new URL('./author/scope.js',import.meta.url).href,scope:input.scriptOrigin!=='manual'?input.workspaceContext?.config??unconfirmedBrowserScope():null,privacyURL:new URL('./login/privacy.js',import.meta.url).href}), "utf8");
+  const loginShim=join(taskDir,'login.cjs');await writeFile(loginShim,`exports.loginAs=async(...args)=>(await import(${JSON.stringify(new URL('./login/helper.js',import.meta.url).href)})).loginAs(...args);\n`,'utf8');
   const tsconfigPath = join(taskDir, "tsconfig.json");
-  await writeFile(tsconfigPath, JSON.stringify({ compilerOptions: { baseUrl: taskDir, paths: { "@playwright/test": [bridgePath] } } }), "utf8");
+  await writeFile(tsconfigPath, JSON.stringify({ compilerOptions: { baseUrl: taskDir, paths: { "@playwright/test": [bridgePath],"whippet/login":[loginShim] } } }), "utf8");
   const summaryPath = join(taskDir, "runtime-summary.json");
   const htmlDir = join(outputDir, "html");
   const reporterPath = fileURLToPath(new URL("./reporter.js", import.meta.url));
@@ -127,7 +142,7 @@ async function execute(input: Input, taskDir: string): Promise<WorkerResult> {
     cwd: taskDir,
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, CI: "1", FORCE_COLOR: "0", PLAYWRIGHT_HTML_OPEN: "never", PLAYWRIGHT_HTML_ATTACHMENTS_BASE_URL: "data/", PLAYWRIGHT_HTML_NO_COPY_PROMPT: "1" },
+    env: { ...process.env,...(broker?{WHIPPET_LOGIN_SOCKET:broker.path}:{}), CI: "1", FORCE_COLOR: "0", PLAYWRIGHT_HTML_OPEN: "never", PLAYWRIGHT_HTML_ATTACHMENTS_BASE_URL: "data/", PLAYWRIGHT_HTML_NO_COPY_PROMPT: "1" },
   });
   const stdout = child.stdout;
   const stderr = child.stderr;
@@ -174,12 +189,15 @@ async function main(): Promise<void> {
     const info = await lstat(join(workDir, "input.json"));
     if (!info.isFile() || info.size > 13 * 1024 * 1024) throw new Error("input.json is not a regular file <=13MiB");
     const input = validateInput(await readJSON(join(workDir, "input.json")));
+    if(input.workspaceId){credentials=new CredentialClient(input);broker=await loginBroker(credentials);}
     taskDir = await mkdtemp(join(tmpdir(), "whippet-playwright-"));
     result = await execute(input, taskDir);
   } catch (error) {
     result = { status: cancelled ? "cancelled" : "failed", error: (error instanceof Error ? error.message : String(error)).slice(0, 8192) };
     log(`Worker infrastructure error: ${result.error}`);
   }
+  credentials?.close();if(broker)await broker.close();
+  if(credentials){try{await sanitizeLoginOutputs(outputDir,credentials.secrets,log);}catch{result={status:cancelled?'cancelled':'failed',error:'Credential evidence could not be safely retained'};for(const name of ['report.html','results.json','data'])await rm(join(outputDir,name),{recursive:true,force:true});}}
   // Manager reads this file only after the container stops. Rename still
   // prevents a partially written manifest if the Worker receives SIGKILL.
   const temporary = join(outputDir, ".result.tmp");

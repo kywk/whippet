@@ -260,7 +260,11 @@ func (e *Engine) Tick(ctx context.Context) error {
 		switch {
 		case a.Status == "cancelling":
 			// A lost dispatch must not leave an unknown cancel permanently occupying a slot.
-			if !a.Acked {
+			replayAllowed := true
+			if policy, ok := e.store.(interface{ CanDispatch(Assignment) bool }); ok {
+				replayAllowed = policy.CanDispatch(a)
+			}
+			if !a.Acked && replayAllowed {
 				if err := e.send(s, a, "dispatch"); err != nil {
 					return err
 				}
@@ -298,12 +302,16 @@ func (e *Engine) send(s *Session, a Assignment, kind string) error {
 			taskKind = "author"
 		}
 		payload = struct {
+			ScriptOrigin      string             `json:"scriptOrigin"`
+			WorkspaceID       string             `json:"workspaceId"`
+			TestID            *string            `json:"testId"`
+			WorkspaceContext  *WorkspaceContext  `json:"workspaceContext,omitempty"`
 			Kind              string             `json:"kind"`
 			Script            string             `json:"script"`
 			TimeoutMS         int                `json:"timeoutMs"`
 			Author            *AuthorInput       `json:"author,omitempty"`
 			WorkspaceSettings *WorkspaceSettings `json:"workspaceSettings,omitempty"`
-		}{taskKind, a.Script, a.TimeoutMS, a.Author, a.WorkspaceSettings}
+		}{effectiveScriptOrigin(a.ScriptOrigin), a.WorkspaceID, a.TestID, a.WorkspaceContext, taskKind, a.Script, a.TimeoutMS, a.Author, a.WorkspaceSettings}
 	}
 	if err := s.peer.Send(NewEnvelope(kind, s.managerID, a.ID, a.AttemptID, payload)); err != nil {
 		// The committed attempt is preserved, including when the write outcome is unknown.

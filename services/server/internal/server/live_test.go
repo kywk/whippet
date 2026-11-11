@@ -162,7 +162,7 @@ func (s *liveFlowStore) LiveTarget(ctx context.Context, id string) (LiveTarget, 
 	if err != nil {
 		return LiveTarget{}, err
 	}
-	target := LiveTarget{RunID: id, TestID: run.TestID, Status: run.Status}
+	target := LiveTarget{RunID: id, TestID: stringValue(run.TestID), Status: run.Status}
 	if assigned := s.assigned[id]; assigned != nil {
 		target.ManagerID, target.AttemptID = assigned.ManagerID, assigned.AttemptID
 	}

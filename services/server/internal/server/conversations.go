@@ -148,7 +148,11 @@ func (p *Postgres) CreateAuthor(ctx context.Context, testID, sessionID, content 
 		}
 		input.Validation = validationSnapshot(runID, status, errorMessage)
 	}
-	run, err := enqueueAuthor(ctx, tx, d, input)
+	auth, proposal, err := p.prepareAuthor(ctx, tx, d, &input)
+	if err != nil {
+		return AuthorSubmission{}, err
+	}
+	run, err := enqueueAuthor(ctx, tx, d, input, Run{authorizationRevision: auth, scopeProposalID: proposal})
 	if err != nil {
 		return AuthorSubmission{}, err
 	}

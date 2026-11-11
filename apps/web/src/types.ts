@@ -8,6 +8,77 @@ export interface Workspace {
   name: string;
 }
 
+export interface WorkspaceConfig {
+  name: string;
+  purpose: string;
+  backgroundSummary: string;
+  targets: { name: string; purpose: string; origin: string }[];
+  dependencies: { name: string; purpose: 'login' | 'api' | 'cdn'; origin: string }[];
+  excludedOrigins: string[];
+  exclusions: string;
+  loginRoles: { roleId: string | null; name: string; loginMethod: 'form'; loginOrigin: string }[];
+  defaultTestUrl: string;
+  timeoutMs: number;
+}
+
+export interface WorkspaceRoleRef {
+  roleId: string;
+  secretRef: string | null;
+  secretVersion: number | null;
+  configured: boolean;
+}
+
+export type ScriptOrigin = 'ai' | 'manual' | 'legacy';
+export interface WorkspaceCapability { available: boolean; reason: string | null }
+export interface WorkspaceCapabilities {
+  aiExploration?: WorkspaceCapability;
+  aiExecution?: WorkspaceCapability;
+  manualExecution?: WorkspaceCapability;
+  credentialLogin?: WorkspaceCapability;
+}
+
+export interface WorkspaceProposal {
+  id: string;
+  workspaceId: string;
+  conversationId: string;
+  sourceRunId: string;
+  baseRevision: number;
+  contextRevision: number;
+  status: 'pending' | 'applied' | 'cancelled' | 'stale' | 'superseded';
+  content: WorkspaceConfig;
+  scopeHash: string;
+  scopeConfirmed: boolean;
+  invalidationReason: string | null;
+  appliedRevision: number | null;
+  createdAt: string;
+}
+
+export interface WorkspaceDetail extends Workspace, WorkspaceSettingsSnapshot {
+  lifecycle: 'draft' | 'needs_confirmation' | 'active';
+  revision: number;
+  authorizationRevision: number;
+  scopeStatus: 'unconfirmed' | 'confirmed' | 'revoking';
+  settings: WorkspaceConfig | null;
+  conversationId: string;
+  activeRunId: string | null;
+  currentProposal: WorkspaceProposal | null;
+  roles: WorkspaceRoleRef[];
+  secretsAvailable: boolean;
+  executionAvailable: boolean;
+  unavailableReason: string | null;
+  capabilities?: WorkspaceCapabilities;
+}
+
+export interface WorkspaceConversationData {
+  id: string;
+  workspaceId: string;
+  ownerType: 'workspace';
+  contextRevision: number;
+  conversationSummary: string | null;
+  messages: Message[];
+  activeRunId: string | null;
+}
+
 export interface WorkspaceSite {
   name: string;
   url: string;
@@ -57,7 +128,8 @@ export type RunStatus = typeof RUN_STATUSES[number];
 
 export interface Run {
   id: string;
-  testId: string;
+  testId: string | null;
+  workspaceId?: string;
   status: RunStatus;
   createdAt: string;
   startedAt?: string;
@@ -69,7 +141,8 @@ export interface Run {
   versionId?: string;
   workspaceSettings?: WorkspaceSettingsSnapshot;
   editingSessionId?: string | null;
-  authorMode?: 'edit' | 'summary';
+  authorMode?: 'edit' | 'summary' | 'workspace';
+  scriptOrigin?: ScriptOrigin;
 }
 
 export interface Draft {
@@ -82,6 +155,7 @@ export interface Draft {
   reportUrl?: string;
   workspaceSettings?: WorkspaceSettingsSnapshot;
   editingSessionId?: string;
+  scriptOrigin?: ScriptOrigin;
 }
 
 export interface Version {
@@ -96,6 +170,7 @@ export interface Version {
   backgroundSummary: string | null;
   summaryRunId: string | null;
   editingSessionId: string | null;
+  scriptOrigin?: ScriptOrigin;
 }
 
 export interface AcceptanceSummary {
@@ -175,7 +250,7 @@ export function isActiveRun(run: Run): boolean {
 
 export interface WhippetApi {
   login(signal?: AbortSignal): Promise<DevUser>;
-  listWorkspaces(signal?: AbortSignal): Promise<Workspace[]>;
+  listWorkspaces(signal?: AbortSignal): Promise<WorkspaceDetail[]>;
   listTests(workspaceId: string, signal?: AbortSignal): Promise<Test[]>;
   getTest(testId: string, signal?: AbortSignal): Promise<Test>;
   createRun(testId: string, signal?: AbortSignal): Promise<Run>;
@@ -198,4 +273,14 @@ export interface WhippetApi {
   getEditingSession(testId: string, sessionId: string, signal?: AbortSignal): Promise<EditingSession>;
   discardEditingSession(testId: string, sessionId: string, revision: number, signal?: AbortSignal): Promise<EditingSession>;
   requestSummary(testId: string, editingSessionId: string, revision: number, validationRunId: string, signal?: AbortSignal): Promise<Run>;
+  getWorkspace(workspaceId: string, signal?: AbortSignal): Promise<WorkspaceDetail>;
+  createWorkspace(name: string | undefined, signal?: AbortSignal): Promise<WorkspaceDetail>;
+  getWorkspaceConversation(workspaceId: string, signal?: AbortSignal): Promise<WorkspaceConversationData>;
+  sendWorkspaceMessage(workspaceId: string, input: { content: string; revision: number; contextRevision: number }, signal?: AbortSignal): Promise<{ run: Run; conversationId: string }>;
+  getWorkspaceProposal(workspaceId: string, proposalId: string, signal?: AbortSignal): Promise<WorkspaceProposal>;
+  confirmWorkspaceScope(workspaceId: string, proposalId: string, baseRevision: number, signal?: AbortSignal): Promise<WorkspaceProposal>;
+  confirmWorkspaceProposal(workspaceId: string, proposalId: string, baseRevision: number, signal?: AbortSignal): Promise<{ workspace: WorkspaceDetail; proposal: WorkspaceProposal }>;
+  cancelWorkspaceProposal(workspaceId: string, proposalId: string, baseRevision: number, signal?: AbortSignal): Promise<WorkspaceProposal>;
+  saveWorkspaceCredentials(workspaceId: string, roleId: string, input: { expectedSecretVersion: number; username: string; password: string }, signal?: AbortSignal): Promise<WorkspaceRoleRef>;
+  revokeWorkspaceCredentials(workspaceId: string, roleId: string, expectedSecretVersion: number, signal?: AbortSignal): Promise<{ roleId: string; secretRef: string | null; configured: boolean }>;
 }
