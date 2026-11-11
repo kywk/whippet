@@ -8,6 +8,30 @@ export interface Workspace {
   name: string;
 }
 
+export interface WorkspaceSite {
+  name: string;
+  url: string;
+}
+
+export interface WorkspaceSettingsSnapshot {
+  revision: number;
+  sites: WorkspaceSite[];
+  defaultTestUrl: string;
+  timeoutMs: number;
+}
+
+export interface WorkspaceSettingsResponse extends WorkspaceSettingsSnapshot {
+  id: string;
+  name: string;
+}
+
+export interface WorkspaceSettingsPatch {
+  revision: number;
+  sites?: WorkspaceSite[];
+  defaultTestUrl?: string;
+  timeoutMs?: number;
+}
+
 export interface Test {
   id: string;
   workspaceId: string;
@@ -35,6 +59,7 @@ export interface Run {
   kind?: 'run' | 'validation' | 'author';
   draftRevision?: number;
   versionId?: string;
+  workspaceSettings?: WorkspaceSettingsSnapshot;
 }
 
 export interface Draft {
@@ -45,6 +70,7 @@ export interface Draft {
   validationRunId?: string;
   validationStatus?: RunStatus;
   reportUrl?: string;
+  workspaceSettings?: WorkspaceSettingsSnapshot;
 }
 
 export interface Version {
@@ -54,6 +80,7 @@ export interface Version {
   script: string;
   createdAt: string;
   validationRunId: string;
+  workspaceSettings?: WorkspaceSettingsSnapshot;
 }
 
 export interface Message {
@@ -74,6 +101,13 @@ export interface Conversation {
   testId: string;
   messages: Message[];
   activeRunId?: string;
+}
+
+export interface RunArtifact {
+  name: string;
+  size: number;
+  contentType: string;
+  url: string;
 }
 
 export const STATUS_LABELS: Record<RunStatus, string> = {
@@ -110,4 +144,7 @@ export interface WhippetApi {
   cancelRun(runId: string, signal?: AbortSignal): Promise<Run>;
   getConversation(testId: string, signal?: AbortSignal): Promise<Conversation>;
   sendMessage(testId: string, content: string, revision: number, signal?: AbortSignal): Promise<{ run: Run; conversationId: string }>;
+  getWorkspaceSettings(workspaceId: string, signal?: AbortSignal): Promise<WorkspaceSettingsResponse>;
+  updateWorkspaceSettings(workspaceId: string, input: WorkspaceSettingsPatch, signal?: AbortSignal): Promise<WorkspaceSettingsResponse>;
+  getRunArtifacts(runId: string, signal?: AbortSignal): Promise<RunArtifact[]>;
 }

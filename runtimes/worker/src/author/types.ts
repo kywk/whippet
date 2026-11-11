@@ -1,9 +1,12 @@
+import { validateWorkspaceSettings, type WorkspaceSettings } from "../workspace.js";
+
 export interface AuthorInput {
   kind: "author";
   runId: string;
   attemptId: string;
   script: string;
   timeoutMs: number;
+  workspaceSettings?: WorkspaceSettings;
   author: {
     conversationId: string;
     baseRevision: number;
@@ -36,6 +39,7 @@ export function validateAuthorInput(value: unknown): AuthorInput {
     !Number.isSafeInteger(v.author.baseRevision) || v.author.baseRevision < 0 ||
     !Array.isArray(v.author.messages) || v.author.messages.length < 1 || v.author.messages.length > 12
   ) throw new AuthorError("invalid_input");
+  try { validateWorkspaceSettings(v.workspaceSettings); } catch { throw new AuthorError("invalid_input"); }
   let chars = 0;
   let hasUser = false;
   for (const message of v.author.messages) {

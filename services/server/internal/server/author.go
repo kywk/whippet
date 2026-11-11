@@ -113,7 +113,7 @@ func (p *Postgres) completeAuthor(ctx context.Context, testID, managerID, runID,
 		return err
 	}
 	defer tx.Rollback()
-	// Match M2's Test -> Draft -> Run lock order. Posting a turn and applying a
+	// Match Workspace -> Test -> Draft -> Run lock order. Posting a turn and applying a
 	// result cannot race with a human save or create two active author runs.
 	d, err := lockDraft(ctx, tx, testID)
 	if err != nil {

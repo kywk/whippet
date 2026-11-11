@@ -15,7 +15,8 @@ import (
 
 func openArtifact(taskDir, name string) (*os.File, error) {
 	shot := screenshotPattern.MatchString(name)
-	if name != "report.html" && name != "results.json" && name != "result.json" && name != "author.json" && !shot {
+	evidence := evidencePattern.MatchString(name)
+	if name != "report.html" && name != "results.json" && name != "result.json" && name != "author.json" && !shot && !evidence {
 		return nil, errors.New("unsupported artifact name")
 	}
 	// OpenRoot rejects symlinks escaping the output directory. A Worker must not
@@ -25,7 +26,7 @@ func openArtifact(taskDir, name string) (*os.File, error) {
 		return nil, err
 	}
 	defer root.Close()
-	if shot {
+	if shot || evidence {
 		data, err := root.Lstat("data")
 		if err != nil {
 			return nil, err
@@ -54,12 +55,21 @@ func openArtifact(taskDir, name string) (*os.File, error) {
 	if shot {
 		limit = maxScreenshotBytes
 	}
+	if evidence {
+		limit = evidenceLimit(name)
+	}
 	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > limit {
 		f.Close()
 		return nil, fmt.Errorf("artifact %s must be a nonempty regular file of at most %d bytes", name, limit)
 	}
 	if shot {
 		if err := verifyScreenshot(f, name); err != nil {
+			f.Close()
+			return nil, err
+		}
+	}
+	if evidence {
+		if err := verifyEvidence(f, name); err != nil {
 			f.Close()
 			return nil, err
 		}
@@ -93,6 +103,7 @@ func collectResult(taskDir string, outcome execution) (Result, []string) {
 		result = Result{Status: "failed", Error: "Screenshot collection failed; HTML report withheld: " + screenshotErr.Error()}
 		artifacts = nil
 	}
+	artifacts = append(artifacts, collectFailureEvidence(taskDir)...)
 	for _, name := range []string{"report.html", "results.json"} {
 		if name == "report.html" && screenshotErr != nil {
 			continue
@@ -157,6 +168,10 @@ func (m *Manager) upload(ctx context.Context, r record, name string) error {
 		req.Header.Set("Content-Type", "text/html; charset=utf-8")
 	} else if screenshotPattern.MatchString(name) {
 		req.Header.Set("Content-Type", "image/png")
+	} else if strings.HasSuffix(name, ".zip") {
+		req.Header.Set("Content-Type", "application/zip")
+	} else if strings.HasSuffix(name, ".md") {
+		req.Header.Set("Content-Type", "text/markdown; charset=utf-8")
 	} else {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -166,6 +181,9 @@ func (m *Manager) upload(ctx context.Context, r record, name string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if evidencePattern.MatchString(name) && resp.StatusCode == http.StatusRequestEntityTooLarge {
+			return &skippedEvidenceError{}
+		}
 		// Do not log arbitrary response bodies, which can echo credentials.
 		return fmt.Errorf("upload %s: HTTP %d", name, resp.StatusCode)
 	}

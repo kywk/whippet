@@ -63,15 +63,15 @@ func (p *Postgres) Migrate(ctx context.Context) error {
 func (p *Postgres) Ping(ctx context.Context) error { return p.DB.PingContext(ctx) }
 
 func (p *Postgres) Workspaces(ctx context.Context) ([]Workspace, error) {
-	rows, err := p.DB.QueryContext(ctx, `SELECT id,name FROM workspaces ORDER BY id`)
+	rows, err := p.DB.QueryContext(ctx, `SELECT `+workspaceColumns+` FROM workspaces ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	items := []Workspace{}
 	for rows.Next() {
-		var w Workspace
-		if err := rows.Scan(&w.ID, &w.Name); err != nil {
+		w, err := scanWorkspace(rows)
+		if err != nil {
 			return nil, err
 		}
 		items = append(items, w)
@@ -120,11 +120,15 @@ func (p *Postgres) Test(ctx context.Context, id string) (Test, error) {
 const runColumns = `r.id,r.test_id,r.status,r.created_at,r.started_at,r.finished_at,r.error,
     CASE WHEN EXISTS(SELECT 1 FROM artifacts a WHERE a.run_id=r.id AND a.attempt_id=r.attempt_id AND a.name='report.html')
     THEN '/api/runs/' || r.id::text || '/artifacts/report.html' ELSE '' END,
-    r.kind,r.draft_revision,r.version_id`
+    r.kind,r.draft_revision,r.version_id,r.workspace_settings`
 
 func scanRun(row scanner) (Run, error) {
 	var r Run
-	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL, &r.Kind, &r.DraftRevision, &r.VersionID)
+	var settings []byte
+	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL, &r.Kind, &r.DraftRevision, &r.VersionID, &settings)
+	if err == nil {
+		r.WorkspaceSettings, err = decodeSettings(settings)
+	}
 	r.CreatedAt = r.CreatedAt.UTC()
 	return r, dbError(err)
 }
@@ -132,8 +136,8 @@ func scanRun(row scanner) (Run, error) {
 func (p *Postgres) CreateRun(ctx context.Context, testID string) (Run, error) {
 	// INSERT ... SELECT freezes the published version and its script in one statement.
 	id := NewID()
-	res, err := p.DB.ExecContext(ctx, `INSERT INTO runs(id,test_id,version_id,script_snapshot,timeout_ms,script_hash)
-        SELECT $1,t.id,v.id,v.script,v.timeout_ms,v.script_hash FROM tests t
+	res, err := p.DB.ExecContext(ctx, `INSERT INTO runs(id,test_id,version_id,script_snapshot,timeout_ms,script_hash,workspace_settings)
+        SELECT $1,t.id,v.id,v.script,v.timeout_ms,v.script_hash,v.workspace_settings FROM tests t
         JOIN test_versions v ON v.id=t.published_version_id AND v.test_id=t.id WHERE t.id=$2`, id, testID)
 	if err != nil {
 		return Run{}, err
@@ -194,7 +198,7 @@ func (p *Postgres) RegisterManager(ctx context.Context, id string, capacity int)
 }
 
 func (p *Postgres) Assignments(ctx context.Context, managerID string) ([]Assignment, error) {
-	rows, err := p.DB.QueryContext(ctx, `SELECT r.id,r.status,r.attempt_id,r.script_snapshot,r.timeout_ms,r.acknowledged_at IS NOT NULL,r.kind,COALESCE(r.author_payload::text,'')
+	rows, err := p.DB.QueryContext(ctx, `SELECT r.id,r.status,r.attempt_id,r.script_snapshot,r.timeout_ms,r.acknowledged_at IS NOT NULL,r.kind,COALESCE(r.author_payload::text,''),r.workspace_settings
         FROM runs r WHERE r.manager_id=$1 AND NOT r.slot_released ORDER BY r.queue_seq`, managerID)
 	if err != nil {
 		return nil, err
@@ -204,7 +208,12 @@ func (p *Postgres) Assignments(ctx context.Context, managerID string) ([]Assignm
 	for rows.Next() {
 		a := Assignment{ManagerID: managerID}
 		var authorPayload string
-		if err := rows.Scan(&a.ID, &a.Status, &a.AttemptID, &a.Script, &a.TimeoutMS, &a.Acked, &a.Kind, &authorPayload); err != nil {
+		var settings []byte
+		if err := rows.Scan(&a.ID, &a.Status, &a.AttemptID, &a.Script, &a.TimeoutMS, &a.Acked, &a.Kind, &authorPayload, &settings); err != nil {
+			return nil, err
+		}
+		a.WorkspaceSettings, err = decodeSettings(settings)
+		if err != nil {
 			return nil, err
 		}
 		if err := decodeAssignmentAuthor(&a, authorPayload); err != nil {
@@ -237,11 +246,16 @@ func (p *Postgres) Claim(ctx context.Context, managerID string, capacity int) (*
 	}
 	a := Assignment{ManagerID: managerID, AttemptID: NewID()}
 	var authorPayload string
-	err = tx.QueryRowContext(ctx, `SELECT id,script_snapshot,timeout_ms,kind,COALESCE(author_payload::text,'') FROM runs
-        WHERE status='queued' ORDER BY queue_seq FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&a.ID, &a.Script, &a.TimeoutMS, &a.Kind, &authorPayload)
+	var settings []byte
+	err = tx.QueryRowContext(ctx, `SELECT id,script_snapshot,timeout_ms,kind,COALESCE(author_payload::text,''),workspace_settings FROM runs
+        WHERE status='queued' ORDER BY queue_seq FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&a.ID, &a.Script, &a.TimeoutMS, &a.Kind, &authorPayload, &settings)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
+	if err != nil {
+		return nil, err
+	}
+	a.WorkspaceSettings, err = decodeSettings(settings)
 	if err != nil {
 		return nil, err
 	}
@@ -429,10 +443,20 @@ func (p *Postgres) SaveArtifact(ctx context.Context, a Artifact) error {
 		// Exclude this name so an identical upload retry does not consume another slot.
 		var count, total int64
 		if err := tx.QueryRowContext(ctx, `SELECT count(*),COALESCE(sum(size_bytes),0) FROM artifacts
-            WHERE run_id=$1 AND name LIKE 'data/%' AND name<>$2`, a.RunID, a.Name).Scan(&count, &total); err != nil {
+            WHERE run_id=$1 AND name ~ '^data/[0-9a-f]{40}[.]png$' AND name<>$2`, a.RunID, a.Name).Scan(&count, &total); err != nil {
 			return err
 		}
 		if err := checkScreenshotQuota(count, total, a.Size); err != nil {
+			return err
+		}
+	}
+	if isEvidenceArtifact(a.Name) {
+		var count, total int64
+		if err := tx.QueryRowContext(ctx, `SELECT count(*),COALESCE(sum(size_bytes),0) FROM artifacts
+            WHERE run_id=$1 AND name ~ '^data/[0-9a-f]{40}[.](zip|md)$' AND name<>$2`, a.RunID, a.Name).Scan(&count, &total); err != nil {
+			return err
+		}
+		if err := checkEvidenceQuota(count, total, a.Size); err != nil {
 			return err
 		}
 	}
@@ -462,6 +486,40 @@ func (p *Postgres) Artifact(ctx context.Context, runID, name string) (Artifact, 
         JOIN runs r ON r.id=a.run_id AND r.attempt_id=a.attempt_id WHERE a.run_id=$1 AND a.name=$2`, runID, name).
 		Scan(&a.AttemptID, &a.StorageKey, &a.Size, &a.SHA256)
 	return a, dbError(err)
+}
+
+func (p *Postgres) ListArtifacts(ctx context.Context, runID string) ([]ArtifactInfo, error) {
+	// LEFT JOIN distinguishes an unknown Run from a known Run with no saved
+	// attachments, and never returns another attempt's metadata or storage paths.
+	rows, err := p.DB.QueryContext(ctx, `SELECT r.kind,a.name,a.size_bytes FROM runs r
+        LEFT JOIN artifacts a ON a.run_id=r.id AND a.attempt_id=r.attempt_id
+        WHERE r.id=$1 ORDER BY a.name`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ArtifactInfo{}
+	found := false
+	for rows.Next() {
+		found = true
+		var kind string
+		var name sql.NullString
+		var size sql.NullInt64
+		if err := rows.Scan(&kind, &name, &size); err != nil {
+			return nil, err
+		}
+		if name.Valid && artifactAllowed(kind, name.String) {
+			items = append(items, ArtifactInfo{Name: name.String, Size: size.Int64, ContentType: artifactContentType(name.String),
+				URL: "/api/runs/" + runID + "/artifacts/" + name.String})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, ErrNotFound
+	}
+	return items, nil
 }
 
 func affected(res sql.Result, err error) error {

@@ -68,7 +68,7 @@ npm test
 - 先用 browser 工具的 selectorHints 探索；探索參數用 literal CSS／text=，生成的 spec 優先用穩定的 getByRole／getByLabel。
 - listitem 文字通常不是 accessible name；提供 `getByRole('listitem').toHaveText(['alpha'])` 與 `filter({ hasText: 'alpha' })` recipe，依實際預期清單調整斷言。
 - web-first `await expect`、auto-wait、完整 TypeScript import、獨立 page fixture／測試資料；保留測試意圖，避免硬 sleep、無關 timeout／retry、skip／only。
-- 修復先讀 read_validation_report，只改相關步驟；候選只交 update_draft／request_validation，不在 author 執行、不自動發佈。關鍵步驟可用 testInfo.attach 附加 PNG，trace／video 附件仍未支援。
+- 修復先讀 read_validation_report，只改相關步驟；候選只交 update_draft／request_validation，不在 author 執行、不自動發佈。關鍵步驟可用 testInfo.attach 附加 PNG；M6 失敗 trace／MD 支援下載，影片仍未支援。
 
 [src/author/skill.ts](src/author/skill.ts) 以 `import.meta.url` 定位 package 根目錄的技能 Markdown，剝除 YAML frontmatter、快取正文；不依賴 cwd，也不讀環境或 key。每次 author 啟動工具迴圈時，會在第一次 fetch 前將正文加入 Responses `instructions`，後續回合使用同一份內容。檔案缺少或格式不合法就以固定 `skill_unavailable` 失敗，不帶著空技能繼續請求。
 
@@ -112,7 +112,7 @@ npm run test:author
 - Runner 設為 `screenshot: "only-on-failure"`；成功的關鍵步驟在 spec 中手動 `await testInfo.attach('step-name', { body: await page.screenshot({ type: 'png' }), contentType: 'image/png' })`，並在測試 callback 接收 `testInfo`。PNG 補充斷言證據，不等於自動視覺比對。
 - HTML reporter 的 `html/data/<40位小寫SHA-1>.png` 複製到 `output/data/`，全部完成後才輸出 report.html；HTML 原生 `data/` 相對引用不改寫。Manager 先上傳 PNG，再上傳 report.html／results.json，全部成功才送終態。Server 提供 `.../artifacts/data/<hash>.png`，因此報告與圖片須一起保存。
 - 每張 PNG 最多 10 MiB、每 run 最多 32 張／合計 64 MiB。Worker／Manager 檢查受限名稱、regular file、大小與內容 hash，Manager 另驗 PNG header；拒絕 symlink／traversal。PNG 收集失敗時不發布會斷圖的 HTML。
-- **PNG 已支援；trace／video 與其他附件格式仍未支援。** 不要啟用它們或宣稱對應下載連結可用。
+- **PNG 已支援；M6 失敗 trace ZIP／error-context MD 支援有界匯出下載，影片與其他附件格式仍未支援。** 沒有內嵌 trace viewer。
 - 基礎設施或語法故障可能沒有 HTML／JSON；只回 failed manifest，不補造成功或仿製 Playwright 報告。
 - 總指揮已完成真實 Docker／Chromium 的 **4 個 Whippet 驗收案例與報告 9 張 PNG**，圖片正常載入、零 CSP／HTTP 錯誤。案例 01 已調整至 Workspace 顯示後擷取，revision 4 重新通過並目視確認。M1／M2／M3 的成功、失敗、取消、對話修復／驗證／確認發佈與 UI 驗收沿用總指揮既有紀錄；本次不重跑。
 - Linux arm64 Manager binary 與 Worker dist 已交由總指揮從既有映像衍生部署，未宣稱所有 OS／CPU 組合已驗證。M4 即時影像進度見下節；尚無公開多租戶隔離。
@@ -125,7 +125,7 @@ PNG 以外附件仍有限制：額外失敗範例的自動截圖可見，但 `er
 
 Manager 經 `/work/live/control.json` 原子更新 `{viewerId,mode,expiresAt,iceServers,answer?}`，expiresAt 為 Unix 毫秒。Worker 每 250 ms 檢查；沒有有效租約時不擷取、不開 helper。原子 state.json 含 viewerId／state／transport／offer；最新 JPEG 為 `<viewerId>.jpg`，限制 1 MiB，沒有歷史影格佇列。這些都是暫存媒體資料，不是報告附件，不寫入 input、journal 或 log。
 
-擷取使用既有 `page.screencast.start({onFrame,size:{width:1280,height:720},quality:55,fps:3})`。WebRTC 模式另開無金鑰 Chromium helper，將 JPEG 畫入 canvas，以 `canvas.captureStream(3)` 的 video track 送入 RTCPeerConnection；**不是 DataChannel 傳圖**。offer／answer 使用 non-trickle ICE，最多等待 gathering 8 秒；ICE 設定由 Server 傳入，預設空陣列。JPEG 模式關閉 helper、保留畫面擷取。viewer 離線、租約到期、Run 結束時停止影像；媒體例外只回固定 unavailable，不改測試結果。
+擷取使用既有 `page.screencast.start({onFrame,size:{width:1280,height:720},quality:55,fps:3})`。WebRTC 模式另開無金鑰 Chromium helper，將 JPEG 畫入 canvas，以 `canvas.captureStream(3)` 的 video track 送入 RTCPeerConnection；track 設 `contentHint="text"` 保留網頁細字，**不是 DataChannel 傳圖**。offer／answer 使用 non-trickle ICE，最多等待 gathering 8 秒；ICE 設定由 Server 傳入，預設空陣列。JPEG 模式關閉 helper、保留畫面擷取。viewer 離線、租約到期、Run 結束時停止影像；媒體例外只回固定 unavailable，不改測試結果。
 
 helper subprocess 只接收 PATH／HOME／TMPDIR／LANG／DISPLAY／PLAYWRIGHT_BROWSERS_PATH，不繼承 AI key 或 Manager token。原始 provider／頁面內容／SDP／ICE credentials 不列印。helper 不導航到被測網站，也不執行生成的 spec。操作／清理設有短期限，監看失敗不阻塞測試。
 
@@ -137,6 +137,26 @@ helper subprocess 只接收 PATH／HOME／TMPDIR／LANG／DISPLAY／PLAYWRIGHT_B
 WHIPPET_LIVE_BROWSER_TEST=1 node --test dist/live/live.test.js
 ```
 
-限制：直接使用非 bridge 匯入、自行 `chromium.launch()`／外部 connect 的獨立 browser process 不保證被觀察；目前不提供換頁 UI、音訊或鍵鼠控制。每 Run 一位 viewer。helper 增加一個 Chromium，尚未調高既有 1 GiB／1 CPU／256 PID 限額，資源壓力需整合確認。同 Docker bridge 的 video 已驗證；Mac 原生／跨網與真實 TURN 尚未驗證。即時 video 不等於支援 video／trace 報告附件；既有 PNG 管線維持原樣。
+限制：直接使用非 bridge 匯入、自行 `chromium.launch()`／外部 connect 的獨立 browser process 不保證被觀察；目前不提供換頁 UI、音訊或鍵鼠控制。每 Run 一位 viewer。helper 增加一個 Chromium，維持既有 1 GiB／1 CPU／256 PID 限額。M4 Mac 原生真 video／JPEG／停止後 Run 完成已通過；跨網與真實 TURN 尚未驗證。即時 video 不等於支援影片報告附件；M6 trace／MD 見下節，既有 PNG 管線維持原樣。
 
 官方 API 依據：[Screencast](https://playwright.dev/docs/api/class-screencast)、[fixtures](https://playwright.dev/docs/test-fixtures)、[tsconfig paths](https://playwright.dev/docs/test-typescript#tsconfig-path-mapping)、[canvas.captureStream](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/captureStream)。
+
+M5 畫質診斷以真實登入頁的 1:1 crop 與 RTP stats 確認：原始 JPEG／canvas 1280×720，未加 hint 的 VP8 降成 320×180；只設 text 後維持 1280×720，video edge MAE 50.62→16.50，接近 JPEG 16.16。因此未盲調 bitrate／尺寸／JPEG quality。viewer 現有 CSS 於 1440／1280 viewport、DPR 1 分別顯示 960×540／800×450；根因是編碼端縮小後被放大。完整證據、診斷入口與待 PM 執行的一次 browser regression 見 [DELIVERY](../../services/manager/DELIVERY.md)。
+
+## M5 Workspace 設定快照
+
+run／author input 可帶頂層 `workspaceSettings:{revision,sites:[{name,url}],defaultTestUrl,timeoutMs}`，只來自任務固定快照，不呼叫 Workspace API 取新值。sites 最多 20 筆，name 1..100 字元；URL 完整 HTTP(S)、最多 2048 字元且無 userinfo；timeoutMs 1..3600000。未知欄位拒絕，不接受 env／key。舊 input 可省略整個欄位。
+
+runner 的 Playwright project `use.baseURL` 只使用非空 defaultTestUrl，供相對 `page.goto` 解析，不自動導航。空值／缺欄位維持既有行為；真正執行 timeout 仍取頂層 timeoutMs。author 將固定快照放進 Saved draft snapshot 資料上下文，明示不能當指令或自動導覽；其預算仍最多 180000，不被 Workspace 一般 run timeout 延長。對話／草稿／發佈規則仍由 Server 負責。
+
+最小離線檢查：`npm run build`、`node --test dist/workspace.test.js`、`node --test --test-name-pattern='^M5 Workspace' dist/author/author.test.js`。真 runner 固定 fixture 與 RTP regression 的單容器命令見 DELIVERY；它不依賴模型或共用 DB，也不會建立 Server Run。
+
+## M6 失敗 trace／Markdown 下載證據
+
+runner 以 trace retain-on-failure、retries 0、video off 執行，HTML noCopyPrompt=true，避免 Copy prompt 在報告 sandbox fetch Markdown。原生 HTML data/<40位SHA1>.zip/.md 與 PNG 一起匯出；HTML 缺失時只掃本次 test-results 的 trace.zip／error-context.md（最多深度 4、2048 entries），以內容定名與去重，沒有檔案就不產生證據或假報告。
+
+ZIP 每檔 64 MiB，MD 1 MiB，兩者最多 32 檔／128 MiB，與 PNG 配額獨立。只接受 regular file；檢查 SHA1、ZIP PK0304／PK0506（拒絕0708）、MD UTF-8，拒絕 symlink／traversal。無效或超限的可選證據只記固定略過原因，不改原斷言結果。ZIP 不解壓、不執行；author 仍只回 author.json。
+
+Manager 先上傳證據／報告才送 result，沿 journal 冪等補送；明確的 ZIP／MD HTTP413 可略過並持久化，其餘必要報告／PNG／認證／attempt 衝突／網路錯誤仍沿原規則。平台下載入口由 Server／Web 提供；trace 下載後以本機 Playwright show-trace 開啟，沒有內嵌 trace viewer，不放寬 HTML CSP。
+
+最小 unit、固定真失敗 `examples/fail.spec.ts`／成功 `examples/pass.spec.ts` 與 PM 隔離容器精確命令見 [DELIVERY](../../services/manager/DELIVERY.md)。硬殺前未 flush 的證據無法保證保留；缺少可選附件不等於測試成功，必要報告門檻維持。

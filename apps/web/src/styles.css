@@ -65,6 +65,17 @@ p { line-height: 1.75; }
 .workspace-heading p { margin-top: 6px; color: var(--muted); font-size: .9rem; }
 .workspace-select { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: .8rem; }
 .workspace-select select { width: 220px; max-width: 100%; min-height: 42px; padding: 8px 32px 8px 12px; color: #26372e; background: var(--surface); border: 1px solid #cdd6ca; border-radius: var(--radius); }
+.workspace-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.workspace-settings { margin-bottom: 28px; padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.settings-meta { margin-bottom: 16px; color: var(--muted); font-size: .8rem; }
+.settings-impact { max-width: 75ch; padding: 14px 16px; border-radius: var(--radius); background: #fff6e4; color: #725116; font-size: .85rem; }
+.settings-fieldset { min-width: 0; margin: 24px 0; padding: 0; border: 0; }
+.settings-fieldset legend { margin-bottom: 14px; padding: 0; font-size: .95rem; font-weight: 600; }
+.settings-site { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(220px, 2fr) auto; align-items: end; gap: 12px; margin-bottom: 16px; }
+.settings-field { display: block; max-width: 760px; margin-bottom: 12px; font-size: .85rem; font-weight: 600; }
+.settings-field .text-input { margin-top: 8px; font-weight: 400; }
+.settings-site .settings-field { margin: 0; }
+.timeout-field { max-width: 260px; margin-top: 20px; }
 .test-browser { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); min-height: 600px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
 .test-sidebar { min-width: 0; padding: 20px 16px; border-right: 1px solid var(--line); }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
@@ -154,6 +165,21 @@ textarea { resize: vertical; }
 .version-script summary { width: fit-content; color: var(--accent); cursor: pointer; }
 .version-script pre { max-height: 400px; overflow: auto; padding: 16px; background: var(--subtle); border-radius: var(--radius); font: .75rem/1.8 ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .run-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.run-artifacts { min-width: 0; max-width: 100%; margin-top: 12px; }
+.run-actions .run-artifacts { margin-top: 0; }
+.artifact-panel { margin-top: 12px; padding-top: 14px; border-top: 1px solid var(--line); }
+.artifact-panel h4 { margin: 0 0 8px; font-size: .85rem; }
+.artifact-run { margin-bottom: 10px; color: var(--muted); font-size: .7rem; }
+.artifact-help, .artifact-empty { max-width: 65ch; color: var(--muted); font-size: .8rem; }
+.artifact-empty { margin: 16px 0; }
+.artifact-list { margin: 16px 0; padding: 0; list-style: none; }
+.artifact-list > li { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.artifact-list > li > div { min-width: 0; }
+.artifact-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: .8rem; }
+.artifact-meta span { color: var(--muted); font-variant-numeric: tabular-nums; }
+.artifact-name { margin-top: 6px; color: var(--muted); font-size: .7rem; }
+.artifact-invalid { color: var(--danger); font-size: .8rem; }
+.artifact-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 
 .conversation-panel { margin: 20px 0 28px; padding-bottom: 28px; border-bottom: 1px solid var(--line); }
 .conversation-empty { padding: 20px 0; color: var(--muted); font-size: .85rem; }
@@ -193,6 +219,10 @@ textarea { resize: vertical; }
   .detail-heading { flex-wrap: wrap; gap: 16px; }
 }
 @media (max-width: 720px) {
+  .workspace-controls { width: 100%; }
+  .workspace-settings { padding: 20px 16px; }
+  .settings-site { grid-template-columns: minmax(0, 1fr); }
+  .settings-site > button { justify-self: start; }
   .app-header { padding: 14px 18px; gap: 12px; flex-wrap: wrap; }
   .brand { font-size: 1.2rem; }
   .header-caption { padding-left: 12px; }

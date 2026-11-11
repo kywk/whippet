@@ -15,6 +15,9 @@ var authorEnvNames = []string{
 var authorProgressPattern = regexp.MustCompile(`^author:(model:[1-8]:(started|succeeded|failed)|tool:([1-9]|1[0-2]):(read_draft|read_validation_report|update_draft|browser_navigate|browser_snapshot|browser_click|browser_fill|request_validation|unknown):(succeeded|failed))$`)
 
 func validDispatch(d Dispatch) error {
+	if err := validWorkspaceSettings(d.WorkspaceSettings); err != nil {
+		return err
+	}
 	if len(d.Script) > maxScriptBytes || d.TimeoutMS < 1 || d.TimeoutMS > 3600000 {
 		return errors.New("dispatch script/timeout out of range")
 	}
@@ -55,7 +58,7 @@ func artifactAllowed(r record, name string) bool {
 	if r.Kind == "author" {
 		return name == "author.json"
 	}
-	return name == "report.html" || name == "results.json" || screenshotPattern.MatchString(name)
+	return name == "report.html" || name == "results.json" || screenshotPattern.MatchString(name) || evidencePattern.MatchString(name)
 }
 
 // Values remain only in the docker CLI process environment. --env NAME avoids

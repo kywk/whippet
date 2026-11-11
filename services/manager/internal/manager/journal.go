@@ -116,7 +116,7 @@ func loadRecords(workDir string) (map[string]record, error) {
 		if r.Result != nil && !r.Result.valid() || (r.Phase == "complete" || r.Phase == "collecting") && r.Result == nil {
 			return nil, fmt.Errorf("invalid journal result: %s", entry.Name())
 		}
-		pngCount := 0
+		pngCount, evidenceCount := 0, 0
 		for _, name := range r.Artifacts {
 			if !artifactAllowed(r, name) {
 				return nil, fmt.Errorf("invalid journal artifact: %s", name)
@@ -124,9 +124,15 @@ func loadRecords(workDir string) (map[string]record, error) {
 			if screenshotPattern.MatchString(name) {
 				pngCount++
 			}
+			if evidencePattern.MatchString(name) {
+				evidenceCount++
+			}
 		}
 		if pngCount > maxScreenshotCount {
 			return nil, errors.New("journal screenshot count limit exceeded")
+		}
+		if evidenceCount > maxEvidenceCount {
+			return nil, errors.New("journal evidence count limit exceeded")
 		}
 		records[r.AttemptID] = r
 	}

@@ -15,8 +15,10 @@ func TestPublicationRequiresCurrentValidatedRevisionAndReport(t *testing.T) {
 	id := NewID()
 	base := draftState{Draft: Draft{TestID: NewID(), Revision: 2, Script: "test('current', () => {});", ValidationRunID: &id}, timeoutMS: 60000}
 	base.hash = scriptHash(base.Script)
+	base.WorkspaceSettings = &WorkspaceSettings{Revision: 1, Sites: []WorkspaceSite{}, TimeoutMS: 60000}
 	proof := validationEvidence{id: id, testID: base.TestID, kind: "validation", status: "succeeded", revision: 2,
 		script: base.Script, hash: base.hash, timeoutMS: 60000, reportReady: true}
+	proof.settings = base.WorkspaceSettings
 	if err := checkPublication(2, true, base, proof); err != nil {
 		t.Fatalf("current successful revision with saved report must publish: %v", err)
 	}
@@ -32,6 +34,22 @@ func TestPublicationRequiresCurrentValidatedRevisionAndReport(t *testing.T) {
 		{"old_script", func(_ *draftState, v *validationEvidence) { v.script = "old" }},
 		{"wrong_hash", func(_ *draftState, v *validationEvidence) { v.hash = "old" }},
 		{"changed_settings", func(_ *draftState, v *validationEvidence) { v.timeoutMS++ }},
+		{"missing_settings", func(_ *draftState, v *validationEvidence) { v.settings = nil }},
+		{"changed_url_same_timeout", func(_ *draftState, v *validationEvidence) {
+			settings := *v.settings
+			settings.DefaultTestURL = "https://other.example.test/"
+			v.settings = &settings
+		}},
+		{"changed_sites_same_timeout", func(_ *draftState, v *validationEvidence) {
+			settings := *v.settings
+			settings.Sites = []WorkspaceSite{{Name: "other", URL: "https://other.example.test/"}}
+			v.settings = &settings
+		}},
+		{"changed_settings_revision", func(_ *draftState, v *validationEvidence) {
+			settings := *v.settings
+			settings.Revision++
+			v.settings = &settings
+		}},
 		{"failed_validation", func(_ *draftState, v *validationEvidence) { v.status = "failed" }},
 		{"queued_validation", func(_ *draftState, v *validationEvidence) { v.status = "queued" }},
 		{"cancelled_validation", func(_ *draftState, v *validationEvidence) { v.status = "cancelled" }},

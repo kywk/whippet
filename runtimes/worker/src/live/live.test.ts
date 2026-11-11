@@ -67,6 +67,10 @@ test("Chromium screencast becomes decoded WebRTC video, then test page continues
       if (frames < 3) await new Promise((done) => setTimeout(done, 100));
     }
     assert.ok(frames >= 3, `Expected decoded RTP video frames, got ${frames}`);
+    assert.deepEqual(await receiver.evaluate(() => {
+      const video = document.querySelector("video")!;
+      return { width: video.videoWidth, height: video.videoHeight };
+    }), { width: 1280, height: 720 }, "Webpage video must preserve source resolution for readable text");
     await source.screencast.stop(); await helper.close();
     await source.locator("h1").evaluate((el) => { el.textContent = "continued"; });
     assert.equal(await source.locator("h1").textContent(), "continued");

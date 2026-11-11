@@ -104,3 +104,13 @@ Manager 主動開啟 `/api/manager/runs/:runId/live?attemptId=...&viewerId=...` 
 每任務 `/work/live` 是內部檔案接縫：control.json 以原子 rename 寫入，5 秒續租、有效 30 秒；Worker 狀態與最新 frame 每 100 ms 讀取。檔案讀取用 os.Root、regular file／大小限制，state 最大 192 KiB、SDP 最大 128 KiB、JPEG 最大 1 MiB；只接受目前 viewer／mode，過時狀態不轉送。JPEG 只保留最新一張，慢連線不累積佇列。WS 中斷、live.stop 或 Worker 結束會撤銷租約；影像狀態不改 Run result 或名額回收規則。
 
 Worker／helper 不接收 Manager token，不開 Worker 公開埠。TURN 設定由 Server 的 `WHIPPET_LIVE_ICE_SERVERS` 傳入，不在 Manager 新增憑證設定。完整流程見 [Worker README](../../runtimes/worker/README.md) 與 [M4 契約](../../contracts/mvp-v4.md)。本輪 Go build／Linux arm64 交叉編譯通過，TestLive focused race 由總指揮代跑通過；UI／跨網整合狀態見 DELIVERY。
+
+## M5 Workspace 快照
+
+dispatch 可帶頂層 `workspaceSettings:{revision,sites,defaultTestUrl,timeoutMs}`，run 與 author 皆原樣傳入 Worker input；Manager 驗證 v5 的欄位／大小／HTTP(S)／無 userinfo 規則，不讀取目前 Workspace、不注入 env。不接受 secrets／未知設定欄位，錯誤不回顯資料；缺欄位的舊 dispatch／input 相容。Worker 以非空 defaultTestUrl 設 runner baseURL，author 以固定資料上下文使用，仍維持最多 180000 ms。journal 不因設定改成重跑機制，cancel／回收／名額沿用原規則。產物與最小固定 fixture 命令見 [DELIVERY](DELIVERY.md)。
+
+## M6 可選失敗證據
+
+普通 run／validation 額外接受 `data/<40位小寫SHA1>.zip/.md`，author 不接受。ZIP 每檔 64 MiB、MD 1 MiB，兩者合計最多 32 檔／128 MiB，PNG 原配額獨立。os.Root／regular file／hash／基本 ZIP signature（僅 PK0304／PK0506）／MD UTF-8 均驗證；收集與 recovery 排除無效或超限項並記固定原因，不改斷言結果。ZIP 不解壓，不掃主機或其他任務。
+
+ZIP 使用 application/zip、MD text/markdown; charset=utf-8，與 PNG 一起排在 report.html／results.json／result 前上傳。journal 保留白名單項目供補送；僅 ZIP／MD 明確 HTTP413 才移除該項並保存固定略過警示，必要報告／PNG、network／5xx／401／409 不套用此例外。完整檢查與 PM 命令見 DELIVERY；不新增影片、內嵌 viewer 或改媒體／控制協定。

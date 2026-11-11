@@ -73,6 +73,7 @@ export function VersionHistory({ api, apiBase, versions, runs, publishedVersionI
     <ul className="version-list">{versions ? [...versions].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).map((version) => <li key={version.id}>
       <div className="version-heading"><strong>revision {version.revision}{publishedVersionId === version.id ? ' · 目前版本' : ''}</strong><VersionReport api={api} apiBase={apiBase} runId={version.validationRunId} run={runs.find((run) => run.id === version.validationRunId)} /></div>
       <p className="muted">{formatDate(version.createdAt)}</p><p className="version-id identifier">{version.id}</p>
+      {version.workspaceSettings ? <p className="inline-hint">版本固定設定 {version.workspaceSettings.revision} · 執行逾時 {version.workspaceSettings.timeoutMs.toLocaleString('zh-TW')} 毫秒</p> : null}
       <details className="version-script"><summary>查看此版本腳本（唯讀）</summary><pre>{version.script || '空腳本'}</pre></details>
     </li>) : null}</ul>
   </section>;

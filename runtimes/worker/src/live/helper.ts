@@ -30,7 +30,12 @@ export class VideoHelper {
       ctx.fillStyle = "black"; ctx.fillRect(0, 0, canvas.width, canvas.height);
       const stream = canvas.captureStream(3);
       const pc = new RTCPeerConnection({ iceServers: servers });
-      for (const track of stream.getVideoTracks()) pc.addTrack(track, stream);
+      for (const track of stream.getVideoTracks()) {
+        // Preserve webpage text detail instead of adapting this 3 FPS canvas
+        // as motion video (which reduced 1280x720 to 320x180 in Chromium).
+        track.contentHint = "text";
+        pc.addTrack(track, stream);
+      }
       const live = { pc, canvas, stream };
       (window as unknown as { whippetLive: typeof live }).whippetLive = live;
       await pc.setLocalDescription(await pc.createOffer());

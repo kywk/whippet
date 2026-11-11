@@ -27,7 +27,7 @@ export async function exportHTMLReport(htmlDir: string, outputDir: string): Prom
     total += info.size;
     if (total > SCREENSHOT_LIMITS.totalBytes) throw new Error("Screenshot total size limit exceeded");
   }
-  if (pngs.length) await mkdir(join(outputDir, "data"));
+  if (pngs.length) await mkdir(join(outputDir, "data"), { recursive: true });
   for (const name of pngs) {
     const body = await readFile(join(source, name));
     if (body.length > SCREENSHOT_LIMITS.fileBytes || !body.subarray(0, 8).equals(pngSignature) || `${createHash("sha1").update(body).digest("hex")}.png` !== name) throw new Error("Screenshot signature/hash mismatch");

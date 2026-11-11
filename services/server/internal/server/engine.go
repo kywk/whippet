@@ -293,11 +293,12 @@ func (e *Engine) send(s *Session, a Assignment, kind string) error {
 			taskKind = "author"
 		}
 		payload = struct {
-			Kind      string       `json:"kind"`
-			Script    string       `json:"script"`
-			TimeoutMS int          `json:"timeoutMs"`
-			Author    *AuthorInput `json:"author,omitempty"`
-		}{taskKind, a.Script, a.TimeoutMS, a.Author}
+			Kind              string             `json:"kind"`
+			Script            string             `json:"script"`
+			TimeoutMS         int                `json:"timeoutMs"`
+			Author            *AuthorInput       `json:"author,omitempty"`
+			WorkspaceSettings *WorkspaceSettings `json:"workspaceSettings,omitempty"`
+		}{taskKind, a.Script, a.TimeoutMS, a.Author, a.WorkspaceSettings}
 	}
 	if err := s.peer.Send(NewEnvelope(kind, s.managerID, a.ID, a.AttemptID, payload)); err != nil {
 		// The committed attempt is preserved, including when the write outcome is unknown.

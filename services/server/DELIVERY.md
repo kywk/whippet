@@ -1,6 +1,63 @@
 # Server 交付
 
-Owner：Whippet Server Agent。最新交付：M4 Server 實作；既有里程碑紀錄保留於下方。
+Owner：Whippet Server Agent。最新交付：M6 失敗證據附件（2026-11-11）；既有里程碑紀錄保留於下方。
+
+## M6 失敗證據附件交付
+
+**Server 模組、隔離 PostgreSQL 與 M5／M6 隔離全鏈整合通過；原共用服務未更新。** 依 `contracts/mvp-v6.md`，僅修改 `services/server/`，本 Agent 不部署、操作 Git、讀取憑證、安裝套件或呼叫模型。
+
+### 產物與介面
+
+- `model.go`／`artifacts.go`：普通 run／validation 新增嚴格 `data/<40位小寫SHA1>.zip`／`.md`，author 仍僅 author.json。ZIP 64 MiB／檔、MD 1 MiB／檔，兩者每 Run 合併 32 檔／128 MiB；PNG 原配額獨立不變。串流核對內容 SHA1 與檔名、沿用 SHA256 保存 key；ZIP 只檢查 PK0304／PK0506 基本 signature，不解壓或驗整包，MD 檢查 UTF-8。沿用既有路徑／symlink 防護。
+- `007_failure_evidence.sql`：只擴充 artifacts 檔名 CHECK 至 hashed PNG／ZIP／MD，沒有任意副檔名／路徑或新設定框架。
+- `postgres.go`：新 ZIP／MD 合併配額在原 Run row lock 下檢查，排除同名後核算重送；衝突內容／attempt 維持不可覆寫。原 PNG 計數 SQL 從廣泛 `data/%` 改為 PNG 專屬 regex，避免新證據占用 PNG 配額。
+- `GET /api/runs/:id/artifacts` → `{items:[{name,size,contentType,url}]}`，依 name 排序，只列當前 attempt 已登記、符合 Run.kind 的白名單附件；已知無附件回 []、未知 Run 404，不列 storage key／檔案系統路徑／token。既有 POST／GET 單檔端點與 attempt／token 規則沿用。
+- `http.go`：ZIP 回 `application/zip`、MD 回 `text/markdown; charset=utf-8`；兩者強制 `Content-Disposition: attachment; filename="<hash.ext>"`、nosniff 與 `sandbox; default-src 'none'`。HTML 原 CSP／storage shim／ETag 不動，不提供內嵌 trace viewer；成功與發布仍要求原報告條件，可選證據不能取代報告或改寫斷言結果。
+- `evidence_test.go`／`evidence_postgres_test.go`：內容／路徑／kind／限制、下載標頭與列表 API；一個明確 TEST_DATABASE_URL 的 opt-in 隔離 schema 測試，涵蓋 migration 007、列表與配額／重送持久邊界。
+
+### 實際檢查與交付
+
+- 本 Agent：既有 Go 1.23.12，`GOPROXY=off GOSUMDB=off go test -mod=readonly ./internal/server ./internal/gateway -count=1` **通過**（Server 0.482s、Gateway 0.318s）。包含新附件 HTTP／檔案驗證、author 拒絕，以及既有 HTML CSP／shim、發布與佇列回歸。
+- 本 Agent：`-tags=integration -run '^TestPostgresEvidenceArtifacts$'` 編譯成功；明確移除 TEST_DATABASE_URL 時 **skip**（0.077s），沒有自行連共用 DB。skip 不作真實 DB 驗收證據。
+- **PM t35 真實隔離 DB 測試通過**：既有 `postgres:16.11-bookworm` 快取的獨立容器執行 `TestPostgresEvidenceArtifacts`，PASS（套件 0.636s、test 0.33s）。核對新檔名 CHECK、同 attempt 冪等／衝突不可覆寫、當前 attempt／其他 Run 列表隔離、空／未知 Run、ZIP／MD 合併 byte／count 配額與 PNG 獨立、必要報告門檻與原失敗結果保留。大配額使用隔離 schema 的 metadata fixture，不產生 128 MiB 假檔；內容驗證另走真實 LocalArtifacts。證據來源為 PM 回報；容器已停止移除，未碰共用 DB，不重跑。
+- 本 Agent：一次離線 `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -mod=readonly -trimpath` **通過**；`file` 核對 statically linked ELF aarch64。binary：**`/private/tmp/whippet-server-m6-evidence`**，包含 migration 007，已通知 PM，可封裝整合；本 Agent 未部署。
+
+### PM 回報：M5／M6 隔離全鏈最終 PASS
+
+以下證據由 PM t35 回報，本 Agent 僅更新交付紀錄，沒有重跑：
+
+- M5：Workspace 設定的相對 URL 完成驗證、發布與正式 Run，結果 succeeded。
+- M6：真實失敗 Run `86d6fe61-ebf4-4c67-b4a4-2898de9d1225` 保存並上傳 ZIP／MD／PNG；ZIP 12931 bytes、MD 1145 bytes，API 與平台 UI 下載內容 hash 一致。
+- 使用本機既有 show-trace 根入口開啟真 ZIP，可見實際 `Set content`、`toHaveText` 與 error-context；原生 HTML 顯示 Failed 1／Passed 0，詳細內容正常。HTTP 錯誤、pageerror、CSP 錯誤均為 0。
+- Viewer 先前失敗已確認為 PM 手拼 URL 錯誤，產品無須因此修改。附件／Viewer 證據目錄：`/private/tmp/whippet-m6-download-evidence`。
+- 隔離服務、網路與 Viewer 已關閉；原共用服務未更新。PM 回報本輪尚未 commit／push，後續部署與提交由 PM 安排。
+
+驗收範圍為上述本機隔離流程；影片與產品內嵌 trace viewer 仍不在支援範圍。本 Agent 待命，不重跑或部署。
+
+## M5 Workspace 設定交付
+
+**Server 模組與 M5 隔離全鏈整合通過，原共用服務未更新。** 依 PM 固定的 `contracts/mvp-v5.md`，僅修改 `services/server/`。本 Agent 未安裝套件、執行 Git、讀取 secrets 或部署／重啟共用服務。
+
+### 產物與介面
+
+- `workspaces.go`／`workspaces_http.go`：GET／PATCH `/api/workspaces/:id`，回 `{id,name,revision,sites:[{name,url}],defaultTestUrl,timeoutMs}`。PATCH 部分更新、sites 整份替換、revision 樂觀鎖；過期 409，no-op 不遞增 revision 或失效草稿。名稱與 URL／timeout 採 v5 範圍；拒絕未知／巢狀欄位、null、userinfo、secrets／env／key，不回顯敏感輸入。
+- `006_workspace_settings.sql`：Workspace 持久設定及 draft_revisions／test_versions／runs 的 `workspace_settings` 快照。舊資料保留每筆 timeout 與原腳本；author 設定 timeout 取 base draft，不把 180000ms author 總限時誤當測試 timeout。遷移在原啟動交易內完成，恢復原版本／revision immutable trigger，Run 保護函式新增設定快照欄位。
+- Workspace PATCH 實際變更在單一交易新增所有現存草稿 revision、保留腳本、換新設定並清除 validation；新草稿採目前 Workspace 設定及已發佈腳本。草稿交易採 Workspace SHARE → Test／Draft，PATCH 採 Workspace UPDATE → 按 Test ID 排序鎖，與發布／author 套用互斥。
+- Draft／Version／Run／dispatch 頂層新增完整 `workspaceSettings`。一般 Run 從已發佈版本複製；既有 queued、author 及其他 Run 不改。發布除原 M2 條件，另比較完整設定快照；舊 author 結果因 baseRevision 衝突不套用、不續驗證，保留 proposedScript。author metadata 保持 v3，總限時仍為 180000ms。
+- `workspaces_test.go`、`drafts_test.go`：HTTP 欄位拒絕、URL／timeout 範圍、部分更新／no-op／過期 revision、發布完整設定比對及各任務 kind 的 dispatch 快照。
+- `workspaces_postgres_test.go`：單一 opt-in 整合測試 `TestPostgresWorkspaceSettingsSnapshots`，僅使用明確 TEST_DATABASE_URL，各子案例新建隨機隔離 schema，缺變數 skip；沒有共用 DB 預設值。隔離容器與執行命令見本模組 [README](README.md#隔離-postgresql-驗證)。
+
+### 實際檢查
+
+- 本 Agent：`go test ./internal/server ./internal/gateway -count=1` **通過**（Server 0.844s、Gateway 0.760s），使用既有 Go 1.23.12、GOPROXY=off／GOSUMDB=off，無下載。
+- 本 Agent：整合 build tag 編譯成功；明確移除 TEST_DATABASE_URL 後執行上述單一整合測試，兩子案例依規則 **skip**（0.388s），未連線本機／共用 DB。此結果只代表編譯與 skip 行為，不作 DB 驗收證據。
+- **PM t35 真實 DB 驗收：兩子案例全部通過（0.441s）**。使用既有 `postgres:16.11-bookworm` 快取建立獨立容器：fresh 001→006 涵蓋設定保存、no-op 保留成功驗證、實際變更使舊驗證不可發布、正式版本／queued／author 快照不變與舊 author 衝突／去重；005 升級涵蓋 version 12345ms、draft 23456ms、Run 34567ms、author 180000ms／設定 23456ms 保留，以及設定／腳本 immutable trigger。證據來源為 PM 回報；臨時容器已停止移除，未碰共用 DB，本 Agent 不重跑。
+- 本 Agent：一次 Linux arm64 `CGO_ENABLED=0 go build -mod=readonly -trimpath` **通過**；`file` 核對靜態 ELF aarch64。交付 binary：**`/private/tmp/whippet-server-m5-settings`**，包含 migration 006，由 PM 決定整合方式；尚未部署。
+- **PM t35 最終隔離全鏈 PASS**：設定相對 URL 後，草稿驗證／發布／正式 Run succeeded；與 M6 附件整合一併完成。此為 PM 回報證據，本 Agent 沒有重跑，原共用服務未更新。
+
+### 串接與限制
+
+M5 相對 URL 的驗證／發布／正式執行已由 PM 在隔離流程確認，取代先前待 Web／Runtime 接線的狀態。Server 保留任務設定快照，不在執行時回讀 Workspace；本次回報未新增真實模型驗收，也未加入任意設定／secret 框架。原共用服務的更新與提交仍由 PM 安排。
 
 ## M4 Server 交付
 

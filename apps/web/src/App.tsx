@@ -3,6 +3,8 @@ import { errorMessage } from './api';
 import { formatDate, Loading, Notice, ReportLink, RunStatusBadge, runKindLabel } from './components';
 import { DraftEditor } from './DraftEditor';
 import { LiveView } from './LiveView';
+import { WorkspaceSettings } from './WorkspaceSettings';
+import { RunArtifacts } from './RunArtifacts';
 import { CancelRunButton, CreateTestForm, VersionHistory } from './TestActions';
 import { useResource, useRuns } from './hooks';
 import { isActiveRun } from './types';
@@ -25,8 +27,11 @@ export function App({ api, apiBase, mock }: AppProps) {
   const [loginError, setLoginError] = useState<string>();
   const loginLock = useRef(false);
   const draftDirty = useRef(false);
+  const settingsDirty = useRef(false);
   const onDirtyChange = useCallback((dirty: boolean) => { draftDirty.current = dirty; }, []);
-  const confirmNavigation = useCallback(() => !draftDirty.current || window.confirm('目前有未儲存的草稿或進行中的請求。確定離開？未儲存內容將會遺失；已送出的任務仍可能繼續。'), []);
+  const onSettingsDirtyChange = useCallback((dirty: boolean) => { settingsDirty.current = dirty; }, []);
+  const confirmTestNavigation = useCallback(() => !draftDirty.current || window.confirm('目前有未儲存的草稿或進行中的請求。確定離開？未儲存內容將會遺失；已送出的任務仍可能繼續。'), []);
+  const confirmNavigation = useCallback(() => (!draftDirty.current && !settingsDirty.current) || window.confirm('目前有未儲存的草稿、Workspace 設定或進行中的請求。確定離開？未儲存內容將會遺失；已送出的請求仍可能完成。'), []);
 
   async function login() {
     if (loginLock.current) return;
@@ -62,34 +67,38 @@ export function App({ api, apiBase, mock }: AppProps) {
             <p className="fine-print">M1 開發入口 · 不需帳號密碼<br />由 Server 提供固定 Superadmin 身分。</p>
           </section>
         </main>
-      ) : <WorkspaceView api={api} apiBase={apiBase} onDirtyChange={onDirtyChange} confirmNavigation={confirmNavigation} />}
+      ) : <WorkspaceView api={api} apiBase={apiBase} onDirtyChange={onDirtyChange} confirmNavigation={confirmNavigation} onSettingsDirtyChange={onSettingsDirtyChange} confirmTestNavigation={confirmTestNavigation} />}
     </>
   );
 }
 
-function WorkspaceView({ api, apiBase, onDirtyChange, confirmNavigation }: Pick<AppProps, 'api' | 'apiBase'> & EditingGuard) {
+function WorkspaceView({ api, apiBase, onDirtyChange, confirmNavigation, onSettingsDirtyChange, confirmTestNavigation }: Pick<AppProps, 'api' | 'apiBase'> & EditingGuard & { onSettingsDirtyChange: (dirty: boolean) => void; confirmTestNavigation: () => boolean }) {
   const workspaces = useResource(api.listWorkspaces);
   const [selectedId, setSelectedId] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsRefresh, setSettingsRefresh] = useState(0);
+  const settingsSaved = useCallback(() => setSettingsRefresh((value) => value + 1), []);
   const workspace = workspaces.data?.find((item) => item.id === selectedId) ?? workspaces.data?.[0];
   return (
     <main id="main" className="workspace-layout">
       <div className="workspace-heading">
         <div><h1>測試</h1><p>選擇測試，查看詳情與執行結果。</p></div>
-        {workspace ? <label className="workspace-select">Workspace
+        {workspace ? <div className="workspace-controls"><label className="workspace-select">Workspace
           <select value={workspace.id} onChange={(event) => { if (confirmNavigation()) setSelectedId(event.target.value); }}>
             {workspaces.data?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
-        </label> : null}
+        </label><button className="button secondary" aria-controls="workspace-settings" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(true)}>Workspace 設定</button></div> : null}
       </div>
       {workspaces.loading ? <Loading text="正在載入 Workspace…" /> : null}
       {workspaces.error ? <Notice message={workspaces.error} retry={workspaces.retry} /> : null}
       {workspaces.data?.length === 0 ? <Empty title="尚無 Workspace" text="請確認 Server 已完成 M1 種子資料初始化，再重新載入。" retry={workspaces.retry} /> : null}
-      {workspace ? <TestBrowser key={workspace.id} workspace={workspace} api={api} apiBase={apiBase} onDirtyChange={onDirtyChange} confirmNavigation={confirmNavigation} /> : null}
+      {workspace && settingsOpen ? <WorkspaceSettings key={workspace.id} api={api} workspace={workspace} onClose={() => setSettingsOpen(false)} onSaved={settingsSaved} onDirtyChange={onSettingsDirtyChange} /> : null}
+      {workspace ? <TestBrowser key={workspace.id} workspace={workspace} api={api} apiBase={apiBase} onDirtyChange={onDirtyChange} confirmNavigation={confirmTestNavigation} settingsRefresh={settingsRefresh} /> : null}
     </main>
   );
 }
 
-function TestBrowser({ workspace, api, apiBase, onDirtyChange, confirmNavigation }: { workspace: Workspace } & Pick<AppProps, 'api' | 'apiBase'> & EditingGuard) {
+function TestBrowser({ workspace, api, apiBase, onDirtyChange, confirmNavigation, settingsRefresh }: { workspace: Workspace; settingsRefresh: number } & Pick<AppProps, 'api' | 'apiBase'> & EditingGuard) {
   const loadTests = useCallback((signal: AbortSignal) => api.listTests(workspace.id, signal), [api, workspace.id]);
   const tests = useResource(loadTests);
   const [selectedId, setSelectedId] = useState('');
@@ -127,14 +136,14 @@ function TestBrowser({ workspace, api, apiBase, onDirtyChange, confirmNavigation
       </aside>
       <section className="detail-panel" aria-label="測試詳情">
         {creating ? <CreateTestForm api={api} workspaceId={workspace.id} onCancel={() => setCreating(false)} onCreated={(test) => { updateTest(test); setSelectedId(test.id); setCreating(false); setSearch(''); }} />
-          : selected ? <TestDetail key={selected.id} testId={selected.id} api={api} apiBase={apiBase} onDirtyChange={onDirtyChange} onTestUpdated={updateTest} />
+          : selected ? <TestDetail key={selected.id} testId={selected.id} api={api} apiBase={apiBase} onDirtyChange={onDirtyChange} onTestUpdated={updateTest} settingsRefresh={settingsRefresh} />
           : <Empty title="在這裡查看測試" text="從左側列表選擇一個測試，查看版本、執行狀態與報告。" />}
       </section>
     </div>
   );
 }
 
-function TestDetail({ testId, api, apiBase, onDirtyChange, onTestUpdated }: { testId: string; onDirtyChange: EditingGuard['onDirtyChange']; onTestUpdated: (test: Test) => void } & Pick<AppProps, 'api' | 'apiBase'>) {
+function TestDetail({ testId, api, apiBase, onDirtyChange, onTestUpdated, settingsRefresh }: { testId: string; settingsRefresh: number; onDirtyChange: EditingGuard['onDirtyChange']; onTestUpdated: (test: Test) => void } & Pick<AppProps, 'api' | 'apiBase'>) {
   const loadTest = useCallback((signal: AbortSignal) => api.getTest(testId, signal), [api, testId]);
   const test = useResource(loadTest);
   const history = useRuns(api, testId);
@@ -188,7 +197,7 @@ function TestDetail({ testId, api, apiBase, onDirtyChange, onTestUpdated }: { te
         {!test.data.publishedVersionId ? <p className="inline-hint">此測試尚未發佈。請儲存草稿、驗證通過並確認發佈後，再執行正式版本。</p> : <p className="inline-hint">「執行測試」只執行目前已發佈版本，不包含尚未發佈的草稿修改。</p>}
       </> : null}
       {submitError ? <Notice message={submitError} retry={history.refresh} retryLabel="重新整理執行紀錄" /> : null}
-      <DraftEditor api={api} apiBase={apiBase} testId={testId} runs={history.runs} onRun={history.addRun} onPublished={published} onDirtyChange={onDirtyChange} onRefreshRuns={history.refresh} />
+      <DraftEditor api={api} apiBase={apiBase} testId={testId} runs={history.runs} onRun={history.addRun} onPublished={published} onDirtyChange={onDirtyChange} onRefreshRuns={history.refresh} settingsRefresh={settingsRefresh} />
       <section className="latest-section" aria-labelledby="latest-title">
         <div className="section-heading"><h3 id="latest-title">最近一次執行</h3>
           <span className="refresh-status" role="status">{history.loading ? '正在讀取狀態…' : history.error ? '同步暫時中斷' : history.polling ? '每 2 秒更新狀態' : '狀態已同步'}</span>
@@ -200,6 +209,7 @@ function TestDetail({ testId, api, apiBase, onDirtyChange, onTestUpdated }: { te
           {latest.error ? <pre className="run-error">{latest.error}</pre> : null}
           {isActiveRun(latest) ? <p className="inline-hint">{latest.status === 'queued' ? '任務已排入佇列，正在等待執行節點。' : '任務正在處理中，結果會自動更新。'}</p> : null}
           {!isActiveRun(latest) && !latest.reportUrl && latest.kind !== 'author' ? <p className="inline-hint">Server 尚未提供報告連結，請重新整理執行紀錄。</p> : null}
+          {latest.kind !== 'author' ? <RunArtifacts key={latest.id} api={api} apiBase={apiBase} runId={latest.id} /> : null}
         </div> : !history.loading && !history.error ? <p className="muted">還沒有執行紀錄。按「執行測試」開始第一次執行。</p> : null}
       </section>
       {liveRun ? <LiveView key={`${liveRun.id}:${liveRequest}`} run={liveRun} apiBase={apiBase} onClose={() => setLiveSelection(undefined)} /> : null}
@@ -215,7 +225,7 @@ function TestDetail({ testId, api, apiBase, onDirtyChange, onTestUpdated }: { te
           <tbody>{history.runs.map((run) => <tr key={run.id}>
             <td><RunStatusBadge run={run} /><span className="table-run-id identifier" title={run.id}>{run.id.slice(0, 8)}</span>
               {run.error ? <details className="error-details"><summary>查看錯誤</summary><pre className="run-error">{run.error}</pre></details> : null}
-            </td><td>{runKindLabel(run)}{run.versionId ? <span className="table-run-id identifier" title={run.versionId}>{run.versionId.slice(0, 8)}</span> : null}</td><td><time dateTime={run.createdAt}>{formatDate(run.createdAt)}</time></td><td>{duration(run)}</td><td><div className="run-actions">{run.kind === 'author' ? <span className="muted">撰寫結果見對話</span> : <ReportLink reportUrl={run.reportUrl} apiBase={apiBase} />}{isActiveRun(run) ? <button className="button secondary compact" onClick={() => startLive(run)} aria-label={`開始監看 Run ${run.id}`}>開始監看</button> : null}<CancelRunButton api={api} run={run} onUpdated={history.addRun} /></div></td>
+            </td><td>{runKindLabel(run)}{run.versionId ? <span className="table-run-id identifier" title={run.versionId}>{run.versionId.slice(0, 8)}</span> : null}</td><td><time dateTime={run.createdAt}>{formatDate(run.createdAt)}</time></td><td>{duration(run)}</td><td><div className="run-actions">{run.kind === 'author' ? <span className="muted">撰寫結果見對話</span> : <><ReportLink reportUrl={run.reportUrl} apiBase={apiBase} /><RunArtifacts api={api} apiBase={apiBase} runId={run.id} /></>}{isActiveRun(run) ? <button className="button secondary compact" onClick={() => startLive(run)} aria-label={`開始監看 Run ${run.id}`}>開始監看</button> : null}<CancelRunButton api={api} run={run} onUpdated={history.addRun} /></div></td>
           </tr>)}</tbody>
         </table></div> : null}
         {history.updatedAt ? <p className="updated-at">最後同步：{history.updatedAt.toLocaleTimeString('zh-TW', { hour12: false })}</p> : null}

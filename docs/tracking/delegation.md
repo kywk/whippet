@@ -1,6 +1,6 @@
 # Agent 分工與派工計畫
 
-M1 已交付，現依使用者指示推進 M2。里程碑與唯一進度來源為 [實作計畫](implementation.md)。
+M1–M4 已完成本機驗收，現由新 PM t35 推進 M5／M6。里程碑與唯一進度來源為 [實作計畫](implementation.md)。
 
 ## 固定分工
 
@@ -88,3 +88,9 @@ Owner：<角色>；可修改：<具體路徑>。
 ## M4 本輪分工
 
 共同契約 `contracts/mvp-v4.md`。t30 負責 React 監看與 Nginx WS proxy；t31 負責獨立 LiveHub／viewer 與 Manager media WS；t32 負責 fixture／author 畫面擷取、Chromium WebRTC helper、Manager live bridge。沿用既有依賴，不安裝新套件、不由子 Agent 操作 Git。總指揮管理契約、Compose、整合驗收；t33 Muse 僅撰寫合成黑箱驗收腳本。
+
+## M5／M6 本輪分工（2026-11-11）
+
+最新授權覆蓋歷史提交安排：不安裝套件、不自行 commit／push、不輸出憑證。PM t35 已核對 GPT-6-Astra／low，維持輕量協調；t30／t31／t32 沿用 sol／xhigh 可見 pane。t33 沿用 Muse Spark 1.3 Contributor／xhigh，只做黑箱測試，整合就緒後才執行。
+
+首批 t32 診斷與改善 WebRTC 畫質；t31 提出並落實 Workspace 持久化與快照；t30 檢查播放器縮放並準備設定 UI，API 串接等待 PM 固定介面。共享契約、部署、docs 與進度檔由 PM 單一寫入。子 Agent 不重啟或部署共享服務。第二批才派 runtime 設定接線與 M6 trace／附件；避免同 owner 同時承接互相干擾工作。範圍、狀態與驗收只在 implementation.md 維護。

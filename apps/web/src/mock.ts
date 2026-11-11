@@ -150,5 +150,16 @@ test('本機頁面', async ({ page }) => {
     async sendMessage() {
       throw new ApiError('示範模式未連接 AI。請使用真實 API 進行持久對話；本機不會呼叫模型。', 'MOCK_AUTHOR_UNAVAILABLE', 400);
     },
+    async getWorkspaceSettings() {
+      throw new ApiError('示範模式未提供 Workspace 設定，請使用真實 Server API。', 'MOCK_SETTINGS_UNAVAILABLE', 400);
+    },
+    async updateWorkspaceSettings() {
+      throw new ApiError('示範模式不會儲存 Workspace 設定，請使用真實 Server API。', 'MOCK_SETTINGS_UNAVAILABLE', 400);
+    },
+    async getRunArtifacts(runId) {
+      if (!runs.has(runId)) throw new ApiError('找不到執行紀錄。', 'NOT_FOUND', 404);
+      // mock 沒有產生 ZIP／MD，不假造下載連結或證據內容。
+      return [];
+    },
   };
 }

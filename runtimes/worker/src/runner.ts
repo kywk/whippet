@@ -7,13 +7,16 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { decideResult, type RuntimeSummary, type WorkerResult } from "./result.js";
 import { exportHTMLReport } from "./report-artifacts.js";
+import { exportFailureArtifacts } from "./failure-artifacts.js";
 import { fixtureBridge } from "./live/fixture-bridge.js";
+import { validateWorkspaceSettings, type WorkspaceSettings } from "./workspace.js";
 
 interface Input {
   runId: string;
   attemptId: string;
   script: string;
   timeoutMs: number;
+  workspaceSettings?: WorkspaceSettings;
 }
 
 const workDir = resolve(process.env.WHIPPET_WORK_DIR ?? "/work");
@@ -51,6 +54,7 @@ function validateInput(value: unknown): Input {
     typeof input.script !== "string" || input.script.trim() === "" || Buffer.byteLength(input.script) > 2 * 1024 * 1024 ||
     typeof input.timeoutMs !== "number" || !Number.isInteger(input.timeoutMs) || input.timeoutMs < 1 || input.timeoutMs > 3600000
   ) throw new Error("input.json requires UUID runId/attemptId, a script <=2MiB and timeoutMs in 1..3600000");
+  validateWorkspaceSettings(input.workspaceSettings);
   return input as Input;
 }
 
@@ -105,10 +109,13 @@ async function execute(input: Input, taskDir: string): Promise<WorkerResult> {
     globalTimeout: input.timeoutMs,
     reporter: [
       [reporterPath, { summaryPath }],
-      ["html", { outputFolder: htmlDir, open: "never", attachmentsBaseURL: "data/" }],
+      ["html", { outputFolder: htmlDir, open: "never", attachmentsBaseURL: "data/", noCopyPrompt: true }],
       ["json", { outputFile: join(outputDir, "results.json") }],
     ],
-    projects: [{ name: "chromium", use: { browserName: "chromium", headless: true, trace: "off", screenshot: "only-on-failure", video: "off" } }],
+    projects: [{ name: "chromium", use: {
+      browserName: "chromium", headless: true, trace: "retain-on-failure", screenshot: "only-on-failure", video: "off",
+      ...(input.workspaceSettings?.defaultTestUrl ? { baseURL: input.workspaceSettings.defaultTestUrl } : {}),
+    } }],
   };
   const configPath = join(taskDir, "playwright.config.cjs");
   await writeFile(configPath, `module.exports = ${JSON.stringify(config, null, 2)};\n`, "utf8");
@@ -120,7 +127,7 @@ async function execute(input: Input, taskDir: string): Promise<WorkerResult> {
     cwd: taskDir,
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, CI: "1", FORCE_COLOR: "0", PLAYWRIGHT_HTML_OPEN: "never", PLAYWRIGHT_HTML_ATTACHMENTS_BASE_URL: "data/" },
+    env: { ...process.env, CI: "1", FORCE_COLOR: "0", PLAYWRIGHT_HTML_OPEN: "never", PLAYWRIGHT_HTML_ATTACHMENTS_BASE_URL: "data/", PLAYWRIGHT_HTML_NO_COPY_PROMPT: "1" },
   });
   const stdout = child.stdout;
   const stderr = child.stderr;
@@ -143,6 +150,8 @@ async function execute(input: Input, taskDir: string): Promise<WorkerResult> {
   }
   // This is the actual built-in Playwright HTML reporter output. Never create
   // a placeholder HTML file when Playwright fails to generate one.
+  await exportFailureArtifacts(htmlDir, join(outputDir, "test-results"), outputDir,
+    (reason) => log(`Optional failure evidence skipped: ${reason}`));
   if (await regularFile(join(htmlDir, "index.html"))) {
     await exportHTMLReport(htmlDir, outputDir);
   }

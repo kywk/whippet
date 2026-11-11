@@ -20,6 +20,7 @@ var (
 type Workspace struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	WorkspaceSettings
 }
 
 type Test struct {
@@ -31,36 +32,39 @@ type Test struct {
 }
 
 type Run struct {
-	ID            string     `json:"id"`
-	TestID        string     `json:"testId"`
-	Status        string     `json:"status"`
-	CreatedAt     time.Time  `json:"createdAt"`
-	StartedAt     *time.Time `json:"startedAt,omitempty"`
-	FinishedAt    *time.Time `json:"finishedAt,omitempty"`
-	Error         string     `json:"error,omitempty"`
-	ReportURL     string     `json:"reportUrl,omitempty"`
-	Kind          string     `json:"kind"`
-	DraftRevision *int       `json:"draftRevision,omitempty"`
-	VersionID     *string    `json:"versionId,omitempty"`
+	ID                string             `json:"id"`
+	TestID            string             `json:"testId"`
+	Status            string             `json:"status"`
+	CreatedAt         time.Time          `json:"createdAt"`
+	StartedAt         *time.Time         `json:"startedAt,omitempty"`
+	FinishedAt        *time.Time         `json:"finishedAt,omitempty"`
+	Error             string             `json:"error,omitempty"`
+	ReportURL         string             `json:"reportUrl,omitempty"`
+	Kind              string             `json:"kind"`
+	DraftRevision     *int               `json:"draftRevision,omitempty"`
+	VersionID         *string            `json:"versionId,omitempty"`
+	WorkspaceSettings *WorkspaceSettings `json:"workspaceSettings,omitempty"`
 }
 
 type Draft struct {
-	TestID           string    `json:"testId"`
-	Revision         int       `json:"revision"`
-	Script           string    `json:"script"`
-	UpdatedAt        time.Time `json:"updatedAt"`
-	ValidationRunID  *string   `json:"validationRunId,omitempty"`
-	ValidationStatus string    `json:"validationStatus,omitempty"`
-	ReportURL        string    `json:"reportUrl,omitempty"`
+	TestID            string             `json:"testId"`
+	Revision          int                `json:"revision"`
+	Script            string             `json:"script"`
+	UpdatedAt         time.Time          `json:"updatedAt"`
+	ValidationRunID   *string            `json:"validationRunId,omitempty"`
+	ValidationStatus  string             `json:"validationStatus,omitempty"`
+	ReportURL         string             `json:"reportUrl,omitempty"`
+	WorkspaceSettings *WorkspaceSettings `json:"workspaceSettings,omitempty"`
 }
 
 type Version struct {
-	ID              string    `json:"id"`
-	TestID          string    `json:"testId"`
-	Revision        int       `json:"revision"`
-	Script          string    `json:"script"`
-	CreatedAt       time.Time `json:"createdAt"`
-	ValidationRunID *string   `json:"validationRunId"`
+	ID                string             `json:"id"`
+	TestID            string             `json:"testId"`
+	Revision          int                `json:"revision"`
+	Script            string             `json:"script"`
+	CreatedAt         time.Time          `json:"createdAt"`
+	ValidationRunID   *string            `json:"validationRunId"`
+	WorkspaceSettings *WorkspaceSettings `json:"workspaceSettings,omitempty"`
 }
 
 type Conversation struct {
@@ -168,10 +172,19 @@ type Artifact struct {
 	SHA256     string
 }
 
+type ArtifactInfo struct {
+	Name        string `json:"name"`
+	Size        int64  `json:"size"`
+	ContentType string `json:"contentType"`
+	URL         string `json:"url"`
+}
+
 // Store is the persistent business boundary; PostgreSQL owns queue order and attempts.
 type Store interface {
 	Ping(context.Context) error
 	Workspaces(context.Context) ([]Workspace, error)
+	Workspace(context.Context, string) (Workspace, error)
+	PatchWorkspace(context.Context, string, WorkspacePatch) (Workspace, error)
 	Tests(context.Context, string) ([]Test, error)
 	Test(context.Context, string) (Test, error)
 	CreateTest(context.Context, string, string, string) (Test, error)
@@ -197,6 +210,7 @@ type Store interface {
 	UploadAllowed(context.Context, string, string, string) error
 	SaveArtifact(context.Context, Artifact) error
 	Artifact(context.Context, string, string) (Artifact, error)
+	ListArtifacts(context.Context, string) ([]ArtifactInfo, error)
 }
 
 func NewID() string {
@@ -219,16 +233,18 @@ func ValidID(id string) bool {
 }
 
 func validArtifact(name string) bool {
-	return name == "report.html" || name == "results.json" || name == "author.json" || isScreenshotArtifact(name)
+	return name == "report.html" || name == "results.json" || name == "author.json" || isScreenshotArtifact(name) || isEvidenceArtifact(name)
 }
 
 var screenshotNamePattern = regexp.MustCompile(`^data/[0-9a-f]{40}[.]png$`)
+var evidenceNamePattern = regexp.MustCompile(`^data/[0-9a-f]{40}[.](zip|md)$`)
 
 func isScreenshotArtifact(name string) bool { return screenshotNamePattern.MatchString(name) }
+func isEvidenceArtifact(name string) bool   { return evidenceNamePattern.MatchString(name) }
 
 func artifactAllowed(kind, name string) bool {
 	if kind == "author" {
 		return name == "author.json"
 	}
-	return (kind == "run" || kind == "validation") && (name == "report.html" || name == "results.json" || isScreenshotArtifact(name))
+	return (kind == "run" || kind == "validation") && (name == "report.html" || name == "results.json" || isScreenshotArtifact(name) || isEvidenceArtifact(name))
 }

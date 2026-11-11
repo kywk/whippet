@@ -1,6 +1,6 @@
 # MVP 實作計畫
 
-規格已寫入；M1 三個模組首批程式已交付；M1 已完成本機真實端到端驗收：成功、斷言失敗及兩份 HTML 報告顯示皆通過。M2、M3 已完成本機驗收；M4–M5 尚未完成。需求以 [MVP 規格](../requirements/mvp.md) 為準，技術邊界見 [架構設計](../architecture/design.md)，負責範圍見 [分工計畫](delegation.md)。
+規格已寫入；M1 三個模組首批程式已交付；M1 已完成本機真實端到端驗收：成功、斷言失敗及兩份 HTML 報告顯示皆通過。M2、M3 已完成本機驗收；M4 已完成本機驗收；M5 進行中、M6 待辦。需求以 [MVP 規格](../requirements/mvp.md) 為準，技術邊界見 [架構設計](../architecture/design.md)，負責範圍見 [分工計畫](delegation.md)。
 
 ## 開發原則
 
@@ -52,7 +52,7 @@
 
 ## M4：唯讀即時監看
 
-狀態：完成。Owner：Herdr t30 Web、t31 Server、t32 Runtime（Codex sol／xhigh），t33 Muse 黑箱驗收，總指揮整合。契約 contracts/mvp-v4.md。使用者已授權先開發，push 待 remote URL；既有成果已 commit 600f28e。
+狀態：完成。Owner：Herdr t30 Web、t31 Server、t32 Runtime（Codex sol／xhigh），t33 Muse 黑箱驗收，總指揮整合。契約 contracts/mvp-v4.md。M4 已以 80a8dfa 提交並推送 origin/main；600f28e 為 M3。新一輪不自行 commit／push。
 
 - [x] Runtime：畫面擷取與 WebRTC 輸出；Server 轉送協商訊息，支援自架 TURN 設定。
 - [x] Web：唯讀監看、連線狀態與斷線重試；沒有觀看者時避免持續占用不必要影像資源。
@@ -66,18 +66,33 @@
 
 M4 真實網站補充驗收：依使用者要求改以 Whippet 登入→搜尋→詳情→報告 popup→返回登入示範；Chrome WebRTC 目視觀察到頁面與 popup 切換，Run `248aa019-454d-464b-a2e7-3c519a65feb8` succeeded。合成計數頁僅作串流診斷，不取代實際操作驗收。
 
-## M5：Linux／Mac Docker 部署與 MVP 收尾
+## M5：畫質、Workspace 設定與部署收尾
 
-狀態：待辦。依賴：M1–M4；Docker 建置與設定範例隨前述階段持續補齊。
+狀態：進行中。Owner：PM t35（GPT-6-Astra／low）；Web t30、Server t31、Runtime t32（GPT-6.1-Sol／xhigh）；黑箱 QA t33（Muse Spark 1.3 Contributor／xhigh）。2026-11-11 已核對 Herdr 啟動參數及各 pane TUI 模型，沿用共享 repo 單檔 owner；不安裝新套件、不自行 commit／push。
 
-- [ ] Integration：Server Compose、執行節點 Compose、設定範例、持久化 volumes 與啟動指南。
-- [ ] Runtime：確認實際 Mac Docker CPU 架構可建置／執行；記錄測過的平台與限制。
-- [ ] Integration：補上開源所需 README、選定的 LICENSE 與必要依賴聲明；授權定案前不宣稱已採用特定授權。
-- [ ] Runtime：改善實際網頁監看的 WebRTC 細字清晰度（目前畫面可切換，但文字偏糊）。
-- [ ] 全體：修正完整主流程中實際遇到的阻塞，不另開無關重構或效能優化工作。
+| 任務 | 狀態／Owner | 交付與最小驗收 |
+| --- | --- | --- |
+| 真實網頁 WebRTC 細字清晰度 | 完成（模組驗收，未部署）／t32 | production 僅 contentHint=text；PM 真 RTP regression 2/2 PASS，含1280×720、3解碼影格、JPEG與原頁繼續。對照videoEdgeMAE 50.62→16.50（JPEG16.16）；證據 /private/tmp/whippet-m5-quality。可見部署demo尚未驗收 |
+| Workspace 設定 API／持久化與快照 | 完成（模組驗收，未部署）／t31 | 2026-11-11 Go server/gateway 測試與 Linux arm64 build 通過；PM 以隔離 PostgreSQL 16.11 實跑 fresh001→006、upgrade005 快照／草稿失效／歷史timeout／不可變保護兩子案例 PASS（0.441s）；端到端待 Web／Runtime |
+| Workspace 設定 UI | 完成（隔離驗收，原服務未部署）／t30；QA t33、PM執行 | 2026-11-11 真實Mac Chromium smoke exit0：儲存／重載、未存腳本全文保留、舊草稿操作阻擋、no-op不增revision、409、未知欄位400、設定還原皆PASS；scripts/test/m5-settings-ui.cjs，截圖 /private/tmp/whippet-m5-settings-evidence/；臨時容器與網路已移除 |
+| 設定傳入 author／Worker | 完成（模組驗收，未部署）／t32 | Manager TestM5 2 PASS、author mock 1 PASS、build通過；PM真Worker workspace tests 3/3 PASS無skip，relative goto/PNG與legacy皆succeeded。證據 /private/tmp/whippet-m5-runtime-evidence；PM隔離全鏈相對URL草稿驗證→發布→正式Run succeeded，固定快照一致（Run b7c74923-f6ab-439a-954a-107383f6f691） |
+| 正常 Dockerfile 建置與啟動／持久化指南 | 受阻（依賴層無快取）／PM | 2026-11-11 停用建置網路試建：Server 在 go mod download 失敗；Web npm ci 未命中快取，停止。禁止下載新套件，未宣稱乾淨建置通過；功能驗收可沿用既有 binary／dist |
+| Linux Server＋Mac Docker 跨主機流程 | 受阻／PM＋t33 | 尚缺遠端 Linux 主機；現有 OrbStack Linux 容器不等於跨主機驗收，獨立工作照常推進 |
+| 實際 TURN 跨 NAT | 受阻／PM＋t33 | 尚缺可驗證 TURN／網路環境；不擴大成完整 NAT 矩陣 |
 
-交付：依文件可啟動，完成建立 → 對話修改 → 驗證 → 發佈 → 執行 → 監看 → 報告。
-最小驗證：Linux Server＋實際 Mac Docker 執行端跑一遍完整流程；其餘沿用前面已通過的結果。
+交付：設定網站 → 建立 → 對話修改 → 驗證 → 發佈 → 執行 → 清楚監看 → 報告。已通過 M1–M4 證據沿用；只對新增設定、畫質與部署變更做相關驗收。第一批 agent 不部署／重啟共用服務，統一由 PM 整合後安排 QA。
+
+## M6：MVP 證據附件與開源交付
+
+狀態：進行中（功能整合已通過，開源交付仍有缺口）。契約 contracts/mvp-v6.md；t31 Server、t30 Web、t32 Runtime 已交付，t33 黑箱腳本由 PM 實跑通過，各 Agent 待命。
+
+- [x] trace：Server migration007／配額／列表／attempt隔離與真DB測試 PASS（0.636s）；Runtime真fail/pass fixture PASS無skip。隔離全鏈失敗Run `86d6fe61-ebf4-4c67-b4a4-2898de9d1225` 保留ZIP/MD/PNG，API與Web真下載hash一致。
+- [x] 報告附件：Web build及Mac Chromium下載PASS；本機既有show-trace成功載入Set content、toHaveText失敗與error-context。HTML Failed1/Passed0、Expected/Received與noCopyPrompt正常，兩頁0 HTTP/pageerror/CSP錯誤。影片與內嵌viewer不支援。
+- [x] README與必要操作說明：已更新設定快照、下載與部署限制；直接依賴版本與本機LICENSE核實表完成。
+- [ ] 映像第三方聲明：OS／瀏覽器／FFmpeg等實物授權未全部核實，不以Playwright授權概括映像；發布前補齊。
+- [ ] LICENSE：受阻，待使用者選定授權；不自行採用候選 Apache-2.0，也不阻塞其他交付。
+
+最小驗收於2026-11-11通過：真ZIP 12,931 bytes／MD 1,145 bytes，API與瀏覽器下載SHA1一致。腳本 scripts/test/m6-artifacts-ui.cjs；截圖、下載與Trace Viewer證據 /private/tmp/whippet-m6-download-evidence。隔離容器、網路與本機Viewer已關閉；原服務未更新，未commit／push。整體仍待授權與映像第三方聲明。
 
 ## 本期不排入
 
@@ -85,7 +100,7 @@ M4 真實網站補充驗收：依使用者要求改以 Whippet 登入→搜尋�
 
 ## 接續方式
 
-下一個可執行任務是 M5：部署文件與 MVP 收尾。M4 已完成本機 WebRTC／JPEG 驗收與可見示範。遇到非核心細節採可逆預設，記在相關任務，不延伸成新一輪設計訪談。
+M5／M6本機功能整合已驗收，沿用通過證據，不重跑全套。接續處理正常Dockerfile依賴快取、原服務更新與清晰度可見示範、遠端Linux／TURN環境、LICENSE選擇及映像第三方聲明；仍禁止安裝新套件與自行commit／push。
 
 ## M1 後的模型預配置
 

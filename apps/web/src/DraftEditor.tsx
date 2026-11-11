@@ -15,20 +15,27 @@ interface Props {
   onPublished: (version: Version) => void;
   onDirtyChange: (dirty: boolean) => void;
   onRefreshRuns: () => void;
+  settingsRefresh: number;
 }
 
 export function DraftEditor(props: Props) {
-  const load = useCallback((signal: AbortSignal) => props.api.getDraft(props.testId, signal), [props.api, props.testId]);
+  const settingsSequence = useRef(props.settingsRefresh);
+  settingsSequence.current = props.settingsRefresh;
+  const load = useCallback(async (signal: AbortSignal) => {
+    const sequence = settingsSequence.current;
+    const draft = await props.api.getDraft(props.testId, signal);
+    return { draft, sequence };
+  }, [props.api, props.testId]);
   const resource = useResource(load);
   return <section className="draft-section" aria-labelledby="draft-title">
     <h3 id="draft-title">草稿編輯</h3>
     {resource.loading ? <Loading text="正在載入草稿…" /> : null}
     {resource.error ? <Notice message={resource.error} retry={resource.retry} /> : null}
-    {resource.data ? <DraftForm {...props} initial={resource.data} /> : null}
+    {resource.data ? <DraftForm {...props} initial={resource.data.draft} initialSettingsSequence={resource.data.sequence} /> : null}
   </section>;
 }
 
-function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, onDirtyChange, onRefreshRuns }: Props & { initial: Draft }) {
+function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, onDirtyChange, onRefreshRuns, settingsRefresh, initialSettingsSequence }: Props & { initial: Draft; initialSettingsSequence: number }) {
   const [draft, setDraft] = useState(initial);
   const [script, setScript] = useState(initial.script);
   const [busy, setBusy] = useState<'save' | 'validate' | 'publish' | 'reload'>();
@@ -39,27 +46,57 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
   const [confirmed, setConfirmed] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [qualificationFresh, setQualificationFresh] = useState(true);
+  const [settingsSyncing, setSettingsSyncing] = useState(false);
+  const minimumDraftRevision = useRef(initial.revision);
   const actionLock = useRef(false);
   const actionController = useRef<AbortController | null>(null);
   const [syncRevision, setSyncRevision] = useState(0);
   const dirty = script !== draft.script;
   const editorState = useRef({ draft, script, busy });
   editorState.current = { draft, script, busy };
-  const synchronizeDraft = useCallback((next: Draft) => {
+  const synchronizeDraft = useCallback((next: Draft, source: 'author' | 'settings' = 'author') => {
     const current = editorState.current;
+    if (next.revision < Math.max(current.draft.revision, minimumDraftRevision.current)) return;
+    minimumDraftRevision.current = next.revision;
     const changed = next.revision !== current.draft.revision || next.script !== current.draft.script;
     setConfirmed(false);
     if (changed && (current.script !== current.draft.script || current.busy)) {
       setConflict(true); setQualificationFresh(false);
-      setError('AI 完成後 Server 草稿已變更；目前本機編輯已保留，請先檢視對照，再決定是否重新載入。');
+      setError(source === 'settings' ? 'Workspace 設定已變更，本機未儲存的腳本已保留。請先保留需要的內容，再重新載入最新草稿；舊驗證不能用於新設定。' : 'AI 完成後 Server 草稿已變更；目前本機編輯已保留，請先檢視對照，再決定是否重新載入。');
       return;
     }
     setDraft(next); setQualificationFresh(true); setConflict(false); setError(undefined);
     if (changed) {
       setScript(next.script);
-      setMessage(`已同步 AI 完成後的草稿 revision ${next.revision}，仍需驗證與人工確認發佈。`);
+      setMessage(source === 'settings' ? `已同步設定變更後的草稿 revision ${next.revision}，請重新驗證。已發佈版本維持原設定。` : `已同步 AI 完成後的草稿 revision ${next.revision}，仍需驗證與人工確認發佈。`);
     }
   }, []);
+  const lastSettingsSequence = useRef(initialSettingsSequence);
+  const settingsPending = settingsRefresh !== lastSettingsSequence.current;
+  useEffect(() => {
+    if (settingsRefresh === lastSettingsSequence.current) return;
+    const controller = new AbortController();
+    setSettingsSyncing(true); setQualificationFresh(false); setConfirmed(false);
+    api.getDraft(testId, controller.signal).then(
+      (next) => {
+        if (controller.signal.aborted) return;
+        if (next.revision < minimumDraftRevision.current) {
+          setSettingsSyncing(false); setConflict(true);
+          setError('草稿同步回應已過期，請重新載入最新草稿；本機編輯仍保留。');
+          return;
+        }
+        minimumDraftRevision.current = next.revision;
+        lastSettingsSequence.current = settingsRefresh;
+        synchronizeDraft(next, 'settings'); setSettingsSyncing(false);
+      },
+      (cause: unknown) => {
+        if (controller.signal.aborted) return;
+        setError(`Workspace 設定已儲存，但草稿同步失敗。請重新載入草稿後再驗證或發佈。${errorMessage(cause)}`);
+        setConflict(true); setQualificationFresh(false); setSettingsSyncing(false);
+      },
+    );
+    return () => controller.abort();
+  }, [api, testId, settingsRefresh, synchronizeDraft]);
   const useCandidate = useCallback((candidate: string): boolean => {
     const current = editorState.current;
     if (current.busy) return false;
@@ -96,6 +133,8 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
     api.getDraft(testId, controller.signal).then(
       (next) => {
         if (controller.signal.aborted) return;
+        if (next.revision < minimumDraftRevision.current) { setSyncing(false); return; }
+        minimumDraftRevision.current = next.revision;
         if (next.revision !== savedRevision || next.script !== savedScript) {
           setConflict(true);
           setQualificationFresh(false);
@@ -122,10 +161,11 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
 
   const report = resolveReportUrl(draft.reportUrl, apiBase, window.location.href);
   const validating = validation ? isActiveRun(validation) : Boolean(draft.validationStatus && ['queued', 'dispatched', 'running', 'collecting', 'cancelling'].includes(draft.validationStatus));
-  const eligible = !dirty && !conflict && !syncing && qualificationFresh && draft.validationStatus === 'succeeded' && Boolean(draft.validationRunId && report);
+  const eligible = !dirty && !conflict && !syncing && !settingsSyncing && !settingsPending && qualificationFresh && draft.validationStatus === 'succeeded' && Boolean(draft.validationRunId && report);
 
   async function perform(kind: NonNullable<typeof busy>, discard = false) {
     if (actionLock.current) return;
+    if (kind !== 'reload' && (settingsSyncing || settingsPending)) return;
     if (kind === 'reload' && dirty && !discard) { setReloadWarning(true); return; }
     if ((kind === 'validate' && (dirty || conflict || !script.trim())) || (kind === 'publish' && (!eligible || !confirmed))) return;
     actionLock.current = true;
@@ -136,12 +176,24 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
       if (kind === 'save' || kind === 'reload') {
         const next = kind === 'save' ? await api.saveDraft(testId, draft.revision, script, controller.signal) : await api.getDraft(testId, controller.signal);
         if (controller.signal.aborted) return;
+        if (next.revision < minimumDraftRevision.current) {
+          setConflict(true); setQualificationFresh(false); setConfirmed(false);
+          setError('較早的草稿回應已過期，本機編輯已保留。請重新載入最新草稿後再繼續。');
+          return;
+        }
+        minimumDraftRevision.current = next.revision;
         setDraft(next); setScript(next.script); setConflict(false); setReloadWarning(false); setConfirmed(false);
+        lastSettingsSequence.current = settingsRefresh;
         setQualificationFresh(true);
         setMessage(kind === 'save' ? `已儲存 revision ${next.revision}。` : `已載入 revision ${next.revision}。`);
       } else if (kind === 'validate') {
         const run = await api.validateDraft(testId, draft.revision, controller.signal);
         if (controller.signal.aborted) return;
+        if (draft.revision < minimumDraftRevision.current) {
+          onRun(run); setConfirmed(false);
+          setMessage(`驗證已排入佇列，但對應舊 revision ${draft.revision}；不能用於目前草稿的發佈。`);
+          return;
+        }
         setDraft((current) => ({ ...current, validationRunId: run.id, validationStatus: run.status, reportUrl: undefined }));
         setQualificationFresh(false);
         setConfirmed(false); onRun(run);
@@ -164,14 +216,16 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
   }
 
   return <>
-    <ConversationPanel api={api} apiBase={apiBase} testId={testId} draft={draft} draftDirty={dirty} draftBusy={Boolean(busy) || syncing || conflict} runs={runs} onRun={onRun} onRefreshRuns={onRefreshRuns} onSynchronized={synchronizeDraft} onUseCandidate={useCandidate} />
+    <ConversationPanel api={api} apiBase={apiBase} testId={testId} draft={draft} draftDirty={dirty} draftBusy={Boolean(busy) || syncing || settingsSyncing || settingsPending || conflict} runs={runs} onRun={onRun} onRefreshRuns={onRefreshRuns} onSynchronized={synchronizeDraft} onUseCandidate={useCandidate} />
     <div className="draft-meta"><span>revision {draft.revision}{dirty ? ' · 有未儲存變更' : ' · 已儲存'}</span><span>更新：{formatDate(draft.updatedAt)}</span></div>
+    {draft.workspaceSettings ? <p className="inline-hint">草稿設定版本 {draft.workspaceSettings.revision} · 執行逾時 {draft.workspaceSettings.timeoutMs.toLocaleString('zh-TW')} 毫秒</p> : null}
+    {settingsSyncing ? <p className="inline-hint" role="status">正在同步 Workspace 設定與草稿，暫時不可驗證或發佈。</p> : null}
     <label className="field-label" htmlFor="draft-script">Playwright TypeScript 腳本</label>
     <textarea id="draft-script" className="script-editor" rows={16} value={script} spellCheck={false} autoCapitalize="off" autoCorrect="off" disabled={Boolean(busy)} onChange={(event) => { setScript(event.target.value); setConfirmed(false); setMessage(undefined); }} aria-describedby="draft-help" />
     <p id="draft-help" className="inline-hint">先儲存，再驗證目前 revision。修改腳本後，必須重新儲存並驗證，才可發佈。</p>
     <div className="action-row">
-      <button className="button secondary" disabled={Boolean(busy) || !dirty || conflict} onClick={() => perform('save')}>{busy === 'save' ? '儲存中…' : '儲存草稿'}</button>
-      <button className="button secondary" disabled={Boolean(busy) || dirty || conflict || validating || !script.trim()} onClick={() => perform('validate')}>{busy === 'validate' ? '送出中…' : validating ? '驗證進行中' : '驗證此 revision'}</button>
+      <button className="button secondary" disabled={Boolean(busy) || settingsSyncing || settingsPending || !dirty || conflict} onClick={() => perform('save')}>{busy === 'save' ? '儲存中…' : '儲存草稿'}</button>
+      <button className="button secondary" disabled={Boolean(busy) || settingsSyncing || settingsPending || dirty || conflict || validating || !script.trim()} onClick={() => perform('validate')}>{busy === 'validate' ? '送出中…' : validating ? '驗證進行中' : '驗證此 revision'}</button>
       <button className="button quiet" disabled={Boolean(busy)} onClick={() => perform('reload')}>重新載入草稿</button>
     </div>
     {conflict ? <Notice message="目前 revision 或驗證資格已過期（409），不會自動覆寫 Server。編輯內容仍保留在上方；可先複製，再重新載入最新草稿。" /> : null}

@@ -169,8 +169,8 @@ func (p *Postgres) CreateAuthor(ctx context.Context, testID, content string, rev
 		return AuthorSubmission{}, err
 	}
 	runID := NewID()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO runs(id,test_id,kind,draft_revision,script_snapshot,script_hash,timeout_ms,author_payload)
-        VALUES($1,$2,'author',$3,$4,$5,$6,$7)`, runID, testID, revision, d.Script, d.hash, authorTimeoutMS, string(payload)); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO runs(id,test_id,kind,draft_revision,script_snapshot,script_hash,timeout_ms,author_payload,workspace_settings)
+        VALUES($1,$2,'author',$3,$4,$5,$6,$7,$8)`, runID, testID, revision, d.Script, d.hash, authorTimeoutMS, string(payload), settingsJSON(d.WorkspaceSettings)); err != nil {
 		return AuthorSubmission{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO messages(id,conversation_id,role,content,run_id,base_revision)

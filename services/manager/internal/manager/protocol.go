@@ -23,10 +23,11 @@ type Envelope struct {
 }
 
 type Dispatch struct {
-	Kind      string      `json:"kind"`
-	Script    string      `json:"script"`
-	TimeoutMS int64       `json:"timeoutMs"`
-	Author    *AuthorTask `json:"author,omitempty"`
+	Kind              string          `json:"kind"`
+	Script            string          `json:"script"`
+	TimeoutMS         int64           `json:"timeoutMs"`
+	Author            *AuthorTask     `json:"author,omitempty"`
+	WorkspaceSettings json.RawMessage `json:"workspaceSettings,omitempty"`
 }
 
 type AuthorMessage struct {
@@ -48,12 +49,13 @@ type AuthorValidation struct {
 }
 
 type WorkerInput struct {
-	RunID     string      `json:"runId"`
-	AttemptID string      `json:"attemptId"`
-	Script    string      `json:"script"`
-	TimeoutMS int64       `json:"timeoutMs"`
-	Kind      string      `json:"kind,omitempty"`
-	Author    *AuthorTask `json:"author,omitempty"`
+	RunID             string          `json:"runId"`
+	AttemptID         string          `json:"attemptId"`
+	Script            string          `json:"script"`
+	TimeoutMS         int64           `json:"timeoutMs"`
+	Kind              string          `json:"kind,omitempty"`
+	Author            *AuthorTask     `json:"author,omitempty"`
+	WorkspaceSettings json.RawMessage `json:"workspaceSettings,omitempty"`
 }
 
 type Result struct {

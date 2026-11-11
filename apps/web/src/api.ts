@@ -1,5 +1,5 @@
 import { RUN_STATUSES } from './types';
-import type { Conversation, DevUser, Draft, Message, Run, RunStatus, Test, Version, WhippetApi, Workspace } from './types';
+import type { Conversation, DevUser, Draft, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, Workspace, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
 
 export class ApiError extends Error {
   readonly code: string;
@@ -54,6 +54,24 @@ function parseWorkspace(value: unknown): Workspace {
   return { id: string(data.id), name: string(data.name) };
 }
 
+function parseWorkspaceSnapshot(value: unknown): WorkspaceSettingsSnapshot {
+  const data = record(value);
+  const settingsRevision = revision(data.revision);
+  if (settingsRevision < 1 || !Array.isArray(data.sites) || typeof data.timeoutMs !== 'number' || !Number.isSafeInteger(data.timeoutMs) || data.timeoutMs < 1 || data.timeoutMs > 3_600_000) {
+    throw new ApiError('Workspace 設定格式不符。', 'INVALID_RESPONSE');
+  }
+  return {
+    revision: settingsRevision,
+    sites: data.sites.map((value: unknown) => { const site = record(value); return { name: string(site.name), url: string(site.url) }; }),
+    defaultTestUrl: string(data.defaultTestUrl), timeoutMs: data.timeoutMs,
+  };
+}
+
+function parseWorkspaceSettings(value: unknown): WorkspaceSettingsResponse {
+  const data = record(value);
+  return { id: string(data.id), name: string(data.name), ...parseWorkspaceSnapshot(data) };
+}
+
 function parseTest(value: unknown): Test {
   const data = record(value);
   return {
@@ -76,6 +94,7 @@ function parseRun(value: unknown): Run {
     kind: data.kind as Run['kind'],
     draftRevision: data.draftRevision == null ? undefined : revision(data.draftRevision),
     versionId: optionalString(data.versionId),
+    workspaceSettings: data.workspaceSettings == null ? undefined : parseWorkspaceSnapshot(data.workspaceSettings),
   };
 }
 
@@ -86,6 +105,7 @@ function parseDraft(value: unknown): Draft {
     updatedAt: string(data.updatedAt), validationRunId: optionalString(data.validationRunId),
     validationStatus: data.validationStatus == null ? undefined : parseStatus(data.validationStatus),
     reportUrl: optionalString(data.reportUrl),
+    workspaceSettings: data.workspaceSettings == null ? undefined : parseWorkspaceSnapshot(data.workspaceSettings),
   };
 }
 
@@ -94,6 +114,7 @@ function parseVersion(value: unknown): Version {
   return {
     id: string(data.id), testId: string(data.testId), revision: revision(data.revision),
     script: string(data.script), createdAt: string(data.createdAt), validationRunId: string(data.validationRunId),
+    workspaceSettings: data.workspaceSettings == null ? undefined : parseWorkspaceSnapshot(data.workspaceSettings),
   };
 }
 
@@ -116,6 +137,14 @@ function parseConversation(value: unknown): Conversation {
     id: string(data.id), testId: string(data.testId), messages: data.messages.map(parseMessage),
     activeRunId: optionalString(data.activeRunId),
   };
+}
+
+function parseRunArtifact(value: unknown): RunArtifact {
+  const data = record(value);
+  if (typeof data.size !== 'number' || !Number.isSafeInteger(data.size) || data.size < 0) {
+    throw new ApiError('附件大小格式不符。', 'INVALID_RESPONSE');
+  }
+  return { name: string(data.name), size: data.size, contentType: string(data.contentType), url: string(data.url) };
 }
 
 function items<T>(value: unknown, parse: (item: unknown) => T): T[] {
@@ -193,6 +222,9 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     async getRun(runId, signal) {
       return parseRun(await request(`/runs/${id(runId)}`, 'GET', signal));
     },
+    async getRunArtifacts(runId, signal) {
+      return items(await request(`/runs/${id(runId)}/artifacts`, 'GET', signal), parseRunArtifact);
+    },
     async createTest(workspaceId, input, signal) {
       return parseTest(await request(`/workspaces/${id(workspaceId)}/tests`, 'POST', signal, input));
     },
@@ -220,6 +252,18 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     async sendMessage(testId, content, revision, signal) {
       const data = record(await request(`/tests/${id(testId)}/messages`, 'POST', signal, { content, revision }));
       return { run: parseRun(data.run), conversationId: string(data.conversationId) };
+    },
+    async getWorkspaceSettings(workspaceId, signal) {
+      return parseWorkspaceSettings(await request(`/workspaces/${id(workspaceId)}`, 'GET', signal));
+    },
+    async updateWorkspaceSettings(workspaceId, input, signal) {
+      // 只傳契約允許的欄位，避免 UI 資料或未定義欄位混入 PATCH。
+      const body = {
+        revision: input.revision,
+        sites: input.sites?.map((site) => ({ name: site.name, url: site.url })),
+        defaultTestUrl: input.defaultTestUrl, timeoutMs: input.timeoutMs,
+      };
+      return parseWorkspaceSettings(await request(`/workspaces/${id(workspaceId)}`, 'PATCH', signal, body));
     },
   };
 }

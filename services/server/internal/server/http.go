@@ -52,6 +52,8 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 		writeJSON(w, 200, map[string]any{"user": map[string]string{"id": "dev-admin", "role": "superadmin"}})
 	})
 	mux.HandleFunc("GET /api/workspaces", a.workspaces)
+	mux.HandleFunc("GET /api/workspaces/{id}", a.workspace)
+	mux.HandleFunc("PATCH /api/workspaces/{id}", a.patchWorkspace)
 	mux.HandleFunc("GET /api/workspaces/{id}/tests", a.tests)
 	mux.HandleFunc("POST /api/workspaces/{id}/tests", a.createTest)
 	mux.HandleFunc("GET /api/tests/{id}", a.test)
@@ -65,6 +67,7 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	mux.HandleFunc("POST /api/tests/{id}/runs", a.createRun)
 	mux.HandleFunc("GET /api/tests/{id}/runs", a.runs)
 	mux.HandleFunc("GET /api/runs/{id}", a.run)
+	mux.HandleFunc("GET /api/runs/{id}/artifacts", a.listArtifacts)
 	mux.HandleFunc("POST /api/runs/{id}/cancel", a.cancel)
 	mux.HandleFunc("POST /api/manager/runs/{id}/artifacts/{name...}", a.upload)
 	mux.HandleFunc("GET /api/runs/{id}/artifacts/{name...}", a.artifact)
@@ -249,6 +252,20 @@ func (a *API) uploadAuthorized(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"name": name, "size": item.Size})
 }
 
+func (a *API) listArtifacts(w http.ResponseWriter, r *http.Request) {
+	id, ok := a.id(w, r)
+	if !ok {
+		return
+	}
+	items, err := a.store.ListArtifacts(r.Context(), id)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "private, no-cache")
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
 func (a *API) artifact(w http.ResponseWriter, r *http.Request) {
 	id, ok := a.id(w, r)
 	if !ok {
@@ -298,6 +315,10 @@ func (a *API) artifact(w http.ResponseWriter, r *http.Request) {
 		return
 	} else if isScreenshotArtifact(name) {
 		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'")
+	} else if isEvidenceArtifact(name) {
+		w.Header().Set("Content-Type", artifactContentType(name))
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, path.Base(name)))
 		w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'")
 	} else {
 		w.Header().Set("Content-Type", "application/json")

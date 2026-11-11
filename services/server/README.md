@@ -1,6 +1,6 @@
 # Whippet Server
 
-Go 單一服務，依 [`mvp-v1`](../../contracts/mvp-v1.md)、[`mvp-v2`](../../contracts/mvp-v2.md) 與 [`mvp-v3`](../../contracts/mvp-v3.md) 提供 HTTP API、PostgreSQL 佇列、Manager WebSocket gateway 與持久化附件。M2 已完成草稿／發布與可靠佇列整合；M3 Server 已加入持久對話、author 任務與結果套用，Docker／模型端到端驗收由總指揮執行。
+Go 單一服務，依 [`mvp-v1`](../../contracts/mvp-v1.md)～[`mvp-v6`](../../contracts/mvp-v6.md) 提供 HTTP API、PostgreSQL 佇列、Manager WebSocket gateway、持久對話、報告附件與即時監看。M1～M4 已完成整合驗收；M5 Server／Web 隔離驗收通過，Runtime 設定接線由 PM 接續。M6 Server 失敗證據附件已通過 Go／獨立 PostgreSQL 檢查，真實附件端到端尚待整合。
 
 M1 已於 2026-11-11 驗收完成。總指揮與 Muse 已確認真實成功 Run、斷言失敗 Run 及兩份 HTML report 正常；storage shim 修正後成功報告顯示 Passed 1／Failed 0，失敗報告顯示 Passed 0／Failed 1。完整 Run ID 與驗證來源見 [DELIVERY.md](DELIVERY.md)。
 
@@ -59,12 +59,15 @@ docker build -t whippet-server:m1 services/server
 | --- | --- | --- |
 | POST | `/api/dev-login` | 固定 `{user:{id,role}}` |
 | GET | `/api/workspaces` | `{items:[Workspace]}` |
+| GET | `/api/workspaces/:id` | Workspace 設定與 revision |
+| PATCH | `/api/workspaces/:id` | 更新設定，核對 revision |
 | GET | `/api/workspaces/:id/tests` | `{items:[Test]}` |
 | GET | `/api/tests/:id` | Test |
 | POST | `/api/tests/:id/runs` | `202` Run |
 | GET | `/api/tests/:id/runs` | `{items:[Run]}`，新到舊 |
 | GET | `/api/runs/:id` | Run |
 | POST | `/api/runs/:id/cancel` | Run；queued 立即 cancelled，已派送者進入 cancelling |
+| GET | `/api/runs/:id/artifacts` | `{items:[{name,size,contentType,url}]}`，當前 attempt 的已保存附件 |
 | GET | `/api/runs/:id/artifacts/:name` | 已保存附件 |
 
 錯誤使用 `{error:{code,message}}`；無效 UUID 為 400、不存在資源 404、狀態或 attempt 衝突 409。Run 的 `reportUrl` 在 `report.html` 已保存後出現。再次 POST 建立 Run 會產生新 Run；HTTP 建立請求尚無 idempotency key。
@@ -75,6 +78,52 @@ curl http://localhost:8080/api/workspaces
 curl http://localhost:8080/api/workspaces/00000000-0000-4000-8000-000000000001/tests
 curl -X POST http://localhost:8080/api/tests/10000000-0000-4000-8000-000000000001/runs
 ```
+
+## Workspace 設定與快照（M5）
+
+GET `/api/workspaces/:id` 回傳 `{id,name,revision,sites:[{name,url}],defaultTestUrl,timeoutMs}`。初始 revision 為 1，sites 為 []、defaultTestUrl 為空字串、timeoutMs 為 60000。Workspace name 本輪唯讀。
+
+PATCH 為部分更新，revision 必填，sites 提供時整份替換。例如：
+
+```sh
+curl -X PATCH http://localhost:8080/api/workspaces/00000000-0000-4000-8000-000000000001 \
+  -H 'Content-Type: application/json' \
+  -d '{"revision":1,"sites":[{"name":"驗收網站","url":"https://example.test/"}],"defaultTestUrl":"https://example.test/start","timeoutMs":60000}'
+```
+
+- sites 最多 20 筆，名稱 trim 後為 1～100 字元；URL 最多 2048 字元，須完整 HTTP(S)，禁止 userinfo。defaultTestUrl 可空，非空使用相同 URL 規則，不要求列於 sites。
+- timeoutMs 為 1～3600000 整數。未知欄位（含巢狀欄位）、null、secrets／env／key 均拒絕；錯誤不回顯原始輸入。過期 revision 回 409，重新 GET 後再由使用者確認更新。
+- 相同設定的 PATCH 不增 revision、不清除驗證。實際變更時，在單一交易遞增 Workspace revision，替每份現存草稿建立新 revision（腳本不變），套用新設定並清除驗證資格。尚無草稿時，首次建立使用目前設定及原已發佈腳本。
+- Draft／Version／Run 與 dispatch 頂層帶 `workspaceSettings:{revision,sites,defaultTestUrl,timeoutMs}`。已發佈版本、既有 Run（含 queued／author）保留原快照；新的正式 Run 仍取已發佈版本。舊 author 結果遇到新草稿 revision 時保留候選稿與衝突訊息，不覆寫、不排驗證。
+- 發布仍須目前 revision、腳本與 hash、完整設定與 timeout 相符的成功驗證及已保存報告，另需人工確認。author 固定總限時 180000ms，續接 validation 使用草稿設定的 timeoutMs。
+- Migration 006 為歷史快照補空網站清單及預設 URL，保留各筆既有 timeout；author 的設定 timeout 取 base draft，其任務本身的總限時不變。快照 immutable trigger 仍生效。
+
+本批 Server 保存並派送完整快照。Manager／Worker 的設定轉送、author 網站上下文與 defaultTestUrl → Playwright baseURL 屬 Runtime 第二批；本模組通過不代表該端到端接線已驗收。
+
+### 隔離 PostgreSQL 驗證
+
+`TestPostgresWorkspaceSettingsSnapshots` 只使用明確提供的 `TEST_DATABASE_URL`；缺少時 skip，沒有預設連線。每個子案例建立並清除自己的隨機 schema。**只指定獨立測試 DB，不指定共用服務 DB。**
+
+PM 已使用快取 `postgres:16.11-bookworm` 完成 fresh 001→006 與 005 非預設 timeout 升級驗證。需要重驗時，從 repo 根目錄啟動獨立容器，確認 ready：
+
+```sh
+docker run --pull=never --rm -d --name whippet-m5-settings-pg \
+  -e POSTGRES_USER=whippet_test -e POSTGRES_PASSWORD=whippet_test \
+  -e POSTGRES_DB=whippet_test -p 127.0.0.1:15465:5432 postgres:16.11-bookworm
+docker exec whippet-m5-settings-pg pg_isready -U whippet_test -d whippet_test
+```
+
+確認 ready 後，在 `services/server/` 使用已備妥且 GOROOT 相符的 Go 工具鏈執行（下列帳密僅為此獨立容器的固定測試值）：
+
+```sh
+env GOPROXY=off GOSUMDB=off \
+  TEST_DATABASE_URL='postgres://whippet_test:whippet_test@127.0.0.1:15465/whippet_test?sslmode=disable' \
+  go test -mod=readonly -tags=integration ./internal/server \
+  -run '^TestPostgresWorkspaceSettingsSnapshots$' -count=1 -v
+docker stop whippet-m5-settings-pg
+```
+
+容器使用 `--rm`，停止即移除；不用掛共用資料卷。測試同時核對設定 no-op／失效、舊驗證禁止發布、版本／queued／author 快照保留、author 衝突去重，以及升級後歷史 timeout／腳本與 immutable trigger。
 
 ## Manager 串接
 
@@ -134,11 +183,23 @@ Content-Type: application/octet-stream
 <raw body>
 ```
 
-一般 run／validation 接受 `report.html`／`results.json`（各 64 MiB），另支援原生 HTML 的 `data/<40位小寫hex>.png`（每張 10 MiB、每 Run 最多 32 張且合計 64 MiB）。author 僅接受 `author.json`，上限 2 MiB。上傳與讀取皆核對 Run.kind，不能跨種類存取附件。檔名與 UUID 採白名單，PNG 上傳核對格式，路徑逐層拒絕 symlink；檔案先寫暫存、同步並原子 rename，再登記 DB。key 為 `run/attempt/sha256/name`，同內容上傳可重送，衝突內容回 409，不覆寫已登記報告。終態後拒絕再上傳。
+一般 run／validation 接受下列附件；author 僅接受 `author.json`（2 MiB）。上傳與讀取皆核對 Run.kind，不能跨種類存取。檔名與 UUID 採白名單，路徑逐層拒絕 symlink；檔案先寫暫存、同步並原子 rename，再登記 DB。key 為 `run/attempt/sha256/name`，同內容上傳可重送，衝突內容回 409，不覆寫已登記附件。終態後拒絕再上傳。
+
+| 名稱 | 單檔上限 | 每 Run 配額 | 下載 Content-Type |
+| --- | --- | --- | --- |
+| `report.html` | 64 MiB | 原規則 | `text/html; charset=utf-8` |
+| `results.json` | 64 MiB | 原規則 | `application/json` |
+| `data/<40位小寫hex>.png` | 10 MiB | PNG 最多 32 檔／64 MiB | `image/png` |
+| `data/<40位小寫SHA1>.zip` | 64 MiB | ZIP＋MD 合併最多 32 檔／128 MiB | `application/zip` |
+| `data/<40位小寫SHA1>.md` | 1 MiB | 同上，與 PNG 獨立 | `text/markdown; charset=utf-8` |
+
+ZIP／MD 需 migration `007_failure_evidence.sql`。Server 核對檔名 SHA1、ZIP 基本 PK0304／PK0506 signature 與 Markdown UTF-8；ZIP 不解壓、不驗整包、不執行。兩類下載強制 `Content-Disposition: attachment; filename="<hash.ext>"`、nosniff 與 `sandbox; default-src 'none'`，不在管理頁渲染 Markdown。影片、任意副檔名與 root-level `trace.zip`／`error-context.md` 不接受。
+
+GET `/api/runs/:id/artifacts` 回 `{items:[{name,size,contentType,url}]}`，依 name 排序，只列當前 attempt 已登記且符合 kind 的附件。已知 Run 無附件回空陣列，未知 Run 回 404；不回 storage key、token 或主機路徑。ZIP／MD 下載連結應放在平台頁面、HTML 報告 sandbox 外；trace 下載後以本機既有 Playwright Trace Viewer 開啟。M6 真實 Worker 產生／Manager 上傳與瀏覽器下載驗收由 PM 接續，這裡不宣稱已完成端到端驗證。
 
 PNG 沿用同一組上傳／下載端點，name 可為 `data/<hash>.png`。report.html 保持原路徑，內部相對圖片網址不改寫；PNG 回應為 image/png。請先上傳 PNG 再上傳報告／送 result。Server 在 Run row lock 下核對 PNG 配額，重送同檔名不重占名額；成功檢查只計 report.html／results.json，PNG 不影響兩份報告門檻。此功能需 migration `005_report_screenshots.sql`。
 
-`report.html` 保留原生報告與相對 PNG 路徑。回應設定 CSP sandbox，允許 inline scripts／styles，以及同源、data/blob 圖片；connect-src 維持 none，script-src 不開放外部來源，避免報告腳本操作 SPA。Server 在原報告 script 前注入記憶體 storage shim，讓 Playwright 設定可在 opaque sandbox 中讀寫 localStorage／sessionStorage；資料只留在本頁，重新整理即清空，不加入 allow-same-origin。注入只改變 HTTP 呈現，保存的附件與 SHA256 不變；回應 ETag 使用 `-storage-png-v1` 後綴。trace.zip、影片與其他附件類型尚未提供。
+`report.html` 保留原生報告與相對 PNG 路徑。回應設定 CSP sandbox，允許 inline scripts／styles，以及同源、data/blob 圖片；connect-src 維持 none，script-src 不開放外部來源，避免報告腳本操作 SPA。Server 在原報告 script 前注入記憶體 storage shim，讓 Playwright 設定可在 opaque sandbox 中讀寫 localStorage／sessionStorage；資料只留在本頁，重新整理即清空，不加入 allow-same-origin。注入只改變 HTTP 呈現，保存的附件與 SHA256 不變；回應 ETag 使用 `-storage-png-v1` 後綴。M6 不提供 HTML 內嵌 trace viewer，也不為原生 trace 按鈕或 Copy prompt 放寬 script／connect／download 限制。
 
 Manager WebSocket 輸出先 Marshal 完整 JSON，再用 Gorilla 未壓縮的 server WriteMessage 單 frame 路徑，支援 x/net JSON.Receive。4096-byte buffer 與 2 MiB script 契約不變；跨函式庫長 payload 回歸測試位於 `internal/gateway/websocket_interop_test.go`（wsinterop tag，需現有 x/net 0.56.0 與配對 Go >=1.25，獨立暫存 modfile，不新增 production 依賴）。
 
@@ -189,5 +250,7 @@ TEST_DATABASE_URL='postgres://whippet:whippet@localhost:5432/whippet_test?sslmod
 ```
 
 整合測試會在指定 DB 建立獨立隨機 schema，結束時刪除該 schema；不使用既有應用資料表。需要 schema 建立權限。
+
+M6 單一資料層測試為 `TestPostgresEvidenceArtifacts`，同樣只接受明確的隔離 TEST_DATABASE_URL，缺少時 skip。可沿用上方「隔離 PostgreSQL 驗證」的獨立容器命令，把 `-run` 改為 `'^TestPostgresEvidenceArtifacts$'`；它包含 migration 007、列表隔離、合併配額／PNG 獨立、重送與原報告門檻檢查。PM 已用獨立 `postgres:16.11-bookworm` 容器執行通過，無需為此交付重跑。
 
 上述命令供後續開發按改動執行；本次 M1 驗收已完成，不需重跑。實際檢查與仍未涵蓋的 M2 項目見 [DELIVERY.md](DELIVERY.md)。

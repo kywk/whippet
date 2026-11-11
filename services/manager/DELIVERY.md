@@ -1,6 +1,135 @@
-# Runtime M4、PNG 截圖與 M3 交付
+# Runtime M6、M5 與既有交付
 
 更新：2026-11-11（Asia/Taipei）。Owner：Runtime Agent。
+
+## PM 最終隔離整合回報
+
+PM t35 回報 M5／M6 隔離功能整合 **最終 PASS**：
+
+- M5 Workspace 設定的相對 URL 已完成驗證、發布與正式 Run，結果 succeeded。
+- M6 真失敗 Run `86d6fe61-ebf4-4c67-b4a4-2898de9d1225` 保存 ZIP **12,931 bytes**／MD **1,145 bytes**；API 與 UI 下載 hash 一致。
+- 本機 show-trace 從根入口載入真實 Set content／toHaveText／error-context；HTML 顯示 **Failed 1／Passed 0**，詳細內容正常，HTTP／pageerror／CSP 錯誤皆 **0**。先前 Viewer 失敗是 PM 手拼 URL 錯誤，產品未因此修改。
+- 證據：`/private/tmp/whippet-m6-download-evidence`。隔離服務、網路與 Viewer 已關閉；**原共用服務未更新，未 commit／push**。
+
+以上為 PM 執行與回報的整合證據。本 Agent 本輪僅更新此交付紀錄，未重跑測試、修改程式或操作服務。下方「待 PM 整合」為交付當時的歷史狀態，以本節最終回報為準。
+
+## 最新 M6：失敗 ZIP／Markdown 證據（隔離真實 fixture 已通過）
+
+PM t35 已透過正常 approval 完成下方隔離容器驗證：**exit 0，1 test PASS、無 skip**。真失敗 fixture 的 result 為 **failed**，產生 ZIP／MD／PNG 且 hash 檢查通過；成功 fixture 為 **succeeded**，沒有 ZIP／MD。證據分別位於 `/private/tmp/whippet-m6-runtime-evidence/m6-fail-FrFz99` 與 `/private/tmp/whippet-m6-runtime-evidence/m6-pass-1mJ5fo`。這是 PM 執行回報，本 Agent 不重跑；完整 Server／Manager／Worker→Web 下載整合仍由 PM 接續，不將隔離 fixture 視為整條產品流程已驗收。
+
+M5 後續實跑已由 PM t35 確認 **exit 0**：live **2/2**（decoded frames 3、1280×720 斷言、JPEG、停止 helper 後原頁繼續），workspace **3/3 無 skip**（relative／legacy 都 succeeded）。證據 `/private/tmp/whippet-m5-runtime-evidence`；不再重跑 M5。
+
+M6 依 `contracts/mvp-v6.md`，只改原 owner 目錄，沒有新增套件、模型呼叫、部署、共用服務重啟、Git 或 docs／contracts 修改。Manager／Worker 的控制與媒體協定未變。
+
+| 產物／接縫 | 實作 |
+| --- | --- |
+| `runtimes/worker/src/runner.ts` | trace=`retain-on-failure`、retries=0、video=off；HTML reporter noCopyPrompt=true，對應 env 固定為 1；先匯出可選證據，再沿用原生 PNG／HTML 與成功門檻。 |
+| `src/failure-artifacts.ts` | 匯出原生 HTML data/<sha1>.zip/.md；HTML 缺失時只從本次 output/test-results 尋找 trace.zip／error-context.md，不製造證據或仿製報告。深度最多 4、總掃描最多 2048 entries；拒絕 symlink／非 regular file、檢查內容 SHA1。依內容／副檔名去重，配額滿即停止。 |
+| 配額／格式 | ZIP 每檔 64 MiB，MD 1 MiB，兩者合計 32 檔／128 MiB，PNG 原配額獨立。ZIP **只接受 PK0304／PK0506**，明確拒絕 PK0708；MD 嚴格 UTF-8。全程不解壓 ZIP、不執行內容。無效／超限僅固定原因警示，不印檔案內容或原始錯誤，不改原斷言結果。 |
+| `src/report-artifacts.ts` | PNG data 目錄允許與可選 ZIP／MD 共存；PNG 本身的嚴格驗證與先圖後 HTML 規則不變。 |
+| Manager `failure_evidence.go`／`artifacts.go`／`author.go` | 只讓普通 run／validation 接受 data/<40hex>.zip/.md；os.Root、regular file、大小／SHA1／格式重驗。ZIP application/zip、MD text/markdown; charset=utf-8，排在 report.html／results.json／result 前上傳。author 仍只接受 author.json。 |
+| Manager `journal.go`／`manager.go` | journal 白名單／32 檔限制；recovery 上傳前重驗可選配額／有效性。**僅可選 ZIP／MD 且明確 HTTP 413** 才移除該 journal 上傳項並持久化固定 http_413 警示，保留原 result；network／5xx／401／409 及必要報告／PNG 均沿用原處理。不因補送或略過重跑 Worker。 |
+| skill／README | 沿用 writing-for-agents 的精簡能力說明：失敗 trace／MD 自動留存下載、trace 以本機開啟；沒有內嵌 viewer，影片仍不支援。技能檔／mock 一併更新，未呼叫模型。 |
+
+實際檢查：
+
+- 正式 `npm run build`：PASS，最新 dist 已更新。
+- `node --test dist/failure-artifacts.test.js dist/report-artifacts.test.js`：**4/4 PASS**。涵蓋 native／fallback 去重、HTML 缺失但有既存證據、不掃其他任務、錯誤 signature（含0708）／UTF-8／hash／symlink／超限略過、32 檔，以及原 PNG 相對引用。
+- `node --test --test-name-pattern='packaged Playwright authoring skill' dist/author/author.test.js`：**1 PASS**，實際 request capture 證明更新的下載／viewer 限制已載入；無 live 模型。
+- Manager `go test -mod=readonly ./internal/manager -run '^TestM6' -count=1`：**4 tests PASS，0.656s**。涵蓋白名單／格式／symlink／per-file／32 檔／128 MiB／PNG 獨立配額、原斷言與必要報告門檻，以及 413 recovery 移除後完成 journal 不重跑，401／409／5xx／network／PNG／HTML 不可當 optional413 吞掉。
+- Go build／既有 cache Linux arm64 交叉編譯 PASS：`/private/tmp/whippet-manager-m6`（靜態 ELF aarch64）。Worker 交付最新 `runtimes/worker/dist/` 與更新後 `skills/`。下列真實容器檢查已由 PM 代跑 PASS，詳見本節首段；本 Agent 未重跑。
+
+### PM 一次隔離容器命令
+
+**真失敗 spec：`runtimes/worker/examples/fail.spec.ts`**，可原樣用於之後 Server→Manager Run；內容是 page.setContent 加固定錯誤文字斷言，1 秒內真失敗。成功對照 `runtimes/worker/examples/pass.spec.ts`。兩者不用服務／DB／模型，沒有變更 scripts/test/fixtures 下的唯讀真實網站案例。
+
+單一 cached image、唯讀掛 dist／examples，產物到 `/private/tmp/whippet-m6-runtime-evidence`。Node 測試內依序啟動真正 runner：失敗預期 exit 1／result failed，必須同時存在 ZIP／MD／PNG 與真 Playwright HTML；成功預期 exit 0／result succeeded，不能留下 ZIP／MD。檢查 hash、ZIP signature、MD UTF-8。失敗 Run 不會被包裝成 Playwright 成功；最外層測試 exit 0 僅代表上述預期都成立。
+
+```sh
+mkdir -p /private/tmp/whippet-m6-runtime-evidence
+docker run --rm --pull=never --network bridge \
+  --memory 1g --cpus 1 --pids-limit 256 --shm-size 256m \
+  --mount type=bind,source=/Users/kywk/kywk/project/whippet/runtimes/worker/dist,target=/opt/whippet/worker/dist,readonly \
+  --mount type=bind,source=/Users/kywk/kywk/project/whippet/runtimes/worker/examples,target=/fixtures,readonly \
+  --mount type=bind,source=/private/tmp/whippet-m6-runtime-evidence,target=/tmp/evidence \
+  -e WHIPPET_EVIDENCE_BROWSER_TEST=1 \
+  -e WHIPPET_EVIDENCE_FIXTURES=/fixtures \
+  -e WHIPPET_EVIDENCE_DIR=/tmp/evidence \
+  --entrypoint node whippet-worker:m1 --test dist/evidence-runner.test.js
+```
+
+預期一項 test PASS／無 skip，console 兩筆 fixture status 分別 failed／succeeded。入口 `dist/evidence-runner.test.js`。PM 以正常 approval 執行一次，不需先改共用部署。
+
+待整合：Server／Web 的列表與 ZIP／MD 下載端點、標頭／隔離／HTML CSP／外部入口由各 owner 接手；本 Agent 未放寬 CSP。HTML 的 trace 按鈕不宣稱可用，使用者下載後用本機 Playwright show-trace 開啟。fallback 不保證硬殺前未 flush 的檔案；可選證據缺少／略過不取代必要報告或改成成功。不新增影片、內嵌 viewer、任意附件框架或遠端環境矩陣。
+
+## 最新 M5：細字清晰度與 Workspace 快照
+
+此節優先於下方歷史紀錄。Owner 仍限 `services/manager/`、`runtimes/worker/`；未部署、未重啟共用服務、未安裝套件、未讀／印真實憑證、未呼叫模型、未執行 Git，未修改 docs／contracts 或唯讀的真實網站 fixture。Docker 診斷由 PM t35 透過正常 approval 執行，本 Agent 不重試 Docker。
+
+### 畫質根因、參數與證據
+
+以實際 Whippet 登入頁為來源，透過同一個 screencast／VideoHelper／RTP pipeline 取得 PNG、JPEG、canvas、接收 video 的 1:1 裁圖。獨立 receiver 在已載入的真實網頁 stylesheet／detail-panel 裡插入測試 panel，量測現有 CSS 的顯示尺寸；此步不是完整產品 WS／UI E2E。
+
+| 項目 | baseline | 僅 contentHint=text 對照 |
+| --- | --- | --- |
+| 來源 JPEG／canvas／track | 1280×720，track 3 FPS | 相同 |
+| VP8 outbound／inbound | **320×180** | **1280×720，3 FPS** |
+| qualityLimitationReason／packetsLost | bandwidth／0 | none／0 |
+| JPEG edge MAE | 16.1615 | 16.1615 |
+| video edge MAE | **50.6215** | **16.4953** |
+| 3 秒靜態樣本實際 bitrate | 2,194 bps | 69,108 bps |
+| encoder targetBitrate（非實際吞吐） | 500,000 | 2,083,333 |
+| viewer 1440／1280 viewport、DPR 1 | client 960×540／800×450，放大 320×180 | client 相同，從 1280×720 縮小顯示 |
+
+已目視 baseline／text 兩組 referenceCrop、jpegCrop、videoCrop：baseline video 細字失去可讀性；text video 接近原 JPEG。edge MAE 是相對同一原始 PNG 邊緣像素的平均誤差，越低越好；不是通用知覺品質分數。證據由 PM 執行產生於 `/private/tmp/whippet-m5-quality/{baseline,text}/summary.json` 與裁圖，本 Agent 唯讀分析，不將它們當成自己執行的 Docker 測試。
+
+production 修正只有 `src/live/helper.ts` 在 `pc.addTrack` 前設定 `track.contentHint = "text"`。**沒有設定或提高 bitrate、JPEG quality、解析度、FPS、canvas 尺寸、CSS；沒有改 JPEG／popup 選頁／viewer 停止與 Run 生命週期。** W3C 的 [text content hint](https://www.w3.org/TR/mst-content-hint/#video-content-hints) 明確適用於網頁文字，應優先保留細節，符合實測根因。
+
+新增 `src/live/quality-check.ts` 為手動隔離診斷入口，輸出受限 stats 與圖片，不印 SDP／ICE credentials 或建立 Run。`--hint=` 可重現空 hint baseline，`--hint=text` 作單變數對照，省略使用 production。既有 live browser smoke 已加入接收端必須 1280×720 的 regression assertion；正式 build 通過，production 真 RTP regression 由 PM 依下方單容器命令執行一次。DPR 2、動態高負載與受限頻寬未做本輪矩陣驗證，不宣稱所有網路都不會降畫質。
+
+### v5 設定接線
+
+- Manager `protocol.go`／`workspace.go`／`author.go`／`manager.go`：dispatch／Worker input 頂層 optional `workspaceSettings`，依 v5 驗證非機密欄位與界限，使用 json.RawMessage 保留原快照；run／author 都透傳，不讀 Workspace API、不重新取目前設定。未知設定欄位、userinfo、非 HTTP(S) 等拒絕，錯誤不回顯輸入。舊 dispatch 缺欄位時仍接受且不補造快照。
+- Worker `src/workspace.ts`：共用快照驗證，舊 input 可省略；不正規化或覆寫任務設定。`runner.ts` 僅在非空 defaultTestUrl 設 Playwright project use.baseURL，空或缺欄位保持舊行為；不自動 goto、不注入 env。執行 timeout 仍用既有頂層 timeoutMs。
+- author `types.ts`／`loop.ts`：同一頂層快照驗證後放進最初 Saved draft snapshot JSON，後續 request 沿用該固定資料；system 明示設定是 DATA、不得覆寫使用者目標或因設定自動導覽。網站清單／預設 URL 可供產稿參考，非空預設 URL 告知將成為獨立 runner 的 baseURL。author timeout 仍最多 180000，不被 workspace timeout 3600000 覆寫；不增加工具／模型呼叫或直接執行 spec。
+- `examples/workspace-relative.spec.ts`：容器內短暫 127.0.0.1:18765 固定 HTML server，snapshot baseURL=/base/，真正 `page.goto('probe')` 必須到 /base/probe，並產一張 PNG；不需共用服務、DB 或模型。`examples/legacy-input.spec.ts`：缺 workspaceSettings 時 baseURL 必須 unset。
+
+### 實際檢查與交付
+
+| 檢查 | 本輪實際結果 |
+| --- | --- |
+| Worker `npm run build` | PASS，最新 dist 已更新。 |
+| `node --test dist/workspace.test.js` | 2 passed／1 browser fixture skipped／0 failed；快照合法性、原樣回傳、舊欄位缺省與固定錯誤。 |
+| `node --test --test-name-pattern='^M5 Workspace' dist/author/author.test.js` | 1 passed；兩次 mock request 捕捉固定 JSON、DATA 指示、不自動導覽、author 180000 與缺欄位相容，沒有模型連線。 |
+| Manager `go test -mod=readonly ./internal/manager -run '^TestM5' -count=1` | 2 tests PASS，0.412s；run／author 新舊 input、RawMessage 原樣、未知欄位／userinfo拒絕、author timeout 不改。 |
+| Manager Linux arm64 build | PASS，`/private/tmp/whippet-manager-m5`，ELF aarch64 靜態連結；既有 cache、GOPROXY=off、GOSUMDB=off、-mod=readonly。 |
+| PM 已代跑畫質 baseline／text | 都產出實際 stats／PNG，text 對照 1280×720 通過；不是新 production 的全量驗收。 |
+| 下列 production RTP／runner 固定 fixture | **PM 已代跑 PASS／exit0：live2/2、workspace3/3 無 skip**；證據 `/private/tmp/whippet-m5-runtime-evidence`。 |
+
+交付映像資產：最新 `runtimes/worker/dist/`、既有 `skills/`；Manager binary 如上。正式 Dockerfile 本輪未改，未使用新 SDK／依賴。正常編譯原始碼分別由各 owner 的既有 Dockerfile 處理；本 Agent不部署。
+
+### PM 單容器最小驗證命令（本 Agent 未執行）
+
+使用既有快取 `whippet-worker:m1`，唯讀掛最新 dist／examples，產物只到 `/private/tmp/whippet-m5-runtime-evidence`。先 RTP regression，再相對 goto／PNG 與 legacy fixture；短暫 HTTP server 在同容器，無共用服務／DB／模型需求。PM 依正常 approval 執行一次即可，無須先重建或部署共用映像。
+
+```sh
+mkdir -p /private/tmp/whippet-m5-runtime-evidence
+docker run --rm --pull=never --network bridge \
+  --memory 1g --cpus 1 --pids-limit 256 --shm-size 256m \
+  --mount type=bind,source=/Users/kywk/kywk/project/whippet/runtimes/worker/dist,target=/opt/whippet/worker/dist,readonly \
+  --mount type=bind,source=/Users/kywk/kywk/project/whippet/runtimes/worker/examples,target=/fixtures,readonly \
+  --mount type=bind,source=/private/tmp/whippet-m5-runtime-evidence,target=/tmp/evidence \
+  -e WHIPPET_LIVE_BROWSER_TEST=1 \
+  -e WHIPPET_WORKSPACE_BROWSER_TEST=1 \
+  -e WHIPPET_WORKSPACE_FIXTURES=/fixtures \
+  -e WHIPPET_WORKSPACE_EVIDENCE_DIR=/tmp/evidence \
+  --entrypoint sh whippet-worker:m1 -c \
+  'node --test dist/live/live.test.js && node --test dist/workspace.test.js'
+```
+
+預期：live tests 2 passed（含 decoded video 1280×720），workspace tests 3 passed（第 3 項內真正 runner 執行 relative／legacy 各一次）。console 顯示兩筆 fixture succeeded；relative 產物含 report.html、results.json、result.json 與一張 data/<sha1>.png，legacy 同樣有真 Playwright 報告。
+
+待整合：Server／UI 套用 v5 快照後，由 PM 排一條主要設定→草稿→驗證／發佈流程；舊 queued Run／Version 固定快照與衝突交易屬 Server owner。真實網站操作與 popup／JPEG／停止監看的既有 M4 驗收沿用，不在這批重做；新清晰度的可見 demo 由 PM 選時整合。本批不接 M6 trace／Markdown 實作。
 
 ## 最新 M4 交付（此節優先於下方歷史紀錄）
 

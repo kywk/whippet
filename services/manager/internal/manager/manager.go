@@ -351,6 +351,9 @@ func (m *Manager) runAttempt(ctx, executionCtx context.Context, r record, dispat
 		_, r.Artifacts = collectAttemptResult(r, m.taskDir(r), outcome)
 		r.Result = &result
 	}
+	if dispatch == nil {
+		r.Artifacts = filterFailureEvidence(m.taskDir(r), r.Artifacts)
+	}
 	r.Phase = "collecting"
 	if !m.storeUntil(ctx, r) {
 		return
@@ -360,6 +363,21 @@ func (m *Manager) runAttempt(ctx, executionCtx context.Context, r record, dispat
 			if err := m.upload(ctx, r, name); err == nil {
 				break
 			} else {
+				var skipped *skippedEvidenceError
+				if errors.As(err, &skipped) {
+					slog.Warn("optional failure evidence upload skipped", "attemptId", r.AttemptID, "reason", "http_413")
+					kept := make([]string, 0, len(r.Artifacts))
+					for _, saved := range r.Artifacts {
+						if saved != name {
+							kept = append(kept, saved)
+						}
+					}
+					r.Artifacts = kept
+					if !m.storeUntil(ctx, r) {
+						return
+					}
+					break
+				}
 				slog.Warn("artifact upload pending; will retry without rerunning", "attemptId", r.AttemptID, "artifact", name, "error", err)
 			}
 			if !pause(ctx, 3*time.Second) {
@@ -394,6 +412,7 @@ func (m *Manager) prepare(r record, dispatch Dispatch) error {
 	return atomicJSON(filepath.Join(m.taskDir(r), "input.json"), WorkerInput{
 		RunID: r.RunID, AttemptID: r.AttemptID, Script: dispatch.Script, TimeoutMS: dispatch.TimeoutMS,
 		Kind: dispatch.Kind, Author: dispatch.Author,
+		WorkspaceSettings: dispatch.WorkspaceSettings,
 	})
 }
 

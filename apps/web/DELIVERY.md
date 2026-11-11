@@ -1,8 +1,117 @@
-# Web M1／M2／M3／M4 交付紀錄
+# Web M1／M2／M3／M4／M5／M6 交付紀錄
 
 日期：2026-11-11（Asia/Taipei）。Owner：Web Agent。所有新增與修改均位於 `apps/web/`；未執行 Git、未啟動其他 Agent。進度主檔與測試後 commit 由總指揮彙整處理。M1 整合時由總指揮完成依賴安裝，已保留 lockfile；後續沿用現有依賴。M3 整合已由總指揮回報通過。本輪 M4 未安裝套件、未讀 env、未呼叫模型、未進行 Git 操作。
 
-## M4 最新交付：唯讀監看
+## M6 最新交付：失敗證據下載
+
+Owner：Web；PM：t35。依 `contracts/mvp-v6.md` 實作，只修改 `apps/web/`；未安裝套件、未部署／重啟服務、未 Git、未讀取憑證／env、未呼叫模型。Server API 由 t31 並行實作，本輪未以 mock 或靜態檔假造真實下載成功。
+
+**最終隔離整合 PASS（PM t35 回報，Web Agent 未重跑）**：失敗 Run `86d6fe61-ebf4-4c67-b4a4-2898de9d1225` 產出真實 ZIP `12,931 B` 與 MD `1,145 B`，API 與 UI 下載的檔案 hash 一致。本機 `show-trace` 根入口載入真實 `Set content`／`toHaveText`／error-context；HTML 報告顯示 Failed 1／Passed 0，詳細內容正常，HTTP 錯誤／pageerror／CSP 錯誤皆為 0。證據位於 `/private/tmp/whippet-m6-download-evidence`。PM 說明先前 Viewer 失敗是手拼 URL 錯誤，非產品問題，未因此修改產品。隔離服務、網路與 Viewer 已關閉；原服務未更新，未 commit／push。
+
+### 產物與行為
+
+- 新增 `src/RunArtifacts.tsx`，在最近一次 Run 結果與各歷史列提供「下載失敗證據」。普通 run／validation 可展開，author 不顯示此入口；即使缺少 HTML 報告也仍可查詢已保存證據。
+- 只在使用者展開時呼叫 `GET /api/runs/:id/artifacts`；收合會卸載內容並取消尚未完成的讀取，重新展開或手動重新載入才再次查詢。沒有新增輪詢；Run 狀態改變不會自動重抓清單。最新 Run 換成另一筆時，該區入口會重新收合，不延續上一筆的展開意圖。
+- 新增 `RunArtifact {name,size,contentType,url}` 型別與 API parser；大小必須為非負安全整數，回應錯誤、非 JSON、格式錯誤與已知 Run 空列表明確區分，不將空附件當測試通過。
+- 只顯示符合 `^data/[0-9a-f]{40}\.(zip|md)$` 的檔名，列出 ZIP／Markdown 類型、檔案大小與名稱。PNG／HTML／JSON 或非白名單名稱不出現在本清單。
+- 下載 URL 沿用 `resolveReportUrl` 的相對／絕對 HTTP(S) 檢查；ZIP 必須對應 `application/zip`，MD 必須對應 `text/markdown`（容許 charset 參數）。不符時顯示「下載連結無效」或「附件類型不符，無法下載」，不提供可點擊下載連結。
+- 使用 API 提供的受檢查 URL 直接建立原生 `<a download>`，檔名取合法 hash basename。連結位於平台 React DOM，沒有放入 HTML 報告 sandbox；不 fetch 附件內容、不建內容 Blob、不解壓、不讀入 Markdown 文字／HTML／管理 DOM，也沒有新增 viewer 或影片。
+- 明示：「Trace ZIP 請下載後，使用本機 Playwright Trace Viewer 開啟。Markdown 也會下載為檔案。」沒有宣稱報告內的 trace 按鈕可用，沒有修改 HTML 報告或 CSP。
+- explicit mock 對已存在的 mock Run 回空陣列（本來就沒有 ZIP／MD）；不存在 Run 回 404。沒有假下載連結、fake evidence 或真 API 失敗自動切 mock。
+
+修改檔案：新增 `src/RunArtifacts.tsx`；修改 `src/types.ts`、`src/api.ts`、`src/App.tsx`、`src/mock.ts`、`src/styles.css`、本紀錄。沒有修改 LiveView、Workspace 設定、依賴／lockfile、Nginx／部署、docs／contracts 或其他 owner 的程式。
+
+### M6 實際檢查與串接限制
+
+- **必要 build 一次 PASS**：`npm run build`，完整 `tsc --noEmit`＋Vite `7.1.9`，退出碼 `0`。42 個模組；HTML 0.55 kB、CSS 16.74 kB、JS 267.29 kB（gzip 82.79 kB）。通過後未重跑。
+- 真實 API／UI ZIP、MD 下載及本機 Trace Viewer 的最終隔離整合已由 PM t35 回報 PASS，細項與證據見本節頂部。Web Agent 未重跑或自行讀取實際附件內容；不將此結果擴大為未列項目的全面驗證。
+- Server 回 `{items:[]}` 時，畫面顯示未取得證據；404、連線／格式錯誤顯示失敗與重試。若尚在上傳，使用者完成後手動「重新載入附件」，不自動輪詢。
+- 前端的 `download` 是瀏覽器下載提示；實際 `Content-Disposition: attachment`、ZIP／MD MIME、nosniff 與既有 sandbox CSP 仍由 Server 保證。前端沒有放寬 CSP 或為 report 加下載例外。
+- ZIP／MD 是可選證據，清單／下載狀態不會改變 Run 斷言結果、發布或成功所需 HTML 報告門檻。
+
+### M6 黑箱標籤／locator
+
+| 對象 | Accessible 名稱／可見文字 | 預期 |
+| --- | --- | --- |
+| 結果區入口 | region `最近一次執行` 內 button `下載失敗證據` | 展開後才讀取該 Run 的附件 |
+| 歷史入口 | region `執行紀錄`／指定 Run table row 內 button `下載失敗證據` | 僅查指定歷史 Run，不追 latest |
+| 展開狀態 | 入口 button 的 `aria-expanded` | true 展開、false 收合；收合取消尚未完成的 GET |
+| 附件區 | region `Run <完整 UUID> 的失敗證據附件` | 含標題「失敗證據附件」及完整 Run ID；若結果與歷史同筆皆展開，需先 scope 父區域 |
+| 載入 | status 文字 `正在載入失敗證據附件…` | 不與空清單混淆 |
+| 空清單 | `未取得 ZIP／Markdown 失敗證據；請以此 Run 的執行狀態與報告判讀結果。` | 不顯示下載、不代表 Run 通過 |
+| 讀取失敗 | alert 與 button `重試載入附件` | 錯誤可辨，不假裝成空列表 |
+| 清單 | list `ZIP 與 Markdown 下載清單` | 只顯示合法 ZIP／MD，附 B／KiB／MiB 大小 |
+| ZIP 連結 | 可見文字 `下載 ZIP`；accessible name `下載 <40位hash>.zip` | 原生下載 URL，filename 為 hash.zip |
+| MD 連結 | 可見文字 `下載 MD`；accessible name `下載 <40位hash>.md` | 原生下載 URL，filename 為 hash.md |
+| 無效連結／類型 | `下載連結無效`／`附件類型不符，無法下載` | 不產生可點擊連結 |
+| 手動更新 | button `重新載入附件` | 明確 GET 一次，不新增排程 |
+| Trace 說明 | `Trace ZIP 請下載後，使用本機 Playwright Trace Viewer 開啟。` | 平台只提供下載，不宣稱內嵌 trace 功能 |
+
+整合只需沿用一條真實失敗 Run：結果區展開清單，確認 ZIP／MD 類型及大小 → 在平台入口下載兩者 → 使用既有本機 Playwright Trace Viewer 開啟 ZIP → 歷史列可取得相同 Run 的附件。空／404／讀取失敗以受控回應驗證；確認未展開時與等待期間沒有附件輪詢，不為此另跑完整測試矩陣或修改 report CSP。
+
+## M5 前次交付：單一 Workspace 設定
+
+Owner：Web；PM：t35。依 PM 固定的 `contracts/mvp-v5.md` 實作，僅修改 `apps/web/`。未部署／重啟共用服務、未安裝套件、未讀印 secrets／env、未呼叫模型、未 Git，未修改 docs／contracts。2026-11-11 PM 回報 Server 真實 PostgreSQL 快照整合 PASS；這不是前端瀏覽器驗收結果。
+
+**設定 UI 驗收紀錄（PM t35 回報，Web Agent 未重跑）**：PM 已使用 Mac 原生 Chromium，在隔離服務 `18085` 執行最終 `m5-settings-ui`，退出碼 `0`。設定儲存／重載、跨 PATCH 保留未儲存腳本全文與按鈕阻擋、no-op／409／400，以及 restore 全部 PASS。腳本保存於 `scripts/test/m5-settings-ui.cjs`，截圖證據位於 `/private/tmp/whippet-m5-settings-evidence`。PM 已移除隔離服務，原服務未修改。此階段只證明設定 UI 通過；後續設定快照／baseURL 主流程驗收以下段最終整合結果為準。
+
+**後續最終隔離功能整合 PASS（PM t35 回報，Web Agent 未重跑）**：M5 Workspace 設定的相對 URL 已完成驗證、人工確認發佈與正式 Run，結果 `succeeded`，原先待驗的設定／baseURL 主流程已有實際整合成功證據。此結果與上方 M6 真實附件下載／Trace Viewer 流程一併由 PM 驗收；隔離資源已關閉，原服務未更新，未 commit／push。
+
+### 產物與串接
+
+- 新增獨立 `src/WorkspaceSettings.tsx`：單一 Workspace 設定入口、網站名稱／完整 URL 清單、選填預設測試 URL、唯一數值設定 `timeoutMs`，Workspace name 唯讀。沒有 API key、任意 JSON／env、RBAC 或多 Workspace 管理介面。
+- `GET /api/workspaces/:id` 載入真實 `WorkspaceSettingsResponse`；`PATCH /api/workspaces/:id` 只傳 `{revision,sites,defaultTestUrl,timeoutMs}`，sites 子項只傳 `{name,url}`。沒有臆測欄位、假成功或自動 mock fallback。
+- 依契約檢查最多 20 個網站、名稱 trim 後必填／最多 100 字元、完整 HTTP(S) URL 最多 2,048 字元且禁止 userinfo、defaultTestUrl 可空且不必出現在 sites、timeout 為 1..3,600,000 整數毫秒。網址錯誤訊息不回顯原始敏感輸入。
+- 儲存前明示：**變更設定後，現有草稿需重新驗證；已發佈版本維持原設定。既有執行（含排隊中）也保留建立時的設定。** 只有 PATCH 成功回應才更新表單、顯示成功與通知草稿同步；若 Server revision 未變，顯示設定內容未變更。
+- 409 保留本機表單輸入、停用儲存、不自動重送；「重新載入設定」在有未存內容時，需明確選擇放棄或保留。未知網路結果提示先重新讀取確認，避免把未確認的請求當作成功。
+- 設定區與現有測試編輯器同時掛載；開啟／儲存設定不會卸載草稿、對話或監看。PATCH 成功用權威回應更新設定，並 GET 當前草稿；若最初載入草稿與 PATCH 重疊，也會補同步。
+- 同步中即阻擋驗證、發佈與 author 送出。新草稿可安全套用時更新 revision／設定快照並清除舊驗證確認；若有未儲存腳本或草稿請求，保留本機文字、顯示衝突，要求檢視並重載。較早 author、GET、save／validation 回應不得回退已知 draft revision 或重新綁定舊驗證資格。
+- 型別及 parser 支援 Draft／Version／Run 的 `workspaceSettings` 固定快照；草稿顯示設定版本與逾時，歷史版本顯示其原固定設定。前端不改寫既有 Version 或 Run。
+- 未儲存設定／請求有離開與 beforeunload 防護，獨立於草稿防護。切換 Test 保留開啟的設定區，不因設定未存而額外打斷 Test 操作；離開整個 Workspace／返回登入才合併檢查。
+
+本輪修改：`src/App.tsx`、`src/api.ts`、`src/types.ts`、`src/DraftEditor.tsx`、`src/TestActions.tsx`、`src/mock.ts`、`src/styles.css`、本紀錄；新增 `src/WorkspaceSettings.tsx`。沒有修改 `src/live.ts`、`src/LiveView.tsx`、Nginx、Vite、依賴或 lockfile。opt-in mock 對 M5 明確回 `MOCK_SETTINGS_UNAVAILABLE`，不假造設定讀取／儲存成功；M5 使用真實 Server API。
+
+### M5 實際檢查與限制
+
+- **最後程式版本 build PASS**：`npm run build`（完整 `tsc --noEmit`＋Vite `7.1.9`），退出碼 `0`，41 個模組；HTML 0.55 kB、CSS 15.75 kB、JS 264.19 kB（gzip 81.81 kB）。實作與後續競態防護調整共建置三次，均成功；沒有在程式未變時重跑，PM 已指示沿用最後證據。
+- **實際瀏覽器設定 UI 與相對 URL → 驗證 → 發佈 → 正式 Run 主流程均 PASS，來源為 PM t35 回報**，細項與證據位置見本節頂部。Web Agent 未部署、未修改共用服務設定、未重跑 smoke 或全量 UI 測試；僅記錄已提供的驗收範圍。
+- 舊資料若未回傳選填 `workspaceSettings`，前端仍可顯示原有流程；有快照時須完整符合契約。新 Workspace Settings response 的 revision 必須是正整數，timeout 必須有效；不以預設值靜默蓋掉 Server 的舊 timeout。
+- Server 必須在實際 PATCH 變更時建立各草稿的新 revision 並清除驗證資格；前端只同步與保護編輯器，不代替交易規則。無變更 PATCH 不應使草稿失效，Server 為最終權威。
+
+### M5 黑箱可見標籤／定位
+
+| 對象 | Accessible 名稱／可見文字 | 驗收重點 |
+| --- | --- | --- |
+| 入口 | button `Workspace 設定` | 展開頁首設定區，不卸載 Test 詳情 |
+| 設定區 | region `Workspace 設定` | 顯示既有 Workspace name 與 revision；name 沒有編輯欄位 |
+| 新增網站 | button `新增網站` | 新增名稱／URL 一列，上限 20 筆 |
+| 網站名稱 | label `網站名稱 1`（之後依序編號） | trim、必填、100 字元限制 |
+| 網站 URL | label `網站 URL 1` | 完整 HTTP(S)、不接受帳密 userinfo |
+| 移除網站 | button `移除網站 1`（accessible name） | 刪除指定本機表單列，儲存時整份替換清單 |
+| 預設 URL | label `預設測試 URL（選填）` | 可空，不要求列在網站清單 |
+| 逾時 | label `執行逾時（毫秒）` | 整數 1..3,600,000，保留載入時的實值 |
+| 影響提示 | `變更設定後，現有草稿需重新驗證；已發佈版本維持原設定。` | 在儲存前可見 |
+| 儲存 | button `儲存 Workspace 設定` | 有修改才可按；顯示 `儲存中…`；只在成功後顯示已儲存 revision |
+| 重載 | button `重新載入設定` | GET persisted 值；409 後用以取得最新 revision |
+| 捨棄確認 | button `放棄編輯並重新載入設定`、`保留目前編輯` | dirty 時不可無提示覆寫 |
+| 衝突 | `設定 revision 已過期（409），不會自動覆寫。` | 輸入保留、儲存停用，不自動 retry |
+| 關閉 | button `關閉設定` | 未存時確認捨棄；請求中停用 |
+| 草稿同步 | `正在同步 Workspace 設定與草稿，暫時不可驗證或發佈。` | 同步前不得沿用舊資格 |
+| 草稿快照 | `草稿設定版本 N · 執行逾時 … 毫秒` | 設定變更後 revision／timeout 更新，腳本無變更 |
+| 版本快照 | `版本固定設定 N · 執行逾時 … 毫秒` | 已發佈 Version 維持原 snapshot |
+| 本機保護 | `Workspace 設定已變更，本機未儲存的腳本已保留。` | dirty 腳本不被 PATCH 後的 GET 靜默覆蓋 |
+
+隔離環境單一 smoke 可用既有已驗證草稿與已發佈版本：先在腳本加入未存註解 → 開啟 Workspace 設定、使用隔離環境提供的 HTTP(S) 網址修改與儲存 → 確認新設定可重載、本機腳本文字保留且舊驗證不能發佈 → 明確重載最新草稿，確認腳本仍為原已存內容、設定版本更新、需重新驗證 → 歷史 Version 保留原設定。409 以兩個表單讀同 revision 後依序 PATCH 觀察；未知欄位／無變更 PATCH／既有 queued 快照由 Server 已有測試與 PM 統一驗收，避免另改目前共用服務。
+
+### Live video 細字模糊：本輪唯讀查核
+
+- 查核 `src/styles.css` 的 `.workspace-layout`、`.test-browser`、`.detail-panel`、`.live-panel` 與 `.live-media`：媒體元素 `width/height:100%`、`object-fit:contain`，未見針對 video／img 的 filter、transform 或 zoom；容器 16:9、最小高度 180。沒有足夠證據把細字模糊歸因於 CSS bug，故未盲目修改影像樣式／播放成功條件。
+- **靜態推算，非瀏覽器實測**：100% zoom、viewport 1440px 時，依 padding／sidebar／border 推算 media 內容寬約 960px；1280px 時約 800px。若來源是 1280px，水平縮放分別約 75%／62.5%，來源 16px 字約成 12／10 CSS px。DPR 2 時輸出 device pixels 又不同，必須與實際來源／編碼尺寸一起判讀。
+- 本機 browser access host 回報 unavailable，無法讀取既有 viewer 的 `videoWidth/videoHeight`、`clientWidth/clientHeight`、實際顯示矩形與 `devicePixelRatio`；未建立真實影像模糊的可重現量測，不宣稱已確定原因或修好。CUA 僅執行可用面盤點，沒有操作現有頁面。
+- 已以 `hc send t35` 回報來源查核與推算；PM 已收到並指派 t32 在獨立容器加入 viewer 真實尺寸與 DPR。需比對 `object-fit:contain` 的實際內容尺寸，而非只看容器寬；若來源／編碼不足，不能靠 CSS 銳化聲稱恢復遺失細節。
+- 等 t32 實測後再判斷是否需要前端局部修正。本輪沒有重啟／部署、沒有碰目前服務設定，也沒有修改 LiveView／編碼。
+
+## M4 前次交付：唯讀監看
 
 依 `contracts/mvp-v4.md` 實作；只修改 `apps/web/`，含 owner 範圍內的 Nginx 與 Vite 設定。
 

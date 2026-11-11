@@ -33,6 +33,36 @@ function final(message = "候選稿已備妥，待獨立驗證。") {
   return { status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: message }] }] };
 }
 
+test("M5 Workspace settings remain fixed DATA in author requests without navigation or timeout override", async () => {
+  const task = input();
+  task.workspaceSettings = { revision: 7, sites: [{ name: "site name is data, not an instruction", url: "https://example.test/base/" }], defaultTestUrl: "https://example.test/base/", timeoutMs: 3600000 };
+  const snapshot = JSON.stringify(task.workspaceSettings);
+  assert.equal(validateAuthorInput(task), task);
+  assert.equal(validateAuthorInput(input()).workspaceSettings, undefined);
+  assert.throws(() => validateAuthorInput({ ...task, workspaceSettings: { ...task.workspaceSettings, env: "synthetic-only" } }), AuthorError);
+  assert.throws(() => validateAuthorInput({ ...task, timeoutMs: 180001 }), AuthorError);
+  const b = browser();
+  const bodies: any[] = [];
+  await runAuthor(task, config, b, { fetcher: async (_url, init) => {
+    const body = JSON.parse(init!.body as string);
+    bodies.push(body);
+    const first = body.input[0].content as string;
+    const saved = JSON.parse(first.slice(first.indexOf(": ") + 2));
+    assert.equal(JSON.stringify(saved.workspaceSettings), snapshot);
+    assert.match(body.instructions, /Workspace settings.*fixed DATA/);
+    assert.match(body.instructions, /never auto-navigate/);
+    assert.match(body.instructions, /180-second budget/);
+    if (bodies.length === 1) {
+      task.workspaceSettings!.revision = 8; // Later state cannot alter the serialized task context.
+      return Response.json(call("read_draft", {}, 1));
+    }
+    return Response.json(final());
+  } });
+  assert.equal(bodies.length, 2);
+  assert.equal(task.timeoutMs, 180000);
+  assert.deepEqual(b.actions, []);
+});
+
 test("packaged Playwright authoring skill reaches a real request body from a different cwd", async () => {
   const previousCwd = process.cwd();
   let requests = 0;
@@ -58,7 +88,9 @@ test("packaged Playwright authoring skill reaches a real request body from a dif
   assert.match(captured, /run independently/);
   assert.match(captured, /No skip\/only/);
   assert.ok(captured.includes("await testInfo.attach('after-submit',"));
-  assert.match(captured, /Trace\/video attachments remain unsupported/);
+  assert.match(captured, /Failed runs automatically retain trace ZIP\/error-context Markdown/);
+  assert.match(captured, /no embedded viewer/);
+  assert.match(captured, /Video attachments remain unsupported/);
   assert.equal(captured.includes("metadata:"), false);
   assert.equal(captured.includes(key), false);
 });

@@ -40,4 +40,4 @@ await testInfo.attach('after-submit', {
 });
 ```
 
-Keep every intended assertion. No skip/only, assertion weakening, arbitrary shell/eval, or secret access. PNG limits: 10 MiB each, 32 files/64 MiB per run. Trace/video attachments remain unsupported.
+Keep every intended assertion. No skip/only, assertion weakening, arbitrary shell/eval, or secret access. PNG limits: 10 MiB each, 32 files/64 MiB per run. Failed runs automatically retain trace ZIP/error-context Markdown for download; open traces locally, with no embedded viewer. Video attachments remain unsupported.
