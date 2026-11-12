@@ -110,11 +110,11 @@ M4 真實網站補充驗收：依使用者要求改以 Whippet 登入→搜尋�
 | M7.1 一般詳情與對話工作區 | 完成（模組建置，UI整合待驗）／t30 | 一般/編輯模式與固定契約接線交付；最後tsc/Vite build PASS，46 modules；t33已交付黑箱腳本；沙箱無本機Playwright/連線，瀏覽器實跑待PM |
 | M7.2 編輯週期與版本背景 | 完成（模組與隔離DB驗證，未全鏈整合）／t31 | migration008、純讀/start/scope、摘要/發布/discard交付；定向單元PASS0.264s、PM隔離DB兩案PASS0.521s；Linux arm64產物 /private/tmp/whippet-server-m7 |
 | M7.3 測試編輯／驗收摘要 skills | 完成（模組驗證，未整合）／t32 | author mock13/13、Manager TestM7三項及TestM3Author、Worker build與Linux arm64 cross-build PASS；dist＋skills需一起部署；quick_validate缺PyYAML未成功，不安裝 |
-| M7.4 主流程整合 | 進行中／PM＋t33 | 既有 Workspace 建測試→驗證→摘要→人工發佈→正式執行→重開續編／放棄一次；不重跑 M1–M6 |
-| M8.0 Workspace 與安全執行契約 | 進行中（A契約固定，B執行邊界待定）／PM | contracts/mvp-v8.md固定Workspace/訪談/proposal/AEAD第一切片；受限探索/登入測試仍須完成，不接受永久阻擋一般網站測試作M8交付 |
-| M8.1 Multi-workspace 與設定提案 API | 進行中／t31 | 建立／切換／更新、獨立對話、機密保存、統一 workspace scope；兩工作區隔離檢查 |
-| M8.2 Workspace 對話 UI | 完成（A模組接線，整合待驗）／t30 | 真Workspace/對話/Proposal/角色與credentials接線交付；最後build PASS（49 modules），合成API邊界29 checks PASS。TLS代理/真API/瀏覽器/AI整合未驗，B未完成 |
-| M8.3 Workspace skill 與受限登入探索 | 進行中（先訪談skill）／t32 | 訪談、確認後探索、帳密表單工具、出站限制與證據遮蔽；合成網站成功／越界拒絕及機密不外洩檢查 |
+| M7.4 主流程整合 | 完成（主流程＋既有checkpoint證據）／PM t3v | 真AI產稿/驗證/摘要、真UI發布/正式Run通過；續編/放棄沿用既有核心PASS，不重跑。歷史URL-only abort限制保留 |
+| M8.0 Workspace 與安全執行契約 | 完成／PM t3v | v8 A/B與敏感媒體順序已落實；真AI確認範圍/角色登入/執行及回收通過，詳最新驗收收尾 |
+| M8.1 Multi-workspace 與設定提案 API | 完成／Server交付、PM整合 | 真API、角色保存/resolve、兩Workspace隔離及真AI提案套用已驗收；既有定向DB證據沿用 |
+| M8.2 Workspace 對話 UI | 完成（MVP驗收）／Web交付、PM整合 | 核心對話/隔離、真AI摘要UI發布與正式執行PASS；Workspace author監看真影格PASS；既有UI checkpoint證據沿用 |
+| M8.3 Workspace skill 與受限登入探索 | 完成（MVP驗收；已知限制見收尾）／Runtime交付、PM整合 | 真AI正常登入探索/產稿/驗證/摘要全鏈PASS；越界/機密/敏感媒體證據沿用。12秒disabled慢表單author登入未成功，不納入登入PASS |
 | M9 背景串接與完整操作交付 | 待辦／PM＋各 owner，t33 黑箱 | 新 Workspace→對話設定→新測試→驗證／監看→摘要／發佈→修改設定與續編；既有版本快照不被覆寫、撤銷許可有效 |
 
 推進順序（使用者最新授權允許M7待驗與M8開發並行）：M7.0 → M7.1／M7.2／M7.3 並行 → M7.4整合保留；M8.0 → M8.1／M8.2／M8.3 並行 → M9。Web 可先依已固定契約製作畫面，不等待所有後端功能；Runtime 範圍限制方案可在 M7 交付後先查核，避免 M8 晚期才發現阻塞。
@@ -248,3 +248,28 @@ t32 DELIVERY已固定，Manager race2.072s僅真loopback Manager wire，非公�
 敏感監看三端已部署至既有 B 隔離環境（18087／TLS18089）：Server/Manager/Web/Worker均改用:m8-mask-qa，資料庫、工作目錄與合成金鑰保留，舊預覽不動。部署前26筆Run皆終態。Web公開asset index-CwSWSYQ9.js SHA256=560d23aa39994064ab9f3b1517fe6168f73013ab12d8e24273fa77046bf2415d，與t30固定產物一致；Server readyz真CA驗證通過。QA t3n交付後退出，PM接手腳本必要修正：API寫稿後真UI重新載入草稿；前/後截圖依實際階段；公開answer echo欄位為offerId（answerOfferId是內部control），actual offer限定type=offer而非state.pending ID；JPEG不要求WebRTC offer；核心窗增加清空媒體斷言並保存去敏事件與samples。首輪未排Run因舊UI revision停用；f3ffd20c真Run成功且暫停/恢復有觀測，但QA錯誤欄位判讀記UNVERIFIED，不冒充PASS。慢站新增合成echo span及/slow-status非機密時序，仍沿原已確認origin、無產品hook。
 
 敏感監看公開三端整合PASS（PM真容器／真UI）：WebRTC Run c9f05ad9-84e3-40ac-ad97-06dc2d308283，pause13711→complete25811→新offer26215→answer26224ms；敏感前21組影格遞增，核心12個取樣diff0且videoWidth/liveTracks/readyState皆0，恢復後18組遞增。JPEG Run4443b587-0ea3-4d2c-9351-b4a5bb71dd84，pause16947→complete29047ms；前兩張真圖、核心binary0且畫面清空、恢復後11 binary/10新圖來源。兩Run succeeded，真Server HTTPS resolve→loginAs完整manual spec。PM目視核心清畫面與恢復後Authenticated/alpha可讀、合成echo遮罩。證據/private/tmp/whippet-m8-login-live-evidence/{webrtc-retry,jpeg}/（含去敏WS順序、samples、三階段PNG、fixture時序），總結M8-MASK-PASS.md及pm-review.json。此波產品無新增修正；QA修正後必要兩模式通過，不重跑其餘矩陣。未驗敏感中途加入、Workspace author探索及真AI；M8整體仍未完成。未commit/push/安裝。
+
+2026-11-12 新PM t3v接手：hc get核實parent=null、crew=1，終端實際GPT-6-Astra low；起始HEAD 8b3975e、工作目錄乾淨。全新QA t3x以標準opencode run啟動，parent=t3v且相同space/tab，去敏session metadata核實opencode-go/muse-spark-1.3-contributor/xhigh。owner僅scripts/test/m8-login-live-ui.cjs與/private/tmp/whippet-m8-midjoin-evidence，先修核中途viewer分支，再由PM逐模式實跑；未排新Run、不恢復t3q/t3r。真AI由PM負責，非機密設定確認B仍synthetic-fixture、既有M1 Manager為Muse/xhigh且key存在；尚未搬移key或變更服務，依交接禁止自行搬運key的限制等待安全暫時接線確認。M8仍進行中，未commit/push。
+
+M8敏感中途viewer黑箱PASS（新PM t3v整合、新QA t3x Muse/xhigh交腳本後退出）：PM接手補重連click前時間戳以避免漏ready/pause；保留JOIN=0原判定，JOIN=1以新viewer獨立判定。現有Worker容器語法檢查PASS，真UI串行兩模式實跑均exit0/Run succeeded。WebRTC638e62a6：新viewer pause20605→complete29502→offer29910→answer29922ms，15核心取樣清屏/diff0，恢復18組遞增；JPEG6f6f9145：pause23968→complete32569→首binary32571ms，15核心取樣清屏/binary0，恢復10張不同圖。PM目視兩模式核心清空、恢復Authenticated/alpha可讀且合成echo遮罩。證據/private/tmp/whippet-m8-midjoin-evidence/{webrtc,jpeg}與M8-MIDJOIN-PASS.md、pm-review.json；git diff --check PASS。僅manual slow-login單viewer串行中途加入，不含多viewer併發、Workspace author探索或真AI；B仍fixture，真AI暫時接線確認待回覆。未改產品、未安裝/commit/push、不恢復舊鏈。
+
+2026-11-12 使用者指示以重建重啟解除接線等待：PM將已驗證固定產物重新封裝為:m8-real-qa（無安裝/下載），確認B DB無活躍Run後重建Server/Manager/Web，保留DB/掛載/授權值。真AI設定沿既有M1 Manager在記憶體傳遞，不讀印或複製deploy/.env.ai、不落檔機密；M1及其他預覽未動。TLS readyz與公開Workspace API PASS，舊B應用容器停用保留為-before-real供回復。已以公開API啟動新Workspace95296031之真AI訪談Run40d7392a，結果待核實，不以設定存在當全鏈通過。
+
+真AI首次訪談Run40d7392a succeeded，公開Workspace API確認currentProposal存在；證據/private/tmp/whippet-m8-real-evidence/first-author.json。真模型通道已實跑確認，不再等待接線授權；Workspace探索/改稿/驗證/摘要/人工發布尚未完成，不標M8完成。
+
+M8真AI主流程續行：Workspace95296031確認同origin scope並透過專用端點保存合成角色後，探索Run0e057951成功；Manager journal credentialsUsed/credentialsSanitized/reclaimed=true、phase=complete，證明真登入與回收。套用同範圍新proposal後，AI產稿Run daeb2878成功，Test cea8a396／session1a790e12／revision2 scriptOrigin=ai；AI要求的validation acc336e4成功（expected1/unexpected0），未另排重複驗證。真AI摘要5c56a12e成功且validForCurrentDraft=true，PM已審閱與同revision證據一致。全新QA t3z→t3v、同space/tab/crew=1，實際metadata Muse/xhigh，僅owner scripts/test/m8-real-publish-ui.cjs，補真UI審閱發布，PM待交付實跑再接正式Run。未commit/push/安裝。
+
+M8真AI主流程PASS：t3z交付後PM實跑真UI，首次因QA舊checkbox文案未點發布，按實際畫面修正後publish201，version fac81dbf、session1a790e12 published；一般頁腳本唯讀/版本/真報告可見。PM再真UI執行正式版本Run126ae0e4成功expected1/unexpected0，原生報告Passed1/Failed0目視通過；探索/產稿/驗證/摘要/正式執行五attempt均complete/reclaimed。新validation報告真解壓已知敏感值0、PNG可讀。證據/private/tmp/whippet-m8-real-evidence與whippet-m8-real-publish-evidence。尚缺Workspace author testId=null監看入口（不能用manual證據替代），已派全新t40→t3v Muse/xhigh寫唯一補驗腳本，M8待此項收尾。
+
+## M8 MVP 驗收收尾（2026-11-12，PM t3v）
+
+狀態：完成（依本節範圍與既有分段證據）；M9仍待辦，不混稱M9完成。沒有新增產品功能或修產品碼，只有QA腳本、整合環境與進度紀錄；未安裝、commit或push。
+
+- 真模型：既有Muse Spark 1.3 Contributor/xhigh；Workspace95296031首次提案40d7392a、scope確認後真登入探索0e057951、AI產稿daeb2878、validation acc336e4、真摘要5c56a12e全部成功。登入探索有credentialsUsed/sanitized/reclaimed證據，AI稿來源為ai。
+- 真UI：摘要/報告審閱後publish201，version fac81dbf，session1a790e12為published；一般頁正式腳本唯讀，正式Run126ae0e4 succeeded、expected1/unexpected0，原生HTML報告Passed1/Failed0。五attempt complete且reclaimed；新報告解壓及results已知合成敏感值0，PNG可讀。
+- 敏感中途viewer：WebRTC638e62a6、JPEG6f6f9145均PASS，詳whippet-m8-midjoin-evidence；普通監看、原viewer敏感遮蔽、角色/Workspace隔離、續編/取消刪除/放棄沿用既有PASS。
+- Workspace author監看：新QA t40的model metadata核實Muse/xhigh，parent=t3v。PM修ID抄寫、精確aria-label與UI重載，以及按實際傳輸取兩個可解碼更新影像。最終60303291 testId=null/authorMode=workspace/succeeded，WebRTC1280、frames1→2、ready.viewerId匹配，觀測pause6753→complete16848ms；目視恢復影像的欄位被遮罩。證據/private/tmp/whippet-m8-workspace-live-evidence/media-retry。這是author入口/媒體PASS，不是慢站登入PASS。
+- 已知限制如實保留：慢站刻意將按鈕disabled12秒，author工具預設action timeout10秒，可能觸及逾時（未取得精確內部錯誤，不作已證實根因）；60303291模型回覆credentials_unavailable、未登入，正常/login之真登入全鏈則已PASS。330ee497探索failed的精確原因未從去敏結果確定，不能捏造；b7d345c6探索succeeded但開頁晚而自動JPEG，舊QA只等WebRTC導致未驗。敏感核心像素/媒體無洩漏的強斷言沿用先前manual兩模式，不把author僅事件觀測擴稱同等矩陣。歷史URL-only GET abort仍未分類。這些記錄不代表新增缺陷已修。
+- 環境：18087／TLS18089維持真AI :m8-real-qa；DB與資料保留；舊B應用-before-real停用保留供回復；其他預覽未動。新的QA均已退出，PM t3v獨立根保留。
+
+完整證據索引：/private/tmp/whippet-m8-real-evidence、/private/tmp/whippet-m8-real-publish-evidence、/private/tmp/whippet-m8-midjoin-evidence、/private/tmp/whippet-m8-workspace-live-evidence。腳本語法/實跑與git diff --check通過；完成不代表已Git提交、公開發布或生產環境驗證。

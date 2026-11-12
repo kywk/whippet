@@ -12,12 +12,15 @@
 //   只掛真UI既有唯一Live WS的framereceived/sent（不開第二viewer），只存type/state/reason/viewerId/offerId/SDP hash，不存原SDP/binary；
 //   敏感前同viewer/mode已有兩真frames；pause事件後清屏、1s在途排空後6s核心窗口無新frame；同viewer complete先於新offer與answer echo（complete前offer須丟棄）；
 //   新peer恢復後兩個遞增frames（恢復後兩時間點比較，不要求大於暫停前累計，不拿舊counter誤當恢復）；三階段截圖供PM目視。
-//   MODE=webrtc或jpeg各自判斷，不把fallback算WebRTC；可選JOIN_DURING_SENSITIVE=1僅敏感中途viewer檢查（停止後重連，單viewer串行，不併發搶占）。
+//   MODE=webrtc或jpeg各自判斷，不把fallback算WebRTC；可選JOIN_DURING_SENSITIVE=1為中途新viewer檢查（停止後重連，單viewer串行，不併發搶占）。
+//   JOIN=1時保留原viewer全部嚴格判定（pre/core/complete先於offer/echo/恢復），另對新viewer獨立判定：新viewer須在真正敏感核心期加入
+//   （rejoinedAt位於原pause+1s排空後、原complete前），驗自身viewerId pause（transport==MODE）、無媒體/清屏、自身complete先於新offer/JPEG、
+//   offerId全新且answer echo、恢復真新影格；嚴禁以原viewer取樣/事件冒充新viewer判定。證據預設分目錄，不覆蓋原主判。
 // spec timeout覆蓋全程（Workspace內 test.setTimeout 60s），不用sleep作斷言，只用expect poll/timeout；fixture known sentinel僅本地布林＋PM像素目視，不以壓縮bytes掃描當影像證據。
 // 用法（PM有 Docker/Node處跑，映像已有 @playwright/test＋Chromium，不安裝）：
 //   主機直跑: WEB_URL=http://127.0.0.1 MODE=webrtc WHIPPET_EVIDENCE_DIR=/private/tmp/whippet-m8-login-live-evidence node scripts/test/m8-login-live-ui.cjs
 //   容器共享Web net（仍 Nginx→Server真TLS）: docker --network container:whippet-m8b-web -e WEB_URL=http://127.0.0.1 -e MODE=webrtc -e WHIPPET_EVIDENCE_DIR=/private/tmp/whippet-m8-login-live-evidence whippet-worker:m8-mask-qa node scripts/test/m8-login-live-ui.cjs
-//   jpeg模式: MODE=jpeg 同上；中途加入: JOIN_DURING_SENSITIVE=1 同上（僅另取一筆，不覆蓋已連viewer主判）。
+//   jpeg模式: MODE=jpeg 同上；中途加入: JOIN_DURING_SENSITIVE=1 同上（預設證據到/private/tmp/whippet-m8-midjoin-evidence/m8-midjoin-result.json，僅另取一筆，不覆蓋已連viewer主判）。
 // 本腳本不安裝/部署/Git，不讀frame內敏感DOM/真secret（含.env.ai），錯誤不記body；公開WS JSON/log不含sentinel另目視像素。
 // 固定檢查: node --check scripts/test/m8-login-live-ui.cjs（本機有node即跑，否則PM執行）；不聲稱實跑。完成回報給t36。
 'use strict';
@@ -30,10 +33,10 @@ const TEST_DESC = 'M8 loginAs live mask (black-box, no credential)';
 const SLOW_LOGIN_URL = 'http://host.docker.internal:18187/slow-login';
 const SENTINEL_ROLE_ID = '5b9ab57a-4152-4559-914f-aaf362e24787';
 const WEB_URL = (process.env.WEB_URL || 'http://127.0.0.1').replace(/\/$/, '');
-const EVIDENCE_DIR = process.env.WHIPPET_EVIDENCE_DIR || '/private/tmp/whippet-m8-login-live-evidence';
-const RESULT_PATH = path.join(EVIDENCE_DIR, 'm8-login-live-result.json');
 const MODE = (process.env.MODE || 'webrtc').toLowerCase() === 'jpeg' ? 'jpeg' : 'webrtc';
 const JOIN_DURING_SENSITIVE = process.env.JOIN_DURING_SENSITIVE === '1';
+const EVIDENCE_DIR = process.env.WHIPPET_EVIDENCE_DIR || (JOIN_DURING_SENSITIVE ? '/private/tmp/whippet-m8-midjoin-evidence' : '/private/tmp/whippet-m8-login-live-evidence');
+const RESULT_PATH = path.join(EVIDENCE_DIR, JOIN_DURING_SENSITIVE ? 'm8-midjoin-result.json' : 'm8-login-live-result.json');
 const SENTINEL_HINT = process.env.WHIPPET_MASK_SENTINEL || '';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function loadPw() {
@@ -303,9 +306,9 @@ async function main() {
             await stopB.first().click({ timeout: 5000 });
             await sleep(800);
             let rc = null;
+            midJoin = { rejoinedAt: Date.now() - tWatch, note: '準備重連，待新viewer pause與無擷取' };
             try { rc = region.getByRole('button', { name: '重新連線', exact: true }); await rc.first().waitFor({ state: 'visible', timeout: 5000 }); await rc.first().click(); }
-            catch { const sb = region.getByRole('button', { name: /開始監看/, exact: false }); await sb.first().click({ timeout: 5000 }).catch(() => {}); }
-            midJoin = { rejoinedAt: Date.now() - tWatch, note: '已重連，待pause(viewerId)與無擷取' };
+            catch { const sb = region.getByRole('button', { name: /開始監看/, exact: false }); await sb.first().click({ timeout: 5000 }); }
           } catch (e2) { midJoin = { rejoinedAt: Date.now() - tWatch, note: '重連按鈕缺，無法中途加入', err: String((e2 && e2.message) || e2).slice(0, 120) }; }
         }
       } catch {}
@@ -332,29 +335,135 @@ async function main() {
       if (!pauseEv.transport) reasons.push('pause缺transport(webrtc|jpeg)，無法分模判定');
     }
     if (pauseEv && viewerId) {
-      const cand = completes.filter((e) => e.viewerId === viewerId);
-      completeEv = cand.find((e) => !e.transport || e.transport === (pauseEv.transport || MODE)) || cand[0] || null;
-      if (!completeEv) reasons.push('缺同viewer complete(sensitive_input_complete)；complete須先於新offer');
-      else if (completeEv.dt <= pauseEv.dt) reasons.push('complete早於pause，順序錯');
-      else if (pauseEv.transport && completeEv.transport && completeEv.transport !== pauseEv.transport) reasons.push('complete transport與pause不一致');
-    } else if (pauses.length > 0 && completes.length === 0) reasons.push('缺complete事件');
-    // 中途加入（可選）：重連後新viewerId亦須pause＋無擷取
+      if (!JOIN_DURING_SENSITIVE) {
+        const cand = completes.filter((e) => e.viewerId === viewerId);
+        completeEv = cand.find((e) => !e.transport || e.transport === (pauseEv.transport || MODE)) || cand[0] || null;
+        if (!completeEv) reasons.push('缺同viewer complete(sensitive_input_complete)；complete須先於新offer');
+        else if (completeEv.dt <= pauseEv.dt) reasons.push('complete早於pause，順序錯');
+        else if (pauseEv.transport && completeEv.transport && completeEv.transport !== pauseEv.transport) reasons.push('complete transport與pause不一致');
+      } else {
+        // JOIN=1：原viewer已停止，不找原complete（由新viewer complete證明恢復）；若原viewer意外仍有complete，忽略不判，避免以原viewer冒充整體。
+        completeEv = null;
+      }
+    } else if (pauses.length > 0 && completes.length === 0 && !JOIN_DURING_SENSITIVE) reasons.push('缺complete事件');
+    // 中途加入（JOIN=1）：新viewer在真正敏感核心期加入，獨立取樣/判定，嚴禁以原viewer冒充
+    // JOIN=1時原viewer已停止，不要求原complete/core/seq/rec（停止後收不到原complete，強求只會誤判）。
+    // JOIN=1整體驗證＝原pre＋原pause（證明敏感已開始）＋新viewer全鏈（pause/無媒體清屏/complete先於新offer或JPEG/echo/恢復真新影格）＋Run succeeded。
+    // 取樣說明：重連後同頁video/img已切新viewer，dt>midPause的samples即新viewer畫面；仍須驗w/liveTracks/readyState或jpegW清零，不只比frames差。
     let midJoinVerdict = null;
+    let midPauseEv = null, midCompleteEv = null, midOfferEv = null, midAnswerEv = null;
+    let midSeqOk = false, midRecOk = false, midRecDetail = '', midCoreDetail = '';
     if (JOIN_DURING_SENSITIVE) {
-      if (!midJoin || !midJoin.rejoinedAt) midJoinVerdict = '未執行中途重連（按鈕缺或窗口不足），另取一筆未完成';
-      else {
+      const midFail = (msg) => { reasons.push(msg); return msg; };
+      const midOfferEvents = wsEvents.filter((e) => e.type === 'offer' && e.dir === 'rx' && e.offerId);
+      const midAnswerEvents = wsEvents.filter((e) => e.type === 'answer' && e.dir === 'tx' && e.answerOfferId);
+      if (!midJoin || !midJoin.rejoinedAt) {
+        midJoinVerdict = '未執行中途重連（按鈕缺或窗口不足），另取一筆未完成';
+        midFail('中途未執行重連：不可PASS中途項');
+      } else if (!pauseEv || !viewerId) {
+        midJoinVerdict = '原viewer缺pause/viewerId，無法證明敏感已開始，中途未驗';
+        midFail('中途需原pause證明敏感已開始，缺事件即未驗');
+      } else if (midJoin.rejoinedAt <= pauseEv.dt + 1000) {
+        midJoinVerdict = `重連過早(rejoined=${midJoin.rejoinedAt} pause=${pauseEv.dt})，非核心期加入`;
+        midFail('中途重連須位於原pause+1s排空後');
+      } else {
         const after = wsEvents.filter((e) => e.dt > midJoin.rejoinedAt && isPause(e) && e.viewerId && e.viewerId !== viewerId);
-        const midPause = after[0] || null;
-        if (!midPause) midJoinVerdict = '中途viewer未收到自身viewerId pause，不可PASS中途項';
-        else {
-          const drain = wsEvents.filter((e) => e.dt >= midPause.dt && e.dt <= midPause.dt + 1000 && e.kind === 'binary').length;
-          const coreNew = samples.filter((s) => s.dt > midPause.dt + 1000 && s.dt <= midPause.dt + 4000);
-          const vidInc = coreNew.length >= 2 ? (coreNew[coreNew.length - 1].frames - coreNew[0].frames) : 0;
-          midJoin.viewerId = midPause.viewerId;
-          midJoin.pauseAt = midPause.dt;
-          midJoin.noCapture = vidInc <= 0;
-          midJoinVerdict = midJoin.noCapture ? 'pass' : '中途viewer敏感期仍有新frame，FAIL中途項';
-          if (!midJoin.noCapture) reasons.push('中途viewer敏感期有新frame');
+        midPauseEv = after.find((e) => e.transport === MODE) || after[0] || null;
+        if (!midPauseEv) {
+          midJoinVerdict = '中途viewer未收到自身viewerId pause，不可PASS中途項';
+          midFail('中途viewer未收到自身viewerId pause（須公開sensitive_input且viewerId為新viewer）');
+        } else if (midPauseEv.dt - midJoin.rejoinedAt > 8000) {
+          midJoinVerdict = `中途pause過晚(midPause=${midPauseEv.dt} rejoined=${midJoin.rejoinedAt})，非敏感期即時暫停`;
+          midFail('中途pause須在重連後8s內到達，否則非核心期加入');
+        } else {
+          midJoin.viewerId = midPauseEv.viewerId;
+          midJoin.pauseAt = midPauseEv.dt;
+          if (midPauseEv.transport && midPauseEv.transport !== MODE) midFail(`中途pause transport=${midPauseEv.transport}非${MODE}`);
+          if (!midPauseEv.transport) midFail('中途pause缺transport，無法分模判定');
+          const midReadys = wsEvents.filter((e) => e.type === 'ready' && e.viewerId === midPauseEv.viewerId);
+          if (midReadys.length === 0) midFail('中途缺ready(viewerId)對照，無法確認當前viewer');
+          else midJoin.readyAt = midReadys[midReadys.length - 1].dt;
+          const midCompletes = completes.filter((e) => e.viewerId === midPauseEv.viewerId && e.dt > midPauseEv.dt);
+          midCompleteEv = midCompletes.find((e) => e.transport === MODE) || midCompletes.find((e) => !e.transport) || midCompletes[0] || null;
+          if (!midCompleteEv) {
+            midJoinVerdict = '中途viewer缺自身viewerId complete，不可PASS';
+            midFail('中途viewer缺自身viewerId complete(sensitive_input_complete，須先於新offer/JPEG)');
+          } else if (midCompleteEv.transport && midCompleteEv.transport !== MODE) {
+            midJoinVerdict = `中途complete transport=${midCompleteEv.transport}非${MODE}`;
+            midFail('中途complete transport與pause不一致');
+          } else {
+            midJoin.completeAt = midCompleteEv.dt;
+            const drainEnd = midPauseEv.dt + 1000;
+            if (midCompleteEv.dt < drainEnd + 2000) {
+              midFail(`中途核心窗不足(midPause=${midPauseEv.dt} complete=${midCompleteEv.dt}，需>=+3000)；時間不足即未觀察`);
+            } else if (MODE === 'webrtc') {
+              const win = samples.filter((s) => s.dt > drainEnd && s.dt <= midCompleteEv.dt && s.frames >= 0);
+              if (win.length < 4) { midCoreDetail = `points=${win.length}`; midFail(`中途核心窗取樣不足(${win.length}點)`); }
+              else {
+                const diff = win[win.length - 1].frames - win[0].frames;
+                const cleared = win.every((s) => s.w === 0 && s.liveTracks === 0 && s.readyState === 0);
+                midCoreDetail = `points=${win.length} diff=${diff} cleared=${cleared}`;
+                midJoin.coreDetail = midCoreDetail;
+                if (diff !== 0 || !cleared) midFail(`中途核心窗仍有新解碼frame(diff=${diff} cleared=${cleared})；敏感期須清屏且無新媒體`);
+                else midJoin.noCapture = true;
+              }
+            } else {
+              const binNew = wsEvents.filter((e) => e.dt > drainEnd && e.dt <= midCompleteEv.dt && e.kind === 'binary').length;
+              const win = samples.filter((s) => s.dt > drainEnd && s.dt <= midCompleteEv.dt);
+              const cleared = win.length >= 4 && win.every((s) => s.jpegW === 0);
+              midCoreDetail = `binNew=${binNew} points=${win.length} cleared=${cleared}`;
+              midJoin.coreDetail = midCoreDetail;
+              if (binNew !== 0 || !cleared) midFail(`中途核心窗仍有新JPEG(binNew=${binNew} cleared=${cleared})；敏感期須清屏且無新圖`);
+              else midJoin.noCapture = true;
+            }
+            if (MODE === 'webrtc') {
+              const between = midOfferEvents.filter((e) => e.dt > midPauseEv.dt && e.dt < midCompleteEv.dt);
+              if (between.length > 0) {
+                const answered = between.some((o) => midAnswerEvents.some((a) => a.answerOfferId === o.offerId && a.dt > o.dt && a.dt < midCompleteEv.dt));
+                if (answered) midFail('中途complete前offer被answer（應丟棄為stale）');
+                else midFail('中途complete前有offer（須丟棄，新offer須在complete後）');
+              }
+              const preMidIds = new Set(wsEvents.filter((e) => e.type === 'offer' && e.offerId && e.dt < midCompleteEv.dt).map((e) => e.offerId));
+              const cands = midOfferEvents.filter((e) => e.dt > midCompleteEv.dt && !preMidIds.has(e.offerId));
+              midOfferEv = cands[0] || null;
+              if (!midOfferEv) midFail('中途中viewer缺complete後新UUID offer（complete只表等待新offer）');
+              else {
+                midAnswerEv = midAnswerEvents.find((a) => a.answerOfferId === midOfferEv.offerId && a.dt > midOfferEv.dt) || null;
+                if (!midAnswerEv) midFail(`中途缺answer echo(offerId=${midOfferEv.offerId})；answer須原樣echo`);
+                else { midSeqOk = true; midJoin.offerId = midOfferEv.offerId; midJoin.offerAt = midOfferEv.dt; midJoin.answerAt = midAnswerEv.dt; }
+              }
+            } else {
+              const fresh = wsEvents.find((e) => e.kind === 'binary' && e.dt >= midCompleteEv.dt);
+              const okFresh = Boolean(fresh && midCompleteEv.viewerId === midPauseEv.viewerId && midCompleteEv.transport === 'jpeg');
+              if (!okFresh) midFail('中途JPEG缺同viewer complete後fresh binary（須viewerId一致且transport=jpeg，且complete先於JPEG）');
+              else { midSeqOk = true; midJoin.freshAt = fresh.dt; }
+            }
+            const midAnchor = midAnswerEv || midOfferEv || (MODE === 'jpeg' ? wsEvents.find((e) => e.kind === 'binary' && e.dt >= midCompleteEv.dt) : midCompleteEv);
+            if (midAnchor && midSeqOk) {
+              const post = samples.filter((s) => s.dt > midAnchor.dt);
+              if (MODE === 'webrtc') {
+                const seq = post.filter((s) => s.frames >= 0 && s.w > 0 && s.readyState >= 2);
+                let inc = 0;
+                for (let i = 1; i < seq.length; i++) if (seq[i].frames > seq[i - 1].frames) inc++;
+                midRecOk = seq.length >= 2 && inc >= 1;
+                midRecDetail = `postSamples=${seq.length} inc=${inc} base=${seq.length ? seq[0].frames : 'na'}(恢復後基線，不比暫停前累計)`;
+                midJoin.recDetail = midRecDetail;
+                if (!midRecOk) midFail(`中途恢復後無兩遞增frames(${midRecDetail})；須真正新影格才算streaming`);
+              } else {
+                const binPost = wsEvents.filter((e) => e.dt > midAnchor.dt && e.kind === 'binary');
+                const imgPost = post.filter((s) => s.jpegW > 0);
+                const uniq = [...new Set(imgPost.map((s) => s.jpegSrcHash))];
+                midRecOk = binPost.length >= 2 && uniq.length >= 2;
+                midRecDetail = `binPost=${binPost.length} uniqSrc=${uniq.length}`;
+                midJoin.recDetail = midRecDetail;
+                if (!midRecOk) midFail(`中途恢復後無兩張不同JPEG(${midRecDetail})；不能只查naturalWidth>0或舊src`);
+              }
+            } else if (midSeqOk) {
+              midFail('中途缺恢復錨點，無法判定真新影格');
+            }
+          }
+          const midErrs = reasons.filter((r) => r.startsWith('中途'));
+          midJoinVerdict = (midErrs.length === 0 && midJoin.noCapture && midSeqOk && midRecOk) ? 'pass' : ('中途FAIL：' + (midErrs.join('；') || '未知'));
         }
       }
     }
@@ -465,8 +574,16 @@ async function main() {
       const transports = [...new Set(wsEvents.filter((e) => e.transport).map((e) => e.transport))];
       if (MODE === 'webrtc' && transports.includes('jpeg')) fallback = `出現jpeg傳輸(${transports.join(',')})；若video未恢復而jpeg恢復，僅記備援，不算WebRTC PASS`;
     } catch {}
-    const verdict = (pauseEv && completeEv && preOk && coreOk && seqOk && recOk && reasons.length === 0) ? 'pass' : 'unverified';
-    const reason = verdict === 'pass' ? '' : reasons.join('；') || '未捕捉到敏感階段真影格；需PM獨立慢fixture/延遲鉤＋echo span＋時間戳端點，不判PASS';
+    // JOIN=0保留原PASS嚴格判定；JOIN=1改以新viewer全鏈判定（原viewer僅需pre+pause），不降原模式斷言。
+    let verdict, reason;
+    if (JOIN_DURING_SENSITIVE) {
+      const midOk = midJoinVerdict === 'pass' && midJoin && midJoin.noCapture && midSeqOk && midRecOk;
+      verdict = (pauseEv && preOk && midOk && reasons.length === 0) ? 'pass' : 'unverified';
+      reason = verdict === 'pass' ? '' : reasons.join('；') || '中途敏感期未完整觀測（缺新viewer pause/無媒體清屏/complete先於offer或JPEG/echo/恢復真影格），不判PASS';
+    } else {
+      verdict = (pauseEv && completeEv && preOk && coreOk && seqOk && recOk && reasons.length === 0) ? 'pass' : 'unverified';
+      reason = verdict === 'pass' ? '' : reasons.join('；') || '未捕捉到敏感階段真影格；需PM獨立慢fixture/延遲鉤＋echo span＋時間戳端點，不判PASS';
+    }
     // 補拍缺失階段圖（PM目視至少三張；缺圖亦未驗）
     try { if (!shotPre) { const p = path.join(EVIDENCE_DIR, 'm8-mask-pre.png'); await page.screenshot({ path: p, fullPage: false }).catch(() => {}); if (fs.existsSync(p)) shotPre = p; } } catch {}
     try { if (!shotCore) { const p = path.join(EVIDENCE_DIR, 'm8-mask-core.png'); await page.screenshot({ path: p, fullPage: false }).catch(() => {}); if (fs.existsSync(p)) shotCore = p; } } catch {}
@@ -476,6 +593,11 @@ async function main() {
       providerNote: '明示fixture，非真AI；只驗遮蔽/恢復，不作AI探索',
       workspaceId: WORKSPACE_ID, testId: ensured.testId, testName: TEST_NAME, runId, roleId: ensured.roleId,
       loginUrl: SLOW_LOGIN_URL, mode: MODE, jpegToggled, joinMid: JOIN_DURING_SENSITIVE, midJoin, midJoinVerdict,
+      midViewerId: midPauseEv ? midPauseEv.viewerId : (midJoin && midJoin.viewerId) || null,
+      midPauseAt: midPauseEv ? midPauseEv.dt : null, midCompleteAt: midCompleteEv ? midCompleteEv.dt : null,
+      midOfferId: midOfferEv ? midOfferEv.offerId : null, midOfferAt: midOfferEv ? midOfferEv.dt : null,
+      midAnswerOfferId: midAnswerEv ? midAnswerEv.answerOfferId : null, midAnswerAt: midAnswerEv ? midAnswerEv.dt : null,
+      midSeqOk, midRecOk, midRecDetail, midCoreDetail,
       tValidateMs: tWatch - tClick, samples: samples.length, wsEvents: wsEvents.length,
       viewerId, pauseAt: pauseEv ? pauseEv.dt : null, completeAt: completeEv ? completeEv.dt : null,
       offerId: offerEv ? offerEv.offerId : null, offerAt: offerEv ? offerEv.dt : null,
@@ -490,7 +612,7 @@ async function main() {
       verdict, reason: reason.slice(0, 1000),
       evidenceDir: EVIDENCE_DIR,
     };
-    try { await page.screenshot({ path: path.join(EVIDENCE_DIR, 'm8-login-live.png'), fullPage: true }); } catch {}
+    try { await page.screenshot({ path: path.join(EVIDENCE_DIR, JOIN_DURING_SENSITIVE ? 'm8-midjoin.png' : 'm8-login-live.png'), fullPage: true }); } catch {}
     fs.writeFileSync(RESULT_PATH, JSON.stringify(summary, null, 2) + '\n');
     console.log(`DONE verdict=${verdict} run=${runId} mode=${MODE} samples=${samples.length} ws=${wsEvents.length} ${reason}`.slice(0, 1000));
     if (fallback) console.log(`NOTE ${fallback}`);
@@ -501,10 +623,10 @@ async function main() {
         let headings = [], buttons = [];
         try { headings = (await page.getByRole('heading').allTextContents()).map((s) => (s || '').trim().slice(0, 80)).slice(0, 40); } catch {}
         try { buttons = (await page.getByRole('button').allTextContents()).map((s) => (s || '').trim().slice(0, 80)).slice(0, 60); } catch {}
-        fs.writeFileSync(path.join(EVIDENCE_DIR, 'm8-login-live-diag.json'), JSON.stringify({ error: String((e && e.message) || e).slice(0, 500), url: page.url(), tMs: Date.now() - t0, headings, buttons }, null, 2) + '\n');
+        fs.writeFileSync(path.join(EVIDENCE_DIR, JOIN_DURING_SENSITIVE ? 'm8-midjoin-diag.json' : 'm8-login-live-diag.json'), JSON.stringify({ error: String((e && e.message) || e).slice(0, 500), url: page.url(), tMs: Date.now() - t0, headings, buttons }, null, 2) + '\n');
       }
     } catch {}
-    try { if (page) await page.screenshot({ path: path.join(EVIDENCE_DIR, 'm8-login-live-fail.png'), fullPage: true }); } catch {}
+    try { if (page) await page.screenshot({ path: path.join(EVIDENCE_DIR, JOIN_DURING_SENSITIVE ? 'm8-midjoin-fail.png' : 'm8-login-live-fail.png'), fullPage: true }); } catch {}
     console.error(`FAIL: ${(e && e.message) || e}`);
     process.exitCode = 1;
     throw e;
