@@ -145,3 +145,5 @@ M8 依相同方式先固定 proposal／機密／網路政策再並行；Runtime 
 使用者要求避免opencode mini（Herdr控管問題）；之後新QA一律標準opencode run並指定Muse Spark1.3 Contributor/xhigh。t3f負責scripts/test/m8-isolation-ui.cjs真UI唯讀Workspace隔離；t3g負責scripts/test/m8-login-live-ui.cjs登入LiveView遮蔽觀測，各自證據目錄。t33僅收尾原網路診斷，不再加新任務；既有mini待命pane不派新工。PM負責環境與真AI接線，保留原scope/credential邊界。
 
 2026-11-12 使用者要求本波提交後全部換新對話：PM與後續owner/QA均不得續用舊長對話；沿新PM→t36的parent鏈、crew=1與既有space/tab維持同一Herdr RPG session。禁止opencode mini。精確啟動/環境/未驗事項以handoff/ui-ux-pm.md為新對話入口，舊owner只作歷史證據。
+
+最新更正：新 PM 要用 --no-parent 成為獨立 RPG 根，舊 t36 可以關閉；所有新派工 parent 鏈歸新 PM，不再歸 t36。t3q/t3r 錯誤鏈已停止，未開新 Run。

@@ -13,7 +13,7 @@
 
 已讀本機 mods/herdr-crew-rpg/{main.js,house.js}：crew=1 的 terminals 才進 crew；sessionOf 沿 parent 向上最多8層，遇非 crew parent、無 parent 或缺失 parent 時決定 session key。不是用 Codex thread ID，也不是只看 tab。
 
-本輪根節點 **t36**，crew=1、parent=null。新 PM 用新 Codex 對話且 `--parent t36`、`--label crew=1`；後續全新 agent 掛新 PM（或明確 parent t36），保持 parent 鏈到 t36。不要用 --no-parent，也不要不帶 crew 標籤。保留 t36 作 session 根，不關閉或移除它；不改 Herdr mod 程式。
+使用者最新更正：**新 PM 對話本身是獨立根節點**，舊 t36 將關閉。新 PM 必須以 `--no-parent` 啟動且 `parent=null`、`crew=1`；後續新 agents 用 `--parent <新PM位址>`（或同根下的owner）與 `crew=1`，全部留在新 PM 的 RPG session。不依賴 t36，亦不修改 Herdr mod 程式。舊錯誤鏈 t3q→t36、t3r→t3q 已停止，未改產品或執行新測試；不要恢復它們。
 
 固定畫面標籤：
 - herdr.space=spc410627697c591af2a35cc533b8f1ad8
@@ -54,4 +54,4 @@ QA敏感腳本 scripts/test/m8-login-live-ui.cjs 已由PM接手修正欄位/截�
 
 ## 交接完成標準
 
-確認此次兩個 commit 及乾淨工作目錄；新 PM parent/labels 落同 RPG key=t36，再開新的必要owner/QA對話。進度以 implementation.md 為唯一來源；實跑後記結果與限制。M8仍進行中，不能以本波敏感監看PASS宣稱全完成。
+確認此次兩個 commit 及乾淨工作目錄；新 PM parent=null，所有新 agents 的 RPG key 為新 PM 位址，再開新的必要owner/QA對話。進度以 implementation.md 為唯一來源；實跑後記結果與限制。M8仍進行中，不能以本波敏感監看PASS宣稱全完成。

@@ -1,6 +1,9 @@
 # Fresh conversation, same RPG session
 
 Read the current PM handoff for the root terminal and space/tab IDs.
+When replacing a long PM conversation, launch the new PM with `--no-parent`
+so it becomes an independent root; all new helpers attach to that new PM.
+The old PM can then close without retaining a dependency.
 The RPG mod groups `crew=1` terminals by following their `parent` chain;
 a common tab alone does not keep agents in the same RPG session.
 Use explicit `--parent <new-pm>` (whose chain reaches the existing root),
