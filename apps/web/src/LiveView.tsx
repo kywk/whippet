@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createLiveSession } from './live';
+import { createLiveOfferHistory, createLiveSession } from './live';
 import type { LiveMode, LiveState } from './live';
 import { isActiveRun } from './types';
 import type { Run } from './types';
@@ -13,12 +13,14 @@ export function LiveView({ run, apiBase, onClose }: { run: Run; apiBase: string;
   const image = useRef<HTMLImageElement>(null);
   const session = useRef<ReturnType<typeof createLiveSession> | null>(null);
   const preferredMode = useRef<LiveMode>('webrtc');
+  const offerHistory = useRef<ReturnType<typeof createLiveOfferHistory> | null>(null);
+  if (!offerHistory.current) offerHistory.current = createLiveOfferHistory();
   const runRef = useRef(run); runRef.current = run;
   const active = isActiveRun(run);
 
   useEffect(() => {
     if (!active || !enabled) {
-      setState({ phase: active ? 'idle' : 'ended', mode: preferredMode.current, reason: active ? '已停止監看。測試仍會繼續執行。' : 'Run 已結束，監看資源已釋放；可繼續查看執行結果與報告。' });
+      setState({ phase: active ? 'idle' : 'ended', mode: preferredMode.current, reason: active ? '已停止監看。Run 仍會繼續執行。' : 'Run 已結束，監看資源已釋放；可繼續查看任務結果。' });
       return;
     }
     if (!video.current || !image.current) return;
@@ -26,12 +28,13 @@ export function LiveView({ run, apiBase, onClose }: { run: Run; apiBase: string;
       runId: run.id, apiBase, video: video.current, image: image.current, initialMode: preferredMode.current,
       waitingForAttempt: () => ['queued', 'dispatched'].includes(runRef.current.status),
       onChange(next) { preferredMode.current = next.mode; setState(next); },
+      offerHistory: offerHistory.current!,
     });
     session.current = controller;
     return () => { controller.close(); if (session.current === controller) session.current = null; };
   }, [run.id, apiBase, active, enabled, revision]);
 
-  const label = state.phase === 'streaming' ? state.mode === 'webrtc' ? '監看中：WebRTC' : '監看中：JPEG 備援'
+  const label = state.sensitivePaused ? '敏感輸入暫停' : state.phase === 'streaming' ? state.mode === 'webrtc' ? '監看中：WebRTC' : '監看中：JPEG 備援'
     : ({ idle: '已停止監看', connecting: '監看連線中', waiting: '等待監看畫面', reconnecting: '監看重新連線中', paused: '監看已暫停', ended: '監看已結束', unavailable: '目前無法監看', error: '監看連線失敗' } as const)[state.phase];
   const controlsAvailable = enabled && active && !['ended', 'unavailable', 'error', 'paused'].includes(state.phase);
   function reconnect() { setEnabled(true); setRevision((value) => value + 1); }
@@ -41,17 +44,17 @@ export function LiveView({ run, apiBase, onClose }: { run: Run; apiBase: string;
     <p className="live-run">{runKindLabel(run)} · Run <span className="identifier">{run.id}</span></p>
     <div className="live-status" role="status" aria-label="監看連線狀態" data-testid="live-status"><strong>{label}</strong>{state.reason ? <p>{state.reason}</p> : null}</div>
     <div className="live-media" data-transport={state.mode}>
-      <video ref={video} autoPlay muted playsInline aria-label="WebRTC 唯讀監看畫面" data-testid="live-video" hidden={state.mode !== 'webrtc' || !enabled || !active} />
-      <img ref={image} alt="JPEG 備援唯讀監看畫面" data-testid="live-jpeg" hidden={state.mode !== 'jpeg' || !enabled || !active} />
+      <video ref={video} autoPlay muted playsInline aria-label="WebRTC 唯讀監看畫面" data-testid="live-video" hidden={state.mode !== 'webrtc' || state.phase === 'paused' || !enabled || !active} />
+      <img ref={image} alt="JPEG 備援唯讀監看畫面" data-testid="live-jpeg" hidden={state.mode !== 'jpeg' || state.phase === 'paused' || !enabled || !active} />
       {state.phase !== 'streaming' ? <p className="live-placeholder">{label}</p> : null}
     </div>
     <div className="action-row">
-      <button className="button secondary" disabled={!active} onClick={reconnect}>重新連線</button>
+      <button className="button secondary" disabled={!active || state.sensitivePaused} onClick={reconnect}>重新連線</button>
       <button className="button secondary" disabled={!controlsAvailable || state.mode === 'jpeg'} onClick={() => session.current?.switchMode('jpeg')}>切換 JPEG 備援</button>
       <button className="button secondary" disabled={!controlsAvailable || state.mode === 'webrtc'} onClick={() => session.current?.switchMode('webrtc')}>嘗試 WebRTC</button>
       {state.needsPlay ? <button className="button primary" disabled={!controlsAvailable} onClick={() => session.current?.play()}>播放監看畫面</button> : null}
       <button className="button quiet" disabled={!enabled || !active} onClick={() => setEnabled(false)}>停止監看</button>
     </div>
-    <p className="inline-hint">僅觀看，不提供鍵盤或滑鼠控制。停止監看或影像中斷不會取消測試；切換最新 Run 不會自動改變這個監看目標。</p>
+    <p className="inline-hint">僅觀看，不提供鍵盤或滑鼠控制。停止監看或影像中斷不會取消 Run；切換最新 Run 不會自動改變這個監看目標。</p>
   </section>;
 }

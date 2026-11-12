@@ -27,11 +27,12 @@ type liveSession struct {
 	done     chan struct{}
 }
 type liveControl struct {
-	ViewerID string          `json:"viewerId"`
-	Mode     string          `json:"mode"`
-	Expires  int64           `json:"expiresAt"`
-	ICE      json.RawMessage `json:"iceServers"`
-	Answer   string          `json:"answer,omitempty"`
+	ViewerID      string          `json:"viewerId"`
+	Mode          string          `json:"mode"`
+	Expires       int64           `json:"expiresAt"`
+	ICE           json.RawMessage `json:"iceServers"`
+	Answer        string          `json:"answer,omitempty"`
+	AnswerOfferID string          `json:"answerOfferId,omitempty"`
 }
 type liveWire struct {
 	Type      string `json:"type"`
@@ -40,6 +41,7 @@ type liveWire struct {
 	Reason    string `json:"reason,omitempty"`
 	SDP       string `json:"sdp,omitempty"`
 	Mode      string `json:"mode,omitempty"`
+	OfferID   string `json:"offerId,omitempty"`
 }
 type liveState struct {
 	ViewerID  string `json:"viewerId"`
@@ -47,6 +49,7 @@ type liveState struct {
 	Transport string `json:"transport"`
 	Reason    string `json:"reason"`
 	Offer     string `json:"offer"`
+	OfferID   string `json:"offerId,omitempty"`
 }
 
 func validLiveICE(data json.RawMessage) bool {
@@ -274,7 +277,8 @@ func (m *Manager) mediaSession(ctx context.Context, r record, start liveStart) e
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	nextLease, nextPing := time.Time{}, time.Time{}
-	lastState, lastOffer := "", ""
+	lastState := ""
+	binding := liveOfferBinding{}
 	var lastFrameMod time.Time
 	for {
 		select {
@@ -286,10 +290,17 @@ func (m *Manager) mediaSession(ctx context.Context, r record, start liveStart) e
 			switch v.Type {
 			case "pong":
 			case "answer":
-				if control.Mode != "webrtc" || v.SDP == "" || len(v.SDP) > maxLiveSDP {
+				if v.SDP == "" || len(v.SDP) > maxLiveSDP {
 					return errors.New("invalid live answer")
 				}
+				if control.Mode != "webrtc" {
+					continue
+				}
+				if !binding.acceptsAnswer(v) {
+					continue
+				}
 				control.Answer = v.SDP
+				control.AnswerOfferID = v.OfferID
 				nextLease = time.Time{}
 			case "mode":
 				if v.Mode != "webrtc" && v.Mode != "jpeg" {
@@ -297,9 +308,9 @@ func (m *Manager) mediaSession(ctx context.Context, r record, start liveStart) e
 				}
 				if v.Mode != control.Mode {
 					control.Mode = v.Mode
-					control.Answer = ""
+					binding.clear(&control)
 					nextLease = time.Time{}
-					lastState, lastOffer = "", ""
+					lastState = ""
 					lastFrameMod = time.Time{}
 				}
 			default:
@@ -343,36 +354,30 @@ func (m *Manager) mediaSession(ctx context.Context, r record, start liveStart) e
 			data, err := liveRead(root, "state.json", maxLiveJSON)
 			var state liveState
 			if err == nil && json.Unmarshal(data, &state) == nil && state.ViewerID == control.ViewerID && state.Transport == control.Mode {
-				if state.Offer != "" && control.Mode == "webrtc" && state.Offer != lastOffer {
-					if len(state.Offer) > maxLiveSDP {
-						return errors.New("invalid live offer")
-					}
-					if err := send(liveWire{Type: "offer", SDP: state.Offer}); err != nil {
+				// JPEG does not negotiate offers. A stale ID cannot bind an answer.
+				if control.Mode != "webrtc" {
+					state.Offer = ""
+					state.OfferID = ""
+				}
+				messages, dirty, err := binding.plan(state, &control, string(data) != lastState)
+				if err != nil {
+					return err
+				}
+				if dirty {
+					control.Expires = now.Add(30 * time.Second).UnixMilli()
+					if err := writeLiveControl(root, control); err != nil {
 						return err
 					}
-					lastOffer = state.Offer
+					nextLease = now.Add(5 * time.Second)
 				}
-				if string(data) != lastState {
-					switch state.State {
-					case "waiting", "connecting", "streaming", "unavailable", "ended":
-					default:
-						return errors.New("invalid live state")
-					}
-					// Never forward arbitrary script-authored error text.
-					reason := ""
-					if state.Reason == "no_page" || state.Reason == "media_failed" {
-						reason = state.Reason
-					}
-					if control.Mode == "webrtc" && state.State == "streaming" {
-						state.State = "connecting"
-					}
-					if err := send(liveWire{Type: "state", State: state.State, Transport: control.Mode, Reason: reason}); err != nil {
+				for _, message := range messages {
+					if err := send(message); err != nil {
 						return err
 					}
-					lastState = string(data)
 				}
+				lastState = string(data)
 			}
-			if control.Mode == "jpeg" {
+			if control.Mode == "jpeg" && !binding.paused {
 				name := control.ViewerID + ".jpg"
 				info, err := root.Lstat(name)
 				if err != nil || info.ModTime().Equal(lastFrameMod) {

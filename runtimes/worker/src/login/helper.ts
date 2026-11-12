@@ -5,7 +5,7 @@ import {CredentialError,MAX_CREDENTIAL_FRAME,type Credentials} from './client.js
 import {maskKnownInputs} from './privacy.js';
 
 export const LOGIN_HOOK=Symbol.for('whippet.login.hook');
-export interface LoginHook {pause():Promise<void>;resume():void;remember(values:string[]):void;}
+export interface LoginHook {pause():Promise<void>;resume():Promise<void>|void;remember(values:string[]):void;}
 export type LoginHooks=typeof globalThis&{[LOGIN_HOOK]?:LoginHook};
 
 export async function submitLogin(page:Page,values:Credentials,usernameSelector:string,passwordSelector:string,submitSelector:string):Promise<{submitted:true}> {
@@ -34,7 +34,7 @@ export async function submitLogin(page:Page,values:Credentials,usernameSelector:
     await page.waitForLoadState('domcontentloaded',{timeout:10000}).catch(()=>undefined);
     const cookies=await page.context().cookies().catch(()=>[]);hooks?.remember(cookies.map((c)=>c.value));
     await maskKnownInputs(page,[values.username,values.password,...cookies.map((c)=>c.value)]).catch(()=>undefined);
-    hooks?.resume();
+    await hooks?.resume();
   }
 }
 

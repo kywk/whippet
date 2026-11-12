@@ -1,6 +1,6 @@
 # Whippet Server
 
-Go 單一服務，依 [`mvp-v1`](../../contracts/mvp-v1.md)～[`mvp-v8`](../../contracts/mvp-v8.md) 提供 HTTP API、PostgreSQL 佇列、Manager WebSocket gateway、持久對話、報告附件與即時監看。M1～M6 已有本機整合證據；M7 Server 編輯週期／摘要已通過相關 Go 與 PM 獨立 PostgreSQL 檢查，M7 整體 UI／真 AI 驗收尚未完成。M8 A 提供 Workspace 訪談、提案與機密保存接線；B Server 已恢復完整 runner、加入可信 scriptOrigin／獨立能力／TLS 單次角色 resolve，已通過定向 Go 與 PM 隔離 DB 檢查。B 的 Runtime／真 AI／登入／報告全鏈仍待整合，未更新共享部署。
+Go 單一服務，依 [`mvp-v1`](../../contracts/mvp-v1.md)～[`mvp-v8`](../../contracts/mvp-v8.md) 提供 HTTP API、PostgreSQL 佇列、Manager WebSocket gateway、持久對話、報告附件與即時監看。M1～M6 已有本機整合證據；M7 Server 編輯週期／摘要已通過相關 Go 與 PM 獨立 PostgreSQL 檢查，M7 整體 UI／真 AI 驗收尚未完成。M8 A 提供 Workspace 訪談、提案與機密保存接線；B Server 已恢復完整 runner、加入可信 scriptOrigin／獨立能力／TLS 單次角色 resolve，已通過定向 Go 與 PM 隔離 DB 檢查。PM 已在18087／18089隔離環境，以正常 API＋HTTPS provider fixture 完成提案確認、角色保存、真登入驗證、摘要、QA發布與正式Run；兩次Run均expected=1／unexpected=0且真resolve／回收已確認。fixture只替代提案／摘要模型輸出，真AI、UI／LiveView仍待驗，詳細證據與Run ID見 [DELIVERY.md](DELIVERY.md)。
 
 M1 已於 2026-11-11 驗收完成。總指揮與 Muse 已確認真實成功 Run、斷言失敗 Run 及兩份 HTML report 正常；storage shim 修正後成功報告顯示 Passed 1／Failed 0，失敗報告顯示 Passed 0／Failed 1。完整 Run ID 與驗證來源見 [DELIVERY.md](DELIVERY.md)。
 

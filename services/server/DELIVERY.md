@@ -1,10 +1,38 @@
 # Server 交付
 
-Owner：Whippet Server Agent t31。最新交付：M8 B 來源／能力／原 runner 恢復／TLS 任務角色解析（2026-11-12）；既有里程碑紀錄保留於下方。
+Owner：Whippet Server Agent t31。最新交付：M8 Live offerId／敏感 pause-resume relay 與 writer barrier（2026-11-12）；既有里程碑紀錄保留於下方。
+
+## M8 Live 敏感監看 relay 修正
+
+**Server 最小接縫、定向檢查與 Linux arm64 binary 已交付；Runtime／Web 真敏感輸入與監看整合仍待 PM 驗證。** 僅修改 `services/server/`，沒有新 RPC／lease／DB migration／依賴，不改 contracts 或共同 docs；未部署、執行 Git、安裝套件、讀真憑證或重跑 DB。
+
+- `internal/server/live.go`：LiveMessage 新增 optional UUID `offerId`，offer 原樣轉送，answer 必須匹配當前 viewer/session 尚待回答的 offer，並 echo 同 ID。晚到、不匹配、重複或無 ID 降級的 answer 忽略且不拆 viewer；非 UUID 回固定 invalid_message。只保留初次非敏感、未升級路徑的一組無 ID offer/answer 相容；觀察到有 ID 後或 pause／模式切換後，不接受無 ID 新協商。
+- `waiting/sensitive_input` 失效目前 offer、暫停新 offer；mode 切換亦失效舊協商，無效 ID 的 replay 不重新啟用。`waiting/sensitive_input_complete` 只恢復接收新 offer／媒體的條件，不自行建立 offer，也不清除已到達的新 offer。complete 與隨後 offer 走同一 Messages FIFO。
+- 轉送 state 一律使用可信 LiveSession.ViewerID，忽略 Manager 自報 ViewerID；Server 自生 waiting／connecting／streaming／terminal state 也帶此 ID。complete 的 reason／transport／optional offerId 照驗證後資料透傳；state 中的 offerId 不是新的協商授權。
+- `LiveEndpoint` 增加**內部**媒體 epoch／resume-written barrier，沒有新增 wire 欄位。pause 清除 queued JPEG、阻擋 paused frame；writer 已選取但尚未寫出的舊 epoch frame 也丟棄。complete 真正寫到 viewer 後才解除當前 epoch 的 frame 屏障，舊 complete 不能解開較新的 pause。保留單一最新 frame、有界 signaling 與原2秒 write deadline；已在網路傳送中的 bytes 無法追回，沒有宣稱可撤回。
+- `internal/gateway/live.go`：正式 `writeLive` 在 blocking select 取到 frame 後再次 drain signaling，經 endpoint epoch/barrier 檢查才送 binary。JSON 寫出成功才記錄 MessageWritten，因此 Messages/Frames 同時 ready 時仍保證 complete 先於 fresh bytes，不只倚賴 Manager 發送順序。
+- `live_offer_test.go`：matching／mismatched／late／duplicate answer、無 ID 降級、初次 legacy、UUID檢查、mode與敏感pause失效、resume不清新offer、可信ViewerID、已選舊frame／未寫complete／舊complete不可解鎖新pause。
+- `internal/gateway/live_writer_test.go`：直接執行**正式 writeLive**，以記錄 WriteMessage 的 writer 觀察 public JSON／binary；明確安排 Messages及Frames同時ready，確認 pause清舊frame、complete（可信ViewerID／offerId）在fresh binary之前，沒有輸出舊frame。這是實際writer邏輯的定向檢查，未冒稱真TCP／瀏覽器／WebRTC全鏈驗收。
+
+### 實際檢查與產物
+
+- 既有 Go1.23.12、配對GOROOT、GOTOOLCHAIN=local、GOPROXY=off／GOSUMDB=off、既有cache、`-mod=readonly`，未下載依賴。
+- 只跑必要 Live 定向：`go test -mod=readonly ./internal/server ./internal/gateway -run '^(TestLiveOffer|TestLiveWriter|TestLiveBindingBusyAndViewerLease|TestLiveLatestJPEGAndOldSessionCannotStopNewViewer|TestLiveOriginIncludesPort|TestLiveRoutesAuthAndLongLivedContext)' -count=1`。**最終 PASS：Server0.356s／Gateway0.351s**，包含後補實際 writer／epoch barrier 與原lease／latest JPEG／route相關回歸；未重跑DB或無關全套。
+- **正式 build PASS**：`GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -mod=readonly -trimpath -o /private/tmp/whippet-server-m8-live-offer ./cmd/server`。最終產物 **`/private/tmp/whippet-server-m8-live-offer`**，含本輪 writer barrier、此前 migration010 與 B API；`file` 確認 statically linked ELF aarch64，受影響檔案 `gofmt -l` 無輸出。
+- 已回報 PM t36 可固定此 binary 供隔離封裝。Runtime helper重建／敏感暫停及resume先發、Web敏感鎖／舊offer丟棄／JPEG解鎖各由原owner處理；真敏感輸入期間無畫面及恢復後新畫面的代表驗收仍待PM。本 Agent 只補本模組交接，不重建／部署／重測其他模組。
 
 ## M8 B Server 交付
 
-**Server 接線、必要定向檢查、PM 獨立 DB 案例與 Linux arm64 binary 已交付；B Runtime／真 AI／登入及報告全鏈仍待整合，未宣稱 M8 完成。** 依 `contracts/mvp-v8.md` 最新 B 裁定，覆蓋 A 暫態全面503／三工具限制。僅修改 `services/server/`；一次提案已交 `/private/tmp/whippet-m8b-server-revised.md` 並由 PM 固定。未安裝、執行 Git、讀印真憑證、呼叫模型、部署或重啟共享服務。
+**Server 接線、必要定向檢查、PM 獨立 DB 案例與 Linux arm64 binary 已交付；PM 已完成正常 API＋HTTPS provider fixture 的登入／驗證／發布／正式 Run 首切片。真 AI、UI／LiveView 仍待驗，未宣稱 M8 完成。** 依 `contracts/mvp-v8.md` 最新 B 裁定，覆蓋 A 暫態全面503／三工具限制。僅修改 `services/server/`；一次提案已交 `/private/tmp/whippet-m8b-server-revised.md` 並由 PM 固定。本 Agent 未安裝、執行 Git、讀印真憑證、呼叫模型、部署或重啟共享服務。
+
+### PM 本波正常 API 全鏈證據
+
+- 來源為 PM t36 回報，證據目錄 **`/private/tmp/whippet-m8-wave`**。隔離入口為 B Web／API **18087**、Server 原生 TLS **18089**，Manager 使用真 WSS；本 Agent 未操作部署或重跑。
+- 沿本模組交接的正常路徑：Workspace author 呼叫 HTTPS provider fixture 產生 proposal → QA confirm-scope／confirm 套用 → 專用角色 credential 保存 → Test／session 的人工完整 `loginAs` spec → 真 Playwright validation → fixture acceptance-summary → QA API 發布 → 正式 Run。fixture 只供提案／摘要，沒有取代 Playwright 結果或產品確認。
+- validation **`b4129af8-3b4d-480d-aa10-33d228a27747`** 與正式 Run **`29f05216-0540-4909-a58e-0840efffd3a2`** 均成功，原生結果 **expected=1／unexpected=0**。
+- 兩次真 DB 觀察皆命中 `resolved_role_ids`，且 `slot_released=true`；Manager journal 均 `credentialsUsed=true`、`credentialsSanitized=true`、`reclaimed=true`、phase=complete，沒有 Worker 殘留。這些是 PM 的實際 resolve／回收證據，不是本 Agent 重測，也不等於所有畫面或附件已完成機密遮蔽驗收。
+- 沒有 SQL 寫入前置、手改 journal、假 resolve 或假 stdin；未採用 seed 繞過前置。前置提案及摘要透過正常 provider fixture／Worker 產生，產品 API 的 QA 確認與原發布門檻保持。
+- 本次更新只補證據文件，未改碼、重新 build 或重測。真模型／真 AI 流程、UI、LiveView 尚待驗；不能把 fixture 模型輸出、journal Sanitized 旗標或 API 成功擴稱為全部 M8 驗收完成。
 
 ### 產物與行為
 
@@ -41,7 +69,7 @@ env GOPROXY=off GOSUMDB=off TEST_DATABASE_URL='<隔離 PostgreSQL URL>' \
 
 ### 交接與限制
 
-PM 已收到 binary，並回報用固定快照＋既有映像離線 COPY 建立 whippet-server:m8b-qa 與 Web B 均 PASS，**尚未替換預覽、不是乾淨Dockerfile建置證據**。Runtime固定產物／真TLS Manager resolve／合成登入／AI範圍與原生報告／敏感sentinel全鏈由PM接續。原18080／18085未動，先前18086仍是A隔離預覽；不把主機200／Web合成checks／Server DB通過當作B整體驗收。文件完成後待命，不再build／重跑／部署。
+PM 前輪已用固定 binary 快照＋既有映像離線 COPY 建立 whippet-server:m8b-qa 與 Web B，並在本波以18087／18089完成上述正常 API 首切片；此封裝方式仍不是乾淨 Dockerfile 建置證據。真 AI、UI／LiveView 與其代表畫面／敏感證據驗收由 PM 接續，不把 provider fixture、API 成功或 Server DB 通過當作 B 整體完成。本 Agent 文件更新後待命，不再 build／重跑／部署。
 
 ## M8 A Server 交付
 

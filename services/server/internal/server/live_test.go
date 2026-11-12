@@ -115,7 +115,7 @@ func TestLiveLatestJPEGAndOldSessionCannotStopNewViewer(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if len(s.Viewer.Frames) != 1 || (<-s.Viewer.Frames)[2] != byte(999%256) {
+	if len(s.Viewer.Frames) != 1 || (<-s.Viewer.Frames).JPEG[2] != byte(999%256) {
 		t.Fatal("slow viewer did not retain only newest JPEG")
 	}
 	if len(controller.commands) != 1 {

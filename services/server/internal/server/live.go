@@ -75,6 +75,7 @@ type LiveController interface {
 }
 
 type LiveMessage struct {
+	mediaEpoch uint64       // Internal output barrier; never serialized on the wire.
 	Type       string       `json:"type"`
 	ViewerID   string       `json:"viewerId,omitempty"`
 	ICEServers *[]ICEServer `json:"iceServers,omitempty"`
@@ -82,6 +83,7 @@ type LiveMessage struct {
 	Transport  string       `json:"transport,omitempty"`
 	Reason     string       `json:"reason,omitempty"`
 	SDP        string       `json:"sdp,omitempty"`
+	OfferID    string       `json:"offerId,omitempty"`
 	Mode       string       `json:"mode,omitempty"`
 	Code       string       `json:"code,omitempty"`
 	Message    string       `json:"message,omitempty"`
@@ -94,29 +96,102 @@ func (e *LiveError) Error() string { return e.Message }
 // LiveEndpoint has its own writer, bounded signaling, and a latest-frame slot.
 // Channels are never closed: producers cannot panic when termination races a frame.
 type LiveEndpoint struct {
-	Messages chan LiveMessage
-	Frames   chan []byte
-	Done     chan struct{}
-	once     sync.Once
-	final    LiveMessage
+	Messages      chan LiveMessage
+	Frames        chan LiveFrame
+	Done          chan struct{}
+	mediaMu       sync.Mutex
+	mediaEpoch    uint64
+	mediaPaused   bool
+	resumePending bool
+	once          sync.Once
+	final         LiveMessage
+}
+
+type LiveFrame struct {
+	JPEG  []byte
+	epoch uint64
 }
 
 func newLiveEndpoint() *LiveEndpoint {
-	return &LiveEndpoint{Messages: make(chan LiveMessage, 16), Frames: make(chan []byte, 1), Done: make(chan struct{})}
+	return &LiveEndpoint{Messages: make(chan LiveMessage, 16), Frames: make(chan LiveFrame, 1), Done: make(chan struct{})}
 }
 
 func (p *LiveEndpoint) send(message LiveMessage) bool {
+	p.mediaMu.Lock()
+	defer p.mediaMu.Unlock()
 	select {
 	case <-p.Done:
 		return false
 	default:
 	}
+	if message.Type == "state" && message.State == "waiting" {
+		switch message.Reason {
+		case "sensitive_input":
+			p.mediaEpoch++
+			p.mediaPaused, p.resumePending = true, false
+			select {
+			case <-p.Frames:
+			default:
+			}
+		case "sensitive_input_complete":
+			p.mediaPaused, p.resumePending = false, true
+		}
+	}
+	message.mediaEpoch = p.mediaEpoch
 	select {
 	case p.Messages <- message:
 		return true
 	default:
 		return false
 	}
+}
+
+// MessageWritten releases only the matching resume barrier after the actual
+// viewer writer has sent it. An older complete cannot unlock a later pause.
+func (p *LiveEndpoint) MessageWritten(message LiveMessage) {
+	p.mediaMu.Lock()
+	defer p.mediaMu.Unlock()
+	if message.Type == "state" && message.State == "waiting" && message.Reason == "sensitive_input_complete" && message.mediaEpoch == p.mediaEpoch && !p.mediaPaused {
+		p.resumePending = false
+	}
+}
+
+func (p *LiveEndpoint) frame(jpeg []byte) {
+	p.mediaMu.Lock()
+	defer p.mediaMu.Unlock()
+	if p.mediaPaused {
+		return
+	}
+	frame := LiveFrame{JPEG: jpeg, epoch: p.mediaEpoch}
+	select {
+	case p.Frames <- frame:
+		return
+	default:
+	}
+	select {
+	case <-p.Frames:
+	default:
+	}
+	select {
+	case p.Frames <- frame:
+	default:
+	}
+}
+
+// Serialize the last epoch check and bounded binary write with privacy state
+// updates. Already in-flight bytes cannot be recalled; queued old frames drop.
+func (p *LiveEndpoint) WriteFrame(frame LiveFrame, write func([]byte) error) error {
+	p.mediaMu.Lock()
+	defer p.mediaMu.Unlock()
+	select {
+	case <-p.Done:
+		return nil
+	default:
+	}
+	if p.mediaPaused || p.resumePending || frame.epoch != p.mediaEpoch {
+		return nil
+	}
+	return write(frame.JPEG)
 }
 
 func (p *LiveEndpoint) close(final LiveMessage) {
@@ -127,14 +202,19 @@ func (p *LiveEndpoint) close(final LiveMessage) {
 func (p *LiveEndpoint) Final() LiveMessage { return p.final }
 
 type LiveSession struct {
-	Target       LiveTarget
-	ViewerID     string
-	Viewer       *LiveEndpoint
-	managerEpoch string
-	media        *LiveEndpoint
-	mode         string
-	expiresAt    time.Time
-	jpegStarted  bool
+	Target           LiveTarget
+	ViewerID         string
+	Viewer           *LiveEndpoint
+	managerEpoch     string
+	media            *LiveEndpoint
+	mode             string
+	offerID          string // Last accepted ID; retained to reject its replay after invalidation.
+	offerPending     bool
+	offerPaused      bool
+	offerIDsRequired bool
+	legacyOfferSeen  bool
+	expiresAt        time.Time
+	jpegStarted      bool
 }
 
 type LiveHub struct {
@@ -173,7 +253,7 @@ func (h *LiveHub) OpenViewer(ctx context.Context, runID string) (*LiveSession, e
 	s := &LiveSession{Target: target, ViewerID: NewID(), Viewer: newLiveEndpoint(), managerEpoch: epoch, mode: "webrtc", expiresAt: h.now().Add(LiveLease)}
 	h.sessions[runID] = s
 	s.Viewer.send(LiveMessage{Type: "ready", ViewerID: s.ViewerID, ICEServers: &h.ice})
-	s.Viewer.send(LiveMessage{Type: "state", State: "waiting", Reason: "Waiting for live media."})
+	s.Viewer.send(LiveMessage{Type: "state", ViewerID: s.ViewerID, State: "waiting", Reason: "Waiting for live media."})
 	h.mu.Unlock()
 	command := LiveCommand{Type: "live.start", Target: target, ViewerID: s.ViewerID, ManagerEpoch: epoch, ICEServers: h.ice,
 		OnError: func(error) {
@@ -204,7 +284,7 @@ func (h *LiveHub) AttachMedia(ctx context.Context, runID, attemptID, viewerID st
 	media := newLiveEndpoint()
 	s.media = media
 	media.send(LiveMessage{Type: "mode", Mode: s.mode})
-	ok := s.Viewer.send(LiveMessage{Type: "state", State: "connecting", Transport: s.mode})
+	ok := s.Viewer.send(LiveMessage{Type: "state", ViewerID: s.ViewerID, State: "connecting", Transport: s.mode})
 	h.mu.Unlock()
 	if !ok {
 		h.terminate(s, LiveMessage{Type: "state", State: "unavailable", Reason: "Viewer signaling queue is full."})
@@ -231,6 +311,9 @@ func (h *LiveHub) ViewerMessage(s *LiveSession, message LiveMessage) error {
 		if message.Mode != "webrtc" && message.Mode != "jpeg" {
 			return &LiveError{"unsupported", "Unsupported live mode."}
 		}
+		if message.Mode != s.mode || s.offerPending || s.offerID != "" || s.legacyOfferSeen {
+			s.offerPending, s.offerIDsRequired = false, true
+		}
 		s.mode, s.jpegStarted = message.Mode, false
 		// Drop a JPEG left over from a previous mode before negotiating WebRTC.
 		select {
@@ -244,10 +327,16 @@ func (h *LiveHub) ViewerMessage(s *LiveSession, message LiveMessage) error {
 		if len(message.SDP) == 0 || len(message.SDP) > MaxLiveSDPBytes {
 			return &LiveError{"invalid_message", "Invalid live SDP."}
 		}
-		if s.mode != "webrtc" {
+		if message.OfferID != "" && !ValidID(message.OfferID) {
+			return &LiveError{"invalid_message", "Invalid live offer ID."}
+		}
+		// Stale answers are expected across privacy pauses and mode changes.
+		// Drop them without disconnecting a viewer that is awaiting a fresh offer.
+		if s.mode != "webrtc" || s.offerPaused || !s.offerPending || message.OfferID != s.offerID || (s.offerIDsRequired && message.OfferID == "") {
 			return nil
 		}
-		if s.media != nil && s.media.send(LiveMessage{Type: "answer", SDP: message.SDP}) {
+		if s.media != nil && s.media.send(LiveMessage{Type: "answer", SDP: message.SDP, OfferID: message.OfferID}) {
+			s.offerPending = false
 			return nil
 		}
 	default:
@@ -272,10 +361,23 @@ func (h *LiveHub) MediaMessage(s *LiveSession, media *LiveEndpoint, message Live
 		if len(message.SDP) == 0 || len(message.SDP) > MaxLiveSDPBytes {
 			return &LiveError{"invalid_message", "Invalid live SDP."}
 		}
-		if s.mode != "webrtc" {
+		if message.OfferID != "" {
+			if !ValidID(message.OfferID) {
+				return &LiveError{"invalid_message", "Invalid live offer ID."}
+			}
+			s.offerIDsRequired = true
+			if message.OfferID == s.offerID {
+				return nil
+			}
+		} else if s.offerIDsRequired || s.legacyOfferSeen {
 			return nil
 		}
-		if s.Viewer.send(LiveMessage{Type: "offer", SDP: message.SDP}) {
+		if s.mode != "webrtc" || s.offerPaused {
+			return nil
+		}
+		if s.Viewer.send(LiveMessage{Type: "offer", SDP: message.SDP, OfferID: message.OfferID}) {
+			s.offerID, s.offerPending = message.OfferID, true
+			s.legacyOfferSeen = s.legacyOfferSeen || message.OfferID == ""
 			return nil
 		}
 	case "state":
@@ -288,7 +390,18 @@ func (h *LiveHub) MediaMessage(s *LiveSession, media *LiveEndpoint, message Live
 		if len(message.Reason) > 512 {
 			return &LiveError{"invalid_message", "Live reason exceeds limit."}
 		}
-		if s.Viewer.send(LiveMessage{Type: "state", State: message.State, Transport: message.Transport, Reason: message.Reason}) {
+		if message.OfferID != "" && !ValidID(message.OfferID) {
+			return &LiveError{"invalid_message", "Invalid live offer ID."}
+		}
+		if message.State == "waiting" && message.Reason == "sensitive_input" {
+			s.offerPending, s.offerIDsRequired = false, true
+			s.offerPaused = true
+		} else if message.State == "waiting" && message.Reason == "sensitive_input_complete" {
+			s.offerPaused = false
+		}
+		// Resume is only a state event. It does not create/invalidate an offer.
+		// Bind every relayed state to the trusted session, never Manager input.
+		if s.Viewer.send(LiveMessage{Type: "state", ViewerID: s.ViewerID, State: message.State, Transport: message.Transport, Reason: message.Reason, OfferID: message.OfferID}) {
 			return nil
 		}
 	default:
@@ -310,24 +423,12 @@ func (h *LiveHub) Frame(s *LiveSession, media *LiveEndpoint, jpeg []byte) error 
 		return nil
 	}
 	if !s.jpegStarted {
-		if !s.Viewer.send(LiveMessage{Type: "state", State: "streaming", Transport: "jpeg"}) {
+		if !s.Viewer.send(LiveMessage{Type: "state", ViewerID: s.ViewerID, State: "streaming", Transport: "jpeg"}) {
 			return &LiveError{"unavailable", "Viewer signaling queue is full."}
 		}
 		s.jpegStarted = true
 	}
-	select {
-	case s.Viewer.Frames <- jpeg:
-		return nil
-	default:
-	}
-	select {
-	case <-s.Viewer.Frames:
-	default:
-	}
-	select {
-	case s.Viewer.Frames <- jpeg:
-	default:
-	}
+	s.Viewer.frame(jpeg)
 	return nil
 }
 
@@ -338,6 +439,9 @@ func (h *LiveHub) terminate(s *LiveSession, final LiveMessage) {
 		return
 	}
 	delete(h.sessions, s.Target.RunID)
+	if final.Type == "state" {
+		final.ViewerID = s.ViewerID
+	}
 	s.Viewer.close(final)
 	if s.media != nil {
 		s.media.close(final)

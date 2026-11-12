@@ -204,3 +204,26 @@ workspace-author輸出 `{message,proposal?:<typed候選設定>,conversationSumma
 最小驗證：兩Workspace的資源／proposal／role／lease隔離；舊PATCH拒絕；過期／取消／scope未確認不啟用；AEAD AAD跨Workspace失敗、未配key不可用（只用測試key）；租約重送／撤銷／同attempt recovery不重跑；秘密不進普通持久資料；Runtime用合成網站／帳密做受影響網路與證據檢查。DB只用明確隔離TEST_DATABASE_URL；不碰18080／18085。M7未完成的全鏈驗收仍另列，這份提案不補稱完成。
 
 本輪未安裝、Git、讀印真憑證、部署／重啟、模型呼叫或跑測試；只寫本暫存檔，等t36固定v8再單獨實作services/server。
+
+## M8 B 敏感監看修正：暫停與協商識別
+
+本節修正登入監看整合發現的缺口；優先於未包含敏感暫停的舊媒體行為。
+
+- Worker 在填入登入值前完成媒體暫停。暫停須與 tick、frame callback／檔案寫入序列化或以 generation 失效化，確保 pause 完成後不再發布先前影格；敏感期間新增 viewer 亦收到 `state=waiting, reason=sensitive_input`。Manager 保留此固定 reason，Server 轉送。
+- Web 收到此狀態即清除舊 video/peer、JPEG object URL 與未完成協商；顯示敏感輸入暫停，不讓舊影像留在畫面，不因暫停觸發 fallback 或錯誤重連。Run 不因此取消；恢復仍以真正收到可播放的新影格為準。
+- 每個新 WebRTC offer 由 Worker 產生 UUID `offerId`，Manager／Server 的 offer 原樣攜帶。Web answer 原樣 echo `offerId`。Manager control 用 `answerOfferId` 關聯答案；Worker 只接受當前 offer 的答案。
+- Server／Manager／Web／Worker 在同一 viewer 的 pause、mode 切換及新 offer 之間拒絕不匹配或晚到的 answer／舊協商 callback。pause 清除目前協商，resume 用新 offerId，不把舊 control.answer 套到新 helper。
+- 相容性：舊無 offerId 的非敏感初次路徑可保留；一旦該 viewer 使用有 ID 協商，不能以缺 ID 降級或混用，敏感恢復必須使用新識別。各層錯誤保留原有界限，不擴充平台。
+- 最小驗證：reason 透傳及已串流時清屏、中途 viewer 的敏感狀態、pause/frame 競態、舊 answer 不可套新 offer；最後以合成慢速登入觀察暫停前真影格→敏感期間清屏／停止→登入後新協商真影格。僅文字狀態或晚期累積 frames>0 不足以判通過。
+
+### 敏感階段的明確恢復訊號
+
+恢復事件固定為 `state=waiting, reason=sensitive_input_complete, transport=<目前模式>`。Manager 必須保留此 reason，並確保 JPEG 模式下先送恢復事件，再送第一張新影格；Worker/Manager 不可依賴可能被輪詢漏掉的瞬間檔案狀態。Web 只對當前 viewer、目前 JPEG 模式的此事件解除敏感鎖；普通 waiting/connecting/streaming 不表示恢復，敏感期間舊 frame/offer 不接受。WebRTC 仍以敏感後全新有效 UUID offer 才開始恢復協商，不能用此文字事件跳過 offerId 核對。所有模式都須由真正新影格才回到 streaming。
+
+Server 對轉送的 state 事件填入當前 LiveSession 的 `viewerId`（不採上游自報身分）。Web 僅接受 `sensitive_input_complete` 的 viewerId 與該連線 `ready.viewerId` 完全一致才解除 JPEG 敏感鎖；缺值或錯值不得解鎖。對舊 pause 事件缺 viewerId 可先清畫面以保守相容，明確不符 viewer 的事件丟棄。敏感鎖不因普通 state、ready、切換模式或播放操作自行解除。
+
+WebRTC 的恢復也必須以當前 viewer 的 `waiting/sensitive_input_complete/transport=webrtc` **先於新 offer**，Worker／Manager 須確保可觀察且有序，Server 保持順序。Web 在 complete 前將所有到達 offer（即使 UUID 未見）丟棄並記為 stale；正確 complete 僅使其進入「等待新 offer」子狀態，畫面仍 paused。complete 後全新且非 stale 的 UUID offer 才能建立新 peer，收到真影格才 streaming。此規則補足前述「新 offer 恢復」的必要前置，不新增 wire 欄位。
+
+Server viewer 的實際 WebSocket 寫出順序亦須遵守上述屏障；若文字 Messages 與二進位 Frames 使用不同佇列，不得靠不具順序保證的 select 讓新影格早於 complete，或讓暫停前已排隊影格在 pause 後輸出。驗證需涵蓋雙佇列同時 ready 的實際 writer 順序，不能只以 Manager 的送出順序代替。
+
+`state`（含 complete）可攜帶尚未附 SDP 的 pending `offerId` 作關聯資料；此欄位不表示 offer 已送出或接受，不得因此將 ID 加入 offer 去重／已接受集合。只有實際 `type=offer` 訊息適用前述 offer 接受與 stale 規則；合法 complete state 及其後實際 offer 可以攜帶相同 ID。

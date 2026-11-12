@@ -11,6 +11,7 @@ export interface LiveControl {
   expiresAt: number;
   iceServers: RTCIceServer[];
   answer?: string;
+  answerOfferId?: string;
 }
 export async function boundedRead(path: string, max: number): Promise<Buffer> {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -35,7 +36,8 @@ export async function readControl(dir: string, now = Date.now()): Promise<LiveCo
     const v = JSON.parse((await boundedRead(join(dir, "control.json"), 192 * 1024)).toString()) as LiveControl;
     if (!UUID.test(v.viewerId) || !["webrtc", "jpeg"].includes(v.mode) || !Number.isFinite(v.expiresAt) ||
       v.expiresAt <= now || v.expiresAt > now + 35000 || !Array.isArray(v.iceServers) || v.iceServers.length > 8 ||
-      (v.answer !== undefined && (typeof v.answer !== "string" || Buffer.byteLength(v.answer) > MAX_SDP))) return undefined;
+      (v.answer !== undefined && (typeof v.answer !== "string" || Buffer.byteLength(v.answer) > MAX_SDP)) ||
+      (v.answerOfferId!==undefined&&(typeof v.answerOfferId!=="string"||!UUID.test(v.answerOfferId)))) return undefined;
     return v;
   } catch { return undefined; }
 }

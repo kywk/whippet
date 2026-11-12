@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { ApiError, errorMessage } from './api';
 import { formatDate, Loading, Notice, RunStatusBadge } from './components';
 import { CancelRunButton } from './TestActions';
+import { LiveView } from './LiveView';
 import { WorkspaceAvailability, WorkspaceSettings } from './WorkspaceSettings';
 import { WorkspaceProposalCard } from './WorkspaceProposal';
 import { WorkspaceCredentials } from './WorkspaceCredentials';
@@ -50,6 +51,7 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
   const [conversation, setConversation] = useState<WorkspaceConversationData>();
   const [content, setContent] = useState('');
   const [run, setRun] = useState<Run>();
+  const [liveSelection, setLiveSelection] = useState<Run>();
   const [refreshing, setRefreshing] = useState(false);
   const [sending, setSending] = useState(false);
   const [proposalBusy, setProposalBusy] = useState(false);
@@ -79,6 +81,15 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
   const recentRunId = [...(conversation?.messages ?? [])].reverse().find((message) => message.runId)?.runId;
   const trackedId = conversation?.activeRunId ?? current.activeRunId ?? recentRunId ?? run?.id ?? current.currentProposal?.sourceRunId;
   const runActive = Boolean(trackedId && (!run || run.id !== trackedId || isActiveRun(run)));
+  const explorationAvailable = current.capabilities?.aiExploration?.available === true;
+  const liveRun = liveSelection?.id === run?.id ? run : liveSelection;
+  useEffect(() => {
+    setLiveSelection((selected) => {
+      if (!selected || !active) return undefined;
+      const updated = selected.id === run?.id ? run : selected;
+      return updated && (!explorationAvailable && isActiveRun(updated)) ? undefined : updated;
+    });
+  }, [active, explorationAvailable, run]);
   useEffect(() => {
     if (!trackedId) return;
     const request = new AbortController(); let timer: ReturnType<typeof setTimeout> | undefined;
@@ -108,7 +119,7 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
       const result = await api.sendWorkspaceMessage(workspace.id, { content: content.trim(), revision: current.revision, contextRevision: conversation.contextRevision }, request.signal);
       if (request.signal.aborted) return;
       if (result.conversationId !== conversation.id) throw new ApiError('回應的設定對話不符。', 'WORKSPACE_CONFLICT');
-      setContent(''); setRun(result.run); setConversation((previous) => previous ? { ...previous, activeRunId: result.run.id } : previous); setCurrent((previous) => ({ ...previous, activeRunId: result.run.id })); setNote('訊息已保存並排入設定訪談。AI 只會提出候選設定，不會自動確認、探索或啟用。');
+      setContent(''); setRun(result.run); setConversation((previous) => previous ? { ...previous, activeRunId: result.run.id } : previous); setCurrent((previous) => ({ ...previous, activeRunId: result.run.id })); setNote('訊息已保存並排入設定任務。AI 只能依 Server 已確認範圍與工具許可探索；未取得許可時只進行訪談，不會自動套用提案。');
       try { await refresh(); } catch { setSendError('訊息已送出，但對話同步失敗。請先重新載入，不要直接重送。'); }
     } catch (cause) {
       if (!request.signal.aborted) { setSendError(`${errorMessage(cause)} 輸入已保留；請先重新載入對話與任務狀態，不會自動重送。`); void refresh().catch(() => undefined); }
@@ -123,6 +134,7 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
   function returnToTests() {
     if (mutating) return;
     if (credentialGuard.dirty && !window.confirm('返回測試工作台會清除尚未保存的帳密；一般未送出訊息會保留。確定繼續？')) return;
+    setLiveSelection(undefined);
     onReturn();
   }
   return <section id="workspace-conversation" className="workspace-conversation" aria-labelledby="workspace-conversation-title">
@@ -135,7 +147,11 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
         {!conversation && refreshing ? <Loading text="正在載入持久設定對話…" /> : null}
         {conversation?.messages.length === 0 ? <p className="conversation-empty">描述網站用途、驗測目標與非機密背景。AI 會先訪談，再提出可供確認的設定提案。</p> : null}
         <ol className="message-list" aria-label="已儲存的 Workspace 訊息">{conversation?.messages.map((message) => <li key={message.id} className={`conversation-message ${message.role}`}><div className="message-heading"><strong>{message.role === 'user' ? '你' : 'Workspace 助手'}</strong><time dateTime={message.createdAt}>{formatDate(message.createdAt)}</time></div><p className="message-content">{message.content}</p></li>)}</ol>
-        {trackedId ? <div className="author-state" aria-live="polite"><div className="validation-summary"><strong>設定訪談狀態</strong>{run?.id === trackedId ? <><RunStatusBadge run={run} /><CancelRunButton api={api} run={run} onUpdated={(next) => { setRun(next); void refresh().catch(() => undefined); }} /></> : <span>讀取中…</span>}</div><p className="identifier version-id">Run {trackedId}</p>{run?.error ? <pre className="run-error">{run.error}</pre> : null}<p className="inline-hint">訪談完成不代表已探索網站或執行測試；失敗後需明確送出訊息重試，不會自動重跑。</p></div> : null}
+        {trackedId ? <div className="author-state" aria-live="polite"><div className="validation-summary"><strong>設定訪談狀態</strong>{run?.id === trackedId ? <><RunStatusBadge run={run} /><CancelRunButton api={api} run={run} onUpdated={(next) => { setRun(next); void refresh().catch(() => undefined); }} /></> : <span>讀取中…</span>}</div><p className="identifier version-id">Run {trackedId}</p>{run?.error ? <pre className="run-error">{run.error}</pre> : null}<p className="inline-hint">訪談完成不代表已探索網站或執行測試；失敗後需明確送出訊息重試，不會自動重跑。</p>
+          {run?.id === trackedId && isActiveRun(run) && explorationAvailable ? <div className="action-row"><button className="button secondary compact" disabled={liveSelection?.id === run.id} aria-label={`開始監看 Workspace Run ${run.id}`} onClick={() => setLiveSelection(run)}>開始監看</button></div> : null}
+          <p className="inline-hint">具瀏覽器工具的 Workspace 任務才有畫面，實際以 Server 的此 Run 狀態為準；純訪談不提供監看。</p>
+        </div> : null}
+        {active && liveRun && (explorationAvailable || !isActiveRun(liveRun)) ? <LiveView key={liveRun.id} run={liveRun} apiBase={apiBase} onClose={() => setLiveSelection(undefined)} /> : null}
         {run?.status === 'failed' ? <p className="blocked-hint">請依任務錯誤修正需求或設定提案；origin 集合衝突不會由前端自動移除、合併或放寬。</p> : null}
         {runError ? <Notice message={runError} /> : null}
         <form className="conversation-composer" onSubmit={(event) => { void send(event); }}><label className="field-label" htmlFor="workspace-message">Workspace 需求或修改訊息</label><textarea id="workspace-message" className="text-input" rows={4} value={content} disabled={sending} onChange={(event) => setContent(event.target.value)} aria-describedby="workspace-message-help" /><p id="workspace-message-help" className="inline-hint">請勿填帳密、token 或 API key；登入資料只用右側專用欄位。使用設定 revision {current.revision}、對話版本 {conversation?.contextRevision ?? '尚未取得'}。</p><p className="inline-hint">{Array.from(content).length.toLocaleString('zh-TW')} / 16,000 字元 · 返回測試工作台保留一般未送出文字，秘密欄位會清空。</p><div className="action-row"><button className="button primary" disabled={!canSend || !content.trim() || Array.from(content).length > 16_000}>{sending ? '送出中…' : runActive ? '設定訪談進行中' : '送出 Workspace 訊息'}</button></div></form>

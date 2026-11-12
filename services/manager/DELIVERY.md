@@ -2,6 +2,42 @@
 
 更新：2026-11-12（Asia/Taipei）。Owner：Runtime Agent t32，gpt-6.1-sol／xhigh。
 
+## 最新修復波次：敏感監看暫停／恢復與 offerId 綁定
+
+依 PM 在唯讀查核後新增的明確授權，僅修改 Manager／Worker；不跨 Server/Web owner。已交付 **`/private/tmp/whippet-manager-m8-mask`**（Linux arm64）及最新 **`runtimes/worker/dist/`＋完整 `skills/`**。本輪 skill 未變。觀測條件與修復前缺口記在 [whippet-m8-mask-runtime-note.md](/private/tmp/whippet-m8-mask-runtime-note.md)。**尚未執行真 slow-login UI／影像／重協商驗收，不以定向測試宣稱登入遮蔽 PASS。**
+
+- `src/live/observer.ts`：tick、pause、resume、close 共用序列；pause 立即使 epoch/callback 失效，再排空在途 capture／atomic frame write、刪 JPEG／停止獨立媒體 helper。pause 完成後舊 callback 不能重建檔案，敏感期間新 viewer/control 仍會被讀取並得到自身 `waiting/sensitive_input`，不啟動 capture。保留已暫停旗標直到 serialized resume marker 寫完，避免 resume 排隊期間搶先擷取。短暫暫停只處理 screencast／keyless 媒體 helper，不取消測試或回收 Run 容器。
+- Worker 對每個新 WebRTC helper/offer 產生 UUID `offerId`，只套用 `answerOfferId` 與本 offer 相符的 answer；重新讀取最新 control，不沿用 helper.start 前捕獲的舊 answer。pause/mode/viewer 變更停止前一代媒體，重新建立 offer。
+- `src/live/files.ts`、login hook：新增有界 UUID `answerOfferId` 讀取；login finally 會 await resume，marker 寫好才繼續。resume 持續保留 `state=waiting/reason=sensitive_input_complete` 於該恢復 epoch（可同時含新 SDP/offerId），不做可能被 100ms polling 漏掉的短 pulse。JPEG 與 WebRTC 都先有 complete，WebRTC 再等 fresh offer／真影格；complete 本身不是 streaming 成功。
+- Manager `live_binding.go`／`live.go`：安全 reason 白名單加入 `sensitive_input` 與 `sensitive_input_complete`。pause/mode 清 control answer/answerOfferId 與 active offer；同 viewer 保留 versioned／retired ID 狀態，拒絕晚到、退役或無 ID answer，不因晚到 WebRTC answer 中斷目前 JPEG。舊無 ID 只保留非敏感首次協商相容；見 ID 或進入敏感流程後不可降級。Manager 在同一媒體 WS 上**先送 complete state，再送新 UUID offer／JPEG**；pause 時即使磁碟有舊 JPEG 也不發送。
+- Server 依當前 LiveSession 填公開 state.viewerId、保證 Messages/Frames writer 順序與舊 queue 清理，由 t31 負責；Web 的敏感鎖、current viewerId 比對、complete 前丟棄所有 offer、complete 後 fresh UUID／真影格解鎖，由 t30 負責。本 Agent 未修改這些檔案；三端須同步後再做 PM slow fixture 驗收，不能只部署 Runtime。
+
+實際必要檢查：
+
+1. Worker 正式 `npm run build` **PASS**；`node --test dist/live/sensitive.test.js` **3/3 PASS、0 skip**。使用真暫存檔案與可控制的 capture/helper，驗證 capture start／atomic write 與 pause 競態、pause 完成後 stale callback 無寫入、中途 viewer 正確 pause state、持續 complete 先於新 JPEG、WebRTC fresh UUID／拒絕舊或 untagged／mode前 answer。
+2. Manager `go test -race -mod=readonly ./internal/manager -run '^TestLiveSensitive|^TestLiveMediaLeaseAndJPEGAreIndependent$' -count=1` **PASS，2.072s**，四項測試。binding 測試驗 complete→offer、退役 ID／降級／晚到 answer 拒絕及首次 legacy 相容；**真 loopback WS 媒體 wire** 驗 pause 阻擋已存在 JPEG、complete 必先於 binary，且晚到 answer 不停止 JPEG／Run；另驗既有正常 JPEG lease 生命週期。這是 Manager→Server wire 的測試，不是假稱已驗完整 Server 公開 writer／UI。只提升必要 loopback httptest 權限，沒有 Docker／部署。
+3. Linux arm64 cross-build **PASS**：`/private/tmp/whippet-manager-m8-mask`，既有 Go cache／`GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local`／`-mod=readonly`／`CGO_ENABLED=0`，沒有下載依賴。
+
+剩餘驗收：PM `/slow-login` 12秒ready／`/slow-session` 12秒延遲／登入後10秒進度；需要公開 WS 正確 viewer 的 pause/complete、核心敏感窗口無 fresh image、解碼像素無合成 known sentinel、恢復後兩個時點真正遞增影格與可讀非機密進度。JPEG與WebRTC各自判定，不以regex文案或late frames>0替代；敏感期中途加入另驗。不能把前節一般 manual LiveView PASS 擴充成此項已完成。
+
+本輪無 Docker／部署／模型／安裝／Git／真秘密讀取，未重跑無關全量或前波直接 runner 案例。產物與 owner 程式固定，交 PM 整合後再依真失敗修復。
+
+## 最新 wave：正常 API 真 resolve／正式 Run 已由 PM 通過
+
+M8 A/B 已由 PM 提交 `6df86e6` 後，使用者授權下一波；本 Agent 未操作 Git。本波接線筆記：[whippet-m8-wave-runtime.md](/private/tmp/whippet-m8-wave-runtime.md)。採 PM 現有 `whippet-worker:m8b-wave`（固定 dist/skills＋公開 Node 測試 CA）、`whippet-manager:m8b-qa`；網站 `http://host.docker.internal:18187`、明示替身的 HTTPS Responses `https://host.docker.internal:18188/v1`、B Web/API 18087、真 Server TLS 18089。沒有新增 author env 白名單或略過 TLS。
+
+PM 回報**正常 API 全鏈首切片 PASS**：Workspace author 走 HTTPS fixture 產提案→scope/apply→專用角色保存→manual `loginAs` validation→fixture summary→QA API明確發布→正式 Run。真 validation `b4129af8-3b4d-480d-aa10-33d228a27747` 與正式 Run `29f05216-0540-4909-a58e-0840efffd3a2` 均 succeeded、**expected1／unexpected0**；兩次真 DB resolved_role_ids 命中、slot_released=true；兩次 Manager journal credentialsUsed／credentialsSanitized／reclaimed=true、phase=complete，且無 Worker 殘留。證據 `/private/tmp/whippet-m8-wave`。
+
+沒有 SQL 寫入、手改 journal、假 resolve 或測試程序注入 stdin；資料準備沿 t31 正常 API/provider fixture，不採筆記初版的 seed 前置。**只有提案／摘要是已標示的模型回應替身，Server HTTPS resolve／Manager interactive attach／Worker loginAs／原生報告與回收均是真實流程。** manual LiveView 真 UI 後續結果見下節；真 AI／Workspace author 與登入敏感輸入遮蔽仍待驗，不把此結果當 M8 全部完成。
+
+本 Agent 本輪只唯讀核對接線、寫暫存筆記及 `runtimes/worker/examples/m8-wave-login.spec.ts` 最小範例；spec只含角色 ID，對齊 PM `/login`→POST`/session`，驗 Authenticated／alpha 與 cookie 布林，不印值、不假設不存在的 `/app`／stats。以既有 TypeScript `transpileModule` **語法轉譯檢查 PASS**，未執行該 spec、未稱完整 typecheck。原先未使用的重複網站入口已移除，沿用 PM fixture。正式 Manager/Worker、binary/dist/skills 沒有修改或重建，未部署／安裝／讀真秘密／模型／Git，沒有重跑已過 mock 或直接 runner 案例。依 PM 指示只補實際證據後待命，等整合失敗再修。
+
+### PM 後續：manual LiveView 真 UI 黑箱 PASS
+
+PM 回報 Run **`076e956b`**（回報短 ID）的 manual LiveView 真 UI 黑箱已通過：WebRTC 寬 **1280**、`readyState=4`、影格計數 **1→2**；JPEG 寬 **800** 且畫面持續更新。透過真 UI 按鈕停止 viewer 後，Run 沒有被取消並最終 **succeeded**。證據：`/private/tmp/whippet-m8-live-evidence/m8-live-result.json` 與同目錄 PNG。
+
+先前失敗由 PM 定位為 QA 登入／locator／模式／API 操作未與 UI 同步；最終已按真 UI 按鈕流程通過，**沒有修改 Runtime**。本次只記錄 PM 實際執行與回報，本 Agent 未重建／重跑。這項 PASS 僅證明 manual Run 的 WebRTC／JPEG／停止觀看生命週期；**登入敏感輸入遮蔽、Workspace author 與真 AI 仍待驗**，不以一般 manual 監看替代其驗收，也不宣稱 M8 整體完成。
+
 ## 最新 M8 B：完整 Playwright、AI scope 與角色登入
 
 依 `contracts/mvp-v8.md` **最新 B 裁定及固定來源／resolve／IPC**實作。本節覆蓋下方 A 暫態：不再全面禁止 run／validation／request_validation，不採 AST 子集、network=none 出站代理、HTTP1.1-only、全面禁 WS／登入後 DOM 或替代 reporter。**Runtime 隔離合成驗證通過，不代表 M8 整體或真 AI 全鏈已完成。** LiveView 敏感輸入的代表畫面及 Server→Manager 真 resolve／AI 串接仍待 PM。

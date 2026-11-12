@@ -2,7 +2,39 @@
 
 最新日期：2026-11-12（Asia/Taipei）。Owner：Web Agent（t30）。所有新增與修改均位於 `apps/web/`；未執行 Git、未啟動其他 Agent。進度主檔、整合與 commit 由總指揮彙整。M1 整合時由總指揮完成依賴安裝並保留 lockfile；後續沿用既有依賴。下方 M1–M6 保留原階段證據；M7 對編輯週期、草稿建立及發布門檻的覆蓋，以最新契約及本節為準。
 
-## M8 B 來源與分能力接線（模組檢查通過，整合待驗）
+## M8 敏感輸入暫停與 offerId 競態修正
+
+2026-11-12，PM t36 明確派修產品缺口。僅修改 `src/live.ts`、`src/LiveView.tsx`，新增 `scripts/check-live-sensitive.mjs`，以及本紀錄；秘密保存 guard、QA／發布及其他頁面未修改。
+
+- 收到當前控制通道的 `state=waiting,reason=sensitive_input` 時，無論原本是否 streaming 都立即進敏感鎖：abort 協商、關閉 peer、停止 tracks、清除 video srcObject／src 並 `load()` 重設解碼器、取消 video frame callback 與播放事件、移除 JPEG src／onload／onerror 並 revoke 舊 objectURL。同步隱藏兩種 media，React paused 狀態也維持 hidden，不只蓋一層文字。
+- 顯示 `敏感輸入暫停`，停止 fallback、舊協商觸發的 retry 與模式切換；保留控制 WS／ping 等候恢復。一般 waiting／connecting／streaming、ready、播放按鈕或模式切換不解鎖；敏感期「重新連線」停用，仍可停止或關閉監看。
+- pause 缺 viewerId 仍清圖以 fail-closed 相容；有明確錯 viewerId 的事件丟棄。JPEG 只有收到 `state=waiting,reason=sensitive_input_complete,transport=jpeg` 且 viewerId 精確等於 ready.viewerId 才解除敏感鎖，先顯示等待，再由之後新 JPEG 解碼成功標 streaming。舊／排隊 image callback 因 epoch／URL 不符不能復活畫面。
+- WebRTC 的正確 viewer complete/webrtc 只開啟等待新 offer 階段，仍保持 paused，不解鎖／不啟 fallback。complete 前的實際 offer（即使新 UUID）都丟棄並記 stale；complete 後只有全新有效 UUID 的實際 offer 才建立新 peer，且仍需真可播放影格才標 streaming。
+- complete 若帶 pending offerId，只保存獨立的恢復關聯／epoch；**不寫實際 offer 的去重集合**。因此先收到 complete(ID、尚無 SDP)，後續同 ID 的合法 type=offer 不會被誤拒。已用過的恢復 epoch 不能解開下一次敏感暫停；有關聯 ID 時只採匹配的新 offer，不讓另一個在途 ID 取代。
+- answer echo 此次 offerId 及當前 viewerId。每個 setRemoteDescription／createAnswer／setLocalDescription／ICE await 後，都檢查 peer、媒體 epoch、WS generation、協商 controller、active offer、mode 與敏感狀態。舊協商成功／失敗不能把 answer 送給新 offer、改新 peer，或在暫停後觸發 JPEG fallback。
+- 無 ID 只相容非敏感初次 legacy offer；見過 ID、切換模式或經敏感暫停後不可降級。舊 ID、mode 期間收到的實際 offer、非法 UUID／SDP 及錯 viewer 不採用。ID 歷史保留於同 Run 的 LiveView，controller 重新建立不會恢復無 ID 降級；沒有新增 UI wire。
+
+### 實際檢查與固定產物
+
+- **定向 client state-machine PASS**：`node scripts/check-live-sensitive.mjs`，14/14 情境、127 assertions、退出碼 0。使用既有 TypeScript、可控制的 WS／RTC／media／時計替身，不連網、不用真秘密、不安裝。覆蓋 streaming 中清畫面／tracks／callbacks、JPEG revoke 及舊 decode 回呼、正確／缺失／錯誤 viewer、普通狀態不能解鎖、complete pending ID 不消耗實際 offer、前後順序／stale 恢復 epoch、四個協商 await、舊 answer／reject、mode 邊界、無 ID 降級與歷史保留、敏感期不 fallback／重連，以及非敏感正常 fallback 和 close 清理。
+- **最終 build PASS**：`npm run build`（`tsc --noEmit`＋Vite 7.1.9），退出碼 0，50 modules；CSS 23.49 kB、JS 321.21 kB（gzip 97.18 kB）。新產物在 `apps/web/dist/`，JS 為 `assets/index-CwSWSYQ9.js`；之後僅補交付紀錄，未無變動重建或跑全站。
+- 固定檔 SHA256：`dist/index.html`＝`2d026e5e4792dabc855ed000ee479c0198c9397fa61c3ca9ee4132365286f394`；`dist/assets/index-CwSWSYQ9.js`＝`560d23aa39994064ab9f3b1517fe6168f73013ab12d8e24273fa77046bf2415d`。
+- 唯讀核對目前 Server：state 由 LiveSession 填 viewerId，offer／answer 透傳 offerId；complete 不提前建立／消耗 offer。Runtime／Manager 要保證 complete 先於新 offer／JPEG，Server writer 的 Messages／Frames barrier 及舊 frame 丟棄由各 owner 負責。raw JPEG 沒有獨立 frame epoch，Web 不能自行猜測來源年代，仍依賴這個已固定的端到端順序，不加私有 wire 或假通過。
+- **尚未跑修正後真瀏覽器／真串流／三模組整合**。client 替身測試不等於 GPU/compositor 或實際 Server→Manager→Worker 順序驗收；PM 需納入三個 owner 的新固定產物後再驗敏感期空白、恢復真影格與 JPEG。未部署、Git、讀 env／憑證、改秘密保存 guard／QA 或重跑無關 mock／全站。
+
+黑箱入口沿用 region `唯讀監看`、status `監看連線狀態`／`[data-testid="live-status"]`，暫停可見文字改為 `敏感輸入暫停`。暫停時 `[data-testid="live-video"]`／`[data-testid="live-jpeg"]` 都 hidden，video.srcObject=null、img 無 src；`重新連線`／模式／播放操作不能解除。正確 complete 後 JPEG 先等待新圖；WebRTC 仍 paused 等新 UUID offer，收到 offer 先 waiting、真 frame 才 `監看中：WebRTC`。原生停止／關閉仍可用且不取消 Run。
+
+## M8 前次全鏈 wave：真 UI 旅程與 Workspace author 監看入口
+
+2026-11-12，PM t36。依最新派工交付 `/private/tmp/whippet-m8-wave-web.md`：一條面向 QA 的 Workspace 訪談／範圍確認／角色保存／真探索→AI Test→真驗證報告／摘要／QA 發布→正式 Run／監看旅程，含精確 locator、每步真 API／權威狀態、必要前置及獨立工程師前置分支。這份旅程尚未實跑，不把 18086 A 預覽當 B 證據。
+
+唯讀核對發現實際阻塞：`WorkspaceConversation` 沒有監看入口，但 Server `postgres_live.go` 已支援 Workspace owner、null testId 且具 browser allowedTools 的 author。已在 `src/WorkspaceConversation.tsx` 接上既有 `LiveView`，僅在 aiExploration=true 及已知活躍 Workspace Run 時提供 `開始監看 Workspace Run <UUID>`。是否有 browser／active attempt 仍以此 Run 的 Server LiveTarget 為準，不以能力旗標或 WS ready 假報串流成功；純訪談可明確回不可監看。
+
+選定 Run 不追 latest，未點擊不建立 viewer；返回測試頁／切 Workspace／探索能力撤回時清理活躍連線。Run 終態保留面板供確認。其他三項能力不代替 aiExploration，也不因此阻擋工程師正式 Run 的既有監看。另修正 B 訊息文案，已確認範圍／工具許可內可探索，不再沿 A 文案宣稱完全不會探索；共用 `src/LiveView.tsx` 文案改以 Run 描述，適用 Workspace／測試任務。沒有改播放器真 video／JPEG 成功條件、fallback、敏感輸入遮蔽、HTTP／WS 契約或其他模組。
+
+**最終實際檢查：** `npm run build` PASS（`tsc --noEmit`＋Vite，退出碼 0），50 modules，CSS 23.49 kB、JS 318.20 kB（gzip 96.24 kB），JS 產物 `index-CUGENJtH.js`。入口接線與終態生命週期修正後取得最後證據，沒有無變動重建、重跑 mock／全套 UI、讀憑證、部署／重啟共享服務、Git 或安裝。PM 的 B 固定 Web 產物需納入本輪修正；新版 Workspace LiveView、真 API／模型與這條完整旅程仍待 PM 環境及指定 QA 黑箱驗收。
+
+## M8 B 前次來源與分能力接線（模組檢查通過，整合待驗）
 
 日期：2026-11-12。依 PM t36 固定的 v8「B 來源、能力與確認快照」接線，只改 `apps/web/`。本輪完成 Web 欄位解析、動作判斷與顯示，不表示 M8 B 真登入／執行／監看全鏈或 M7 尚缺整合已驗收。18086 未由本 Agent 部署、重啟或當作 B 新版證據。
 

@@ -33,7 +33,14 @@ func upgradeLive(w http.ResponseWriter, r *http.Request, viewer bool) (*websocke
 	return upgrader.Upgrade(w, r, nil)
 }
 
-func writeLiveJSON(conn *websocket.Conn, message server.LiveMessage) error {
+type liveWriter interface {
+	SetWriteDeadline(time.Time) error
+	EnableWriteCompression(bool)
+	WriteMessage(int, []byte) error
+	Close() error
+}
+
+func writeLiveJSON(conn liveWriter, message server.LiveMessage) error {
 	data, err := json.Marshal(message)
 	if err != nil {
 		return err
@@ -137,8 +144,15 @@ func (g *LiveGateway) serve(conn *websocket.Conn, session *server.LiveSession, e
 
 // Each media/viewer connection owns one independent writer. Even a permanently
 // slow viewer retains at most one latest JPEG and cannot block Engine or Manager WS.
-func writeLive(conn *websocket.Conn, endpoint *server.LiveEndpoint) {
+func writeLive(conn liveWriter, endpoint *server.LiveEndpoint) {
 	defer conn.Close()
+	writeMessage := func(message server.LiveMessage) error {
+		if err := writeLiveJSON(conn, message); err != nil {
+			return err
+		}
+		endpoint.MessageWritten(message)
+		return nil
+	}
 	for {
 		select {
 		case <-endpoint.Done:
@@ -149,7 +163,7 @@ func writeLive(conn *websocket.Conn, endpoint *server.LiveEndpoint) {
 		// Signaling/pong take priority over the latest frame.
 		select {
 		case message := <-endpoint.Messages:
-			if writeLiveJSON(conn, message) != nil {
+			if writeMessage(message) != nil {
 				return
 			}
 			continue
@@ -160,13 +174,30 @@ func writeLive(conn *websocket.Conn, endpoint *server.LiveEndpoint) {
 			_ = writeLiveJSON(conn, endpoint.Final())
 			return
 		case message := <-endpoint.Messages:
-			if writeLiveJSON(conn, message) != nil {
+			if writeMessage(message) != nil {
 				return
 			}
-		case jpeg := <-endpoint.Frames:
-			_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
-			conn.EnableWriteCompression(false)
-			if conn.WriteMessage(websocket.BinaryMessage, jpeg) != nil {
+		case frame := <-endpoint.Frames:
+			// A frame may win the blocking select just as complete is queued.
+			// Drain signaling first; WriteFrame also fences its media epoch.
+		drain:
+			for {
+				select {
+				case message := <-endpoint.Messages:
+					if writeMessage(message) != nil {
+						return
+					}
+				default:
+					break drain
+				}
+			}
+			if endpoint.WriteFrame(frame, func(jpeg []byte) error {
+				if err := conn.SetWriteDeadline(time.Now().Add(2 * time.Second)); err != nil {
+					return err
+				}
+				conn.EnableWriteCompression(false)
+				return conn.WriteMessage(websocket.BinaryMessage, jpeg)
+			}) != nil {
 				return
 			}
 		}

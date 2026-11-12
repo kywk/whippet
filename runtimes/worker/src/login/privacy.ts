@@ -33,7 +33,7 @@ export function installLoginPrivacy(browser:Browser,live:LiveObserver):{close():
   const original=browser.newContext;
   browser.newContext=async(...args)=>{const context=await original.apply(browser,args);context.on('page',(page)=>{page.on('domcontentloaded',()=>{if(secrets.list().length)void maskKnownInputs(page,secrets.list()).catch(()=>undefined);});});return context;};
   const hooks:LoginHook={
-    async pause(){await live.pauseSensitive();},resume(){live.resumeSensitive();},
+    async pause(){await live.pauseSensitive();},resume(){return live.resumeSensitive();},
     remember(values){for(const value of values)secrets.add(value);for(const context of browser.contexts())for(const page of context.pages())void maskKnownInputs(page,secrets.list()).catch(()=>undefined);},
   };
   (globalThis as LoginHooks)[LOGIN_HOOK]=hooks;
