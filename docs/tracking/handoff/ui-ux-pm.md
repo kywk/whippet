@@ -6,7 +6,7 @@
 
 - 使用者最新要求：「我要出門運動，請盡可能推進專案的完整開發與驗收」。本輪已實際完成M9整合／根因修復／真模型驗收與映像盤點。
 - 繁體中文；不安裝／下載新依賴、不讀印或複製deploy/.env.ai、不輸出憑證、不push。
-- 先前「commit後推進M9」已用於ee926d8；M9與本輪文件/盤點尚未提交，後續commit另依指示。不要用git reset/clean覆蓋目前成果。
+- 使用者最新明確要求commit、停止舊服務、清理不用的worktree/branch。M9功能／驗收／盤點已提交d2ba719，未push；本次環境整理另保存紀錄。不要用git reset/clean覆蓋成果。
 - 當前PM t3v為獨立根parent=null、crew=1，effective gpt-6-astra/low已核實。t36及錯誤舊鏈t3q/t3r不恢復。
 - 新對話若取代PM須--no-parent；新owner/QA須全新對話、parent接當前PM、crew=1，明確cwd=/Users/kywk/kywk/project/whippet，--keep --outlive-parent。
 - 同space=spc410627697c591af2a35cc533b8f1ad8、tab=whippet-ui-ux-20261112。RPG session沿parent鏈決定，非僅tab相同。
@@ -26,7 +26,7 @@
 - 最新Web http://localhost:18087，原生TLS API https://127.0.0.1:18089。whippet-m8b-{web,server,manager,postgres}，network whippet-m8b-wave。
 - Server/Manager/Worker :m9-qa；Web :m8-real-qa。最終Worker image ID cda295c1ca394034bfd9de698722c37ea2cfd30e9b9669b24048bba8c0c68ddb；loop.js SHA201f16ef6fe21a3e6bed3f0edb85e485c02b02fdb009f151ff7e031369b10b22。
 - DB與原配置保持；Manager真Muse/xhigh、MAX_WORKERS=1。真模型配置只沿既有容器env在記憶體傳遞，未讀.env.ai，未輸出或落檔秘密。
-- /private/tmp/whippet-m8-wave含work/artifacts/tls；**不要跑start.py或重新初始化**，會改DB/token/key。舊應用-before-real及-before-m9已停用保留可回復；18080/18085/18086與其他服務未更新。
+- /private/tmp/whippet-m8-wave含work/artifacts/tls；**不要跑start.py或重新初始化**，會改DB/token/key。舊應用-before-real及-before-m9已停用保留可回復；18080/18085/18086舊環境及舊Manager/DB/QA容器已依使用者要求停止。僅最新B四服務及18187合成網站維持運行；其他專案服務未動。
 - TLS CA /private/tmp/whippet-m8-wave/tls/cert.pem。QA容器共享Web namespace，WEB_URL=http://127.0.0.1，僅掛腳本/evidence；避免nonloopback credential guard。
 - 合成站whippet-m8b-fixture於18187；/login正常，/slow-login刻意disabled12秒。慢站author登入未成功的限制保留，不重跑已PASS正常/login全鏈。
 - 收尾健康檢查兩端200、活躍Run0。兩個暫診斷映像已移除；正式固定包無m9-diagnostic helper，不部署tmp diag包。
@@ -53,3 +53,7 @@ python3 scripts/test/m9-history-pm-verify.py --evidence-dir /private/tmp/whippet
 - Whippet LICENSE待使用者選定，不自行採Apache-2.0。五映像實物盤點已完成，但Alpine/npm/WebKit/Go/前端bundle等完整第三方聲明與發布物仍待補，見image-components.md；勿宣稱已公開發布。
 - 官方skill quick_validate缺PyYAML未跑，實際loader/schema/build已驗；不為此安裝。
 - 下一步以以上實際缺口為準，不自行加SSO/RBAC、多Manager、排程、Kubernetes或本機瀏覽器執行。
+
+## 提交與環境整理（使用者最新指示）
+
+M9提交d2ba719，未push。停止16個舊Whippet服務／QA容器，保留所有volume、資料庫與報告；最新Web18087/TLS18089及測試依賴18187維持。Git僅main及origin/main、一個主worktree，prune dry-run無失效記錄，沒有可刪的多餘branch/worktree；未強刪任何未合併資料。

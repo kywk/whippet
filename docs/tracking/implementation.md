@@ -311,3 +311,7 @@ M9歷史失敗已定位（81352430診斷回合）：模型將首次cursor輸出�
 - 實作修復：只在模型工具入口將精確字串"null"轉為JSON null；HTTP/IPC/HistoryClient保持嚴格、非法位置不放行。新回歸先紅後綠1/1；Worker build、真Node→Manager→TLS兩頁新測試PASS0.38s/race1.759s。原Worker27/27、Manager race、Server單元/DB通過證據沿用；新增Server真handler+DB兩頁PASS0.838s、Docker attach/stdin opt-in PASS/race1.850s。已移除skill舊矛盾文案。初始失敗與診斷回合保留，不把它們改標PASS。
 - 部署：18087／TLS18089；Server/Manager/Worker :m9-qa，Web:m8-real-qa。最終Worker image ID cda295c1ca394034bfd9de698722c37ea2cfd30e9b9669b24048bba8c0c68ddb，loop SHA201f16ef6fe21a3e6bed3f0edb85e485c02b02fdb009f151ff7e031369b10b22；固定包無診斷helper，正式Manager未重build。DB/既有配置保留，-before-m9應用保留回復。其餘預覽未更新。
 - 限制：歷史真模型代表案例為test-author；workspace-author路由/空頁/隔離以定向測試涵蓋，不宣稱另跑同等真模型全矩陣。skills官方quick_validate缺PyYAML未跑（不安裝），實際loader/schema/build已驗。正常Dockerfile乾淨建置、遠端Linux＋Mac/TURN環境、Whippet LICENSE與完整第三方聲明仍待外部條件/決策。五映像實物盤點已交付，非公開發布完成。
+
+## 使用者指定提交與環境整理（2026-11-12）
+
+已提交d2ba719（M9有界歷史／全鏈驗收／映像盤點，共38檔）；提交前diff check與指定檔案憑證模式掃描PASS，未push。依指示停止16個舊Whippet容器：M1四服務、M7/M8A各三服務、M3 fixture、M8 progress、四個殘留QA。保留最新B的Web/Server/Manager/Postgres及18187合成網站，資料volume/報告未刪，其他專案未動。Git只有main、origin/main與目前主worktree，worktree prune --dry-run無失效項目，沒有可清理的多餘分支／worktree。
