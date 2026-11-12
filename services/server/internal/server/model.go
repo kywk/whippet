@@ -135,6 +135,7 @@ type AuthorInput struct {
 	BaseRevision        int                 `json:"baseRevision"`
 	Messages            []ChatMessage       `json:"messages"`
 	Validation          *AuthorValidation   `json:"validation,omitempty"`
+	History             *AuthorHistory      `json:"history,omitempty"`
 }
 
 type AuthorValidation struct {
@@ -250,6 +251,7 @@ type Store interface {
 	SaveWorkspaceCredentials(context.Context, string, string, int, credentialValues) (RoleRef, error)
 	RevokeWorkspaceCredentials(context.Context, string, string, int) (RoleRef, error)
 	ResolveWorkspaceCredentials(context.Context, string, string, string, CredentialRequest) (CredentialResolution, error)
+	ConversationHistory(context.Context, string, string, string, *string) (HistoryPage, error)
 	Tests(context.Context, string) ([]Test, error)
 	Test(context.Context, string) (Test, error)
 	CreateTest(context.Context, string, string, string) (Test, error)

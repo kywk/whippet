@@ -292,7 +292,7 @@ func offlineAuthorAllowed(a Assignment) bool {
 		return false
 	}
 	for _, tool := range a.Author.AllowedTools {
-		if tool != "read_draft" && tool != "read_validation_report" && tool != "update_draft" {
+		if tool != "read_draft" && tool != "read_validation_report" && tool != "update_draft" && tool != "read_conversation_history" {
 			return false
 		}
 	}
@@ -358,7 +358,7 @@ func cancelRoleRuns(ctx context.Context, tx *sql.Tx, workspace, role string) err
 
 func workspaceAuthorToolsValid(tools []string) bool {
 	for _, tool := range tools {
-		found := tool == "browser_login"
+		found := tool == "browser_login" || tool == "read_conversation_history"
 		for _, allowed := range browserTools {
 			found = found || tool == allowed
 		}

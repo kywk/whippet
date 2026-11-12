@@ -1,57 +1,55 @@
-# Whippet 新 PM 對話交接（2026-11-12）
+# Whippet PM 交接（2026-11-12，M9本機驗收後）
 
-## 本輪授權與下一步
+唯一進度來源：[implementation.md](../implementation.md) 最新「M9 本機 MVP 驗收收尾」。M7–M9本機功能已完成；不要依舊交接重跑M8或重新派歷史retrieval開發。
 
-使用者要求先 commit，再開全新 PM 對話推進；之後所有派工也開新對話，不續用 t30/t31/t32/t33 等長對話。主要欠整合驗收，不是已知未開發功能：
-1. 真 AI／Workspace 探索→改稿→真驗證→摘要→人工發布全鏈（現有 proposal/summary 是 HTTPS 模型替身，不能當真 AI）。
-2. 敏感輸入期間新 viewer 加入的真 UI 黑箱驗收（防護已實作）。
-只修實際發現的缺陷；不要重跑已 PASS 矩陣，不擴 M9／本機瀏覽器產品功能。
+## 使用者授權與根節點
 
-繁體中文，不安裝、不輸出憑證、不讀印或複製 deploy/.env.ai、不 push。此次提交授權僅本波，後續 commit 另依使用者指示。真模型若缺安全的既有接線，先查非機密配置與已授權可用入口，不自行輸出或搬運金鑰。
+- 使用者最新要求：「我要出門運動，請盡可能推進專案的完整開發與驗收」。本輪已實際完成M9整合／根因修復／真模型驗收與映像盤點。
+- 繁體中文；不安裝／下載新依賴、不讀印或複製deploy/.env.ai、不輸出憑證、不push。
+- 先前「commit後推進M9」已用於ee926d8；M9與本輪文件/盤點尚未提交，後續commit另依指示。不要用git reset/clean覆蓋目前成果。
+- 當前PM t3v為獨立根parent=null、crew=1，effective gpt-6-astra/low已核實。t36及錯誤舊鏈t3q/t3r不恢復。
+- 新對話若取代PM須--no-parent；新owner/QA須全新對話、parent接當前PM、crew=1，明確cwd=/Users/kywk/kywk/project/whippet，--keep --outlive-parent。
+- 同space=spc410627697c591af2a35cc533b8f1ad8、tab=whippet-ui-ux-20261112。RPG session沿parent鏈決定，非僅tab相同。
+- 開發Codex gpt-6.1-sol/xhigh；QA標準opencode run --model opencode-go/muse-spark-1.3-contributor#xhigh，禁mini。按需讀skills/herdr-qa-opencode；核對hc get與實際模型metadata。
 
-## 新對話仍屬同一 Herdr RPG session
+## 本輪owner與變更
 
-已讀本機 mods/herdr-crew-rpg/{main.js,house.js}：crew=1 的 terminals 才進 crew；sessionOf 沿 parent 向上最多8層，遇非 crew parent、無 parent 或缺失 parent 時決定 session key。不是用 Codex thread ID，也不是只看 tab。
+- t41 Server：services/server；固定/private/tmp/whippet-server-m9，SHA6105c3b9e559c28a6343b3abc0333d95a90d5438d0b5fc29c2966c1486adb750。
+- t42 Runtime：services/manager+runtimes/worker；固定/private/tmp/whippet-manager-m9，SHA9ad62d818deb57d950a1e38a11c94ac532967d23493895692f5e9e78b1b217ee；Worker /private/tmp/whippet-worker-m9/{dist,skills}。
+- t43/t44 QA已退出；PM接手scripts/test/m9-settings-continuity.cjs、m9-history-live.cjs並實跑。新增m9-history-pm-verify.py為PM唯讀三重證據檢查，不交黑箱QA讀DB。
+- t45交付scripts/release/inventory-images.py、docs/release/image-components.md；五映像盤點已跑，不需再跑全套。
+- 共同契約contracts/mvp-v9.md、README、架構、進度與本交接為PM owner。
+- 所有owner parent=t3v/crew1同space/tab，實際sol/xhigh或Muse/xhigh已核實。產品凍結，只有新具體缺陷才派修；新工作開新對話。
 
-使用者最新更正：**新 PM 對話本身是獨立根節點**，舊 t36 將關閉。新 PM 必須以 `--no-parent` 啟動且 `parent=null`、`crew=1`；後續新 agents 用 `--parent <新PM位址>`（或同根下的owner）與 `crew=1`，全部留在新 PM 的 RPG session。不依賴 t36，亦不修改 Herdr mod 程式。舊錯誤鏈 t3q→t36、t3r→t3q 已停止，未改產品或執行新測試；不要恢復它們。
+## 執行環境
 
-固定畫面標籤：
-- herdr.space=spc410627697c591af2a35cc533b8f1ad8
-- herdr.tab=whippet-ui-ux-20261112
-- cwd=/Users/kywk/kywk/project/whippet（space 的舊 folder metadata 曾錯，永遠明確給 cwd）
-- --keep --outlive-parent；crew.task/tool/model/effort 如實標示，啟動後 hc get 核對 parent/labels/argv，hc read 核對實際有效模型。
+- 最新Web http://localhost:18087，原生TLS API https://127.0.0.1:18089。whippet-m8b-{web,server,manager,postgres}，network whippet-m8b-wave。
+- Server/Manager/Worker :m9-qa；Web :m8-real-qa。最終Worker image ID cda295c1ca394034bfd9de698722c37ea2cfd30e9b9669b24048bba8c0c68ddb；loop.js SHA201f16ef6fe21a3e6bed3f0edb85e485c02b02fdb009f151ff7e031369b10b22。
+- DB與原配置保持；Manager真Muse/xhigh、MAX_WORKERS=1。真模型配置只沿既有容器env在記憶體傳遞，未讀.env.ai，未輸出或落檔秘密。
+- /private/tmp/whippet-m8-wave含work/artifacts/tls；**不要跑start.py或重新初始化**，會改DB/token/key。舊應用-before-real及-before-m9已停用保留可回復；18080/18085/18086與其他服務未更新。
+- TLS CA /private/tmp/whippet-m8-wave/tls/cert.pem。QA容器共享Web namespace，WEB_URL=http://127.0.0.1，僅掛腳本/evidence；避免nonloopback credential guard。
+- 合成站whippet-m8b-fixture於18187；/login正常，/slow-login刻意disabled12秒。慢站author登入未成功的限制保留，不重跑已PASS正常/login全鏈。
+- 收尾健康檢查兩端200、活躍Run0。兩個暫診斷映像已移除；正式固定包無m9-diagnostic helper，不部署tmp diag包。
 
-路由：PM gpt-6-astra/low；開發 gpt-6.1-sol/xhigh；困難問題才 astra/medium；純黑箱 QA opencode-go/muse-spark-1.3-contributor#xhigh。**禁止 opencode mini**；標準 opencode run 可經 hc 管理可見 pane，另核對 reported/status，不假定一定有 OSC。不要從 mini 續跑既有 session。按需讀 skills/herdr-qa-opencode。
+## 已驗收，不重跑
 
-## Owner 與入口
+M8完整證據：/private/tmp/whippet-m8-real-evidence、whippet-m8-real-publish-evidence、whippet-m8-midjoin-evidence、whippet-m8-workspace-live-evidence。正常角色登入探索→AI產稿→validation→摘要→真UI發布→正式Run及報告PASS；敏感中途viewer WebRTC/JPEG PASS；Workspace author testId=null真媒體PASS（不等於慢站登入成功）。歷史URL-only GET abort仍未分類。
 
-PM docs/contracts/deploy/隔離整合；新 Web owner apps/web；新 Server owner services/server；新 Runtime owner services/manager+runtimes/worker；新 QA 僅指定 scripts/test 與 evidence。每檔單 owner。純測試用 Muse；PM 有 Docker 可替 QA 執行腳本，不把交腳本當 PASS。
-先讀 AGENTS.md、tracking/verification 細則、implementation.md 最新尾端、delegation.md、contracts/mvp-v8.md 最新追加規則。各模組 DELIVERY 保留精確證據。
+M9設定接續：/private/tmp/whippet-m9-settings-evidence/m9-result.json，Workspace95296031-b243-4bb6-b964-e90dd8af4bb5 revision2→3，Testcea8a396-da05-4517-b877-47add4733cfb同session f615c956-80de-4cd7-a448-aa59f48179ff draft3→4；真模型以新背景答marker，原Version fac81dbf-d7d1-4ace-a4c5-8c902828556f快照不變。撤銷／取消／拒history依t41隔離DB與既有M8證據，未撤銷現有角色。
 
-## 現行 B 隔離環境
+M9歷史：/private/tmp/whippet-m9-history-evidence/final，Test17d105c5-0d30-48aa-9040-ef3113ca49c9/session c3c1786a-b32a-4cf1-af1d-1b23787025dd；Run400a1505-87cc-4f03-b85e-04003ab71fb3／attempt123945f4-7331-4cf3-83e0-9962bf0e97cb。12則user先queued取消準備合成資料，最終真模型兩頁history成功，預設所有輸入不含答案、history在cutoff86內含答案、同Run assistant答中，complete/reclaimed=true。
 
-Web http://127.0.0.1:18087；原生 TLS API https://127.0.0.1:18089。容器 whippet-m8b-{web,server,manager,postgres}，network whippet-m8b-wave。Web/Server/Manager/Worker 都已切 :m8-mask-qa；不要拿舊18080/18085/18086作新證據，也不動它們。
+只讀重驗證據（不呼叫模型）：
+```sh
+python3 scripts/test/m9-history-pm-verify.py --evidence-dir /private/tmp/whippet-m9-history-evidence/final
+```
 
-產物：/private/tmp/whippet-server-m8-live-offer、whippet-manager-m8-mask、runtimes/worker/dist+skills、apps/web/dist。Web asset index-CwSWSYQ9.js SHA256=560d23aa39994064ab9f3b1517fe6168f73013ab12d8e24273fa77046bf2415d。
+根因及修復已完成：真模型把cursor輸出為精確字串"null"，原Worker在IPC前拒絕。只在模型工具入口正規化此別名；HTTP/IPC/HistoryClient仍嚴格。空/空白/大寫/其他非法cursor不接受。新回歸先紅後綠，真Node→Manager→TLS、Docker attach、Server真handler+DB與原27項受影響測試證據見DELIVERY。初始失敗與tmp診斷回合保留，不標PASS。最終Workspace-author歷史未另跑真模型全矩陣，路由/隔離由定向測試涵蓋。
 
-環境資料 /private/tmp/whippet-m8-wave；合成 master key/token 僅既有容器環境，保持原值、不可印出，不重跑 start.py。Server/Manager TLS 使用同目錄 tls 的合成公憑證，需真 CA/SAN 驗證。Manager 工作目錄 /private/tmp/whippet-m8-wave/work；MAX_WORKERS=1，同一 Test/viewer 不併行搶占。
+## 剩餘交付限制
 
-whippet-m8b-fixture：18187 合成網站、18188 HTTPS Responses fixture（僅 workspace-author/acceptance-summary，非真 AI）。/slow-login 按鈕12秒後可用，/slow-session 延遲整個回應12秒，登入後10秒進度與合成敏感 echo；/slow-status 只記非機密 submittedAt/responseAt/count。whippet-m8b-progress 18190是已驗普通監看的30秒頁。
-
-Workspace 2f8aa581-c593-4e89-bc8a-a70641929a77；合成角色5b9ab57a-4152-4559-914f-aaf362e24787（configured），已確認origin http://host.docker.internal:18187。不把帳密寫入 spec/model。完整人工腳本由 loginAs 五參數走真 Server TLS resolve。
-
-## 已 PASS，勿重跑
-
-- Server/Manager/Worker/Web 定向單元及 build，數字見 DELIVERY。
-- 真公開 API 主線：validation b4129af8、formal29f05216 expected1/unexpected0；模型 proposal/summary 為 fixture，非真 AI。
-- 真報告瀏覽／ZIP解壓／PNG：/private/tmp/whippet-m8-artifacts-evidence。
-- 普通 manual LiveView WebRTC+JPEG、停止不取消Run：076e956b；/private/tmp/whippet-m8-live-evidence。
-- Workspace真UI隔離：/private/tmp/whippet-m8-isolation-evidence/iso-result.json。
-- Workspace核心後段含續編/取消刪除/真正discard為 checkpoint分段 PASS；/private/tmp/whippet-m8-ui-evidence/M8-CORE-PASS-NOTE.md。50c183ac session 已discarded，勿重刪。末尾URL-only GET abort歷史未分類保留，後續diag選Test略過不能冒充全網路乾淨。
-- **敏感監看兩模式公開三端 PASS**：WebRTC c9f05ad9-84e3-40ac-ad97-06dc2d308283；JPEG4443b587-0ea3-4d2c-9351-b4a5bb71dd84。/private/tmp/whippet-m8-login-live-evidence/M8-MASK-PASS.md、pm-review.json、webrtc-retry/jpeg子目錄含去敏WS事件/取樣/三階段PNG/fixture時序。真UI validate、核心清畫面且無新媒體、complete先於新圖/新offer、answer echo、恢復真影格、合成echo目視遮蔽。僅manual slow-login；不涵蓋中途viewer/author。
-
-QA敏感腳本 scripts/test/m8-login-live-ui.cjs 已由PM接手修正欄位/截圖/草稿重載並實跑。MODE=webrtc|jpeg；JOIN_DURING_SENSITIVE 分支尚未黑箱驗證且需先檢查本身是否仍以原viewer判整體（不要用未驗分支當產品失敗）。QA容器共享Web namespace，WEB_URL=http://127.0.0.1，避免瀏覽器credential guard拒非loopback HTTP；僅掛指定腳本與 evidence，不全repo掛載。
-
-## 交接完成標準
-
-確認此次兩個 commit 及乾淨工作目錄；新 PM parent=null，所有新 agents 的 RPG key 為新 PM 位址，再開新的必要owner/QA對話。進度以 implementation.md 為唯一來源；實跑後記結果與限制。M8仍進行中，不能以本波敏感監看PASS宣稱全完成。
+- 正常Dockerfile乾淨建置仍缺依賴快取，使用者禁止新安裝/下載；本次COPY-only不替代乾淨安裝驗證。
+- 缺可驗遠端Linux主機與TURN/NAT環境；OrbStack本機不等於跨主機驗收。
+- Whippet LICENSE待使用者選定，不自行採Apache-2.0。五映像實物盤點已完成，但Alpine/npm/WebKit/Go/前端bundle等完整第三方聲明與發布物仍待補，見image-components.md；勿宣稱已公開發布。
+- 官方skill quick_validate缺PyYAML未跑，實際loader/schema/build已驗；不為此安裝。
+- 下一步以以上實際缺口為準，不自行加SSO/RBAC、多Manager、排程、Kubernetes或本機瀏覽器執行。

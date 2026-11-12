@@ -5,6 +5,7 @@ import { AuthorError, boundedText, isSummary, isWorkspaceAuthor, parseWorkspaceA
 import { loadAuthorSkill } from "./skill.js";
 import {BrowserScopeError} from "./scope.js";
 import {CredentialError,type KnownSecrets} from '../login/client.js';
+import { hasHistory, HistoryError, type HistoryClient } from "./history.js";
 
 export const AUTHOR_INSTRUCTIONS = [
   "You are Whippet's task agent. Follow the selected packaged skill; shared Playwright examples are reference, not permission to act.",
@@ -37,12 +38,12 @@ export async function runAuthor(
   input: AuthorInput,
   config: AIConfig,
   browser: ExplorationBrowser | undefined,
-  options: { fetcher?: typeof fetch; signal?: AbortSignal; progress?: (message: string) => void;secrets?:KnownSecrets } = {},
+  options: { fetcher?: typeof fetch; signal?: AbortSignal; progress?: (message: string) => void;secrets?:KnownSecrets; history?: Pick<HistoryClient, "read"> } = {},
 ): Promise<AuthorOutput | SummaryOutput | WorkspaceAuthorOutput> {
   validateAuthorInput(input);
   const summary = isSummary(input);
   const workspace = isWorkspaceAuthor(input);
-  const allowedTools = AUTHOR_TOOLS.filter((tool) => input.author.allowedTools === undefined ? tool.name!=='browser_login' : input.author.allowedTools.includes(tool.name));
+  const allowedTools = AUTHOR_TOOLS.filter((tool) => tool.name === "read_conversation_history" ? hasHistory(input) && !!options.history : input.author.allowedTools === undefined ? tool.name!=='browser_login' : input.author.allowedTools.includes(tool.name));
   const timeout = AbortSignal.timeout(Math.min(input.timeoutMs, 180000));
   const signal = options.signal ? AbortSignal.any([timeout, options.signal]) : timeout;
   const fetcher = options.fetcher ?? globalThis.fetch;
@@ -50,6 +51,7 @@ export async function runAuthor(
   let changed = false;
   let validation = false;
   let toolCount = 0;
+  let historyCount = 0;
   let pendingModel = 0;
   const callsSeen = new Set<string>();
   const transcript: Item[] = [
@@ -136,12 +138,21 @@ export async function runAuthor(
         const safeToolName = allowedTools.some((tool) => tool.name === call.name) ? call.name : "unknown";
         let toolStatus = "failed";
         try {
+          if (call.name === "read_conversation_history" && ++historyCount > 4) throw new HistoryError();
           const args = JSON.parse(call.arguments) as Record<string, unknown>;
           if (!args || typeof args !== "object" || Array.isArray(args)) throw new AuthorError("tool_failed");
           const schema = allowedTools.find((tool) => tool.name === call.name);
           if (!schema || Object.keys(args).some((key) => !Object.hasOwn(schema.parameters.properties, key)) ||
-            schema.parameters.required.some((key) => typeof args[key] !== "string")) throw new AuthorError("tool_failed");
-          if (call.name === "read_draft") result = { script, baseRevision: input.author.baseRevision };
+            schema.parameters.required.some((key) => typeof args[key] !== "string" && !(call.name === "read_conversation_history" && key === "cursor" && args[key] === null))) throw new AuthorError("tool_failed");
+          if (call.name === "read_conversation_history") {
+            if (!options.history) throw new HistoryError();
+            // Some providers serialize the first-page marker as a string.
+            // Normalize only this exact tool spelling; the client/IPC stay strict.
+            const cursor = args.cursor === "null" ? null : args.cursor as string | null;
+            const page = await bounded(options.history.read(cursor, signal), signal);
+            result = { items: page.items, nextCursor: page.nextCursor };
+          }
+          else if (call.name === "read_draft") result = { script, baseRevision: input.author.baseRevision };
           else if (call.name === "read_validation_report") {
             const v = input.author.validation;
             result = v == null ? { status: "none" } : { runId: v.runId, status: v.status, ...(v.error !== undefined ? { error: v.error } : {}) };
@@ -179,7 +190,7 @@ export async function runAuthor(
           toolStatus = "succeeded";
         } catch (error) {
           if (signal.aborted || error instanceof AuthorError && ["sensitive_output", "limit"].includes(error.code)) throw error;
-          result = error instanceof BrowserScopeError?error.issue:error instanceof CredentialError?{error:'credentials_unavailable',message:'角色登入目前不可用；請確認已設定帳密、登入範圍及角色版本。尚未送出或證實登入成功。'}:{ error: "tool_failed", message: "Tool input or operation failed; details hidden. Preserve the user's test goal." };
+          result = error instanceof HistoryError ? {error:"history_unavailable",message:"歷史目前無法讀取，請依已提供背景繼續；必要時向使用者確認。"} : error instanceof BrowserScopeError?error.issue:error instanceof CredentialError?{error:'credentials_unavailable',message:'角色登入目前不可用；請確認已設定帳密、登入範圍及角色版本。尚未送出或證實登入成功。'}:{ error: "tool_failed", message: "Tool input or operation failed; details hidden. Preserve the user's test goal." };
         } finally {
           options.progress?.(`author:tool:${toolCount}:${safeToolName}:${toolStatus}`);
         }

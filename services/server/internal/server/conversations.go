@@ -139,6 +139,11 @@ func (p *Postgres) CreateAuthor(ctx context.Context, testID, sessionID, content 
 	}
 	session.ContextRevision++
 	input := editingAuthorInput(session, d, "test-author", authorContext(newest))
+	input.History, err = conversationHistorySnapshot(ctx, tx, conversationID)
+	if err != nil {
+		return AuthorSubmission{}, err
+	}
+	input.AllowedTools = append(input.AllowedTools, "read_conversation_history")
 	if d.ValidationRunID != nil {
 		var runID, status, errorMessage string
 		if err := tx.QueryRowContext(ctx, `SELECT id,status,error FROM runs

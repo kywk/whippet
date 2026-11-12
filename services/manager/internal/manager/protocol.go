@@ -78,6 +78,7 @@ type AuthorTask struct {
 	SourceVersion       json.RawMessage           `json:"sourceVersion,omitempty"`
 	ConversationSummary json.RawMessage           `json:"conversationSummary,omitempty"`
 	ValidationEvidence  *AuthorValidationEvidence `json:"validationEvidence,omitempty"`
+	History             *HistoryPin               `json:"history,omitempty"`
 }
 
 func (a *AuthorTask) UnmarshalJSON(data []byte) error {
@@ -91,9 +92,14 @@ func (a *AuthorTask) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &keys); err != nil {
 		return err
 	}
-	for _, name := range []string{"skillId", "skillVersion", "allowedTools", "editingSessionId", "contextRevision", "sourceVersion", "conversationSummary", "validationEvidence"} {
+	for _, name := range []string{"skillId", "skillVersion", "allowedTools", "editingSessionId", "contextRevision", "sourceVersion", "conversationSummary", "validationEvidence", "history"} {
 		if _, exists := keys[name]; exists && (a.SkillID == nil || a.SkillVersion == nil) {
 			return fmt.Errorf("incomplete author skill pin")
+		}
+	}
+	if value, exists := keys["history"]; exists {
+		if a.History == nil || !exactWorkspaceObject(value, "maxSequence") {
+			return fmt.Errorf("invalid history pin")
 		}
 	}
 	if workspaceAuthor(a) && !bytes.Equal(bytes.TrimSpace(keys["editingSessionId"]), []byte("null")) {

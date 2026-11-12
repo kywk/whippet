@@ -11,7 +11,7 @@ import (
 	"unicode/utf8"
 )
 
-var authorToolNames = []string{"read_draft", "read_validation_report", "update_draft", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login", "request_validation"}
+var authorToolNames = []string{"read_draft", "read_validation_report", "update_draft", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login", "request_validation", "read_conversation_history"}
 
 func summaryAuthor(a *AuthorTask) bool {
 	return a != nil && a.SkillID != nil && *a.SkillID == "acceptance-summary"
@@ -28,6 +28,18 @@ func validAuthorMetadata(a *AuthorTask, script *string) error {
 	modern := a.SkillID != nil || a.SkillVersion != nil || a.AllowedTools != nil || a.EditingSessionID != nil || a.ContextRevision != nil || len(a.SourceVersion) > 0 || len(a.ConversationSummary) > 0 || a.ValidationEvidence != nil
 	if !modern {
 		return nil
+	}
+	if a.History != nil {
+		if _, ok := historySequence(a.History.MaxSequence); !ok || !historyAuthor(a) {
+			return errors.New("invalid history pin")
+		}
+	}
+	if a.AllowedTools != nil {
+		for _, tool := range *a.AllowedTools {
+			if tool == "read_conversation_history" && a.History == nil {
+				return errors.New("missing history pin")
+			}
+		}
 	}
 	invalid := errors.New("invalid M7 author snapshot")
 	if a.SkillID == nil || (*a.SkillID != "test-author" && *a.SkillID != "acceptance-summary" && !workspaceAuthor(a)) || a.SkillVersion == nil || *a.SkillVersion != "1" || a.AllowedTools == nil ||
@@ -58,7 +70,7 @@ func validAuthorMetadata(a *AuthorTask, script *string) error {
 	}
 	if workspaceAuthor(a) {
 		for _, tool := range *a.AllowedTools {
-			if !strings.HasPrefix(tool, "browser_") {
+			if !strings.HasPrefix(tool, "browser_") && tool != "read_conversation_history" {
 				return invalid
 			}
 		}

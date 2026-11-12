@@ -83,6 +83,7 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	mux.HandleFunc("POST /api/runs/{id}/cancel", a.cancel)
 	mux.HandleFunc("POST /api/manager/runs/{id}/artifacts/{name...}", a.upload)
 	mux.Handle("POST /api/manager/runs/{id}/attempts/{attemptId}/credentials/resolve", a.ManagerAuth(http.HandlerFunc(a.resolveCredentials)))
+	mux.Handle("POST /api/manager/runs/{id}/attempts/{attemptId}/history", a.ManagerAuth(http.HandlerFunc(a.conversationHistory)))
 	mux.HandleFunc("GET /api/runs/{id}/artifacts/{name...}", a.artifact)
 	if managerConnect != nil {
 		mux.Handle("GET /api/manager/connect", a.ManagerAuth(managerConnect))
@@ -345,6 +346,8 @@ func (a *API) artifact(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) fail(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ErrHistoryUnavailable):
+		writeError(w, 409, "history_unavailable", "Conversation history is unavailable for this attempt")
 	case errors.Is(err, ErrScopeConfirmation):
 		writeError(w, 409, "scope_confirmation_required", "Confirm the Workspace scope before this AI workflow can run")
 	case errors.Is(err, ErrCredentialUnavailable):

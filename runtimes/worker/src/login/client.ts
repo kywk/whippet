@@ -1,8 +1,9 @@
 import {randomUUID} from 'node:crypto';
 import type {Readable,Writable} from 'node:stream';
 import {origin,type WorkspaceContext} from '../workspace-context.js';
+import {attemptIO,MAX_ATTEMPT_FRAME} from '../attempt-io.js';
 
-export const MAX_CREDENTIAL_FRAME=64*1024;
+export const MAX_CREDENTIAL_FRAME=MAX_ATTEMPT_FRAME;
 export class CredentialError extends Error {constructor(){super('credential_operation_failed');}}
 export interface Credentials {workspaceId:string;runId:string;attemptId:string;roleId:string;secretRef:string;secretVersion:number;loginOrigin:string;username:string;password:string;}
 export type LoginInput={workspaceId?:string;runId:string;attemptId:string;workspaceContext?:WorkspaceContext|null};
@@ -25,25 +26,19 @@ export class KnownSecrets {
 // One bounded, attempt-bound response on Docker stdin; never read env/file keys.
 export class CredentialClient {
   readonly secrets=new KnownSecrets();
-  private buffer=Buffer.alloc(0);
   private pending?:{id:string;roleId:string;resolve:(v:Credentials)=>void;reject:()=>void;timer:NodeJS.Timeout};
   private count=0;
   private closed=false;
-  private readonly read:Readable;
-  private readonly write:Writable;
+  private readonly transport:ReturnType<typeof attemptIO>;
+  private readonly unsubscribe:()=>void;
   constructor(private readonly input:LoginInput,io:{read:Readable;write:Writable}={read:process.stdin,write:process.stdout}){
-    this.read=io.read;this.write=io.write;this.read.on('data',this.onData);this.read.on('end',this.fail);this.read.on('error',this.fail);
+    this.transport=attemptIO(io);this.unsubscribe=this.transport.subscribe('credential_response',this.onData,this.fail);
   }
   private fail=():void=>{const p=this.pending;this.pending=undefined;if(p){clearTimeout(p.timer);p.reject();}};
-  private onData=(data:Buffer):void=>{
-    this.buffer=Buffer.concat([this.buffer,data]);
-    for(;;){const newline=this.buffer.indexOf(10);if(newline<0){if(this.buffer.length>MAX_CREDENTIAL_FRAME)this.close();return;}
-      const frame=this.buffer.subarray(0,newline);this.buffer=this.buffer.subarray(newline+1);
-      if(frame.length>MAX_CREDENTIAL_FRAME){this.close();return;}
-      const p=this.pending;if(!p)continue;
+  private onData=(reply:Record<string,unknown>):void=>{
+      const p=this.pending;if(!p)return;
       try{
-        const reply=JSON.parse(frame.toString('utf8'));
-        if(reply.kind!=='credential_response'||reply.requestId!==p.id||reply.attemptId!==this.input.attemptId)continue;
+        if(reply.requestId!==p.id||reply.attemptId!==this.input.attemptId)return;
         if(reply.error)throw new CredentialError();
         const v=reply.credentials as Credentials;
         const ref=this.input.workspaceContext?.roleRefs.find((r)=>r.roleId===p.roleId);
@@ -51,7 +46,6 @@ export class CredentialClient {
         if(!ref||!role||v.workspaceId!==this.input.workspaceId||v.runId!==this.input.runId||v.attemptId!==this.input.attemptId||v.roleId!==p.roleId||v.secretRef!==ref.secretRef||v.secretVersion!==ref.secretVersion||origin(v.loginOrigin)!==origin(role.loginOrigin)||!validCredentialText(v.username)||!validCredentialText(v.password))throw new CredentialError();
         this.secrets.add(v.username);this.secrets.add(v.password);this.pending=undefined;clearTimeout(p.timer);p.resolve(v);
       }catch{this.fail();}
-    }
   };
   resolve(roleId:string):Promise<Credentials>{
     const ref=this.input.workspaceContext?.roleRefs.find((r)=>r.roleId===roleId);
@@ -61,8 +55,8 @@ export class CredentialClient {
     return new Promise((resolve,reject)=>{
       const timer=setTimeout(()=>this.fail(),15000);
       this.pending={id,roleId,resolve,reject:()=>reject(new CredentialError()),timer};
-      this.write.write(JSON.stringify({kind:'credential_request',requestId:id,attemptId:this.input.attemptId,roleId,secretRef:ref.secretRef,secretVersion:ref.secretVersion})+'\n',(error)=>{if(error)this.fail();});
+      this.transport.send({kind:'credential_request',requestId:id,attemptId:this.input.attemptId,roleId,secretRef:ref.secretRef,secretVersion:ref.secretVersion},this.fail);
     });
   }
-  close():void{this.closed=true;this.fail();this.read.off('data',this.onData);this.read.off('end',this.fail);this.read.off('error',this.fail);this.read.pause();this.buffer=Buffer.alloc(0);}
+  close():void{this.closed=true;this.fail();this.unsubscribe();}
 }

@@ -1,8 +1,9 @@
 import { validateWorkspaceSettings, type WorkspaceSettings } from "../workspace.js";
 import { createHash } from "node:crypto";
 import { validateWorkspaceContext, validateWorkspaceConfig, type WorkspaceContext, type WorkspaceConfig } from "../workspace-context.js";
+import { validSequence, type HistoryPin } from "./history.js";
 
-export const EDIT_TOOLS = ["read_draft", "read_validation_report", "update_draft", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login", "request_validation"] as const;
+export const EDIT_TOOLS = ["read_draft", "read_validation_report", "update_draft", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login", "request_validation", "read_conversation_history"] as const;
 export interface ValidationEvidence {
   runId: string; attemptId: string; draftRevision: number; scriptHash: string; timeoutMs: number;
   status: "succeeded"; reportsReady: true;
@@ -33,6 +34,7 @@ export interface AuthorInput {
     sourceVersion?: { id: string; description: string | null; backgroundSummary: string | null } | null;
     conversationSummary?: string | null;
     validationEvidence?: ValidationEvidence;
+    history?: HistoryPin;
   };
 }
 
@@ -102,7 +104,7 @@ export function validateAuthorInput(value: unknown): AuthorInput {
     validateWorkspaceContext(v.workspaceContext,v.workspaceId);
   } catch { throw new AuthorError("invalid_input"); }
   const a = v.author;
-  if (Object.keys(a).some((k) => !["conversationId", "baseRevision", "messages", "validation", "skillId", "skillVersion", "allowedTools", "editingSessionId", "contextRevision", "sourceVersion", "conversationSummary", "validationEvidence"].includes(k))) throw new AuthorError("invalid_input");
+  if (Object.keys(a).some((k) => !["conversationId", "baseRevision", "messages", "validation", "skillId", "skillVersion", "allowedTools", "editingSessionId", "contextRevision", "sourceVersion", "conversationSummary", "validationEvidence", "history"].includes(k))) throw new AuthorError("invalid_input");
   const modern = ["skillId", "skillVersion", "allowedTools", "editingSessionId", "contextRevision", "sourceVersion", "conversationSummary", "validationEvidence"].some((k) => Object.hasOwn(a, k));
   if (modern) {
     if (!["test-author", "acceptance-summary","workspace-author"].includes(a.skillId ?? "") || a.skillVersion !== "1" || (!isWorkspaceAuthor(v)&&!uuid.test(a.editingSessionId ?? "")) ||
@@ -115,7 +117,7 @@ export function validateAuthorInput(value: unknown): AuthorInput {
       s.description !== null && !boundedText(s.description,16384) || s.backgroundSummary !== null && !boundedText(s.backgroundSummary,8192))) throw new AuthorError("invalid_input");
     if(isWorkspaceAuthor(v)){
       if(v.script!==""||!v.workspaceId||v.testId!==null||!v.workspaceContext||v.workspaceContext.settingsRevision!==a.baseRevision||
-        a.editingSessionId!==null||s!==null||a.allowedTools.some((t)=>!t.startsWith('browser_'))||a.validation!=null||a.validationEvidence!==undefined)throw new AuthorError("invalid_input");
+        a.editingSessionId!==null||s!==null||a.allowedTools.some((t)=>!t.startsWith('browser_')&&t!=="read_conversation_history")||a.validation!=null||a.validationEvidence!==undefined)throw new AuthorError("invalid_input");
     }
     if (isSummary(v)) {
       const e = a.validationEvidence;
@@ -128,6 +130,10 @@ export function validateAuthorInput(value: unknown): AuthorInput {
         e.stats.expected < 1 || e.stats.unexpected !== 0 || !Number.isFinite(e.stats.duration) || e.stats.duration < 0) throw new AuthorError("invalid_input");
     } else if (a.validationEvidence !== undefined) throw new AuthorError("invalid_input");
   }
+  if (Object.hasOwn(a, "history") && (!a.history || typeof a.history !== "object" || Array.isArray(a.history) || Object.keys(a.history).length !== 1 ||
+    !validSequence(a.history.maxSequence) || !v.workspaceId || !["test-author", "workspace-author"].includes(a.skillId ?? "") || a.skillVersion !== "1" ||
+    !a.allowedTools?.includes("read_conversation_history") || (!isWorkspaceAuthor(v) && (!v.testId || !uuid.test(a.editingSessionId ?? ""))))) throw new AuthorError("invalid_input");
+  if (a.allowedTools?.includes("read_conversation_history") && !a.history) throw new AuthorError("invalid_input");
   if(!isWorkspaceAuthor(v)&&v.testId===null)throw new AuthorError("invalid_input");
   if(v.workspaceId!==undefined&&authorNeedsBrowser(v)&&(!v.workspaceContext?.config||v.workspaceContext.config.targets.length===0))throw new AuthorError("security_unavailable");
   let chars = 0;

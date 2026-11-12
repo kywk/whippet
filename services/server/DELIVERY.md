@@ -1,5 +1,24 @@
 # Server 交付
 
+## M9 有界歷史檢索（2026-11-12，t41）
+
+已依 `contracts/mvp-v9.md` 完成 Server 接線與定向驗證；effective `gpt-6.1-sol/xhigh`，parent=t3v、crew=1。固定產物 `/private/tmp/whippet-server-m9` 為 Linux arm64／CGO=0 靜態 ELF；SHA256 `6105c3b9e559c28a6343b3abc0333d95a90d5438d0b5fc29c2966c1486adb750`。尚未部署或做真 Manager／模型整合，不將 Server 模組完成當作整個 M9 完成。
+
+- `internal/server/history.go`：專用 `POST /api/manager/runs/:id/attempts/:attemptId/history`；ManagerAuth、HTTPS、ready control epoch 前後檢查；Run 權威 owner／當前 attempt／active session 與 revision/context 檢查。只回 content；最多6片段／8192 UTF-8 bytes，合法 byte offset 連續切片，cursor 永遠受同 conversation／cutoff 約束，無更多內容回 null。
+- `conversations.go`、`workspace_interviews.go`：enqueue 同一交易、插當輪 user 前固定 `author.history.maxSequence`（無歷史為字串0）；test/workspace author 加 `read_conversation_history`。summary 與舊缺 history 的 Run 不提供遠端歷史。預設摘要＋近期窗口不變。
+- `model.go`、`http.go`、`execution_gate.go`：只擴既有 author/schema／端點與離線工具集合；不加 migration、quota 表、token、lease、通用 RPC，也不混 credential 值。四次／attempt 與 IPC demux 由 Runtime owner 實作。
+- 新增 `history_test.go`／`history_postgres_test.go`；既有 `editing_postgres_test.go` 的工具數斷言更新為新增 history 後9項並驗能力。設定／角色同步與撤銷沿既有實作，本次新增定向證據：設定套用後 resume 同 session、新 author 採新背景、撤銷已 resolve 角色令 attempt cancelling 並拒絕 resolve/history，舊 Version 完整快照不變。
+
+實際檢查：既有 Go1.23.12、配對 GOROOT、GOTOOLCHAIN=local、GOPROXY/GOSUMDB=off、`-mod=readonly`，無安裝或下載。
+
+- M9 4項單元＋相關 author/summary/offline gate/credential HTTP 回歸：**PASS 0.309s**。
+- `-tags=integration ./internal/server -run '^TestM9' -count=1 -v`：3項隔離DB＋4項單元全部 **PASS 0.935s**。使用全新一次性 `whippet-m9-t41-db`（既有 postgres:16.11-bookworm、loopback32773），每案獨立 schema 並清理；容器已移除，共享DB／服務未動。
+- Linux arm64 build exit0，`file`確認靜態ELF；變更Go檔 `gofmt -l` 無輸出。
+
+證據與可重現指令：`/private/tmp/whippet-m9-server-tests.txt`；唯讀盤點：`/private/tmp/whippet-m9-server-proposal.md`。未安裝、Git、讀印複製 `deploy/.env.ai`、輸出真憑證、部署或重啟共享服務；M8主要驗收未重跑。PM可直接封裝上述固定binary，Runtime/Manager需先對齊v9 metadata與HTTP/IPC再整合。
+
+## M8 歷史交付
+
 Owner：Whippet Server Agent t31。最新交付：M8 Live offerId／敏感 pause-resume relay 與 writer barrier（2026-11-12）；既有里程碑紀錄保留於下方。
 
 ## M8 Live 敏感監看 relay 修正

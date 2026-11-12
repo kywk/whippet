@@ -115,7 +115,7 @@ M4 真實網站補充驗收：依使用者要求改以 Whippet 登入→搜尋�
 | M8.1 Multi-workspace 與設定提案 API | 完成／Server交付、PM整合 | 真API、角色保存/resolve、兩Workspace隔離及真AI提案套用已驗收；既有定向DB證據沿用 |
 | M8.2 Workspace 對話 UI | 完成（MVP驗收）／Web交付、PM整合 | 核心對話/隔離、真AI摘要UI發布與正式執行PASS；Workspace author監看真影格PASS；既有UI checkpoint證據沿用 |
 | M8.3 Workspace skill 與受限登入探索 | 完成（MVP驗收；已知限制見收尾）／Runtime交付、PM整合 | 真AI正常登入探索/產稿/驗證/摘要全鏈PASS；越界/機密/敏感媒體證據沿用。12秒disabled慢表單author登入未成功，不納入登入PASS |
-| M9 背景串接與完整操作交付 | 待辦／PM＋各 owner，t33 黑箱 | 新 Workspace→對話設定→新測試→驗證／監看→摘要／發佈→修改設定與續編；既有版本快照不被覆寫、撤銷許可有效 |
+| M9 背景串接與完整操作交付 | 完成（本機MVP整合）／PM t3v、Server t41、Runtime t42、QA t43/t44 | 真模型兩頁有界history成功找回近期12則外代碼；設定更新後同session新背景、舊Version不變PASS；撤銷取消/拒history沿定向DB證據。詳最新M9收尾 |
 
 推進順序（使用者最新授權允許M7待驗與M8開發並行）：M7.0 → M7.1／M7.2／M7.3 並行 → M7.4整合保留；M8.0 → M8.1／M8.2／M8.3 並行 → M9。Web 可先依已固定契約製作畫面，不等待所有後端功能；Runtime 範圍限制方案可在 M7 交付後先查核，避免 M8 晚期才發現阻塞。
 
@@ -273,3 +273,41 @@ M8真AI主流程PASS：t3z交付後PM實跑真UI，首次因QA舊checkbox文案�
 - 環境：18087／TLS18089維持真AI :m8-real-qa；DB與資料保留；舊B應用-before-real停用保留供回復；其他預覽未動。新的QA均已退出，PM t3v獨立根保留。
 
 完整證據索引：/private/tmp/whippet-m8-real-evidence、/private/tmp/whippet-m8-real-publish-evidence、/private/tmp/whippet-m8-midjoin-evidence、/private/tmp/whippet-m8-workspace-live-evidence。腳本語法/實跑與git diff --check通過；完成不代表已Git提交、公開發布或生產環境驗證。
+
+## M9 啟動（2026-11-12）
+
+使用者授權先commit後推進M9。已提交ee926d8（M8驗收腳本與進度，選定檔案機密模式掃描、diff check通過，未push）。M9不重跑M8已PASS矩陣。
+
+1. 進行中／PM t3v：固定M7延後的session-scoped有界歷史檢索契約；不建立通用RPC、不讓Worker取得Manager token、不每輪全量載入歷史。
+2. 進行中／全新Server t41、Runtime t42：先提交現有接縫與最小介面提案，待PM固定後實作。兩者parent=t3v、crew=1、同space/tab，終端核實GPT-6.1-Sol xhigh。Server單一owner services/server；Runtime單一owner services/manager與runtimes/worker；PM擁有contracts/docs/deploy。
+3. 待辦／新Muse xhigh QA：歷史工具實際找回近期窗口以外的一筆決策、跨session/Workspace與cutoff拒絕；確認不把機密或未來訊息帶入模型。
+4. 待辦／PM＋新QA：Workspace設定更新後續編採新背景、原正式版本快照不被覆寫、撤銷許可後阻止新使用的最小整合旅程。重用M8既有發布/正式Run/監看證據，不重建全套。
+
+沿用不安裝、不讀印複製deploy/.env.ai、不輸出憑證、不push；本輪commit指示已用於ee926d8，後續先保留工作成果待交付。不得恢復舊t30–t36或t3q/t3r鏈。
+
+M9 v9契約已固定並派實作：專用history HTTP＋history_request/response、Run建立前cutoff、6片段/8192UTF8/頁、4次attempt-local、15秒；summary不開工具，test/workspace author按需讀。t41已開始Server cutoff/HTTP/分頁，t42已開始唯一stdin demux與Worker history client，無migration/配額表。新QA t43→t3v同crew/space/tab，去敏session metadata已核實Muse/xhigh；owner scripts/test/m9-settings-continuity.cjs，先寫可checkpoint接續的設定更新/舊Version不變驗收，不自行執行或撤銷M8角色。既有TestM8BServerLifecycle已涵蓋撤銷取消與拒resolve，沿用不重跑；新history失效路徑另補定向檢查。
+
+M9固定產物已於2026-11-12由PM部署至既有B（18087／TLS18089）：Server/Manager/Worker :m9-qa，Web沿:m8-real-qa，DB與既有配置保留；部署前活躍Run為0，TLS readyz及公開API PASS，舊應用-before-m9保留可回復。t41定向單元0.309s、隔離DB與M9單元0.935s全PASS無skip；t42 Worker build+27/27、Manager受影響race1.760s與最後M9 race1.495s PASS。整合發現test-author skill舊句「遠端歷史不可用」與M9矛盾，owner已移除並重新COPY-only封裝Worker，無其他產品修正。
+
+M9設定接續真AI黑箱PASS：t43腳本由PM補強完整設定僅背景變更比對、checkpoint不重POST、問題不透露marker、僅接受同Run assistant回答。Workspace95296031 revision2→3，session f615c956同週期draft3→4，validation/summary失效，原Version fac81dbf完整快照不變；新Run dfaf69df以新背景回答marker，未變稿。證據/private/tmp/whippet-m9-settings-evidence/m9-result.json。此項驗於既有M8程式（M9未修改的接續行為）；角色撤銷/新history拒絕由t41隔離DB定向證據涵蓋。
+
+M9歷史全鏈進行中：全新t44→t3v/crew1同space/tab，標準opencode run Muse/xhigh；交付scripts/test/m9-history-live.cjs後退出。PM接手修空session建立分支並將隨機代碼增為128-bit，公開API建立專用Test c3bd8c3a/session47724b44，已開始串行真AI歷史填充/最終檢索。PASS需同Run預設輸入不含答案、去敏history成功事件、assistant答中三者，不以QA腳本交付或只答中作PASS。尚未完成；不重跑M8、未安裝/commit/push。
+
+M9歷史全鏈首輪FAIL，未標完成：t44 effective metadata已由opencode session export核實opencode-go/muse-spark-1.3-contributor/xhigh。7輪真AI準備方案中首輪5eac1633忽略只收件指示、探索改稿，f2 7a30f20b失敗，不能作合格fixture。PM改為無活躍Run時暫停B Manager，透過公開API新建專用Test a3ad64fa/session8df48beb，12筆user逐筆queued→cancelled（無模型/assistant/summary污染），完成後立即恢復Manager。最後真模型Run ccc5f905兩次history均4–5ms內history_unavailable，回答未找到；PM唯讀證明預設12訊息及所有Run輸入沒有隨機代碼、cutoff62內確有首marker。三重斷言FAIL，證據/private/tmp/whippet-m9-history-evidence/cancel-fixture。t41/t42正在真handler+DB及Node→Manager→TLS跨接縫診斷；不重跑M8。
+
+使用者出門授權盡可能推進完整開發驗收。已開全新t45→t3v/crew1同space/tab、effective sol/xhigh核實，獨立owner docs/release/image-components.md與scripts/release/inventory-images.py，盤點既有本機映像OS/瀏覽器/FFmpeg及授權檔。仍不安裝/下載/自行Git/變更LICENSE；Linux跨主機與TURN缺外部環境的限制保留。
+
+M5/M6交付補強：新owner t45已完成五個既有QA映像的實物版本與授權檔盤點，docs/release/image-components.md列出image ID、OS/runtime/browser/FFmpeg版本、授權候選檔與Firefox封裝授權頁雜湊；scripts/release/inventory-images.py使用Python內建庫，離線/唯讀/無repo或socket掛載，五映像實跑exit0，Docker不可用時5項unverified/exit1已驗。PM已讀交付並將README連到盤點入口；未重跑已PASS盤點。完整聲明仍缺Alpine/npm/WebKit/Go等項，Whippet LICENSE仍待選，未聲稱開源發布完成。
+
+M9歷史失敗已定位（81352430診斷回合）：模型將首次cursor輸出為精確字串"null"，不是JSON null；Worker precheck拒絕、未送任何history_request。去敏diagnostic只保留stage與布林（cursorLiteralNull=true/cursorEmpty=false），options/history能力/額度/stdin皆正常；暫診斷映像每回合後均已還原。真TLS endpoint probe200/no-store/6items、Server真handler+DB兩頁與Runtime真Node→TLS及Docker attach/stdin測試皆PASS，故不改Server或放寬owner/context。PM更新v9：只在模型工具入口正規化精確字串null，其他非法cursor/HTTP/IPC維持嚴格；t42修loop與定向測試後交新Worker，待全鏈重驗。
+
+## M9 本機 MVP 驗收收尾（2026-11-12，PM t3v）
+
+狀態：完成；M1–M8無關PASS沿用，M5/M6的乾淨安裝、跨主機/TURN與發布聲明缺口仍獨立未完成。沒有新增通用RPC、配額表或擴功能。未安裝、未讀印複製deploy/.env.ai、未新增commit或push；HEAD仍ee926d8。
+
+- 歷史真全鏈PASS：專用Test17d105c5/session c3c1786a，12則合成user經公開API排入後取消（無模型），最後真Muse/xhigh Run400a1505-87cc-4f03-b85e-04003ab71fb3 succeeded。attempt123945f4兩次read_conversation_history:succeeded，真正經Worker→Docker stdin→Manager TLS→Server取兩頁；cutoff86，預設12則及script/settings/context/author全無隨機128-bit答案，舊history含答案且不超cutoff，最終同Run assistant答中。journal complete/reclaimed=true。證據/private/tmp/whippet-m9-history-evidence/final/{m9-history-result.json,pm-verification.json}。沒有人工將答案塞入模型，也不是合成provider；準備資料與最終推論明確區分。
+- 可重現驗收：scripts/test/m9-history-live.cjs具checkpoint/原子保存/不重POST；取消fixture由PM停無活躍Run的專用Manager準備，恢復後才跑最後模型。公開檢查只標public_checks_pass；scripts/test/m9-history-pm-verify.py經READ ONLY SELECT連結輸入缺席、工具事件與回答三重證據，實跑exit0，只輸出布林/雜湊/固定事件，不印訊息內容或憑證。
+- 設定接續PASS沿本輪證據：Workspace95296031 rev2→3、同session f615c956 draft3→4，真AI新背景回答、validation/summary失效、Version fac81dbf完整快照不變。t41隔離DB補設定刷新/角色撤銷取消與history拒讀；無須撤銷現有M8驗收角色。
+- 實作修復：只在模型工具入口將精確字串"null"轉為JSON null；HTTP/IPC/HistoryClient保持嚴格、非法位置不放行。新回歸先紅後綠1/1；Worker build、真Node→Manager→TLS兩頁新測試PASS0.38s/race1.759s。原Worker27/27、Manager race、Server單元/DB通過證據沿用；新增Server真handler+DB兩頁PASS0.838s、Docker attach/stdin opt-in PASS/race1.850s。已移除skill舊矛盾文案。初始失敗與診斷回合保留，不把它們改標PASS。
+- 部署：18087／TLS18089；Server/Manager/Worker :m9-qa，Web:m8-real-qa。最終Worker image ID cda295c1ca394034bfd9de698722c37ea2cfd30e9b9669b24048bba8c0c68ddb，loop SHA201f16ef6fe21a3e6bed3f0edb85e485c02b02fdb009f151ff7e031369b10b22；固定包無診斷helper，正式Manager未重build。DB/既有配置保留，-before-m9應用保留回復。其餘預覽未更新。
+- 限制：歷史真模型代表案例為test-author；workspace-author路由/空頁/隔離以定向測試涵蓋，不宣稱另跑同等真模型全矩陣。skills官方quick_validate缺PyYAML未跑（不安裝），實際loader/schema/build已驗。正常Dockerfile乾淨建置、遠端Linux＋Mac/TURN環境、Whippet LICENSE與完整第三方聲明仍待外部條件/決策。五映像實物盤點已交付，非公開發布完成。

@@ -108,6 +108,11 @@ func (p *Postgres) CreateWorkspaceAuthor(ctx context.Context, id, content string
 	}
 	input := AuthorInput{SkillID: "workspace-author", SkillVersion: "1", AllowedTools: []string{}, ConversationID: c.ID, BaseRevision: w.Revision, ContextRevision: contextRevision + 1,
 		SourceVersion: nil, ConversationSummary: c.ConversationSummary, Messages: authorContext(newest)}
+	input.History, err = conversationHistorySnapshot(ctx, tx, c.ID)
+	if err != nil {
+		return AuthorSubmission{}, err
+	}
+	input.AllowedTools = append(input.AllowedTools, "read_conversation_history")
 	snapshot, scopeProposal := selectedContext(w, true)
 	var authorization *int64
 	if snapshot.Config != nil {

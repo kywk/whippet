@@ -13,7 +13,7 @@ var authorEnvNames = []string{
 	"WHIPPET_AI_REASONING_EFFORT", "OPENCODE_API_KEY",
 }
 
-var authorProgressPattern = regexp.MustCompile(`^author:(model:[1-8]:(started|succeeded|failed)|tool:([1-9]|1[0-2]):(read_draft|read_validation_report|update_draft|browser_navigate|browser_snapshot|browser_click|browser_fill|browser_login|request_validation|unknown):(succeeded|failed))$`)
+var authorProgressPattern = regexp.MustCompile(`^author:(model:[1-8]:(started|succeeded|failed)|tool:([1-9]|1[0-2]):(read_draft|read_validation_report|update_draft|browser_navigate|browser_snapshot|browser_click|browser_fill|browser_login|request_validation|read_conversation_history|unknown):(succeeded|failed))$`)
 
 func validDispatch(d Dispatch) error {
 	if err := validWorkspaceSettings(d.WorkspaceSettings); err != nil {
@@ -45,6 +45,9 @@ func validDispatch(d Dispatch) error {
 		return errors.New("dispatch requires run or author with valid input")
 	}
 	a := d.Author
+	if a.History != nil && (!uuidPattern.MatchString(d.WorkspaceID) || !historyAuthor(a)) {
+		return errors.New("invalid history owner")
+	}
 	if err := validAuthorMetadata(a, &d.Script); err != nil {
 		return err
 	}

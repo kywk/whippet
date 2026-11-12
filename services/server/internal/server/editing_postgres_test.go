@@ -172,7 +172,7 @@ func TestM7EditingLifecycle(t *testing.T) {
 		t.Fatal("old context summary published")
 	}
 	a = h.claim(edit.Run.ID)
-	if a.Author.SkillID != "test-author" || a.Author.ContextRevision != 1 || len(a.Author.AllowedTools) != 8 {
+	if a.Author.SkillID != "test-author" || a.Author.ContextRevision != 1 || len(a.Author.AllowedTools) != 9 || !containsHistoryTool(a.Author.AllowedTools) || a.Author.History == nil {
 		t.Fatalf("wrong edit input: %+v", a.Author)
 	}
 	h.upload(a, "author.json", `{"message":"已理解新目的","requestValidation":false,"conversationSummary":"新目的與原檢查保持不變"}`)

@@ -25,7 +25,10 @@ type containerRuntime interface {
 	Remove(context.Context, record) error
 }
 
-type dockerCLI struct{ cfg Config; remember func(record,credentialValues)error }
+type dockerCLI struct {
+	cfg      Config
+	remember func(record, credentialValues) error
+}
 
 func (d dockerCLI) name(r record) string {
 	owner := sha256.Sum256([]byte(d.cfg.ManagerID))
@@ -78,10 +81,21 @@ func (d dockerCLI) attach(ctx context.Context, r record, emit func(string, strin
 	runCtx, runCancel := context.WithTimeout(ctx, time.Duration(r.TimeoutMS)*time.Millisecond+30*time.Second)
 	defer runCancel()
 	cmd := dockerCommand(runCtx, "start", "--attach", "--interactive", d.name(r))
-	stdin,err:=cmd.StdinPipe();if err!=nil{return execution{ExitCode:-1,Error:"credential stdin unavailable"}}
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return execution{ExitCode: -1, Error: "credential stdin unavailable"}
+	}
 	defer stdin.Close()
-	channel:=&credentialChannel{ctx:runCtx,cfg:d.cfg,r:r,input:stdin,client:newHTTPClient(),remember:func(values credentialValues)error{if d.remember!=nil{return d.remember(r,values)};return nil}}
-	cmd.Stdout = &lineWriter{emit: emit, intercept:channel.handle}
+	input := &attemptInputWriter{ctx: runCtx, input: stdin}
+	defer input.close()
+	channel := &credentialChannel{ctx: runCtx, cfg: d.cfg, r: r, input: input, client: newHTTPClient(), remember: func(values credentialValues) error {
+		if d.remember != nil {
+			return d.remember(r, values)
+		}
+		return nil
+	}}
+	history := &historyChannel{ctx: runCtx, cfg: d.cfg, r: r, input: input, client: newHTTPClient()}
+	cmd.Stdout = &lineWriter{emit: emit, intercept: func(line string) bool { return channel.handle(line) || history.handle(line) }}
 	cmd.Stderr = &lineWriter{emit: emit, stderr: true}
 	if err := cmd.Start(); err != nil {
 		return execution{ExitCode: -1, Error: "docker start: " + err.Error()}
@@ -133,11 +147,11 @@ func (d dockerCLI) Remove(ctx context.Context, r record) error {
 
 // CLI output is bounded and normalized into the contract's NDJSON log events.
 type lineWriter struct {
-	mu     sync.Mutex
-	buf    []byte
-	emit   func(string, string)
-	stderr bool
-	intercept func(string)bool
+	mu        sync.Mutex
+	buf       []byte
+	emit      func(string, string)
+	stderr    bool
+	intercept func(string) bool
 }
 
 func (w *lineWriter) Write(p []byte) (int, error) {
@@ -157,8 +171,12 @@ func (w *lineWriter) Write(p []byte) (int, error) {
 		if line == "" {
 			continue
 		}
-		if len(line)>credentialFrameLimit {continue}
-		if !w.stderr&&w.intercept!=nil&&w.intercept(line){continue}
+		if len(line) > credentialFrameLimit {
+			continue
+		}
+		if !w.stderr && w.intercept != nil && w.intercept(line) {
+			continue
+		}
 		var event struct {
 			Kind    string `json:"kind"`
 			Message string `json:"message"`

@@ -99,7 +99,7 @@ Manager 使用部署 token；模型金鑰僅在後端執行環境；測試腳本
 本輪完成多 Workspace；未來沿既有邊界增加 RBAC、多 manager、替代模型、S3 儲存與新 transport；MVP 不為這些先建完整系統。
 
 
-## M7–M9：對話工作區擴充（2026-11-12 已確認，待實作）
+## M7–M9：對話工作區擴充（2026-11-12）
 
 需求依 [AI 對話工作區規格](../requirements/ai-workspace.md)。以下覆蓋歷史每個 Test 僅一個永久 Conversation 的假設；舊 v1–v6 契約保留為歷史，相容遷移由新契約明定。
 
@@ -117,6 +117,8 @@ Manager 使用部署 token；模型金鑰僅在後端執行環境；測試腳本
 Server 決定 skillId／skillVersion、sessionId、允許工具、Workspace 背景及驗測設定快照；Manager 傳遞，Worker 按類型載入 skill。共用既有容量／取消／去重，不引入新排程服務。
 
 背景組合：Workspace 摘要＋來源版本摘要＋當前完整腳本（測試類）＋當輪訊息＋近期對話＋必要驗證證據。完整歷史留 DB，提供受限按需讀取；摘要保留來源關聯。Workspace 類任務沒有 testId，需擴充 Run owner 與檢查，不以假 Test 承載。
+
+M9 歷史工具依 [v9 契約](../../contracts/mvp-v9.md)：Server 在排入 author Run 前固定同 conversation 的 sequence 上限。只有 test-author／workspace-author 能按需讀取，每頁最多 6 個片段與 8192 UTF-8 bytes，每 attempt 最多 4 次、單次 15 秒；摘要任務與缺少 history 能力的舊 Run 不開工具。Manager 使用專用 HTTPS 端點核對活躍 attempt 與控制連線，Worker 只走獨立 history IPC，不持有 Manager token。credential／history 共用單一 stdin 分流與整 frame 寫入，資料及額度分離；失效 session／context、取消、終態拒讀。完整歷史不寫入一般 log，無新增持久配額表。
 
 ### 網站與機密邊界
 
