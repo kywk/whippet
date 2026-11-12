@@ -180,3 +180,71 @@ M8 B Runtime合成真瀏覽器retry PASS：fixture隔離redirect/popup page後�
 ## 下一波：M8 全鏈整合（2026-11-12）
 
 狀態：進行中。使用者授權先 commit M8 A/B 固定成果，再推進下一波。沿用既有模組與隔離測試證據，不重跑全套。PM負責獨立B環境及部署；t32負責真Manager TLS resolve到Worker loginAs與LiveView接線；t31負責提供最短真API建置/設定/草稿驗證/摘要/發布流程及修正整合阻塞；t30負責新版Web單一QA旅程的操作接縫及修正UI阻塞。先完成無模型金鑰的真resolve登入/報告/回收，再接真AI對話到驗收摘要/人工發布與LiveView。t33待可操作環境就緒後黑箱驗收。不得把mock或直接runner合成回應當成全鏈；不安裝、不輸出機密、不動舊預覽、不push。M9歷史retrieval不搶先擴張。
+
+M8全鏈波次前置：已提交6df86e6（93檔，機密掃描與diff check通過，未push）；三位原owner已開始接線。t31交正常API生命週期，無直接proposal/summary繞過端點。PM備合成HTTPS Responses fixture與登入站（/private/tmp/whippet-m8-wave、容器whippet-m8b-fixture、localhost18187/18188），Worker QA映像whippet-worker:m8b-wave含public測試CA並保留TLS驗證；Manager映像whippet-manager:m8b-qa。從預設Worker容器網路經host.docker.internal確認site/provider皆200及CA/SAN驗證成功。僅前置連通，不代表真Manager resolve或全鏈驗收；無真模型/金鑰，18080/18085/18086未動。
+
+M8全鏈隔離環境已啟動：http://127.0.0.1:18087（新版含Workspace監看入口）、原生TLS API18089、whippet-m8b-{web,server,manager,postgres}與network whippet-m8b-wave；原18080/18085/18086未動。Web/API主機HTTP200、Manager WSS connected。真公開API主線PASS：Workspace author經明示HTTPS Responses fixture產proposal→confirm-scope/confirm→專用角色保存→manual完整loginAs spec→validation→fixture摘要→QA API確認發布→正式Run。validation b4129af8-3b4d-480d-aa10-33d228a27747、formal 29f05216-0540-4909-a58e-0840efffd3a2均expected1/unexpected0；Server resolved_role_ids為該角色且slot_released=true，兩attempt journal credentialsUsed/credentialsSanitized/reclaimed=true、phase=complete，無剩餘Worker容器。附件API真HTML/results/PNG已下載；證據/private/tmp/whippet-m8-wave（flow-state、stats、journal-evidence、server-evidence、artifact-list）。無SQL寫入/繞過端點、無stub resolve或人工stdin；proposal/summary是模型替身，API確認不等於UI黑箱。真AI、Workspace探索/LiveView與完整UI旅程仍待驗。t30本輪Web build已封裝m8b-qa，未重跑mock。
+
+整合排程更正：使用者指出先前所有owner待命，剩餘驗收尚未真正派工。PM已立即向既有t33（Muse Spark 1.3 Contributor/xhigh）派M8 UI黑箱，hc read已看到本輪Thinking: Designing a Playwright black-box test for M8。範圍為18087 Workspace提案/確認/隔離及既有正式Test唯讀/續編/放棄，scripts/test/m8-workspace-ui.cjs為QA owner。QA沙箱如不能執行，由PM在既有Worker映像直接跑交付腳本，不再以腳本交付當驗收完成。PM負責LiveView環境/執行與缺陷路由，t30/t31/t32僅實際缺陷時修復；真AI尚未啟動。
+
+使用者授權驗收多subagent併行後，已新增t3b LiveView及t3c報告附件黑箱（Muse/xhigh），hc read確認兩者皆已Thinking實際處理；t33 UI繼續。PM提供獨立whippet-m8b-progress容器（localhost18190/progress，Worker host.docker.internal18190），每秒真進度更新30秒至Completed，供manual Run監看不影響18187站或Workspace範圍。此為測試前置，LiveView/附件/UI尚未記PASS。
+
+M8 LiveView黑箱首跑（PM既有Worker容器）：FAIL，尚未viewer。QA腳本API排validation後page.reload回開發登入頁，line156 searchbox搜尋測試等30秒逾時；PM目視/private/tmp/whippet-m8-live-evidence/m8-fail.png確認登入頁。已回t3b修登入/Workspace導覽與先選UI再排Run時序，不放寬影格/JPEG斷言。run 3c0659d2-1aa1-416c-ab2e-f8f16079945e不作監看PASS；不把先前probe validation成功冒充媒體證據。
+
+M8平行報告黑箱t3c交付PASS（PM核對summary.json存在）：formal29f05216及validation b4129af8皆以公開GET真瀏覽HTML Passed1/Failed0/All1、results expected1/unexpected0、PNG1280×720可讀；原生HTML ZIP用內建zlib真解壓2個非影像entry，已知合成sentinel計數0。證據/private/tmp/whippet-m8-artifacts-evidence，腳本scripts/test/m8-artifacts-blackbox.cjs；未排新Run/改資料，沿用不重跑。LiveView retry仍FAIL且未排新Run：getByLabel Workspace同時匹配select/region/aside，已交t3b改精確combobox定位，影格/JPEG未驗。
+
+M8 LiveView精確combobox修正後重跑：登入/Workspace/Test定位通過，run45abe198已正常排入；仍FAIL60s等viewer按鈕。PM截圖確認停在測試一般模式（正式歷史0，存在繼續修改入口）；QA已核實漏進編輯模式，validation只在編輯紀錄顯示符合產品規格。回t3b補真UI進編輯region後才排新Run；未驗任何媒體，不視產品LiveView故障。
+
+M8 LiveView補編輯入口後重跑：真UI已進編輯模式；line169精確heading因實際名稱含紀錄筆數而逾時，未排本次新validation，尚未viewer。PM截圖確認AI與草稿驗證紀錄3可見；已請t3b修含筆數定位並一次補可見元素診斷，保留媒體斷言，不記LiveView PASS。
+
+M8 LiveView含筆數定位修正後：進編輯/紀錄區PASS，API新排run7a456816，但等待最新結果監看按鈕60秒FAIL。m8-diag.json顯示歷史仍3、無監看按鈕，表明腳本API排程未同步UI；已要求t3b改真UI「驗證此revision」+waitForResponse取得新Run，保留全部媒體斷言。尚未viewer/串流，不能歸為媒體產品失敗。
+
+M8 LiveView真UI路徑PASS：PM在既有Worker映像執行t3b固定腳本（真點驗證此revision→單次response取Run→同Run viewer），run076e956b-87e0-4dc8-aaa6-6d8ad67bd958，WebRTC readyState4/1280寬/frames1→2；JPEG800寬可解碼且src更新，停止viewer後Run仍running並正常succeeded。PM目視WebRTC/JPEG截圖為動態進度2/30→3/30及背景變化。證據/private/tmp/whippet-m8-live-evidence/m8-live-result.json、m8-webrtc.png、m8-jpeg.png。僅manual合成進度頁，不含credential/Workspace author探索；敏感輸入時LiveView遮蔽及真AI仍待驗，不能擴稱全部M8監看通過。已通過同案例不重跑。
+
+M8 t33 Workspace UI阻塞定位：已過登入/新Workspace/提案/scope確認。PM目視roles-dump並核對腳本，角色選項「驗收角色·未設定」其value為真UUID，QA isPlaceholder誤將未設定當佔位；未設定是credential狀態。帳密disabled另由HTTP host.docker.internal非loopback造成，畫面已明示傳輸未保護，不是Server漏角色。PM驗證QA容器--network container:whippet-m8b-web、WEB_URL=http://127.0.0.1（port80）Web/API200，Nginx→Server仍驗TLS；已交t33修角色value核對及入口，產品guard不變。fixture對話不可稱登入/探索。腳本固定後續同一UI旅程，未記全部UI通過。
+
+M8 Workspace UI改loopback後實跑：scope200，角色/帳號/密碼皆可見且啟用，證明傳輸前置已解。續於QA輔助核對FAIL404：腳本誤造GET /workspaces/:id/roles，正確為Workspace詳情.roles；已交t33修已知契約，未改產品。此次W64ec955a未寫credential，UI全流程仍待續跑。
+
+M8 UI重跑前腳本一致性檢查：發現收尾禁止所有PUT與任務必需credentials保存矛盾，及API找到正式Test後未切其Workspace（targetWsId未用）。已請t33一次修為只允許本次W/角色credentials PUT，並真UI切targetTest.ws再定位；其餘禁止寫入不放寬。這兩項為QA前置問題，未再排無效整條流程。
+
+M8 UI完整retry：W3f755888，已PASS角色UUID核對、真credentials保存/欄位清空、第二提案對話接續。套用按鈕disabled導致FAIL：第二次scope確認重置QA checkbox，腳本只首輪有重勾；已交t33待scope200/真scopeConfirmed後重勾再apply，且apply response listener須在click前（原click後存在race）。不可force click或以null回應當PASS。已過段落證據保留，完整UI仍待完成。
+
+M8 UI確認時序修正後實跑：Wa6f9a68c，credentials保存/清空、第二proposal、scope HTTP200＋GET scopeConfirmed、apply HTTP200皆PASS。隨後等正式設定region可見FAIL，漏點「查看目前正式設定（唯讀）」details summary。已交t33補真UI展開並一次核對後續收合/locator前置；不能把這個QA遺漏判產品設定未套用。現有截圖保留，完整UI仍待後段。
+
+M8 UI checkpoint接續：W a6f9a68c已active/settings；三筆published Test使首次選取歧義，PM指定M8 manual synthetic login後續跑。已PASS API-only Workspace conversation隔離、真UI切至該Test Workspace、一般頁順序與正式腳本唯讀；報告domcontentloaded後立即讀body導致內容過少FAIL，未等待原生client rendering。交t33沿t3c已驗報告locator等待真內容，不降門檻。分段驗收，完整UI隔離與後段editing/discard未記PASS。
+
+M8 checkpoint報告等待修正後：已PASS一般頁順序/唯讀、真報告Passed1 Failed0、真UI editing start。接續FAIL全頁「繼續修改」非唯一（頁首與歷史版本草稿列皆有入口，符合設計）；已交t33固定scope歷史版本草稿入口，維持續編POST/同session與discard權威狀態斷言。未完成discard，不記完整後段PASS；session現已建立需續用。
+
+M8 checkpoint續編scope修正後重跑：既有session50c183ac仍active；FAIL等待編輯region，根因QA else只取id未點真UI續編，先前稱分支已PASS不準確。PM一次指出後續兩個模式錯配（resume後需回general才點歷史草稿列刪除；general開dialog取消後仍general），已交t33統一修模式轉移，保留同session/狀態斷言；未完成discard。
+
+M8 UI後段模式修正後核心PASS：session50c183ac真UI續編200同id、返回一般再續編同id、草稿列dialog取消後仍active原id、確認放棄後API discarded且草稿列移除；一般順序/readonly/真報告Passed1 Failed0均PASS。末尾腳本exit1因requestfailed僅記URL /api/tests/3d519fe7-dd81-4d8e-809e-0843b2dfa20b，缺errorText，無法判斷正常abort或真錯；已交t33補唯讀導航診斷、t30核對cleanup取消路徑，不重建/重discard。不能宣稱整條無網路錯誤；證據m8-09/10/11/12已留。
+
+M8末尾GET失敗：t30唯讀核對精確URL為getTest/useResource；切頁卸載或discard兩次retry均可能cleanup abort，避免舊回應寫入，未見業務缺陷。亦存在12秒timeout abort，不能僅ERR_ABORTED即忽略。已要求t33唯讀診斷關聯request時序/動作/同URL後續200；原事件缺failure原因仍保留限制，不將新重現冒充舊事件證明。不改碼、不重build/discard。
+
+使用者再次確認進度並禁止新subagent用opencode mini。PM查明t33仍在唯讀診斷，t3b/t3c待命；以標準opencode run新增t3f真UI Workspace隔離、t3g登入監看遮蔽（Muse/xhigh），不重跑已PASS普通LiveView/報告/草稿放棄。新pane t3f/t3g已啟動，真AI由PM獨立接線，不能把這些fixture驗收當真AI完成。
+
+M8唯讀網路診斷已執行exit0：本次0 requestfailed，但腳本未切目標Test之Workspace，兩次選Test略過；只能記Workspace切換未觀察錯誤，不能解釋原末尾事件或宣稱相關Test網路乾淨。不再以這項低價值重現反覆阻擋已通過生命週期，原URL-only事件列歷史未分類限制。
+
+M8 Workspace真UI隔離PASS：t3f標準opencode run交腳本，PM容器實跑exit0；A a6f9a68c對話4筆、B 2f8aa581對話2筆，真UI切Workspace/開設定、可見訊息與各GET conversationId一致，B不殘留A獨有文字。僅登入POST、其餘唯讀。證據/private/tmp/whippet-m8-isolation-evidence/iso-result.json與iso-01~03 PNG，補足先前api-only隔離限制。
+
+登入監看遮蔽：t3g交腳本與可觀測前置需求，尚未真跑且UNVERIFIED。PM核對發現原通過條件（status字串＋晚期video有frame）不足，已請t32確認公開sensitive_input與恢復訊號；不以沒捕捉到秘密當PASS。PM於獨立QA fixture新增/slow-login與/slow-session：12秒Ready前置、提交回應延遲12秒、登入後10秒Completed；保留原/login/session與provider路徑，沿同已確認origin/role，不改產品hook或Workspace設定。待固定QA採樣/通過條件後單次執行。
+
+M8登入監看發現產品真缺口（t32唯讀）：Manager剝除sensitive_input；Web streaming時忽略waiting並留舊圖；resume新helper可能採舊answer；pause/tick有競態。遮蔽驗收暫停，不能記PASS。PM已固定v8敏感暫停/offerId UUID echo及answerOfferId接縫，派t32 Runtime/Manager、t30 Web、t31 Server relay並行修復，沿既有sol/xhigh；只跑受影響定向檢查/build，不重跑DB/整站。交付後PM更新隔離產物，單跑slow-login的暫停前/中/後真媒體案例。未部署新碼，原普通LiveView通過證據保留但不涵蓋敏感階段。
+
+敏感監看修復接縫補明：PM採waiting/sensitive_input_complete作JPEG明確恢復事件，要求先事件再新frame；一般waiting/streaming不能解鎖。WebRTC只由全新UUID offer解除敏感鎖。已同步t30/t31/t32並更新v8，仍實作中未驗收。
+
+敏感恢復事件補viewer綁定：Server state使用當前LiveSession ViewerID，Web以ready.viewerId嚴格核對resume，缺值/錯值不解JPEG；已同步三owner，納入當前修正與必要relay測試。
+
+敏感WebRTC race收斂：complete先於新offer，complete前所有offer均stale，正確viewer complete後仍paused等新UUID協商及真frame。無新欄位，已同步三owner納入定向順序檢查；修復版尚未交付/部署。
+
+t32已實作resume epoch持續complete避免輪詢漏訊號，Manager先state再offer/JPEG；另指出Server雙queue writer可能倒序。PM已交t31確認並修實際viewer writer屏障（含pause舊queued frame），以雙queue同時ready定向測試驗輸出順序。尚待owner交付，不記整合PASS。
+
+敏感監看Server修正版固定交付：/private/tmp/whippet-server-m8-live-offer（Linux arm64 CGO0 static ELF），含offerId/權威ViewerID與實際writer media epoch/resume barrier。t31更正最終定向PASS為Server0.356s、Gateway0.351s；前訊0.473s為誤填，不作證據。未DB重測/部署，待Web與Runtime固定後共同更新隔離環境及慢速登入驗收。
+
+Runtime敏感修復固定交付：Manager /private/tmp/whippet-manager-m8-mask（arm64 static已核對），Worker build/定向3/3與Manager race4項PASS2.072s，含真loopback resume-before-JPEG。PM已快照Server/Manager/Worker至/private/tmp/whippet-m8-mask-images並以既有快取COPY-only封裝三個:m8-mask-qa映像，未替換執行服務；等Web固定後同步部署。已用標準opencode run啟動whippet-qa-mask-v2接續已退出t3g的登入監看QA檔，依Runtime note補實際WS事件/清屏/前後新影格與模式分別判定，不用文字regex冒充遮蔽PASS。
+
+t32 DELIVERY已固定，Manager race2.072s僅真loopback Manager wire，非公開Server/UI全鏈。補明complete state pending offerId不消耗實際offer去重ID；已同步t30/t3n及v8，避免恢復協商被合法同ID state提前擋下。不重建Runtime、不重跑已過測試。
+
+敏感監看三端已部署至既有 B 隔離環境（18087／TLS18089）：Server/Manager/Web/Worker均改用:m8-mask-qa，資料庫、工作目錄與合成金鑰保留，舊預覽不動。部署前26筆Run皆終態。Web公開asset index-CwSWSYQ9.js SHA256=560d23aa39994064ab9f3b1517fe6168f73013ab12d8e24273fa77046bf2415d，與t30固定產物一致；Server readyz真CA驗證通過。QA t3n交付後退出，PM接手腳本必要修正：API寫稿後真UI重新載入草稿；前/後截圖依實際階段；公開answer echo欄位為offerId（answerOfferId是內部control），actual offer限定type=offer而非state.pending ID；JPEG不要求WebRTC offer；核心窗增加清空媒體斷言並保存去敏事件與samples。首輪未排Run因舊UI revision停用；f3ffd20c真Run成功且暫停/恢復有觀測，但QA錯誤欄位判讀記UNVERIFIED，不冒充PASS。慢站新增合成echo span及/slow-status非機密時序，仍沿原已確認origin、無產品hook。
+
+敏感監看公開三端整合PASS（PM真容器／真UI）：WebRTC Run c9f05ad9-84e3-40ac-ad97-06dc2d308283，pause13711→complete25811→新offer26215→answer26224ms；敏感前21組影格遞增，核心12個取樣diff0且videoWidth/liveTracks/readyState皆0，恢復後18組遞增。JPEG Run4443b587-0ea3-4d2c-9351-b4a5bb71dd84，pause16947→complete29047ms；前兩張真圖、核心binary0且畫面清空、恢復後11 binary/10新圖來源。兩Run succeeded，真Server HTTPS resolve→loginAs完整manual spec。PM目視核心清畫面與恢復後Authenticated/alpha可讀、合成echo遮罩。證據/private/tmp/whippet-m8-login-live-evidence/{webrtc-retry,jpeg}/（含去敏WS順序、samples、三階段PNG、fixture時序），總結M8-MASK-PASS.md及pm-review.json。此波產品無新增修正；QA修正後必要兩模式通過，不重跑其餘矩陣。未驗敏感中途加入、Workspace author探索及真AI；M8整體仍未完成。未commit/push/安裝。

@@ -135,3 +135,13 @@ M8 依相同方式先固定 proposal／機密／網路政策再並行；Runtime 
 ## M8 下一波：全鏈整合
 
 沿用 t30/t31/t32 sol/xhigh 與原owner界線。PM管隔離部署、整合與docs/contracts；t32提供真Manager→Worker登入/LiveView最短接線並修Runtime阻塞；t31提供真API生命週期接線並修Server阻塞；t30提供一條QA旅程操作清單並修Web阻塞。三位不另跑已通過檢查、不自行部署/Git。真環境就緒再交t33 Muse黑箱；無模型resolve切片先行，真AI及人工作業最後驗收。
+
+### 驗收併行（使用者明確授權）
+
+新增可見Herdr QA subagent，覆蓋先前不另建Agent限制；全部Muse Spark 1.3 Contributor/xhigh，已從pane核實開始活動。t33維持UI旅程，owner scripts/test/m8-workspace-ui.cjs；t3b whippet-qa-live負責scripts/test/m8-live-ui.cjs及獨立m8-qa-live Test/Run；t3c whippet-qa-artifacts負責scripts/test/m8-artifacts-blackbox.cjs，只讀既有兩個成功Run報告。各自/private/tmp證據目錄，不共享viewer、不改同一草稿。PM執行QA沙箱無法執行的腳本及管理環境；原模組owner僅修實際缺陷。真AI接線由PM負責，不向Contributor提供金鑰。
+
+### 最新啟動限制與剩餘驗收
+
+使用者要求避免opencode mini（Herdr控管問題）；之後新QA一律標準opencode run並指定Muse Spark1.3 Contributor/xhigh。t3f負責scripts/test/m8-isolation-ui.cjs真UI唯讀Workspace隔離；t3g負責scripts/test/m8-login-live-ui.cjs登入LiveView遮蔽觀測，各自證據目錄。t33僅收尾原網路診斷，不再加新任務；既有mini待命pane不派新工。PM負責環境與真AI接線，保留原scope/credential邊界。
+
+2026-11-12 使用者要求本波提交後全部換新對話：PM與後續owner/QA均不得續用舊長對話；沿新PM→t36的parent鏈、crew=1與既有space/tab維持同一Herdr RPG session。禁止opencode mini。精確啟動/環境/未驗事項以handoff/ui-ux-pm.md為新對話入口，舊owner只作歷史證據。
