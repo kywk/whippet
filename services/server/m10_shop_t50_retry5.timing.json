@@ -1,0 +1,11 @@
+{
+  "runId": "256747aa-6298-4e4c-bc11-874ac38f3fd0",
+  "createdAt": "2026-11-13T19:26:56.660441+00:00",
+  "startedAt": "2026-11-13T19:26:57.589979+00:00",
+  "finishedAt": "2026-11-13T19:29:22.098842+00:00",
+  "createdToFinishedMs": 145438.401,
+  "startedToFinishedMs": 144508.863,
+  "timeoutMs": 180000,
+  "failed": true,
+  "timedOut": false
+}

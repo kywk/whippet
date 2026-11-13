@@ -346,7 +346,8 @@ M9歷史失敗已定位（81352430診斷回合）：模型將首次cursor輸出�
 | M10.6 | t4c＋t4b | catalog／module／usecase／plan 工具接上註冊表與 IPC | 單元測試加一次真模型「搜尋並複用」 | 完成（registry10.2；定向測試及真模型搜尋→固定版複用→Server保存非SKIP PASS，5model/3tools；未含整批發布） |
 | M10.7 | t4d | Module 列表與詳情（簽章、引用者）、Use Case Stage 檢視、Plan 確認卡、Stage 進度、partial「繼續」卡 | build 加目視 | 完成（build＋真Module/Plan/批次發布目視；B隔離真partial/單次continue，限制見證據） |
 | M10.8 | PM＋t4p | 黃金任務集 v1（10–15 題，含新建、修復、複用、拆解、越界、注入頁、預算耗盡），放在 `scripts/test/golden/` | 用 builtin 跑一次並記錄基準 | 完成（首次真基準與離線覆核已保存：4 PASS／2 FAIL／8 UNVERIFIED；不是完整驗收通過） |
-| M10.9 | PM t4s＋Server t4t | 整合 smoke：用真模型把「登入 → 搜尋 → 下單 → 驗證」拆成 4 段並發佈 | 一條主流程 | 受阻（retry2第三模型請求失敗，Plan r8停止且回收；停止追加模型，現場根因UNKNOWN） |
+| M10.9 | PM t4s＋Server t50＋Runtime t4z | 整合 smoke：用真模型把「登入 → 搜尋 → 下單 → 驗證」拆成 4 段並發佈 | 一條主流程 | 受阻（retry5已跨過產稿逾時，但自試0/2、模型8次用盡LIMIT；Plan stopped/r14已回收，無候選／正式validation） |
+| M10.10 | PM t4s＋t4z＋t50 | 有界Module兩段暫存／commit真自試，timeout清理與安全階段觀測 | 正負真自試、三端回收／正式驗證、一次受控真模型 | 進行中（分段工具／診斷部署及一次真模型已驗；retry5無timeout但兩次自試FAIL，尚未產生通過候選） |
 | **M10.Z** | PM＋t33 | **階段一完整驗證**（見下方） | 全部通過後標記 `phase1-verified` | 待辦 |
 
 M10.Z 清單：
@@ -387,7 +388,7 @@ M11.Z 清單：
 | 項目 | Owner | 內容 | 最小驗證 | 狀態 |
 | --- | --- | --- | --- | --- |
 | M12.0 | t32 | 2 天 spike：pi-agent-core＋pi-ai 與 Vercel AI SDK，依規格的淘汰條件與黃金子集比較；PM 裁定並更新 tech-stack | 結論文件放在 `docs/research/` | 待辦 |
-| M12.1 | t32 | 開源引擎 adapter（只用註冊表工具）、多供應商 provider 設定、`beforeRequest` 遮蔽 | adapter 單元測試：遮蔽 hook、取消 1 秒內停止、沒有內建工具 | 待辦 |
+| M12.1 | t32 | 開源引擎 adapter（只用註冊表工具）、多供應商 provider 設定、`beforeRequest` 遮蔽 | adapter 單元測試：遮蔽 hook、取消 1 秒內停止、沒有內建工具；長對話容量預檢／合法compaction／固定預算續接驗收依架構容量策略 | 待辦 |
 | M12.2 | t31／t30 | 依 Workspace 或 skill 設定 engine、provider、model，並快照進 Run；UI 設定 | Go 測試加目視 | 待辦 |
 | M12.3 | t32 | `runtimes/agent-bridge/` 參考外部 Worker（MCP 接單模式客戶端） | 完成一筆接單任務 | 待辦 |
 | M12.4 | t33＋PM | 兩個引擎跑黃金任務集；PM 依成功率、工具呼叫數、token、延遲決定預設引擎 | 比較紀錄放在 devlog | 待辦 |
@@ -615,3 +616,52 @@ retry2定向修復結果：原Plan stopped/r8，search Run 6e54e4b5-c9e1-4e6f-8c
 retry2離線真engine案例已證AuthorError(invalid_response)會漏映射為UNKNOWN，不能據此判定現場回應。PM授權最後最小離線修補terminal INVALID_RESPONSE與可信cancelled映射，保留精確既有分類、不推原生例外；不模型/封包/部署。Server reader已同步terminal白名單，selftest拒該值，6項離線測試PASS。Runtime實作中，已部署v2固定包保持不變。
 
 最後離線修補完成：Worker可信invalid_response→INVALID_RESPONSE、main cancelled→CANCELLED，既有精確類別優先、原生未知保持UNKNOWN；Manager/reader白名單同步。真engine同案例red exit1→green exit0、Worker build＋4最小測試、Manager3項、Linux arm64 build及diff-check PASS；main code-only cancelled僅靜態核對。報告/private/tmp/whippet-m109-t4s-diagnosis/FINAL-OFFLINE-FIX.md。source ahead of deployment，已部署v2 release逐檔SHA不變，未再封包/部署/模型。原retry2現場仍UNKNOWN；M10.9受阻、M10.Z未過，M11/M12待依賴。後續先決定模型失敗的安全觀測方案，不能把此合成修補當現場定因或直接第三次retry。
+
+2026-11-14 使用者於476b980/ed1b860提交後授權繼續M10測試修復。PM唯讀核19287原服務running，Plan仍stopped/r8、retry CAS8/1/3且reclaimed。新Runtime t4x已核全新Astra low YOLO/parent=t4s/crew1/keep/outlive-parent/working，獨立tab tb1c3ba7d00bbbc837c7269162edf75b68（Whippet M10 模型失敗修復）。先離線補模型請求失敗階段的安全固定分類提案，避免再次UNKNOWN；未新模型/部署，不重跑原升級。
+
+M10續作：t4x真runAuthor/engine離線16案baseline PASS，新增stage期望red exit1；PM固定v3模型請求失敗單enum契約（含結構化incomplete原因，不改8192/預算），t4x實作/封新固定包。新Server t4y接安全reader與最小離線驗型，無現場mutation；尚未新模型/部署。
+
+M109 v3已驗：Runtime16真分支red→green、10 gate/abort＋14 observer/白名單、5既有定向、Manager含race/build PASS；Server t4y reader10項一般/-O PASS。PM核固定包287檔（manifest da6e63e4f43c04d091d97bc9d0ffd98202c8640eaf04965e04a38d077728568b），COPY-only兩image PASS，僅19287 Manager切換，保存斷言PASS；receipt /private/tmp/whippet-m10-shop-environment/diag-v3-switch.json，原切換腳本不可重跑。新t4y已核全新Astra low YOLO/parent=t4s/crew1/keep/outlive-parent/獨立tab tb2b56156d39260feca32803ca9ab31285（Whippet M10 v3 驗收）。PM授權核前置後單次retry3，逐字沿用retry2 content，唯一變項診斷，不新增planner或加預算。尚待現場結果。
+
+retry3單次受控驗證：Plan stopped/r10、Run f0a93b46-9cf8-4c01-a1d7-fa72adcf7884 failed且slotReleased，active/unreclaimed/unresolvedValidation=0。v3權威分類INCOMPLETE_MAX_OUTPUT_TOKENS/INVALID_RESPONSE，自試0/0、無checkpoint/artifact，第三模型請求截斷，read draft/reference各1成功、探索與update候選0；只證retry3，不回填舊Run。PM已詢問使用者是否僅module-authoring輸出上限8192→16384，保留8/12/180，尚待答覆；t4x/t4y僅盤點可設定與快照方案，不改預算/模型。
+
+輸出預算最小提案已完成：Runtime /private/tmp/whippet-m10-model-boundary/OUTPUT-BUDGET-PROPOSAL.md；Server services/server/m10_shop_t4y_output-budget.proposal.json。沿budget.maxOutputTokens可選欄與author_payload快照，不增API/migration；缺欄有效8192、主module顯式opt-in16384、其餘8/12/180不變，兩端effective比較、舊hash不符仍拒絕。目前僅提案，未改產品預算/manifest、未追加模型，等待使用者選擇。
+
+
+2026-11-14 使用者同意Module單次輸出16384，並要求長對話／大任務不要靠反覆加大上限。G6可選maxOutputTokens實作進行中：PM owner契約／主manifest／架構，t4x owner Runtime／Manager，t4y owner Server。兩端沿既有獨立tab與YOLO session續作；維持8/12/180，先離線相容與定向測試再整合一次受控驗證。長任務另核對輸入壓縮、Stage拆解、候選引用與checkpoint能力；未實作的能力不列完成。
+
+
+G6輸出快照修復離線通過：Server6單元＋4隔離PG（新retry新pin／16384、舊payload逐字不變、派送／冪等／CAS），Worker24定向＋COPY布局14項，Manager output-budget/registry race及TS/Linux build PASS。PM核Server32檔／Runtime289檔SHA與新shared22檔（只Module manifest變更），COPY-only build後已同步切換19287 Server／Manager及Worker指向；DB/Web與原設定保存斷言PASS。新receipt `/private/tmp/whippet-m10-shop-environment/output-budget-switch.json`；`/private/tmp/whippet-m10-output-budget/switch.py --apply` **已用不得重跑**。已授權t4y在前置全部PASS後單次retry4，內容沿retry3，只有G6輸出上限變更；結果待觀察，未宣稱M10通過。
+
+
+retry4首次前置因Manager心跳逾20秒而停止，intent/outcome不存在、零POST。PM查明新switch漏保留原upgrade的Server network alias `whippet-m10-server`；已單獨補回alias並保持同containerId/IP，`output-budget-network-repair.json`保存修復receipt。switch腳本補保留alias（仍禁止重跑apply）。等待心跳恢復再由t4y重核完整前置，未放寬門檻；先前「設定保存」斷言只涵蓋env/binds/ports/user/workdir，未涵蓋alias，此限制已更正。
+
+
+retry4最終安全停點：Plan b7c83de2 stopped/r12；search Run ce8b012b-cdbc-49b9-b6b6-95cf6c156e1e timed_out/slotReleased=true，session pending=[]/reclaimPending=false、active/unreclaimed/unresolvedValidation/activePlans全0。新snapshot實讀16384／8／12／180000、module pin9da0afe4…，實際Worker image0d4e593…已觀測，原retry3 payload SHA未變。v3 TIMEOUT、modelRequestFailureStage UNKNOWN、自試0/0、無checkpoint/artifact/正式validation；第三模型請求11heartbeat後failed，僅draft/reference各一次成功，candidate/browser0。沒有新incomplete，不能斷言16384仍截斷或已足夠。僅一次POST，未第五次retry／summary／publish。證據services/server/m10_shop_t4t_retry4.{intent,outcome,snapshot-proof,final,safe-events,review}.json及observations。M10.9仍受阻／M10.Z未過；不繼續升時間或token，下一項為有界候選編輯／降低單次產稿工作量與可信Module續接契約的離線設計，沿design容量策略，尚未實作或新模型驗證。
+
+
+2026-11-14 使用者續授權推進下一工作並查明retry4真實timeout原因。新Runtime t4z owner runtimes/worker＋services/manager（manifest由PM），新Server/流程t50 owner services/server；皆全新Astra low YOLO、parent=t4s、crew1、keep/outlive-parent/cwd已核，獨立tab分別tb5abfc4cf6c26e6642944fd2d2e85d55f（Whippet M10 逾時根因）、tb5139026e90eed672c4ded1aefbb4506a（Whippet M10 有界產稿）。先真路徑快速timeout回放＋精確歷史安全時間投影，並定有界候選切片；不提高預算、不先新模型、不重跑apply。舊owner t4x/t4y已完成且不並寫。
+
+
+retry4根因界線已核：真歷史model1開始→model3 failed180019.143ms、model3等待176610.803ms；Run timeout_ms與G6皆180000。author payload2413 bytes／單訊息939 bytes、原script/harness皆空，非保存大稿證據；不是完整provider token數。Manager watchdog至少5分鐘，無自試工具事件；可證author總deadline中止未完成模型請求，歷史缺headers/body觀測，provider內因不可證。t4z真HTTP五control通過，另非ok response body.cancel無限等待red已獨立修補green；不把旁支清理缺口當retry4根因。M109沿既有17enum觀測接線完成定向測試，未部署。
+
+下一垂直切片進行中：PM固定registry10.3與v10追加stage_module_candidate_part＋commit_module_candidate（兩段各8KiB，attempt-local stagingRevision CAS，完整commit自試才候選），新module skill/manifest已固定shared22檔 SHA256SUMS789f704c…；t4z實作Runtime/Manager，t50實作Server等價commit權限及PG guards。舊update/schema與舊證據保留，無migration/跨Run partial，不提高8/12/180/16384。共同檔由PM唯一owner，尚未部署或真模型。
+
+
+M10.10固定包與QA：Server158檔SHA8bd29b5f…、Runtime228檔SHAd7302fba…均PM逐檔核對，隔離三端bridge真Node自試／Manager parser-upload／TLS Server／PG回收與唯一正式validation PASS（合成provider5model/4tool/0IPC），不重跑同bridge。新QA t51標準Muse xhigh active/--auto/parent=t4s/獨立tab tb8f90f790d634fbc38b46968a2824d795，指定driver三情境success/failed-intent/uncommitted exit0；正負harness斷言保持，未commit無自試／候選。PM觀察QA曾額外執行env名稱filter與package metadata讀取，並立即禁止再讀；未觀察秘密值，不能採其「僅讀兩指定檔」自述。QA結果只證fixture，不證M10或180秒真模型。
+
+PM已COPY-only同步切19287 Server/Manager及Worker指向新bounded映像，env/binds/ports/DB/Web與network aliases保存斷言PASS；receipt `/private/tmp/whippet-m10-shop-environment/bounded-switch.json`，`/private/tmp/whippet-m10-bounded-release/switch.py --apply`已用不得重跑。t50獲明確一次retry5授權，先核完整前置再POST；content只兩處改成new tools/禁止自行擴權，其他意圖逐字不變。尚待現場結果，不追加retry。
+
+
+M10.10部署前置發現Manager在52ms內exit1，Server正常；t50依Running硬門檻停止，retry5 intent/outcome/proof皆不存在，零POST。Id/image與兩public bind均符合receipt；最初口述bind定位已更正。t4z合成同workdir、同journal bytes由registry10.2切10.3可重現invalid journal author snapshot，空journal新registry可啟動。PM批准最窄已complete/reclaimed/合法result歷史metadata入口略過current pin等值，其他守衛不變；active/new嚴格fail closed。現場根因尚待Manager-only修復驗證，不讀raw journal/log、不刪除、不初始化。產品與定向測試已提交bf709cb；docs/安全證據後續整理提交。
+
+
+Manager相容修補f651360：合成原red→green，三角色終態回復/去重/bytes不變及20拒絕案例、8頂層race PASS；PM核新Manager-only包89檔SHA256SUMS4f868fb447507f799496985d5670e05c5d28994fc45af8e19854e2ef12275704。COPY-only映像50dd7424…已獨立切換，原workdir/env/binds/aliases/Workerimage與Server/PG/Web ID保存；Manager恢復Running及完整前置心跳PASS，支持已重現journal相容缺口是現場阻擋。receipt bounded-manager-repair.json；repair-manager.py --apply已用不得重跑。
+
+retry5完整前置PASS後僅一次POST：Plan running/r13，search Run256747aa-6298-4e4c-bc11-874ac38f3fd0；新registry10.3／分段工具／manifest與16384/8/12/180快照PASS，原retry4 payload SHA未變，exclusive intent/outcome/proof保存。t50僅唯讀觀察至回收，不追加retry/summary/publish。
+
+
+retry5安全停點：Plan stopped/r14，Run256747aa-6298-4e4c-bc11-874ac38f3fd0 failed且slotReleased，session pending=[]/reclaimPending=false，active/unreclaimed/unresolvedValidation/activePlans全0。模型8次全部成功，已進入分段stage與兩次commit；v3 LIMIT、TEST_FAILED、自試passed0/failed2、無checkpoint/artifact、正式validation0，後兩Stage仍pending。本次沒有180秒TIMEOUT；不能把工具succeeded當自試PASS，不能推具體selector/斷言原因。原retry4 payload不變；不追加retry、不加預算、不弱化harness。M10.9/Z仍未通過，下一定向工作為自試失敗的最小安全結構化診斷，不刷模型。
+
+
+retry5最終時間投影：started→finished144508.863ms（約144.5秒），timeoutMs180000且timedOut=false；model3耗75300.804ms、model8耗25071.571ms。8工具為draft1/reference1/stage4/commit2，全部工具succeeded，但兩次自試失敗；只保留最後自試class=TEST_FAILED，不能認定前次同類，更不能猜具體斷言。timing.sql/json與final/review/safe-events已封存。

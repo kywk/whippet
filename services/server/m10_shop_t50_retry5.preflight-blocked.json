@@ -1,0 +1,28 @@
+{
+  "observedAt": "2026-11-14T03:18:59.399639+08:00",
+  "status": "blocked_before_intent",
+  "POST": false,
+  "intentExists": false,
+  "outcomeExists": false,
+  "failedCheck": "deployment container running",
+  "file": "m10_shop_t50_retry5_submit.py",
+  "line": 65,
+  "server": {
+    "idMatches": true,
+    "imageMatches": true,
+    "running": true
+  },
+  "manager": {
+    "idMatches": true,
+    "imageMatches": true,
+    "running": false
+  },
+  "publicSharedBindsMatch": true,
+  "furtherChecksNotReached": [
+    "heartbeat",
+    "emptyQueue",
+    "CAS",
+    "sourcePayload"
+  ],
+  "automaticResend": false
+}

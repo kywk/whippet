@@ -1,0 +1,43 @@
+{
+  "status": "prepared_not_authorized_not_sent",
+  "url": "http://127.0.0.1:19287/api/plans/b7c83de2-5b1f-4531-b526-ba4d65682045/stages/search/retry",
+  "requestDraft": {
+    "planRevision": 8,
+    "moduleRevision": 1,
+    "moduleContextRevision": 3,
+    "confirmed": true,
+    "content": "前次已確認8次模型全用於read_module_draft/read_skill_reference與browser_navigate4/browser_snapshot1/browser_login1，完全沒有update_module_candidate。這次修復重點是先產稿自試，不再重複瀏覽探索。路由、selectors、完整loginAs與受保護頁斷言已在description；請勿呼叫browser_navigate/browser_snapshot/browser_login/browser_click/browser_fill探索工具。必要時僅讀一次既有Module草稿或必要skill reference，接著立即update_module_candidate提交最小search模組及獨立harness，自試內使用page與loginAs真登入、搜尋Whippet並取當次productId與price120；不得省略登入成功與搜尋結果斷言。若自試失敗，在剩餘既有預算內按工具實際錯誤修正候選；通過後立即依協定final收尾。保留原scope/slug/輸出/所有斷言，不硬編productId、不改budget/skills，不將禁止探索等同禁止harness真瀏覽。"
+  },
+  "historicalCASOnly": true,
+  "contentSource": "m10_shop_t4t_retry2.intent.json",
+  "contentSha256": "b56dad8a8f1ae580a000576758ce0f0f6c118f90b1a812bea221dc6417e9d429",
+  "historicalSourcesSha256": {
+    "m10_shop_t4t_retry2.intent.json": "81da08fee2f9c63741208ac50814e5e59d660d7f26d00a01cbbc83efe983d64a",
+    "m10_shop_t4t_retry2.final.json": "a7cdf86ebac63a8622d3134edd0e1ea6c3f86743e9a007f51349077851d870e2"
+  },
+  "planId": "b7c83de2-5b1f-4531-b526-ba4d65682045",
+  "previousAuthorRunId": "6e54e4b5-c9e1-4e6f-8c58-eb07fc7b6b58",
+  "onlyIntendedVariable": "safe diagnostics v3 upgrade",
+  "schemaReview": {
+    "v1WorkerFields": 6,
+    "v2WorkerFields": 7,
+    "v3WorkerFields": 8,
+    "modelRequestFailureStageEnum": "all nine values match",
+    "existingDifference": "reader accepts manager.workerStatus interrupted; release schema excludes it; unchanged pending PM decision"
+  },
+  "executionSequence": [
+    "Wait for PM new deployment receipt and explicit single retry authorization.",
+    "After authorization, verify deployment receipt and read-only live eligibility, source identity, scope, active/unreclaimed counts and original Plan; do not reuse historical eligibility as live proof.",
+    "Require CAS 8/1/3 and same retry2 source/content; any drift stops for PM review.",
+    "Require retry3 intent and outcome absent. Create m10_shop_t4t_retry3.intent.json with exclusive x/O_EXCL, record checked receipt/live preflight/request and timestamp; flush and fsync before POST. Existing intent always blocks automatic resubmission.",
+    "Send exactly one POST to the existing search retry endpoint; no planner, Plan edit, prompt or budget change.",
+    "Persist response to exclusive m10_shop_t4t_retry3.outcome.json. Any timeout, transport error, write failure or uncertain outcome stops; retain intent and use separately authorized read-only reconciliation, never automatic resend.",
+    "Observe only after PM authorization; preserve retry2 and all historical evidence."
+  ],
+  "reservedExecutionFiles": [
+    "m10_shop_t4t_retry3.intent.json",
+    "m10_shop_t4t_retry3.outcome.json"
+  ],
+  "deploymentReceipt": null,
+  "postExecuted": false
+}

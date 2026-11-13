@@ -18,19 +18,23 @@ def unique(pairs):
 def decode_diagnostic(raw):
  if len(raw)>4096:raise ValueError('oversize')
  d=json.loads(raw,object_pairs_hook=unique)
- if not (set(d)=={'schemaVersion','workerObserved','worker','manager'} and type(d['schemaVersion']) is int and d['schemaVersion'] in (1,2) and type(d['workerObserved']) is bool):raise ValueError('invalid diagnostic schema')
+ if not (type(d) is dict and set(d)=={'schemaVersion','workerObserved','worker','manager'} and type(d['schemaVersion']) is int and d['schemaVersion'] in (1,2,3) and type(d['workerObserved']) is bool):raise ValueError('invalid diagnostic schema')
  w=d['worker'];m=d['manager']
+ if type(w) is not dict or type(m) is not dict:raise ValueError('invalid diagnostic schema')
  wb={'checkpointCreated','checkpointPresentAtFinalize','checkpointRetainedAfterSecretGuard'}
  mb={'workerResultPresent','workerResultValid','authorArtifactPresent','authorParserChecked','authorParserAccepted','uploadAttempted','uploadAccepted'}
- extra={'lastSelfTestFailureClass'} if d['schemaVersion']==2 else set()
+ extra={'lastSelfTestFailureClass'} if d['schemaVersion']>=2 else set()
+ if d['schemaVersion']==3:extra.add('modelRequestFailureStage')
  if not (set(w)==wb|{'selfTestPassedCount','selfTestFailedCount','terminalClass'}|extra):raise ValueError('invalid diagnostic schema')
- if d['schemaVersion']==2:
+ if d['schemaVersion']>=2:
   if not (type(w['lastSelfTestFailureClass']) is str and w['lastSelfTestFailureClass'] in {'INVALID_SPEC','GUARD','TIMEOUT','CANCELLED','TEST_FAILED','UNKNOWN'}):raise ValueError('invalid diagnostic schema')
+ if d['schemaVersion']==3:
+  if not (type(w['modelRequestFailureStage']) is str and w['modelRequestFailureStage'] in {'UNKNOWN','FETCH_REJECTED','HTTP_NON_OK','BODY_JSON_REJECTED','RESPONSE_GUARD_REJECTED','INCOMPLETE_MAX_OUTPUT_TOKENS','INCOMPLETE_CONTENT_FILTER','INCOMPLETE_UNKNOWN','ENVELOPE_INVALID'}):raise ValueError('invalid diagnostic schema')
  if not (set(m)==mb|{'workerStatus','disposition'}):raise ValueError('invalid diagnostic schema')
  if not (all(type(w[k]) is bool for k in wb) and all(type(m[k]) is bool for k in mb)):raise ValueError('invalid diagnostic schema')
  if not (all(type(w[k]) is int and 0<=w[k]<=12 for k in ['selfTestPassedCount','selfTestFailedCount'])):raise ValueError('invalid diagnostic schema')
- if not (w['terminalClass'] in {'LIMIT','INVALID_RESPONSE','FINAL_JSON_PARSE','FINAL_SHAPE','CHECKPOINT_MISSING','CHECKPOINT_REJECTED','PROVIDER_FAILED','TIMEOUT','CANCELLED','ARTIFACT_SERIALIZE_LIMIT','ARTIFACT_WRITE_FAILED','COMPLETED','UNKNOWN'}):raise ValueError('invalid diagnostic schema')
- if not (m['workerStatus'] in TERMINAL|{'UNKNOWN'} and m['disposition'] in {'UNKNOWN','RESULT_INVALID','WORKER_FAILED','AUTHOR_REJECTED','ACCEPTED','UPLOAD_FAILED'}):raise ValueError('invalid diagnostic schema')
+ if not (type(w['terminalClass']) is str and w['terminalClass'] in {'LIMIT','INVALID_RESPONSE','FINAL_JSON_PARSE','FINAL_SHAPE','CHECKPOINT_MISSING','CHECKPOINT_REJECTED','PROVIDER_FAILED','TIMEOUT','CANCELLED','ARTIFACT_SERIALIZE_LIMIT','ARTIFACT_WRITE_FAILED','COMPLETED','UNKNOWN'}):raise ValueError('invalid diagnostic schema')
+ if not (type(m['workerStatus']) is str and type(m['disposition']) is str and m['workerStatus'] in TERMINAL|{'UNKNOWN'} and m['disposition'] in {'UNKNOWN','RESULT_INVALID','WORKER_FAILED','AUTHOR_REJECTED','ACCEPTED','UPLOAD_FAILED'}):raise ValueError('invalid diagnostic schema')
  return d
 def diagnostic(attempt):
  if not attempt:return {'status':'UNKNOWN','reason':'no_attempt'}
@@ -45,7 +49,7 @@ def diagnostic(attempt):
   if not stat.S_ISREG(st.st_mode) or st.st_size>4096:raise ValueError('invalid size/type')
   raw=os.read(fd,4097)
   d=decode_diagnostic(raw)
-  return {'status':'validated','value':d,'lastSelfTestFailureClass':d['worker'].get('lastSelfTestFailureClass','UNKNOWN') if d['workerObserved'] else 'UNKNOWN'}
+  return {'status':'validated','value':d,'lastSelfTestFailureClass':d['worker'].get('lastSelfTestFailureClass','UNKNOWN') if d['workerObserved'] else 'UNKNOWN','modelRequestFailureStage':d['worker'].get('modelRequestFailureStage','UNKNOWN') if d['workerObserved'] else 'UNKNOWN'}
  except FileNotFoundError:return {'status':'UNKNOWN','reason':'missing'}
  except Exception:return {'status':'UNKNOWN','reason':'unsafe_or_invalid'}
  finally:

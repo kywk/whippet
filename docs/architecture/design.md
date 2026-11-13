@@ -164,6 +164,20 @@ PM 在各波實作前固定 HTTP／dispatch／輸出與遷移規則；Server／R
 - 單一 Run 內只保留最新一份完整 snapshot，舊的壓縮成摘要。
 - Skill 依 manifest 載入；`read_skill_reference` 只能讀已打包、已快照的 references。
 
+### 長對話與大任務的容量策略（2026-11-14）
+
+單次輸出上限、輸入context容量與整體任務預算是三個不同邊界。G6將單次輸出上限納入skill不可變快照；Module本輪授權16384，其餘缺值8192。不得在失敗後由模型自行提高上限、換模型或無限重試。這個設定提高可用輸出額度，尚不能證明已排除截斷或大任務能力已完成。
+
+目前對話入口保留最近最多12則／32000 Unicode code points；builtin Run內只會將舊browser snapshot縮成摘要，其他provider output／工具項目仍會累積；request bytes上限只是傳輸保護，不是model context token容量估算。既有history工具支援有界按需讀取；test-author具有自試通過checkpoint與partial續接，Module依v10仍於預算耗盡時停Stage，不具同等partial。不能將這些局部能力宣稱為通用長對話compaction。
+
+後續M12引擎整合的設計與驗收要求（待實作）：
+
+- 輸入依模型能力與已保留輸出額度做容量預檢；在接近門檻前壓縮舊工具結果／對話。保留原始資料於權威儲存，以有界讀取工具取回；摘要固定保留目標、限制、已確認決策、目前revision／Stage與證據引用，不能把摘要當驗證證據。工具call/result配對及provider要求的reasoning項目須維持合法。
+- 大任務先拆成可驗證Stage；各Run只有當前Stage所需資料。完成狀態與固定版本存在Server，不依賴同一模型對話永遠保持完整。跨Run續接要檢查scope／revision／context／回收狀態並保存總嘗試與成本界限，不能用拆Run繞過整體限制。
+- 大產物需設計有界候選編輯／分段提交及候選引用；組裝後仍須完整schema、hash、範圍與正式驗證，不把截斷JSON拼接後直接執行。M10有界切片已固定registry10.3並進入整合驗證：script／harness各自最多8KiB，attempt-local暫存後由commit完整自試，只有通過候選可套用；這不是跨Run續接，工具arguments仍保留於後續context。舊完整候選工具保持相容；成功final已由Worker守衛重建候選，毋須模型再產全文。優化重點是候選工具參數與重讀草稿，需另定契約，不能僅調高artifact bytes上限當作實作。
+- 輸出截斷保留固定失敗分類；已有可信checkpoint時走受控續接，沒有則停止並提出縮小工作單位的修復。Module checkpoint擴充需另訂v10後續契約與驗收，不接受provider半份工具args。允許的恢復次數與總預算由控制面決定，不自動倍增maxOutputTokens。
+- 驗收包含：長對話在固定上限下完成、超大Stage可拆解續接、壓縮後限制／證據引用不遺失、截斷不執行半份工具呼叫、取消／過期／重送不重複副作用。能力未通過前明列限制，不宣稱能處理任意大小任務。
+
 ### MCP（M11）
 
 - Go Server 使用官方 MCP Go SDK 提供 Streamable HTTP 端點。Agent Token 雜湊保存，綁定單一 Workspace，可撤銷、有速率限制，並寫入稽核紀錄。

@@ -1,0 +1,13 @@
+{
+  "observedAt": "2026-11-14T02:11:35.230710+08:00",
+  "reason": "heartbeat_or_drain_check_failed",
+  "counts": {
+    "heartbeatAgeSeconds": 71.358912,
+    "active": 0,
+    "unreclaimed": 0,
+    "unresolvedValidation": 0,
+    "activePlans": 0
+  },
+  "intentCreated": false,
+  "postExecuted": false
+}

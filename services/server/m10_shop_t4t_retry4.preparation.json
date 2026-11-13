@@ -1,0 +1,67 @@
+{
+  "status": "prepared_not_authorized_not_sent",
+  "deploymentReceipt": "/private/tmp/whippet-m10-shop-environment/output-budget-switch.json",
+  "deploymentReceiptObserved": false,
+  "url": "http://127.0.0.1:19287/api/plans/b7c83de2-5b1f-4531-b526-ba4d65682045/stages/search/retry",
+  "requestDraft": {
+    "planRevision": 10,
+    "moduleRevision": 1,
+    "moduleContextRevision": 4,
+    "confirmed": true,
+    "content": "前次已確認8次模型全用於read_module_draft/read_skill_reference與browser_navigate4/browser_snapshot1/browser_login1，完全沒有update_module_candidate。這次修復重點是先產稿自試，不再重複瀏覽探索。路由、selectors、完整loginAs與受保護頁斷言已在description；請勿呼叫browser_navigate/browser_snapshot/browser_login/browser_click/browser_fill探索工具。必要時僅讀一次既有Module草稿或必要skill reference，接著立即update_module_candidate提交最小search模組及獨立harness，自試內使用page與loginAs真登入、搜尋Whippet並取當次productId與price120；不得省略登入成功與搜尋結果斷言。若自試失敗，在剩餘既有預算內按工具實際錯誤修正候選；通過後立即依協定final收尾。保留原scope/slug/輸出/所有斷言，不硬編productId、不改budget/skills，不將禁止探索等同禁止harness真瀏覽。"
+  },
+  "historicalCASOnly": true,
+  "expectedCAS": [
+    10,
+    1,
+    4
+  ],
+  "previousAuthorRunId": "f0a93b46-9cf8-4c01-a1d7-fa72adcf7884",
+  "contentSha256": "b56dad8a8f1ae580a000576758ce0f0f6c118f90b1a812bea221dc6417e9d429",
+  "historicalSourcesSha256": {
+    "m10_shop_t4t_retry3.final.json": "ab86a28f866b79f0b4ac7bc88c8b6c5d2193516277deb5741a14795f91187b2e",
+    "m10_shop_t4t_retry3.intent.json": "1f47280f977376eac0bfa97f273f879fcb35534ce16336a5f5aada53b85c0367"
+  },
+  "onlyIntendedVariable": "module-authoring maxOutputTokens 8192 effective -> 16384 explicit; all existing budgets/content unchanged",
+  "expectedModuleManifestSha256": "9da0afe4bd44fcb62f241e941ef7a34bd0e44e4944155f0652502c644adf5b6a",
+  "expectedSharedSHA256SUMS": "0ecb3159d717d12985b1d4e48c361360b1f1de44faaaaa7d1be1003c413f21b7",
+  "executionSequence": [
+    "Wait for explicit PM deployment-complete and single retry4 authorization; preparation is not authorization.",
+    "Read new receipt, verify Server/Manager image IDs against receipt and Worker configured image via deployment safe attestation plus observed Worker image when created; compare packaged shared and mounted shared SHA with PM fixed hash; no env/raw inspect.",
+    "GET retry eligibility/CAS10/1/4, exact source Run and reclaimed; original Plan/scope revision2/auth2/target origin, Manager heartbeat, all active/unreclaimed/unresolvedValidation counts; any mismatch stops.",
+    "Before POST use READ ONLY SQL to project source Run budget numeric values and manifest hash only plus SHA256 of complete author_payload calculated inside PostgreSQL, never returning raw payload. Capture baseline source SHA and pin in intent; old absent maxOutputTokens is represented as absent and effective8192, never written back.",
+    "Require intent/outcome absent; exclusive create retry4.intent.json containing timestamp, request, receipt hashes, live preflight and source SHA; flush+fsync before exactly one POST.",
+    "Persist single response in exclusive retry4.outcome.json. Any unknown/rejected outcome retains intent and forbids automatic resend.",
+    "New Run exists only after POST: READ ONLY fixed numeric/hash projection must show maxOutputTokens16384, model/tool/duration8/12/180000, primary module-authoring version1 and expected manifest pin; source payload SHA must equal preflight baseline. Missing/mismatch stops experiment for PM, never sends additional retry.",
+    "Observe GET until stopped/composed and all Run/session reclamation; capture v3 safe sidecar, fixed grammar events, formal validation state and new/source snapshot proof. No new planner, extra prompt, budget change, summary or publish."
+  ],
+  "safeSnapshotProjection": {
+    "fields": [
+      "runId",
+      "skillId exact module-authoring boolean",
+      "skillVersion exact 1 boolean",
+      "maxOutputTokensPresent",
+      "maxOutputTokens integer bounded 1..16384 or null",
+      "effectiveMaxOutputTokens missing-only 8192",
+      "maxModelRequests integer bounded 1..safeint",
+      "maxToolCalls integer bounded 0..safeint",
+      "maxDurationMs integer bounded 1..safeint",
+      "primary manifestSha256 exact lowercase64 or null",
+      "authorPayloadSha256 calculated in DB"
+    ],
+    "forbidden": [
+      "author_payload raw",
+      "messages",
+      "model configuration",
+      "env",
+      "credentials",
+      "raw error/log"
+    ]
+  },
+  "reservedExecutionFiles": [
+    "m10_shop_t4t_retry4.intent.json",
+    "m10_shop_t4t_retry4.outcome.json",
+    "m10_shop_t4t_retry4.snapshot-proof.json"
+  ],
+  "postExecuted": false
+}

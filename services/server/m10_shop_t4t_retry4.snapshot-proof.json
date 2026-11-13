@@ -1,0 +1,44 @@
+{
+  "observedAt": "2026-11-14T02:13:04.805617+08:00",
+  "sourceBefore": {
+    "runId": "f0a93b46-9cf8-4c01-a1d7-fa72adcf7884",
+    "primaryModule": true,
+    "version1": true,
+    "maxOutputTokensPresent": false,
+    "authorPayloadSha256": "c89a60a6f2936b520db359d207cc94ebe3ce0fb4b4266d80af766a6108c3c74f",
+    "manifestSha256": "b0fd37c6716c70386ada1eeeed267747c30615fd058742001abec55038321e71",
+    "maxOutputTokens": null,
+    "maxModelRequests": 8,
+    "maxToolCalls": 12,
+    "maxDurationMs": 180000,
+    "effectiveMaxOutputTokens": 8192
+  },
+  "sourceAfter": {
+    "runId": "f0a93b46-9cf8-4c01-a1d7-fa72adcf7884",
+    "primaryModule": true,
+    "version1": true,
+    "maxOutputTokensPresent": false,
+    "authorPayloadSha256": "c89a60a6f2936b520db359d207cc94ebe3ce0fb4b4266d80af766a6108c3c74f",
+    "manifestSha256": "b0fd37c6716c70386ada1eeeed267747c30615fd058742001abec55038321e71",
+    "maxOutputTokens": null,
+    "maxModelRequests": 8,
+    "maxToolCalls": 12,
+    "maxDurationMs": 180000,
+    "effectiveMaxOutputTokens": 8192
+  },
+  "newSnapshot": {
+    "runId": "ce8b012b-cdbc-49b9-b6b6-95cf6c156e1e",
+    "primaryModule": true,
+    "version1": true,
+    "maxOutputTokensPresent": true,
+    "authorPayloadSha256": "0c4c8e6d1148b472e9f4ed9f2054adc2498a48cf20dedf246cba54b9df648e05",
+    "manifestSha256": "9da0afe4bd44fcb62f241e941ef7a34bd0e44e4944155f0652502c644adf5b6a",
+    "maxOutputTokens": 16384,
+    "maxModelRequests": 8,
+    "maxToolCalls": 12,
+    "maxDurationMs": 180000,
+    "effectiveMaxOutputTokens": 16384
+  },
+  "sourcePayloadUnchanged": true,
+  "newSnapshotValid": true
+}

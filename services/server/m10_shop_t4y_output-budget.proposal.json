@@ -1,0 +1,72 @@
+{
+  "status": "proposal_only_not_implemented_not_authorized",
+  "coordinatedWith": "t4x",
+  "wire": "manifest.budget.maxOutputTokens and author.budget.maxOutputTokens optional integer",
+  "policy": {
+    "missingOnlyFallback": 8192,
+    "proposedRange": [
+      1,
+      16384
+    ],
+    "above8192": "only primary module-authoring; manifest and snapshot both explicit; snapshot effective <= manifest effective",
+    "unchanged": [
+      "model requests 8",
+      "tool calls 12",
+      "duration 180000",
+      "prompt",
+      "other skill budgets"
+    ],
+    "reject": [
+      "null",
+      "boolean",
+      "string",
+      "fraction",
+      "zero",
+      "negative",
+      "above 16384",
+      "unknown budget fields"
+    ],
+    "legacy": "preserve missing field in old serialized snapshots; effective fallback only; no rewrite of historical rows; manifest hash mismatch remains skill_unavailable"
+  },
+  "serverFiles": {
+    "internal/server/tool_registry.go": "AuthorBudget add optional presence-preserving integer with omitempty; shared value/primary-skill validation; validateToolSnapshot uses same bounds. Raw null must be rejected, pointer alone cannot distinguish absent/null.",
+    "internal/server/skills.go": "loadSkill currently requires exact three budget keys using requiredJSONFields; replace only budget-specific check with exact three or four, non-null typed optional validation. Do not loosen shared helper globally. validSkillBudget validates optional bound; snapshotAuthor selects primary only, rejects non-module >8192, copies optional value and preserves original manifest byte hash.",
+    "internal/server/model.go": "AuthorInput.Budget already uses AuthorBudget, no new top-level field required.",
+    "internal/server/summaries.go": "enqueueAuthorSnapshot serializes input into runs.author_payload jsonb; existing insertion path sufficient, no migration.",
+    "internal/server/postgres.go": "decodeAssignmentAuthor unmarshals stored payload into typed AuthorInput; must preserve optional value on dispatch and missing on legacy. Consider AuthorBudget custom UnmarshalJSON to reject present null/invalid shape without rewriting payload.",
+    "internal/server/plan_dispatch.go": "enqueuePlanModuleAuthor calls snapshotAuthor for module-authoring before enqueue; no per-retry override needed.",
+    "internal/server/plan_retry.go": "RetryPlanStage invokes enqueuePlanModuleAuthor with request.Content; new retry picks new manifest pin/budget, historical Run unchanged.",
+    "internal/server/conversations.go": "direct Module author also uses module-authoring and snapshotAuthor; module-only policy covers this route as well as Plan modules."
+  },
+  "minimumTests": {
+    "internal/server/skills_test.go": [
+      "temporary fixture root includes module-authoring and usecase-planner",
+      "old three-key manifest missing remains absent/effective8192",
+      "module explicit16384 snapshots value/hash; other budgets unchanged",
+      "non-module and auxiliary cannot increase; null/type/range/unknown rejection",
+      "manifest drift cannot mutate already-created snapshot; no API/env override"
+    ],
+    "internal/server/skills_postgres_test.go": [
+      "new snapshot persists budget and dispatch round-trip preserves value",
+      "legacy missing stays absent/effective8192, no historical DB rewrite"
+    ],
+    "internal/server/plan_retry_postgres_test.go": [
+      "existing retry idempotent/CAS path creates exactly one new module snapshot with new budget/pin and unchanged content; old source snapshot unchanged"
+    ]
+  },
+  "otherOwnerDependencies": [
+    "Runtime/Manager strict original-three-or-new-four budget schema, effective fallback and primary-only comparison",
+    "Worker engine receives effective value; request max_output_tokens changes only via budget",
+    "Only module-authoring/manifest.json opt-in 16384 after explicit user approval",
+    "PM updates contracts/mvp-v10.md and coordinates synchronized Server/Manager/Worker package; drain before new snapshot; retain old pin failure behavior"
+  ],
+  "noChanges": [
+    "product source",
+    "contracts",
+    "manifest",
+    "budget",
+    "deployment",
+    "new retry"
+  ],
+  "testsRun": false
+}

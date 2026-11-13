@@ -1,0 +1,417 @@
+{
+  "runId": "256747aa-6298-4e4c-bc11-874ac38f3fd0",
+  "plan": {
+    "id": "b7c83de2-5b1f-4531-b526-ba4d65682045",
+    "status": "stopped",
+    "revision": 14,
+    "stages": [
+      {
+        "id": "login",
+        "status": "ready"
+      },
+      {
+        "id": "search",
+        "status": "failed",
+        "authorRunId": "256747aa-6298-4e4c-bc11-874ac38f3fd0"
+      },
+      {
+        "id": "order",
+        "status": "pending"
+      },
+      {
+        "id": "verify",
+        "status": "pending"
+      }
+    ]
+  },
+  "completeAndReclaimed": true,
+  "drainCounts": {
+    "heartbeatAgeSeconds": 7.849327,
+    "active": 0,
+    "unreclaimed": 0,
+    "unresolvedValidation": 0,
+    "activePlans": 0
+  },
+  "timing": {
+    "runId": "256747aa-6298-4e4c-bc11-874ac38f3fd0",
+    "createdAt": "2026-11-13T19:26:56.660441+00:00",
+    "startedAt": "2026-11-13T19:26:57.589979+00:00",
+    "finishedAt": "2026-11-13T19:29:22.098842+00:00",
+    "createdToFinishedMs": 145438.401,
+    "startedToFinishedMs": 144508.863,
+    "timeoutMs": 180000,
+    "failed": true,
+    "timedOut": false
+  },
+  "models": [
+    {
+      "ordinal": 1,
+      "startedAt": "2026-11-13T19:26:57.842364+00:00",
+      "finishedAt": "2026-11-13T19:27:00.656094+00:00",
+      "elapsedMs": 2813.73,
+      "fetchToHeadersMs": 2804.31,
+      "observationPhases": [
+        {
+          "event": "started",
+          "at": "2026-11-13T19:26:57.841999+00:00"
+        },
+        {
+          "event": "toolsIncludedAtFetch",
+          "at": "2026-11-13T19:26:57.842591+00:00"
+        },
+        {
+          "event": "fetchInvoked",
+          "at": "2026-11-13T19:26:57.842697+00:00"
+        },
+        {
+          "event": "headersReceived",
+          "at": "2026-11-13T19:27:00.647007+00:00"
+        },
+        {
+          "event": "bodyParsed",
+          "at": "2026-11-13T19:27:00.651684+00:00"
+        },
+        {
+          "event": "functionCallObserved",
+          "at": "2026-11-13T19:27:00.652222+00:00"
+        },
+        {
+          "event": "responseAccepted",
+          "at": "2026-11-13T19:27:00.653957+00:00"
+        }
+      ]
+    },
+    {
+      "ordinal": 2,
+      "startedAt": "2026-11-13T19:27:00.672238+00:00",
+      "finishedAt": "2026-11-13T19:27:02.141919+00:00",
+      "elapsedMs": 1469.681,
+      "fetchToHeadersMs": 1455.621,
+      "observationPhases": [
+        {
+          "event": "started",
+          "at": "2026-11-13T19:27:00.671871+00:00"
+        },
+        {
+          "event": "toolsIncludedAtFetch",
+          "at": "2026-11-13T19:27:00.672468+00:00"
+        },
+        {
+          "event": "fetchInvoked",
+          "at": "2026-11-13T19:27:00.672961+00:00"
+        },
+        {
+          "event": "headersReceived",
+          "at": "2026-11-13T19:27:02.128582+00:00"
+        },
+        {
+          "event": "bodyParsed",
+          "at": "2026-11-13T19:27:02.140025+00:00"
+        },
+        {
+          "event": "functionCallObserved",
+          "at": "2026-11-13T19:27:02.141046+00:00"
+        },
+        {
+          "event": "responseAccepted",
+          "at": "2026-11-13T19:27:02.141536+00:00"
+        }
+      ]
+    },
+    {
+      "ordinal": 3,
+      "startedAt": "2026-11-13T19:27:02.144891+00:00",
+      "finishedAt": "2026-11-13T19:28:17.445695+00:00",
+      "elapsedMs": 75300.804,
+      "fetchToHeadersMs": 75228.552,
+      "observationPhases": [
+        {
+          "event": "started",
+          "at": "2026-11-13T19:27:02.144202+00:00"
+        },
+        {
+          "event": "toolsIncludedAtFetch",
+          "at": "2026-11-13T19:27:02.145265+00:00"
+        },
+        {
+          "event": "fetchInvoked",
+          "at": "2026-11-13T19:27:02.145564+00:00"
+        },
+        {
+          "event": "headersReceived",
+          "at": "2026-11-13T19:28:17.374116+00:00"
+        },
+        {
+          "event": "bodyParsed",
+          "at": "2026-11-13T19:28:17.44491+00:00"
+        },
+        {
+          "event": "functionCallObserved",
+          "at": "2026-11-13T19:28:17.445245+00:00"
+        },
+        {
+          "event": "responseAccepted",
+          "at": "2026-11-13T19:28:17.445558+00:00"
+        }
+      ]
+    },
+    {
+      "ordinal": 4,
+      "startedAt": "2026-11-13T19:28:17.446233+00:00",
+      "finishedAt": "2026-11-13T19:28:32.636222+00:00",
+      "elapsedMs": 15189.989,
+      "fetchToHeadersMs": 15181.877,
+      "observationPhases": [
+        {
+          "event": "started",
+          "at": "2026-11-13T19:28:17.44614+00:00"
+        },
+        {
+          "event": "toolsIncludedAtFetch",
+          "at": "2026-11-13T19:28:17.446312+00:00"
+        },
+        {
+          "event": "fetchInvoked",
+          "at": "2026-11-13T19:28:17.446387+00:00"
+        },
+        {
+          "event": "headersReceived",
+          "at": "2026-11-13T19:28:32.628264+00:00"
+        },
+        {
+          "event": "bodyParsed",
+          "at": "2026-11-13T19:28:32.63422+00:00"
+        },
+        {
+          "event": "functionCallObserved",
+          "at": "2026-11-13T19:28:32.634836+00:00"
+        },
+        {
+          "event": "responseAccepted",
+          "at": "2026-11-13T19:28:32.635392+00:00"
+        }
+      ]
+    },
+    {
+      "ordinal": 5,
+      "startedAt": "2026-11-13T19:28:32.645498+00:00",
+      "finishedAt": "2026-11-13T19:28:37.545947+00:00",
+      "elapsedMs": 4900.449,
+      "fetchToHeadersMs": 4887.953,
+      "observationPhases": [
+        {
+          "event": "started",
+          "at": "2026-11-13T19:28:32.643478+00:00"
+        },
+        {
+          "event": "toolsIncludedAtFetch",
+          "at": "2026-11-13T19:28:32.646033+00:00"
+        },
+        {
+          "event": "fetchInvoked",
+          "at": "2026-11-13T19:28:32.646455+00:00"
+        },
+        {
+          "event": "headersReceived",
+          "at": "2026-11-13T19:28:37.534408+00:00"
+        },
+        {
+          "event": "bodyParsed",
+          "at": "2026-11-13T19:28:37.545095+00:00"
+        },
+        {
+          "event": "functionCallObserved",
+          "at": "2026-11-13T19:28:37.545641+00:00"
+        },
+        {
+          "event": "responseAccepted",
+          "at": "2026-11-13T19:28:37.545821+00:00"
+        }
+      ]
+    },
+    {
+      "ordinal": 6,
+      "startedAt": "2026-11-13T19:28:37.940772+00:00",
+      "finishedAt": "2026-11-13T19:28:52.55956+00:00",
+      "elapsedMs": 14618.788,
+      "fetchToHeadersMs": 14615.419,
+      "observationPhases": [
+        {
+          "event": "started",
+          "at": "2026-11-13T19:28:37.940497+00:00"
+        },
+        {
+          "event": "toolsIncludedAtFetch",
+          "at": "2026-11-13T19:28:37.940924+00:00"
+        },
+        {
+          "event": "fetchInvoked",
+          "at": "2026-11-13T19:28:37.941047+00:00"
+        },
+        {
+          "event": "headersReceived",
+          "at": "2026-11-13T19:28:52.556466+00:00"
+        },
+        {
+          "event": "bodyParsed",
+          "at": "2026-11-13T19:28:52.55914+00:00"
+        },
+        {
+          "event": "functionCallObserved",
+          "at": "2026-11-13T19:28:52.55938+00:00"
+        },
+        {
+          "event": "responseAccepted",
+          "at": "2026-11-13T19:28:52.559479+00:00"
+        }
+      ]
+    },
+    {
+      "ordinal": 7,
+      "startedAt": "2026-11-13T19:28:52.559865+00:00",
+      "finishedAt": "2026-11-13T19:28:54.988674+00:00",
+      "elapsedMs": 2428.809,
+      "fetchToHeadersMs": 2416.048,
+      "observationPhases": [
+        {
+          "event": "started",
+          "at": "2026-11-13T19:28:52.559795+00:00"
+        },
+        {
+          "event": "toolsIncludedAtFetch",
+          "at": "2026-11-13T19:28:52.559931+00:00"
+        },
+        {
+          "event": "fetchInvoked",
+          "at": "2026-11-13T19:28:52.559999+00:00"
+        },
+        {
+          "event": "headersReceived",
+          "at": "2026-11-13T19:28:54.976047+00:00"
+        },
+        {
+          "event": "bodyParsed",
+          "at": "2026-11-13T19:28:54.985956+00:00"
+        },
+        {
+          "event": "functionCallObserved",
+          "at": "2026-11-13T19:28:54.987191+00:00"
+        },
+        {
+          "event": "responseAccepted",
+          "at": "2026-11-13T19:28:54.988301+00:00"
+        }
+      ]
+    },
+    {
+      "ordinal": 8,
+      "startedAt": "2026-11-13T19:28:56.781424+00:00",
+      "finishedAt": "2026-11-13T19:29:21.852995+00:00",
+      "elapsedMs": 25071.571,
+      "fetchToHeadersMs": 25034.179,
+      "observationPhases": [
+        {
+          "event": "started",
+          "at": "2026-11-13T19:28:56.781003+00:00"
+        },
+        {
+          "event": "toolsIncludedAtFetch",
+          "at": "2026-11-13T19:28:56.781631+00:00"
+        },
+        {
+          "event": "fetchInvoked",
+          "at": "2026-11-13T19:28:56.781819+00:00"
+        },
+        {
+          "event": "headersReceived",
+          "at": "2026-11-13T19:29:21.815998+00:00"
+        },
+        {
+          "event": "bodyParsed",
+          "at": "2026-11-13T19:29:21.850407+00:00"
+        },
+        {
+          "event": "functionCallObserved",
+          "at": "2026-11-13T19:29:21.851562+00:00"
+        },
+        {
+          "event": "responseAccepted",
+          "at": "2026-11-13T19:29:21.85225+00:00"
+        }
+      ]
+    }
+  ],
+  "toolCounts": [
+    {
+      "tool": "commit_module_candidate",
+      "status": "started",
+      "count": 2
+    },
+    {
+      "tool": "commit_module_candidate",
+      "status": "succeeded",
+      "count": 2
+    },
+    {
+      "tool": "read_module_draft",
+      "status": "started",
+      "count": 1
+    },
+    {
+      "tool": "read_module_draft",
+      "status": "succeeded",
+      "count": 1
+    },
+    {
+      "tool": "read_skill_reference",
+      "status": "started",
+      "count": 1
+    },
+    {
+      "tool": "read_skill_reference",
+      "status": "succeeded",
+      "count": 1
+    },
+    {
+      "tool": "stage_module_candidate_part",
+      "status": "started",
+      "count": 4
+    },
+    {
+      "tool": "stage_module_candidate_part",
+      "status": "succeeded",
+      "count": 4
+    }
+  ],
+  "modelSucceededCount": 8,
+  "workerDiagnostic": {
+    "modelRequestFailureStage": "UNKNOWN",
+    "lastSelfTestFailureClass": "TEST_FAILED",
+    "selfTestPassedCount": 0,
+    "selfTestFailedCount": 2,
+    "checkpointCreated": false,
+    "checkpointPresentAtFinalize": false,
+    "checkpointRetainedAfterSecretGuard": false,
+    "terminalClass": "LIMIT"
+  },
+  "formalValidation": {
+    "requestCount": 0,
+    "unresolvedCount": 0,
+    "validationRunIds": []
+  },
+  "sourcePayloadUnchanged": true,
+  "observedWorkerImages": [
+    {
+      "containerId": "c46cf1f3d5e8",
+      "image": "sha256:c310550a783c12854d025613abf57155531842b2654909246ce5f16d74f3ced6"
+    }
+  ],
+  "selfTestFailureDetail": {
+    "fixedClass": "TEST_FAILED",
+    "specificCause": "UNKNOWN",
+    "basis": "validated v3 sidecar contains TEST_FAILED and counts only; no raw report/tool result/script/model text inspected"
+  },
+  "interpretation": "model request budget exhausted after 8 successful requests; two failed self-tests, no checkpoint; Run failed before 180000ms, not timed_out",
+  "additionalRetry": false,
+  "summaryOrPublish": false
+}

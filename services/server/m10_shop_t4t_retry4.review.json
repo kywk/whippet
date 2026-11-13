@@ -1,0 +1,94 @@
+{
+  "planStatus": "stopped",
+  "planRevision": 12,
+  "runId": "ce8b012b-cdbc-49b9-b6b6-95cf6c156e1e",
+  "runStatus": "timed_out",
+  "completeAndReclaimed": true,
+  "drainCounts": {
+    "heartbeatAgeSeconds": 5.374605,
+    "active": 0,
+    "unreclaimed": 0,
+    "unresolvedValidation": 0,
+    "activePlans": 0
+  },
+  "terminalClass": "TIMEOUT",
+  "modelRequestFailureStage": "UNKNOWN",
+  "counts": [
+    {
+      "kind": "model",
+      "tool": null,
+      "status": "started",
+      "count": 3
+    },
+    {
+      "kind": "model",
+      "tool": null,
+      "status": "succeeded",
+      "count": 2
+    },
+    {
+      "kind": "tool",
+      "tool": "read_module_draft",
+      "status": "started",
+      "count": 1
+    },
+    {
+      "kind": "tool",
+      "tool": "read_module_draft",
+      "status": "succeeded",
+      "count": 1
+    },
+    {
+      "kind": "tool",
+      "tool": "read_skill_reference",
+      "status": "started",
+      "count": 1
+    },
+    {
+      "kind": "tool",
+      "tool": "read_skill_reference",
+      "status": "succeeded",
+      "count": 1
+    },
+    {
+      "kind": "model",
+      "tool": null,
+      "status": "heartbeat",
+      "count": 11
+    },
+    {
+      "kind": "model",
+      "tool": null,
+      "status": "failed",
+      "count": 1
+    }
+  ],
+  "formalValidation": {
+    "requestCount": 0,
+    "unresolvedCount": 0,
+    "validationRunIds": []
+  },
+  "newSnapshot": {
+    "runId": "ce8b012b-cdbc-49b9-b6b6-95cf6c156e1e",
+    "primaryModule": true,
+    "version1": true,
+    "maxOutputTokensPresent": true,
+    "authorPayloadSha256": "0c4c8e6d1148b472e9f4ed9f2054adc2498a48cf20dedf246cba54b9df648e05",
+    "manifestSha256": "9da0afe4bd44fcb62f241e941ef7a34bd0e44e4944155f0652502c644adf5b6a",
+    "maxOutputTokens": 16384,
+    "maxModelRequests": 8,
+    "maxToolCalls": 12,
+    "maxDurationMs": 180000,
+    "effectiveMaxOutputTokens": 16384
+  },
+  "sourcePayloadUnchanged": true,
+  "workerImages": [
+    {
+      "containerId": "73efc374b5d0",
+      "image": "sha256:0d4e593fb689a84c21b8decdde2db3e3c732139c6a0ce599bb97bbd3bcf43635"
+    }
+  ],
+  "interpretation": "retry4 timed out while model request 3 was outstanding; no observed incomplete classification; cannot infer whether 16384 would suffice or assign retry2 cause",
+  "additionalRetry": false,
+  "summaryOrPublish": false
+}

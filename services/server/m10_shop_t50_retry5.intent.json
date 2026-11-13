@@ -1,0 +1,132 @@
+{
+  "createdAt": "2026-11-14T03:26:56.655758+08:00",
+  "url": "http://127.0.0.1:19287/api/plans/b7c83de2-5b1f-4531-b526-ba4d65682045/stages/search/retry",
+  "request": {
+    "planRevision": 12,
+    "moduleRevision": 1,
+    "moduleContextRevision": 5,
+    "confirmed": true,
+    "content": "前次已確認8次模型全用於read_module_draft/read_skill_reference與browser_navigate4/browser_snapshot1/browser_login1，完全沒有update_module_candidate。這次修復重點是先產稿自試，不再重複瀏覽探索。路由、selectors、完整loginAs與受保護頁斷言已在description；請勿呼叫browser_navigate/browser_snapshot/browser_login/browser_click/browser_fill探索工具。必要時僅讀一次既有Module草稿或必要skill reference，接著依新skill分別以stage_module_candidate_part提交最小search本體及獨立harness，再用commit_module_candidate完整自試，自試內使用page與loginAs真登入、搜尋Whippet並取當次productId與price120；不得省略登入成功與搜尋結果斷言。若自試失敗，在剩餘既有預算內按工具實際錯誤修正候選；通過後立即依協定final收尾。保留原scope/slug/輸出/所有斷言，不硬編productId、不擴大budget或自行修改skills，不將禁止探索等同禁止harness真瀏覽。"
+  },
+  "retryGet": {
+    "eligible": true,
+    "reason": null,
+    "planRevision": 12,
+    "source": {
+      "moduleTestId": "64738e4b-c378-4c05-82ea-10dc20164e99",
+      "editingSessionId": "b63a9953-1764-4a0a-981c-e7154b3f5452",
+      "moduleRevision": 1,
+      "moduleContextRevision": 5,
+      "authorRunId": "ce8b012b-cdbc-49b9-b6b6-95cf6c156e1e",
+      "authorStatus": "timed_out",
+      "validationRunId": null,
+      "validationStatus": null,
+      "reclaimed": true
+    }
+  },
+  "runCounts": {
+    "heartbeatAgeSeconds": 8.168811,
+    "active": 0,
+    "unreclaimed": 0,
+    "unresolvedValidation": 0,
+    "activePlans": 0
+  },
+  "scope": {
+    "id": "f7918b78-2171-47cf-b000-407ca05f86d3",
+    "revision": 2,
+    "authorizationRevision": 2,
+    "lifecycle": "active",
+    "scopeStatus": "confirmed"
+  },
+  "targetOrigins": [
+    "http://host.docker.internal:19387"
+  ],
+  "deployment": {
+    "receipt": {
+      "pending": false,
+      "images": {
+        "server": "sha256:cd0c30595da4ae0c66f1f7a52a31cbbe633a402fd6cabd22734ea8dc62ec11f6",
+        "manager": "sha256:743048d7dd1b90cd3eaaf0c34eccd2e93565ec60018e71bf2abacb4b54635145",
+        "worker": "sha256:c310550a783c12854d025613abf57155531842b2654909246ce5f16d74f3ced6"
+      },
+      "oldIds": {
+        "server": "75bf18f170325b408023dccd1358f7933ad81307dca3382cf6694b415ea2122d",
+        "manager": "2e4185b0f5197bc24b54959182f414f8f055e990ab1c3ccdb2e282ebba824dd9"
+      },
+      "sharedManifestSHA256": "789f704c90680db237b6699a3366ce97a6553bbc0a832dcd69ddfc08aa70610d",
+      "newIds": {
+        "server": "a5bef00709bc71983ab95670c111fa5d08b679f3c90ba025cf0afdce7299288e",
+        "manager": "e3904660d442a8d67f474cc3f921168bdf47b76cb377c22faf5836154dd451c5"
+      },
+      "settingsPreserved": true,
+      "networkAliasesPreserved": true,
+      "databaseWebUntouched": true,
+      "oldContainersRetained": true,
+      "onlyBindChanges": [
+        "skills",
+        "registry"
+      ]
+    },
+    "receiptSha256": "79847ec1a8a0799b50f4f7699c5c7a24a77039f6c0ca93a417fee593a36c30a4",
+    "managerRepairReceipt": {
+      "pending": false,
+      "originalReceiptSha256": "79847ec1a8a0799b50f4f7699c5c7a24a77039f6c0ca93a417fee593a36c30a4",
+      "oldManagerId": "e3904660d442a8d67f474cc3f921168bdf47b76cb377c22faf5836154dd451c5",
+      "managerImage": "sha256:50dd74248757b60ec227e7c67a66f37cc23fef1e77fafa252f007ce143962aa8",
+      "sharedManifestSHA256": "789f704c90680db237b6699a3366ce97a6553bbc0a832dcd69ddfc08aa70610d",
+      "images": {
+        "server": "sha256:cd0c30595da4ae0c66f1f7a52a31cbbe633a402fd6cabd22734ea8dc62ec11f6",
+        "worker": "sha256:c310550a783c12854d025613abf57155531842b2654909246ce5f16d74f3ced6"
+      },
+      "unchangedIds": {
+        "server": "a5bef00709bc71983ab95670c111fa5d08b679f3c90ba025cf0afdce7299288e",
+        "postgres": "a60266777d0683842d4399a1c26cfec91e3996669073cd0b13ca683a51d91e1f",
+        "web": "03f4d6e0c875e7e83d80333c1e181fa2d4f8986ee0787f4272d9fe0da0a55ce1"
+      },
+      "newManagerId": "127027d9946327f9cac41c46cc9fc0192cd6a56f6057bf83e38d18b9802a0681",
+      "settingsPreserved": true,
+      "serverWorkerDatabaseWebUntouched": true
+    },
+    "managerRepairReceiptSha256": "6ea4676d3e955e7c1a1066ac1a50daf294541a687174a479c3a976b6aa19426b",
+    "serverNetwork": {
+      "aliases": [
+        "whippet-m10-server"
+      ],
+      "ip": "192.168.207.3"
+    },
+    "actual": {
+      "server": {
+        "id": "a5bef00709bc71983ab95670c111fa5d08b679f3c90ba025cf0afdce7299288e",
+        "image": "sha256:cd0c30595da4ae0c66f1f7a52a31cbbe633a402fd6cabd22734ea8dc62ec11f6",
+        "running": true,
+        "sharedBindsVerified": true
+      },
+      "manager": {
+        "id": "127027d9946327f9cac41c46cc9fc0192cd6a56f6057bf83e38d18b9802a0681",
+        "image": "sha256:50dd74248757b60ec227e7c67a66f37cc23fef1e77fafa252f007ce143962aa8",
+        "running": true,
+        "sharedBindsVerified": true
+      }
+    },
+    "shared": {
+      "manifestSha256": "789f704c90680db237b6699a3366ce97a6553bbc0a832dcd69ddfc08aa70610d",
+      "filesVerified": 22,
+      "moduleManifestSha256": "e5a28599fb735e3d70d3157155a160ae0ba8e1e19fe3f050a7cf8d4167c66e3a"
+    },
+    "workerConfiguredImageEvidence": "PM switch receipt; actual Worker image checked during observation"
+  },
+  "sourceSnapshotBefore": {
+    "runId": "ce8b012b-cdbc-49b9-b6b6-95cf6c156e1e",
+    "primaryModule": true,
+    "version1": true,
+    "maxOutputTokensPresent": true,
+    "authorPayloadSha256": "0c4c8e6d1148b472e9f4ed9f2054adc2498a48cf20dedf246cba54b9df648e05",
+    "manifestSha256": "9da0afe4bd44fcb62f241e941ef7a34bd0e44e4944155f0652502c644adf5b6a",
+    "maxOutputTokens": 16384,
+    "maxModelRequests": 8,
+    "maxToolCalls": 12,
+    "maxDurationMs": 180000,
+    "effectiveMaxOutputTokens": 16384
+  },
+  "classification": "single PM-authorized retry5; bounded tools/instructions plus M109 observation and abort cleanup; budgets/model unchanged"
+}

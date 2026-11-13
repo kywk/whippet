@@ -1,0 +1,12 @@
+{
+  "observedAt": "2026-11-14T01:45:53.241480+08:00",
+  "scope": "all runs in whippet_shop",
+  "readOnly": true,
+  "counts": {
+    "active": 0,
+    "unreclaimed": 0,
+    "unresolvedValidation": 0,
+    "activePlans": 0
+  },
+  "priorEvidence": "m10_shop_t4t_retry3.final.json"
+}

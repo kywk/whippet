@@ -1,0 +1,194 @@
+{
+  "runId": "f0a93b46-9cf8-4c01-a1d7-fa72adcf7884",
+  "observedAt": "2026-11-14T01:42:45.785810+08:00",
+  "registryVersion": "10.2",
+  "eventEvidence": {
+    "events": [
+      {
+        "seq": 2,
+        "event_kind": "model",
+        "ordinal": 1,
+        "tool_name": null,
+        "status": "started"
+      },
+      {
+        "seq": 3,
+        "event_kind": "model",
+        "ordinal": 1,
+        "tool_name": null,
+        "status": "succeeded"
+      },
+      {
+        "seq": 4,
+        "event_kind": "tool",
+        "ordinal": 1,
+        "tool_name": "read_module_draft",
+        "status": "started"
+      },
+      {
+        "seq": 5,
+        "event_kind": "tool",
+        "ordinal": 1,
+        "tool_name": "read_module_draft",
+        "status": "succeeded"
+      },
+      {
+        "seq": 6,
+        "event_kind": "model",
+        "ordinal": 2,
+        "tool_name": null,
+        "status": "started"
+      },
+      {
+        "seq": 7,
+        "event_kind": "model",
+        "ordinal": 2,
+        "tool_name": null,
+        "status": "succeeded"
+      },
+      {
+        "seq": 8,
+        "event_kind": "tool",
+        "ordinal": 2,
+        "tool_name": "read_skill_reference",
+        "status": "started"
+      },
+      {
+        "seq": 9,
+        "event_kind": "tool",
+        "ordinal": 2,
+        "tool_name": "read_skill_reference",
+        "status": "succeeded"
+      },
+      {
+        "seq": 10,
+        "event_kind": "model",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "started"
+      },
+      {
+        "seq": 11,
+        "event_kind": "model",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "heartbeat"
+      },
+      {
+        "seq": 12,
+        "event_kind": "model",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "heartbeat"
+      },
+      {
+        "seq": 13,
+        "event_kind": "model",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "heartbeat"
+      },
+      {
+        "seq": 14,
+        "event_kind": "model",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "heartbeat"
+      },
+      {
+        "seq": 15,
+        "event_kind": "model",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "heartbeat"
+      },
+      {
+        "seq": 16,
+        "event_kind": "model",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "heartbeat"
+      },
+      {
+        "seq": 17,
+        "event_kind": "model",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "heartbeat"
+      },
+      {
+        "seq": 18,
+        "event_kind": "model",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "failed"
+      }
+    ],
+    "unknownEventCount": 1,
+    "counts": [
+      {
+        "event_kind": "model",
+        "tool_name": null,
+        "status": "failed",
+        "count": 1
+      },
+      {
+        "event_kind": "model",
+        "tool_name": null,
+        "status": "heartbeat",
+        "count": 7
+      },
+      {
+        "event_kind": "model",
+        "tool_name": null,
+        "status": "started",
+        "count": 3
+      },
+      {
+        "event_kind": "model",
+        "tool_name": null,
+        "status": "succeeded",
+        "count": 2
+      },
+      {
+        "event_kind": "tool",
+        "tool_name": "read_module_draft",
+        "status": "started",
+        "count": 1
+      },
+      {
+        "event_kind": "tool",
+        "tool_name": "read_module_draft",
+        "status": "succeeded",
+        "count": 1
+      },
+      {
+        "event_kind": "tool",
+        "tool_name": "read_skill_reference",
+        "status": "started",
+        "count": 1
+      },
+      {
+        "event_kind": "tool",
+        "tool_name": "read_skill_reference",
+        "status": "succeeded",
+        "count": 1
+      }
+    ]
+  },
+  "budget": {
+    "maxModelRequests": 8,
+    "maxToolCalls": 12,
+    "maxDurationMs": 180000
+  },
+  "fixedErrorCodes": {
+    "availability": "not_present_in_fixed_author_event_grammar",
+    "values": []
+  },
+  "limitations": [
+    "Tool succeeded is not self-test passed",
+    "Unknown/unmatched events only counted; no content returned",
+    "Event sequence is row_number by created_at,event_id, not raw event_id",
+    "No model configuration, arguments, messages or raw payload returned"
+  ]
+}
