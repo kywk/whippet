@@ -229,7 +229,7 @@ func hasBrowserTools(input *AuthorInput) bool {
 					return true
 				}
 			}
-			if t == "browser_login" || t == "update_module_candidate" {
+			if t == "browser_login" || t == "update_module_candidate" || t == "commit_module_candidate" {
 				return true
 			}
 		}

@@ -26,7 +26,7 @@ test('M109 v2 actual self-test branches, off equivalence, safe fixed evidence',a
    }catch(e:any){results.push({error:e.code});}finally{await browser.close();}
    assert.deepEqual(seen,enabled?[expected]:[]);
    if(enabled){
-    let count=0;d.failure('LIMIT');d.finish('UNKNOWN',value=>{count++;const v=value as any;assert.equal(v.schemaVersion,2);assert.equal(v.lastSelfTestFailureClass,expected);assert.equal(v.terminalClass,'LIMIT');assert(!JSON.stringify(value).includes('SECRET_SENTINEL'));});
+    let count=0;d.failure('LIMIT');d.finish('UNKNOWN',value=>{count++;const v=value as any;assert.equal(v.schemaVersion,3);assert.equal(v.lastSelfTestFailureClass,expected);assert.equal(v.terminalClass,'LIMIT');assert(!JSON.stringify(value).includes('SECRET_SENTINEL'));});
     d.finish('UNKNOWN',()=>count++);assert.equal(count,1);
    }
   }

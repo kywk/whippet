@@ -3,7 +3,11 @@ export const moduleTerminalClasses = ['LIMIT','INVALID_RESPONSE','FINAL_JSON_PAR
 export type ModuleTerminalClass = typeof moduleTerminalClasses[number];
 export const selfTestFailureClasses = ['INVALID_SPEC','GUARD','TIMEOUT','CANCELLED','TEST_FAILED','UNKNOWN'] as const;
 export type SelfTestFailureClass = typeof selfTestFailureClasses[number];
+export const modelRequestFailureStages = ['UNKNOWN','FETCH_REJECTED','HTTP_NON_OK','BODY_JSON_REJECTED','RESPONSE_GUARD_REJECTED','INCOMPLETE_MAX_OUTPUT_TOKENS','INCOMPLETE_CONTENT_FILTER','INCOMPLETE_UNKNOWN','ENVELOPE_INVALID'] as const;
+export type ModelRequestFailureStage = typeof modelRequestFailureStages[number];
 export class ModuleDiagnostics {
+ private modelRequestFailureStage:ModelRequestFailureStage='UNKNOWN';
+ modelRequestFailure(value:unknown){if(this.modelRequestFailureStage==='UNKNOWN'&&modelRequestFailureStages.includes(value as ModelRequestFailureStage))this.modelRequestFailureStage=value as ModelRequestFailureStage;}
  private lastSelfTestFailureClass:SelfTestFailureClass='UNKNOWN';
  selfTestFailure(value:unknown){this.lastSelfTestFailureClass=selfTestFailureClasses.includes(value as SelfTestFailureClass)?value as SelfTestFailureClass:'UNKNOWN';}
  private passed=0;private failed=0;private created=false;private present=false;private retained=false;
@@ -14,6 +18,6 @@ export class ModuleDiagnostics {
  finish(fallback:ModuleTerminalClass,emit:(value:object)=>void){
   if(this.emitted)return;this.emitted=true;
   const terminalClass=fallback==='ARTIFACT_WRITE_FAILED'?fallback:this.terminal??(moduleTerminalClasses.includes(fallback)?fallback:'UNKNOWN');
-  try{emit({schemaVersion:2,lastSelfTestFailureClass:this.lastSelfTestFailureClass,selfTestPassedCount:this.passed,selfTestFailedCount:this.failed,checkpointCreated:this.created,checkpointPresentAtFinalize:this.present,checkpointRetainedAfterSecretGuard:this.retained,terminalClass});}catch{/* Evidence failure never changes task semantics. */}
+  try{emit({schemaVersion:3,modelRequestFailureStage:this.modelRequestFailureStage,lastSelfTestFailureClass:this.lastSelfTestFailureClass,selfTestPassedCount:this.passed,selfTestFailedCount:this.failed,checkpointCreated:this.created,checkpointPresentAtFinalize:this.present,checkpointRetainedAfterSecretGuard:this.retained,terminalClass});}catch{/* Evidence failure never changes task semantics. */}
  }
 }

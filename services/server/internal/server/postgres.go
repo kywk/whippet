@@ -412,6 +412,9 @@ func decodeAssignmentAuthor(a *Assignment, payload string) error {
 	if json.Unmarshal([]byte(payload), &input) != nil || !ValidID(input.ConversationID) || input.BaseRevision < 1 {
 		return fmt.Errorf("invalid author input snapshot")
 	}
+	if input.Budget != nil && (!validPrimaryBudget(*input.Budget, input.SkillID) || (input.Budget.effectiveMaxOutputTokens() > 8192 && (len(input.Skills) == 0 || input.Skills[0].ID != "module-authoring"))) {
+		return fmt.Errorf("invalid author budget snapshot")
+	}
 	a.Author = &input
 	return nil
 }

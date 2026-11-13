@@ -15,6 +15,7 @@ import (
 const m109Prefix = "m109_diagnostic:"
 
 type m109Worker struct {
+	ModelRequestFailureStage           string `json:"modelRequestFailureStage,omitempty"`
 	SchemaVersion                      int    `json:"-"`
 	LastSelfTestFailureClass           string `json:"lastSelfTestFailureClass,omitempty"`
 	SelfTestPassedCount                int    `json:"selfTestPassedCount"`
@@ -44,7 +45,7 @@ type m109Diagnostic struct {
 }
 
 func newM109Diagnostic() *m109Diagnostic {
-	return &m109Diagnostic{SchemaVersion: 2, Worker: m109Worker{TerminalClass: "UNKNOWN", LastSelfTestFailureClass: "UNKNOWN"}, Manager: m109Manager{WorkerStatus: "UNKNOWN", Disposition: "UNKNOWN"}}
+	return &m109Diagnostic{SchemaVersion: 3, Worker: m109Worker{ModelRequestFailureStage: "UNKNOWN", TerminalClass: "UNKNOWN", LastSelfTestFailureClass: "UNKNOWN"}, Manager: m109Manager{WorkerStatus: "UNKNOWN", Disposition: "UNKNOWN"}}
 }
 func m109Enabled() bool { return os.Getenv("WHIPPET_M109_DIAGNOSTICS") == "1" }
 
@@ -54,7 +55,7 @@ func decodeM109(raw []byte) (m109Worker, bool) {
 	if len(raw) > 2048 {
 		return out, false
 	}
-	types := map[string]bool{"selfTestPassedCount": false, "selfTestFailedCount": false, "checkpointCreated": true, "checkpointPresentAtFinalize": true, "checkpointRetainedAfterSecretGuard": true, "terminalClass": false, "schemaVersion": false, "lastSelfTestFailureClass": false}
+	types := map[string]bool{"selfTestPassedCount": false, "selfTestFailedCount": false, "checkpointCreated": true, "checkpointPresentAtFinalize": true, "checkpointRetainedAfterSecretGuard": true, "terminalClass": false, "schemaVersion": false, "lastSelfTestFailureClass": false, "modelRequestFailureStage": false}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	start, err := dec.Token()
 	if err != nil || start != json.Delim('{') {
@@ -80,15 +81,15 @@ func decodeM109(raw []byte) (m109Worker, bool) {
 			if _, ok := value.(bool); !ok {
 				return out, false
 			}
-		} else if key == "terminalClass" || key == "lastSelfTestFailureClass" {
+		} else if key == "terminalClass" || key == "lastSelfTestFailureClass" || key == "modelRequestFailureStage" {
 			if _, ok := value.(string); !ok {
 				return out, false
 			}
 		} else if key == "schemaVersion" {
-			if value != float64(2) {
+			if value != float64(2) && value != float64(3) {
 				return out, false
 			}
-			out.SchemaVersion = 2
+			out.SchemaVersion = int(value.(float64))
 		} else {
 			n, ok := value.(float64)
 			if !ok || n < 0 || n > 12 || n != float64(int(n)) {
@@ -96,7 +97,7 @@ func decodeM109(raw []byte) (m109Worker, bool) {
 			}
 		}
 	}
-	if _, err = dec.Token(); err != nil || !(len(seen) == 6 && !seen["schemaVersion"] && !seen["lastSelfTestFailureClass"] || len(seen) == 8 && seen["schemaVersion"] && seen["lastSelfTestFailureClass"]) || dec.Decode(new(any)) != io.EOF || json.Unmarshal(raw, &out) != nil {
+	if _, err = dec.Token(); err != nil || !(len(seen) == 6 && !seen["schemaVersion"] && !seen["lastSelfTestFailureClass"] && !seen["modelRequestFailureStage"] || len(seen) == 8 && out.SchemaVersion == 2 && seen["lastSelfTestFailureClass"] && !seen["modelRequestFailureStage"] || len(seen) == 9 && out.SchemaVersion == 3 && seen["lastSelfTestFailureClass"] && seen["modelRequestFailureStage"]) || dec.Decode(new(any)) != io.EOF || json.Unmarshal(raw, &out) != nil {
 		return out, false
 	}
 	if out.SchemaVersion == 0 {
@@ -104,6 +105,13 @@ func decodeM109(raw []byte) (m109Worker, bool) {
 	} else {
 		switch out.LastSelfTestFailureClass {
 		case "INVALID_SPEC", "GUARD", "TIMEOUT", "CANCELLED", "TEST_FAILED", "UNKNOWN":
+		default:
+			return m109Worker{}, false
+		}
+	}
+	if out.SchemaVersion == 3 {
+		switch out.ModelRequestFailureStage {
+		case "UNKNOWN", "FETCH_REJECTED", "HTTP_NON_OK", "BODY_JSON_REJECTED", "RESPONSE_GUARD_REJECTED", "INCOMPLETE_MAX_OUTPUT_TOKENS", "INCOMPLETE_CONTENT_FILTER", "INCOMPLETE_UNKNOWN", "ENVELOPE_INVALID":
 		default:
 			return m109Worker{}, false
 		}

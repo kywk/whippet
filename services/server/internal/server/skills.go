@@ -90,12 +90,12 @@ func loadSkill(root, id string, registry *ToolRegistry) (SkillManifest, SkillSna
 		return manifest, pin, err
 	}
 	var fields map[string]json.RawMessage
-	if json.Unmarshal(raw, &fields) != nil || !requiredJSONFields(fields["budget"], "maxModelRequests", "maxToolCalls", "maxDurationMs") {
+	if json.Unmarshal(raw, &fields) != nil || fields["budget"] == nil || bytes.Equal(bytes.TrimSpace(fields["budget"]), []byte("null")) {
 		return manifest, pin, ErrSkillUnavailable
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
-	if dec.Decode(&manifest) != nil || dec.Decode(new(any)) != io.EOF || manifest.ID != id || manifest.Version == "" || manifest.DefaultTools == nil || manifest.References == nil || !validSkillBudget(manifest.Budget) || !validSkillModel(manifest.Model) {
+	if dec.Decode(&manifest) != nil || dec.Decode(new(any)) != io.EOF || manifest.ID != id || manifest.Version == "" || manifest.DefaultTools == nil || manifest.References == nil || !validPrimaryBudget(manifest.Budget, manifest.ID) || !validSkillModel(manifest.Model) {
 		return manifest, pin, ErrSkillUnavailable
 	}
 	seen := map[string]bool{}
@@ -121,7 +121,7 @@ func loadSkill(root, id string, registry *ToolRegistry) (SkillManifest, SkillSna
 	return manifest, pin, nil
 }
 func validSkillBudget(b AuthorBudget) bool {
-	return b.MaxModelRequests > 0 && b.MaxModelRequests <= 9007199254740991 && b.MaxToolCalls >= 0 && b.MaxToolCalls <= 9007199254740991 && b.MaxDurationMS > 0 && b.MaxDurationMS <= 9007199254740991
+	return (b.MaxOutputTokens == nil || (*b.MaxOutputTokens >= 1 && *b.MaxOutputTokens <= 16384)) && b.MaxModelRequests > 0 && b.MaxModelRequests <= 9007199254740991 && b.MaxToolCalls >= 0 && b.MaxToolCalls <= 9007199254740991 && b.MaxDurationMS > 0 && b.MaxDurationMS <= 9007199254740991
 }
 func validSkillModel(m AuthorModel) bool {
 	return m.Provider == "opencode" && modelName.MatchString(m.Model) && (m.ReasoningEffort == "low" || m.ReasoningEffort == "medium" || m.ReasoningEffort == "high" || m.ReasoningEffort == "xhigh")

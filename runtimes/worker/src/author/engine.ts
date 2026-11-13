@@ -1,3 +1,4 @@
+import type { ModelRequestFailureStage } from "./module-diagnostics.js";
 import type { AIConfig } from "../ai/config.js";
 import { AuthorError } from "./types.js";
 
@@ -13,11 +14,12 @@ export interface EngineRun {
   instructions: string;
   context: EngineItem[];
   tools: EngineTool[];
-  budget: { modelRequests: number; toolExecutions: number };
+  budget: { modelRequests: number; toolExecutions: number; maxOutputTokens?: number };
   model: Pick<AIConfig, "reasoningEffort">;
   signal: AbortSignal;
   beforeRequest(context: EngineItem[]): EngineItem[];
   onEvent?(event: string): void;
+  onModelRequestFailure?(stage: ModelRequestFailureStage): void;
   request(body: Record<string, unknown>): Promise<unknown>;
   execute(call: EngineItem, execution: number): Promise<unknown>;
   checkpoint(): { script: string } | undefined;
@@ -57,8 +59,21 @@ export const builtinEngine: AgentEngine = {
   async run(input) {
     const { signal, budget } = input;
     if (!Number.isInteger(budget.modelRequests) || budget.modelRequests < 1 || !Number.isInteger(budget.toolExecutions) || budget.toolExecutions < 0) throw new AuthorError("invalid_input");
+    const maxOutputTokens = budget.maxOutputTokens === undefined ? 8192 : budget.maxOutputTokens;
+    if (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 1 || maxOutputTokens > 16384) throw new AuthorError('invalid_input');
     const context = structuredClone(input.context);
     const execute = toolDispatcher(input.tools, input.execute);
+    const invalidEnvelope = (raw: unknown): never => {
+      // Only exact structural values enter diagnostics; no provider text is retained.
+      let stage: ModelRequestFailureStage = 'ENVELOPE_INVALID';
+      if (raw && typeof raw === 'object' && (raw as EngineItem).status === 'incomplete') {
+        const details = (raw as EngineItem).incomplete_details;
+        const reason = details && typeof details === 'object' && !Array.isArray(details) ? (details as EngineItem).reason : undefined;
+        stage = reason === 'max_output_tokens' ? 'INCOMPLETE_MAX_OUTPUT_TOKENS' : reason === 'content_filter' ? 'INCOMPLETE_CONTENT_FILTER' : 'INCOMPLETE_UNKNOWN';
+      }
+      try { input.onModelRequestFailure?.(stage); } catch { /* Evidence never changes engine semantics. */ }
+      throw new AuthorError('invalid_response');
+    };
     let count = 0;
     const partial = (reason: EnginePartial["reason"]): EngineResult => {
       const checkpoint = input.checkpoint();
@@ -75,17 +90,17 @@ export const builtinEngine: AgentEngine = {
         input: input.beforeRequest(context),
         instructions: input.instructions + (finish ? "\nBudget nearly exhausted: finish now with the verified candidate and explain remaining next steps. Do not start new exploration." : ""),
         tools: input.tools, reasoning: { effort: input.model.reasoningEffort }, parallel_tool_calls: false,
-        max_output_tokens: 8192, store: false, include: ["reasoning.encrypted_content"],
+        max_output_tokens: maxOutputTokens, store: false, include: ["reasoning.encrypted_content"],
       };
       if (Buffer.byteLength(JSON.stringify(body)) > (input.maxRequestBytes ?? 4 * 1024 * 1024)) throw new AuthorError("limit");
       input.onEvent?.(`author:model:${request + 1}:started`);
       const raw = await input.request(body);
       if (signal.aborted) throw new AuthorError("cancelled");
-      if (!raw || typeof raw !== "object") throw new AuthorError("invalid_response");
+      if (!raw || typeof raw !== "object") invalidEnvelope(raw);
       const data = raw as EngineItem;
-      if (data.status !== "completed" || data.error || !Array.isArray(data.output)) throw new AuthorError("invalid_response");
+      if (data.status !== "completed" || data.error || !Array.isArray(data.output)) invalidEnvelope(raw);
       const output = data.output as EngineItem[];
-      if (output.some(item => !item || typeof item !== "object" || typeof item.type !== "string")) throw new AuthorError("invalid_response");
+      if (output.some(item => !item || typeof item !== "object" || typeof item.type !== "string")) invalidEnvelope(raw);
       input.onEvent?.(`author:model:${request + 1}:succeeded`);
       const calls = output.filter(item => item.type === "function_call");
       if (!calls.length) {

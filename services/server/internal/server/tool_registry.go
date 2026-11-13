@@ -37,10 +37,70 @@ type SkillSnapshot struct {
 	ReferenceHashes map[string]string `json:"referenceHashes"`
 }
 type AuthorBudget struct {
-	MaxModelRequests int `json:"maxModelRequests"`
-	MaxToolCalls     int `json:"maxToolCalls"`
-	MaxDurationMS    int `json:"maxDurationMs"`
+	MaxModelRequests int  `json:"maxModelRequests"`
+	MaxToolCalls     int  `json:"maxToolCalls"`
+	MaxDurationMS    int  `json:"maxDurationMs"`
+	MaxOutputTokens  *int `json:"maxOutputTokens,omitempty"`
 }
+
+// Decode only the legacy three fields or those fields plus an explicit token cap.
+// Missing stays missing in stored/forwarded snapshots; null is never a default.
+func (b *AuthorBudget) UnmarshalJSON(raw []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	token, err := dec.Token()
+	if err != nil || token != json.Delim('{') {
+		return ErrInvalid
+	}
+	fields := map[string]json.RawMessage{}
+	for dec.More() {
+		token, err := dec.Token()
+		if err != nil {
+			return ErrInvalid
+		}
+		key, ok := token.(string)
+		if !ok {
+			return ErrInvalid
+		}
+		if _, exists := fields[key]; exists {
+			return ErrInvalid
+		}
+		var value json.RawMessage
+		if dec.Decode(&value) != nil || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return ErrInvalid
+		}
+		fields[key] = value
+	}
+	if _, err := dec.Token(); err != nil || dec.Decode(new(any)) != io.EOF {
+		return ErrInvalid
+	}
+	if len(fields) != 3 && len(fields) != 4 {
+		return ErrInvalid
+	}
+	for _, key := range []string{"maxModelRequests", "maxToolCalls", "maxDurationMs"} {
+		if _, ok := fields[key]; !ok {
+			return ErrInvalid
+		}
+	}
+	type plain AuthorBudget
+	var next plain
+	strict := json.NewDecoder(bytes.NewReader(raw))
+	strict.DisallowUnknownFields()
+	if strict.Decode(&next) != nil || !validSkillBudget(AuthorBudget(next)) {
+		return ErrInvalid
+	}
+	*b = AuthorBudget(next)
+	return nil
+}
+func (b AuthorBudget) effectiveMaxOutputTokens() int {
+	if b.MaxOutputTokens == nil {
+		return 8192
+	}
+	return *b.MaxOutputTokens
+}
+func validPrimaryBudget(b AuthorBudget, skill string) bool {
+	return validSkillBudget(b) && (b.effectiveMaxOutputTokens() <= 8192 || skill == "module-authoring")
+}
+
 type AuthorModel struct {
 	Provider        string `json:"provider"`
 	Model           string `json:"model"`
@@ -97,7 +157,7 @@ func validateToolSnapshot(input AuthorInput, registry *ToolRegistry, name string
 	if registry == nil || input.ToolRegistryVersion != registry.Version || input.ToolRegistrySHA256 != registry.SHA256 || len(input.Skills) == 0 || input.Budget == nil || input.Model == nil {
 		return ErrHistoryUnavailable
 	}
-	if input.Budget.MaxModelRequests < 1 || input.Budget.MaxToolCalls < 0 || input.Budget.MaxDurationMS < 1 || input.Model.Provider != "opencode" || input.Model.Model == "" {
+	if !validPrimaryBudget(*input.Budget, input.SkillID) || input.Model.Provider != "opencode" || input.Model.Model == "" {
 		return ErrHistoryUnavailable
 	}
 	if input.Skills[0].ID != input.SkillID || input.Skills[0].Version != input.SkillVersion {

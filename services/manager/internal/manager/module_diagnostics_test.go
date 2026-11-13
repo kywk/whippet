@@ -244,3 +244,59 @@ func TestM109InvalidResponseTerminal(t *testing.T) {
 		}
 	}
 }
+
+func TestM109V3ModelRequestStages(t *testing.T) {
+	v2 := strings.Replace(m109Safe, "{", `{"schemaVersion":2,"lastSelfTestFailureClass":"UNKNOWN",`, 1)
+	v3 := strings.Replace(strings.Replace(v2, `"schemaVersion":2`, `"schemaVersion":3`, 1), "{", `{"modelRequestFailureStage":"FETCH_REJECTED",`, 1)
+	for _, stage := range []string{"UNKNOWN", "FETCH_REJECTED", "HTTP_NON_OK", "BODY_JSON_REJECTED", "RESPONSE_GUARD_REJECTED", "INCOMPLETE_MAX_OUTPUT_TOKENS", "INCOMPLETE_CONTENT_FILTER", "INCOMPLETE_UNKNOWN", "ENVELOPE_INVALID"} {
+		d := newM109Diagnostic()
+		d.consume(m109Prefix + strings.Replace(v3, "FETCH_REJECTED", stage, 1))
+		if !d.WorkerObserved || d.SchemaVersion != 3 || d.Worker.ModelRequestFailureStage != stage {
+			t.Fatal("v3 stage rejected")
+		}
+		raw, _ := json.Marshal(d)
+		if strings.Count(string(raw), "schemaVersion") != 1 {
+			t.Fatal("nested version")
+		}
+	}
+	for _, legacy := range []string{m109Safe, v2} {
+		d := newM109Diagnostic()
+		d.consume(m109Prefix + legacy)
+		raw, _ := json.Marshal(d)
+		if !d.WorkerObserved || strings.Contains(string(raw), "modelRequestFailureStage") {
+			t.Fatal("legacy shape changed")
+		}
+	}
+	for _, bad := range []string{
+		strings.Replace(v3, `"schemaVersion":3`, `"schemaVersion":2`, 1),
+		strings.Replace(v3, `"schemaVersion":3`, `"schemaVersion":4`, 1),
+		strings.Replace(v3, `"schemaVersion":3,`, "", 1),
+		strings.Replace(v3, `"modelRequestFailureStage":"FETCH_REJECTED",`, "", 1),
+		strings.Replace(v3, `"lastSelfTestFailureClass":"UNKNOWN",`, "", 1),
+		strings.Replace(v3, `"FETCH_REJECTED"`, `null`, 1),
+		strings.Replace(v3, `"FETCH_REJECTED"`, `123`, 1),
+		strings.Replace(v3, "FETCH_REJECTED", "FETCH_REJECTED SECRET_SENTINEL", 1),
+		strings.Replace(v3, "FETCH_REJECTED", "max_output_tokens", 1),
+		strings.Replace(v3, "{", `{"modelRequestFailureStage":"SECRET_SENTINEL",`, 1),
+		strings.Replace(v3, "{", `{"extra":"SECRET_SENTINEL",`, 1),
+		v3 + "SECRET_SENTINEL", strings.Repeat("x", 2049),
+	} {
+		d := newM109Diagnostic()
+		if !d.consume(m109Prefix+bad) || d.WorkerObserved {
+			t.Fatal("invalid v3 accepted")
+		}
+		raw, _ := json.Marshal(d)
+		if strings.Contains(string(raw), "SECRET_SENTINEL") {
+			t.Fatal("sentinel leak")
+		}
+	}
+	d := newM109Diagnostic()
+	if d.SchemaVersion != 3 || d.WorkerObserved || d.Worker.ModelRequestFailureStage != "UNKNOWN" {
+		t.Fatal("unobserved defaults")
+	}
+	d.consume(m109Prefix + v3)
+	d.consume(m109Prefix + strings.Replace(v3, "FETCH_REJECTED", "HTTP_NON_OK", 1))
+	if d.Worker.ModelRequestFailureStage != "FETCH_REJECTED" {
+		t.Fatal("first observation replaced")
+	}
+}

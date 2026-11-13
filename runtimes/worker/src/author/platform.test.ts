@@ -1,6 +1,7 @@
-import test from 'node:test';
+import test, {after} from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, cpSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defaultSkillsPath, type SkillManifest } from './manifest.js';
 import { loadToolRegistry, sha256 } from './registry.js';
@@ -12,10 +13,22 @@ import { explorationBrowser, type ExplorationBrowser } from './tools.js';
 import { KnownSecrets } from '../login/client.js';
 import { PassThrough } from 'node:stream';
 import { attemptIO, MAX_TOOL_FRAME, MAX_MODULE_TOOL_FRAME } from '../attempt-io.js';
+// Existing update-path assertions need an explicitly pinned legacy authorization fixture.
+// Production 10.3 manifest intentionally advertises stage/commit instead of update.
+const legacySkills=mkdtempSync(join(tmpdir(),'whippet-legacy-platform-'));
+cpSync(defaultSkillsPath,legacySkills,{recursive:true});
+const legacyManifestPath=join(legacySkills,'module-authoring/manifest.json');
+const legacyManifest=JSON.parse(readFileSync(legacyManifestPath,'utf8'));
+legacyManifest.defaultTools=legacyManifest.defaultTools.filter((name:string)=>!['stage_module_candidate_part','commit_module_candidate'].includes(name));
+if(!legacyManifest.defaultTools.includes('update_module_candidate'))legacyManifest.defaultTools.push('update_module_candidate');
+writeFileSync(legacyManifestPath,JSON.stringify(legacyManifest));
+const priorSkillsPath=process.env.WHIPPET_SKILLS_PATH;
+process.env.WHIPPET_SKILLS_PATH=legacySkills;
+after(()=>{if(priorSkillsPath===undefined)delete process.env.WHIPPET_SKILLS_PATH;else process.env.WHIPPET_SKILLS_PATH=priorSkillsPath;rmSync(legacySkills,{recursive:true,force:true});});
 const id='11111111-1111-1111-1111-111111111111';
 const metadata={slug:'search',moduleKind:'step' as const,exportName:'search',signature:'',inputs:'',returns:'',preconditions:'',postconditions:'',harness:"import {test,expect} from '@playwright/test'; import {search} from '@lib/search'; test('harness',async()=>{expect(search()).toBe(1)});"};
 function input(skill:'module-authoring'|'usecase-planner'):AuthorInput{
- const dir=join(defaultSkillsPath,skill),main=readFileSync(join(dir,'SKILL.md')),raw=readFileSync(join(dir,'manifest.json')),m=JSON.parse(raw.toString()) as SkillManifest,r=loadToolRegistry();
+ const dir=join(legacySkills,skill),main=readFileSync(join(dir,'SKILL.md')),raw=readFileSync(join(dir,'manifest.json')),m=JSON.parse(raw.toString()) as SkillManifest,r=loadToolRegistry();
  return {kind:'author',runId:id,attemptId:id,script:'export function search(){return 1}',timeoutMs:10000,author:{conversationId:id,baseRevision:1,messages:[{role:'user',content:'Build'}],skillId:skill,skillVersion:'1',editingSessionId:id,contextRevision:1,sourceVersion:null,conversationSummary:null,allowedTools:skill==='module-authoring'?['update_module_candidate','request_module_validation']:['propose_plan'],platform:{planId:null,stageId:null,module:skill==='module-authoring'?metadata:null},skills:[{id:skill,version:'1',sha256:sha256(main),manifestSha256:sha256(raw),referenceHashes:Object.fromEntries(m.references.map(r=>[r.id,r.sha256]))}],budget:m.budget,model:m.model,toolRegistryVersion:r.version,toolRegistrySha256:r.sha256}};
 }
 const config=readAIConfig({WHIPPET_AI_ENABLED:'true',WHIPPET_AI_BASE_URL:'https://synthetic.invalid',OPENCODE_API_KEY:'synthetic-key'});
@@ -231,8 +244,7 @@ test('M109 diagnostic sink errors and persistence terminal never affect task res
 });
 
 import {spawnSync} from 'node:child_process';
-import {mkdtempSync,writeFileSync,rmSync,existsSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {existsSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 test('M109 real entry flag is silent when off and persistence failure emits one safe terminal',()=>{
  const runs:any[]=[];

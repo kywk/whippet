@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { AuthorError } from "./types.js";
 import { exactObject, sha256, type ToolRegistry } from "./registry.js";
 
-export interface SkillBudget { maxModelRequests: number; maxToolCalls: number; maxDurationMs: number }
+export interface SkillBudget { maxModelRequests: number; maxToolCalls: number; maxDurationMs: number; maxOutputTokens?: number }
 export interface SkillModel { provider: string; model: string; reasoningEffort: "low" | "medium" | "high" | "xhigh" }
 export interface SkillSnapshot {
   id: string; version: string; sha256: string; manifestSha256: string; referenceHashes: Record<string, string>;
@@ -21,7 +21,9 @@ const identifier = /^[a-z][a-z0-9-]{0,63}$/;
 const hash = /^[a-f0-9]{64}$/;
 export const defaultSkillsPath = fileURLToPath(new URL("../../skills/", import.meta.url));
 function validBudget(v: unknown): v is SkillBudget {
-  return exactObject(v, ["maxModelRequests", "maxToolCalls", "maxDurationMs"]) &&
+  return (exactObject(v, ["maxModelRequests", "maxToolCalls", "maxDurationMs"]) ||
+    exactObject(v, ["maxModelRequests", "maxToolCalls", "maxDurationMs", "maxOutputTokens"]) &&
+    Number.isSafeInteger(v.maxOutputTokens) && v.maxOutputTokens >= 1 && v.maxOutputTokens <= 16384) &&
     [v.maxModelRequests, v.maxDurationMs].every(n => Number.isSafeInteger(n) && n > 0) && Number.isSafeInteger(v.maxToolCalls) && v.maxToolCalls >= 0;
 }
 function validModel(v: unknown): v is SkillModel {
@@ -47,6 +49,7 @@ export function capabilitySnapshot(author: object): CapabilitySnapshot | undefin
     if (i > 0) { if (pin.id <= previous) throw new AuthorError("invalid_input"); previous = pin.id; }
     seen.add(pin.id);
   }
+  if ((value.budget.maxOutputTokens ?? 8192) > 8192 && value.skills[0].id !== 'module-authoring') throw new AuthorError('invalid_input');
   return value as unknown as CapabilitySnapshot;
 }
 function packaged(root: string, relative: string, maxBytes: number): Buffer {
@@ -74,7 +77,7 @@ export function loadSkillBundle(snapshot: CapabilitySnapshot, registry: ToolRegi
       if (sha256(bytes) !== pin.manifestSha256 || sha256(main) !== pin.sha256) throw new Error();
       const m: unknown = JSON.parse(bytes.toString("utf8"));
       if (!exactObject(m, ["id", "version", "defaultTools", "budget", "model", "references"]) || m.id !== pin.id || m.version !== pin.version ||
-          !validBudget(m.budget) || !validModel(m.model) || !Array.isArray(m.defaultTools) || new Set(m.defaultTools).size !== m.defaultTools.length ||
+          !validBudget(m.budget) || ((m.budget.maxOutputTokens ?? 8192) > 8192 && m.id !== 'module-authoring') || !validModel(m.model) || !Array.isArray(m.defaultTools) || new Set(m.defaultTools).size !== m.defaultTools.length ||
           !m.defaultTools.every((name: unknown) => typeof name === "string" && registry.tools.some(tool => tool.name === name)) || !Array.isArray(m.references)) throw new Error();
       const ids = new Set<string>();
       for (const ref of m.references) {
@@ -87,7 +90,8 @@ export function loadSkillBundle(snapshot: CapabilitySnapshot, registry: ToolRegi
       return { manifest: m as unknown as SkillManifest, content: main.toString("utf8"), pin };
     });
     const primary = loaded[0]!.manifest;
-    if (Object.keys(snapshot.budget).some(key => snapshot.budget[key as keyof SkillBudget] > primary.budget[key as keyof SkillBudget]) ||
+    if ((['maxModelRequests','maxToolCalls','maxDurationMs'] as const).some(key => snapshot.budget[key] > primary.budget[key]) ||
+        (snapshot.budget.maxOutputTokens ?? 8192) > (primary.budget.maxOutputTokens ?? 8192) ||
         Object.keys(snapshot.model).some(key => snapshot.model[key as keyof SkillModel] !== primary.model[key as keyof SkillModel])) throw new Error();
     return {
       instructions: loaded.map(skill => skill.content).join("\n\n"),

@@ -98,7 +98,7 @@ func (p *Postgres) enqueuePlanModuleAuthor(ctx context.Context, tx *sql.Tx, plan
 	s.ContextRevision++
 	input := editingAuthorInput(s, d, "module-authoring", []ChatMessage{{Role: "user", Content: message}})
 	input.Platform = &AuthorPlatform{PlanID: &plan.ID, StageID: &stage.ID, Module: d.Module}
-	input.AllowedTools = []string{"read_module_draft", "read_validation_report", "update_module_candidate", "request_module_validation"}
+	input.AllowedTools = []string{"read_module_draft", "read_validation_report", "stage_module_candidate_part", "commit_module_candidate", "request_module_validation"}
 	auth, proposal, err := p.prepareAuthor(ctx, tx, d, &input)
 	if err != nil {
 		return Run{}, err

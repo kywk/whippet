@@ -251,3 +251,35 @@ Worker 僅可在對應 pending `catalog_search` 回覆識別此值，其他工�
 封裝裁定：Worker 的 v2 診斷訊息包含 `schemaVersion:2` 與七個摘要欄位；v1 訊息維持原六欄、無版本欄。Manager sidecar 使用外層 schemaVersion，worker 子物件不重複版本欄，v1 六欄／v2 七欄均精確驗型。尚未觀測 Worker 的新 sidecar 為 v2 且類別 UNKNOWN；收到舊 payload 則保留 v1，不假造新資訊。
 
 2026-11-14 離線修補裁定：terminalClass 增加固定 `INVALID_RESPONSE`，僅映射可信 `AuthorError(invalid_response)`；它是通用拒絕碼，不宣稱模型專屬原因，也不可取代已記錄的 FINAL_SHAPE／FINAL_JSON_PARSE 等較精確分類。main 的可信 cancelled 碼可映射 CANCELLED；原生未知例外仍 UNKNOWN。`lastSelfTestFailureClass` 白名單不變。此修補尚未封包／部署，不回填現場 retry2 的 UNKNOWN。
+
+### M10.9 模型請求安全分類 v3（2026-11-14）
+
+沿原M109開關新增worker `modelRequestFailureStage`，固定UNKNOWN/FETCH_REJECTED/HTTP_NON_OK/BODY_JSON_REJECTED/RESPONSE_GUARD_REJECTED/INCOMPLETE_MAX_OUTPUT_TOKENS/INCOMPLETE_CONTENT_FILTER/INCOMPLETE_UNKNOWN/ENVELOPE_INVALID。僅真fetch/body/response guard及engine原envelope拒絕分支記錄，原樣throw、不改Run結果；observer例外吞掉、first-specific、UNKNOWN不覆蓋具體值，gate off不掛callback。signal已abort時不把bounded取消誤分類fetch/body失敗。
+
+incomplete類別僅限status精確incomplete；incomplete_details必須為非null非array object，reason精確max_output_tokens或content_filter才映射，其他INCOMPLETE_UNKNOWN；非incomplete忽略reason。只輸出固定enum，不輸出原值、HTTP數字、URL、錯誤文字、內容或機密。這是回應觀測，不是歷史根因推論，8192輸出上限與其他預算不變。
+
+Worker payload v3為version＋八摘要欄（共九）；sidecar外層version3、worker八欄不重複version。Manager/reader嚴格支援v1/v2/v3，未知欄位/混版/null/duplicate/未知enum拒絕。舊版與未觀測投影UNKNOWN、保留原值不回填。既有2048-byte payload／4KiB sidecar與exclusive/no-follow不變；Manager/Worker須同批切換，不單換Worker。
+
+
+### G6 單次輸出預算（2026-11-14 使用者明確授權）
+
+budget 新增可選 `maxOutputTokens`，manifest／author 快照使用同一欄位。原三欄或新四欄精確驗型；值為 1..16384 整數，拒絕 null、布林、字串、小數、越界與未知欄位。只有缺欄時 effective 值為8192，既有快照保持缺欄，不回填歷史。
+
+高於8192只允許主skill module-authoring，manifest與新快照都須明示；有效快照值不得超過有效主manifest值，兩側各自先處理缺值再比較。輔助skill不能提高預算。本次module主manifest明示16384，其他skill不變；模型／推理強度／請求8次／工具12次／180000ms不變。這是使用者授權的G6政策修訂，取代先前本輪「8192與預算不變」限制；retry本身不能自行增加預算。
+
+新retry取最新合法manifest快照，舊Run payload與證據不可修改。manifest.version仍1，以manifestSha256綁定bytes修訂；hash不符仍fail closed，不得以8192 fallback繞過pin。Server／Manager／Worker同步支援後才啟用新manifest，切換前排空工作並保留舊包。本次不增API／DB migration／診斷schema，不加入自動升額或模型重試。
+
+
+### 有界 Module 候選切片（registry 10.3）
+
+新增worker/candidate工具 `stage_module_candidate_part`：精確required `{part:"script"|"harness",content:string,stagingRevision:integer>=0}`，無未知欄位。content非空、raw UTF-8最多8192 bytes，input JSON<=65536、output<=2048、工具1000ms且受Run剩餘deadline。stagingRevision是attempt-local CAS，初0，每成功接受一段加1；不等於DB revision。結果 `{staged:true,revision,part,contentHash}`，hash為該content原始UTF-8 SHA256。只保留兩段最新內容，尚非自試或可套用草稿；拒絕過期revision、機密、超限／非法型別時不改狀態。
+
+新增 `commit_module_candidate`：精確required `{stagingRevision:integer>=1,metadata:{slug,moduleKind,exportName,signature,inputs,returns,preconditions,postconditions}}`。metadata沿原Module schema但不含harness，完整metadata JSON<=4096、commit input<=8192、output<=131072。兩段均須在本attempt成功暫存，revision須相符；commit不遞增stagingRevision。Worker以兩段＋metadata組完整候選，沿原validateModule、權威slug、機密與scope守衛、真verifyDraft；工具120000ms仍受整個Run 180000ms剩餘deadline。成功才替換moduleCheckpoint；失敗／取消不得覆蓋上一份通過候選。結果沿 `{candidate,selfTestPassed,error?}`；request_module_validation保持獨立。
+
+舊update_module_candidate留在registry供舊快照／完整schema驗型；新module manifest改提供stage＋commit。Server／Manager／Worker候選能力與final守衛接受commit作為update的等價授權，但仍限主module-authoring與原scope、自試、hash、revision／context、完整artifact驗證。stage本身不具final候選提交權。只接受明確新registry/manifest快照；舊pin仍不得降級或替換。
+
+本切片無DB staging／migration、跨Run partial或自動續接；結束／新Run清空暫存，半份工具args從不執行。預算8模型／12工具／180秒／16384保持。超過每段大小要拆Module，不自動增加上限。每段是否通過不代表M10或正式validation通過。
+
+### M109 timeout觀測接線
+
+沿既有default-off M109 gate掛既有AuthorObservation。Manager僅在author且gate on轉送 `author:observe:<1..8>:<event>`；event精確限observation.ts既有17個enum，未知／前後綴／自由文字拒絕。沿原log event／attempt驗證保存，不改sidecar v3或公開Run wire；Server安全投影只收固定grammar與時間。歷史未記錄的headers/body位置仍UNKNOWN，不回填。非成功HTTP body.cancel也受原Run signal約束；此清理修補獨立驗證，不宣稱是retry4原因。

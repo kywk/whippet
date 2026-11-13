@@ -57,7 +57,7 @@ func decodeModuleAuthorOutput(data []byte, input AuthorInput, registry *ToolRegi
 	if input.SkillID != "module-authoring" || input.Platform == nil || input.Platform.Module == nil || decodePlatformFinal(data, MaxModuleAuthorArtifactBytes, &out) != nil || out.Script == nil || out.Module == nil || out.RequestValidation == nil || !validAuthorText(out.Message, out.ConversationSummary) {
 		return out, ErrInvalid
 	}
-	if validateToolSnapshot(input, registry, "update_module_candidate") != nil {
+	if validateToolSnapshot(input, registry, "update_module_candidate") != nil && validateToolSnapshot(input, registry, "commit_module_candidate") != nil {
 		return out, ErrInvalid
 	}
 	if *out.RequestValidation && validateToolSnapshot(input, registry, "request_module_validation") != nil {

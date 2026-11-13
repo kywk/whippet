@@ -1,4 +1,4 @@
-import type { ModuleDiagnostics } from "./module-diagnostics.js";
+import type { ModuleDiagnostics, ModelRequestFailureStage } from "./module-diagnostics.js";
 import { AuthorObservation } from "./observation.js";
 import { HarnessError } from "./harness.js";
 import { moduleAuthor, plannerAuthor, PLATFORM_TOOLS, PLATFORM_SERVER_TOOLS, validateModule, plannerCandidate, type ModuleMetadata, type PlannerOutput } from "./platform.js";
@@ -71,6 +71,9 @@ export async function runAuthor(
   const timeout = AbortSignal.timeout(Math.min(input.timeoutMs, capability?.budget.maxDurationMs ?? 900000));
   const signal = options.signal ? AbortSignal.any([timeout, options.signal]) : timeout;
   const fetcher = options.fetcher ?? globalThis.fetch;
+  const recordModelFailure = (stage: ModelRequestFailureStage): void => {
+    try { options.moduleDiagnostics?.modelRequestFailure(stage); } catch { /* Evidence only. */ }
+  };
   async function withHeartbeat<T>(operation: Promise<T>, heartbeatMessage: string, operationSignal = signal): Promise<T> {
     const interval = setInterval(() => {
       if (!operationSignal.aborted) options.progress?.(heartbeatMessage);
@@ -84,6 +87,8 @@ export async function runAuthor(
   }
   let script = input.script;
   let checkpoint: { script: string; scriptHash: string } | undefined;
+  let stagingRevision = 0;
+  const stagedParts: Partial<Record<"script" | "harness", string>> = {};
   let moduleCheckpoint: {script:string;module:ModuleMetadata} | undefined;
   let planRef: string | undefined;
   let changed = false;
@@ -111,9 +116,10 @@ export async function runAuthor(
     const instructions = `${baseInstructions}\n\n${bundle?.instructions ?? loadAuthorSkill(input.author)}${bundle ? `\nPackaged reference IDs (read only when needed): ${JSON.stringify(bundle.references)}` : ""}`;
     const engineResult = await (options.engine ?? builtinEngine).run({
       instructions, context: transcript, tools: allowedTools,
-      budget: { modelRequests: capability?.budget.maxModelRequests ?? (summary || workspace && allowedTools.length === 0 ? 1 : 8), toolExecutions: capability?.budget.maxToolCalls ?? 12 },
+      budget: { modelRequests: capability?.budget.maxModelRequests ?? (summary || workspace && allowedTools.length === 0 ? 1 : 8), toolExecutions: capability?.budget.maxToolCalls ?? 12, maxOutputTokens: capability?.budget.maxOutputTokens ?? 8192 },
       model: config, signal,
       ...(capability ? { maxRequestBytes: 64 * 1024 * 1024, maxToolOutputBytes: module || planner ? 25 * 1024 * 1024 : 13 * 1024 * 1024 } : {}),
+      ...(options.moduleDiagnostics ? { onModelRequestFailure: recordModelFailure } : {}),
       request: async (body) => {
         const prepared = buildResponsesRequest(config, { sessionId: input.author.conversationId, input: "Whippet author coding task" });
         const serializedBody=JSON.stringify({ ...JSON.parse(prepared.init.body), ...body });
@@ -124,13 +130,23 @@ export async function runAuthor(
           if(Array.isArray(outgoing.tools)&&outgoing.tools.length>0)observation.emit('toolsIncludedAtFetch');
         }
         observation.fetch();
-        const response = await withHeartbeat(fetcher(prepared.url, { ...prepared.init, body: serializedBody, signal }), `author:model:${pendingModel}:heartbeat`);
+        let response: Response;
+        try { response = await withHeartbeat(fetcher(prepared.url, { ...prepared.init, body: serializedBody, signal }), `author:model:${pendingModel}:heartbeat`); }
+        catch (error) { if (!signal.aborted) recordModelFailure('FETCH_REJECTED'); throw error; }
         observation.headers();
-        if (!response.ok) { await response.body?.cancel().catch(() => undefined); throw new AuthorError("provider_failed"); }
-        const raw: unknown = await withHeartbeat(response.json(), `author:model:${pendingModel}:heartbeat`);
+        if (!response.ok) {
+          recordModelFailure('HTTP_NON_OK');
+          // Cleanup shares the Run deadline; a stalled cancellation must not hold the author open.
+          if (response.body) await bounded(response.body.cancel().catch(() => undefined), signal);
+          throw new AuthorError("provider_failed");
+        }
+        let raw: unknown;
+        try { raw = await withHeartbeat(response.json(), `author:model:${pendingModel}:heartbeat`); }
+        catch (error) { if (!signal.aborted) recordModelFailure('BODY_JSON_REJECTED'); throw error; }
         observation.body();
         if(raw && typeof raw==='object' && Array.isArray((raw as any).output) && (raw as any).output.some((i:any)=>i?.type==='function_call'))observation.emit('functionCallObserved');
-        noSecret(raw, config.apiKey);
+        try { noSecret(raw, config.apiKey); }
+        catch (error) { recordModelFailure('RESPONSE_GUARD_REJECTED'); throw error; }
         return raw;
       },
       beforeRequest: (context) => {
@@ -170,10 +186,25 @@ export async function runAuthor(
               if(!planner || options.secrets && JSON.stringify(options.secrets.clean(result))!==JSON.stringify(result)) throw new AuthorError("tool_failed");
               noSecret(result, config.apiKey); planRef = ref;
             }
-          } else if(call.name === "update_module_candidate") {
+          } else if(call.name === "stage_module_candidate_part") {
+            if (!module || args.stagingRevision !== stagingRevision || !Number.isSafeInteger(stagingRevision + 1)) throw new AuthorError("tool_failed");
+            noSecret(args.content, config.apiKey);
+            if (options.secrets && options.secrets.clean(args.content) !== args.content) throw new AuthorError("sensitive_output");
+            if (toolSignal.aborted) throw new AuthorError("cancelled");
+            const part = args.part as "script" | "harness", content = args.content as string;
+            result = { staged: true, revision: stagingRevision + 1, part, contentHash: sha256(Buffer.from(content, "utf8")) };
+            validateToolResult(definition, result);
+            stagedParts[part] = content;
+            stagingRevision++;
+          } else if(call.name === "update_module_candidate" || call.name === "commit_module_candidate") {
             if(!module || !browser?.verifyDraft)throw new AuthorError("tool_failed");
-            validateModule(args.script,args.module);
-            const next = {script:args.script as string,module:structuredClone(args.module)};
+            let candidate = args;
+            if (call.name === "commit_module_candidate") {
+              if (args.stagingRevision !== stagingRevision || stagedParts.script === undefined || stagedParts.harness === undefined) throw new AuthorError("tool_failed");
+              candidate = { script: stagedParts.script, module: { ...args.metadata as Record<string, unknown>, harness: stagedParts.harness } };
+            }
+            validateModule(candidate.script,candidate.module);
+            const next = {script:candidate.script as string,module:structuredClone(candidate.module)};
             if(next.module.slug!==input.author.platform!.module!.slug)throw new AuthorError("tool_failed");
             noSecret(next,config.apiKey);
             if(options.secrets && JSON.stringify(options.secrets.clean(next))!==JSON.stringify(next))throw new AuthorError("sensitive_output");
@@ -184,6 +215,7 @@ export async function runAuthor(
             } finally {
               if(!check?.passed)options.moduleDiagnostics?.selfTestFailure(selfTestFailure);
             }
+            if (toolSignal.aborted) throw new AuthorError("cancelled");
             options.moduleDiagnostics?.selfTest(check.passed);
             if(check.passed){moduleCheckpoint=next;result={candidate:true,selfTestPassed:true};}
             else result={candidate:false,selfTestPassed:false,error:check.error??check.summary};

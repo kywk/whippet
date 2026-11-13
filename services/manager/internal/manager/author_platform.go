@@ -16,13 +16,13 @@ func plannerAuthor(a *AuthorTask) bool {
 }
 func platformTool(name string) bool {
 	switch name {
-	case "catalog_search", "catalog_next_page", "catalog_get", "read_module_draft", "read_usecase_draft", "read_plan", "propose_plan", "update_module_candidate", "request_module_validation":
+	case "catalog_search", "catalog_next_page", "catalog_get", "read_module_draft", "read_usecase_draft", "read_plan", "propose_plan", "update_module_candidate", "stage_module_candidate_part", "commit_module_candidate", "request_module_validation":
 		return true
 	}
 	return false
 }
 func platformServerTool(name string) bool {
-	return platformTool(name) && name != "update_module_candidate" && name != "request_module_validation"
+	return platformTool(name) && name != "update_module_candidate" && name != "stage_module_candidate_part" && name != "commit_module_candidate" && name != "request_module_validation"
 }
 func allowedPlatformTool(a *AuthorTask, name string) bool {
 	if !moduleAuthor(a) && !plannerAuthor(a) {
@@ -32,7 +32,7 @@ func allowedPlatformTool(a *AuthorTask, name string) bool {
 		return true
 	}
 	if moduleAuthor(a) {
-		return name == "read_module_draft" || name == "update_module_candidate" || name == "request_module_validation" || name == "read_validation_report" || strings.HasPrefix(name, "browser_")
+		return name == "read_module_draft" || name == "update_module_candidate" || name == "stage_module_candidate_part" || name == "commit_module_candidate" || name == "request_module_validation" || name == "read_validation_report" || strings.HasPrefix(name, "browser_")
 	}
 	return name == "catalog_search" || name == "catalog_next_page" || name == "catalog_get" || name == "read_usecase_draft" || name == "read_plan" || name == "propose_plan"
 }
@@ -132,5 +132,5 @@ func validPlatformArtifact(raw json.RawMessage, a *AuthorTask) bool {
 	}
 	var script string
 	var request bool
-	return hasAllowedTool(a, "update_module_candidate") && json.Unmarshal(fields["script"], &script) == nil && validModuleCandidate(script, fields["module"]) && len(fields["requestValidation"]) > 0 && json.Unmarshal(fields["requestValidation"], &request) == nil && (!request || hasAllowedTool(a, "request_module_validation"))
+	return (hasAllowedTool(a, "update_module_candidate") || hasAllowedTool(a, "commit_module_candidate")) && json.Unmarshal(fields["script"], &script) == nil && validModuleCandidate(script, fields["module"]) && len(fields["requestValidation"]) > 0 && json.Unmarshal(fields["requestValidation"], &request) == nil && (!request || hasAllowedTool(a, "request_module_validation"))
 }

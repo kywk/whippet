@@ -8,6 +8,11 @@ import (
 )
 
 func TestM10PostgresModuleAuthorReclaimValidation(t *testing.T) {
+	for _, tool := range []string{"update_module_candidate", "commit_module_candidate"} {
+		t.Run(tool, func(t *testing.T) { testModuleAuthorReclaimValidation(t, tool) })
+	}
+}
+func testModuleAuthorReclaimValidation(t *testing.T, candidateTool string) {
 	p, ctx := workspaceTestDB(t)
 	if e := p.Migrate(ctx); e != nil {
 		t.Fatal(e)
@@ -31,7 +36,7 @@ func TestM10PostgresModuleAuthorReclaimValidation(t *testing.T) {
 	}
 	input, _ := m10PlatformInput(t, "module-authoring")
 	input.Platform.Module = &Module{Slug: slug, ModuleKind: "setup", ExportName: "prepare"}
-	input.AllowedTools = []string{"update_module_candidate", "request_module_validation"}
+	input.AllowedTools = []string{candidateTool, "request_module_validation"}
 	tx, e := p.DB.BeginTx(ctx, nil)
 	if e != nil {
 		t.Fatal(e)

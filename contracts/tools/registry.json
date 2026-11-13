@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "10.2",
+  "version": "10.3",
   "tools": [
     {
       "name": "read_conversation_history",
@@ -840,6 +840,131 @@
       "limits": {
         "timeoutMs": 120000,
         "maxInputBytes": 26214400,
+        "maxOutputBytes": 131072
+      }
+    },
+    {
+      "name": "stage_module_candidate_part",
+      "description": "Stage one complete compact Module script or harness in this attempt only. Start stagingRevision at 0; use the revision returned by each accepted stage. Each part is at most 8192 UTF-8 bytes. This only stores an unverified part; it does not self-test, save a draft, or publish.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "part": {
+            "type": "string",
+            "enum": [
+              "script",
+              "harness"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "x-maxUtf8Bytes": 8192
+          },
+          "stagingRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "part",
+          "content",
+          "stagingRevision"
+        ],
+        "additionalProperties": false
+      },
+      "side": "worker",
+      "effect": "candidate",
+      "limits": {
+        "timeoutMs": 1000,
+        "maxInputBytes": 65536,
+        "maxOutputBytes": 2048
+      }
+    },
+    {
+      "name": "commit_module_candidate",
+      "description": "After both script and harness have been staged in this attempt, self-test them together with the supplied complete metadata. Use the current stagingRevision. Only a passing full candidate replaces the verified checkpoint; failure preserves the previous passing candidate. Does not publish.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "stagingRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "slug": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              },
+              "moduleKind": {
+                "type": "string",
+                "enum": [
+                  "setup",
+                  "step",
+                  "page"
+                ]
+              },
+              "exportName": {
+                "type": "string",
+                "maxLength": 128,
+                "x-maxUtf8Bytes": 128
+              },
+              "signature": {
+                "type": "string",
+                "maxLength": 8192,
+                "x-maxUtf8Bytes": 8192
+              },
+              "inputs": {
+                "type": "string",
+                "maxLength": 8192,
+                "x-maxUtf8Bytes": 8192
+              },
+              "returns": {
+                "type": "string",
+                "maxLength": 8192,
+                "x-maxUtf8Bytes": 8192
+              },
+              "preconditions": {
+                "type": "string",
+                "maxLength": 8192,
+                "x-maxUtf8Bytes": 8192
+              },
+              "postconditions": {
+                "type": "string",
+                "maxLength": 8192,
+                "x-maxUtf8Bytes": 8192
+              }
+            },
+            "required": [
+              "slug",
+              "moduleKind",
+              "exportName",
+              "signature",
+              "inputs",
+              "returns",
+              "preconditions",
+              "postconditions"
+            ],
+            "additionalProperties": false,
+            "x-maxJsonBytes": 4096
+          }
+        },
+        "required": [
+          "stagingRevision",
+          "metadata"
+        ],
+        "additionalProperties": false
+      },
+      "side": "worker",
+      "effect": "candidate",
+      "limits": {
+        "timeoutMs": 120000,
+        "maxInputBytes": 8192,
         "maxOutputBytes": 131072
       }
     },

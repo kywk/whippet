@@ -12,7 +12,7 @@ func m10SkillRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
 	source := repositoryFile("runtimes", "worker", "skills")
-	for _, id := range []string{"test-author", "workspace-author", "acceptance-summary", "playwright-authoring"} {
+	for _, id := range []string{"test-author", "workspace-author", "acceptance-summary", "playwright-authoring", "module-authoring", "usecase-planner"} {
 		err := filepath.WalkDir(filepath.Join(source, id), func(path string, entry os.DirEntry, err error) error {
 			if err != nil {
 				return err

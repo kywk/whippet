@@ -59,9 +59,9 @@ func TestM106ModuleServerBridge(t *testing.T) {
 	inputAuthor.ContextRevision = s.ContextRevision
 	inputAuthor.Messages = []ChatMessage{{Role: "user", Content: "Build the synthetic plan"}}
 	inputAuthor.Platform.Module = &Module{Slug: slug, ModuleKind: "setup", ExportName: "prepare"}
-	inputAuthor.AllowedTools = []string{"update_module_candidate", "request_module_validation"}
-	inputAuthor.Budget.MaxModelRequests = 4
-	if validateToolSnapshot(inputAuthor, registry, "update_module_candidate") != nil {
+	inputAuthor.AllowedTools = []string{"stage_module_candidate_part", "commit_module_candidate", "request_module_validation"}
+	inputAuthor.Budget.MaxModelRequests = 8
+	if validateToolSnapshot(inputAuthor, registry, "commit_module_candidate") != nil {
 		t.Fatal("invalid fixture snapshot")
 	}
 	run, err := enqueueAuthorSnapshot(ctx, tx, d, inputAuthor)
@@ -123,14 +123,24 @@ func TestM106ModuleServerBridge(t *testing.T) {
 			cmd.Env = append(cmd.Env, name+"="+value)
 		}
 	}
+	workerEntry := os.Getenv("WHIPPET_M10_BRIDGE_WORKER_ENTRY")
+	if workerEntry == "" {
+		workerEntry = repositoryFile("runtimes", "worker", "dist", "author", "main.js")
+	}
 	cmd.Env = append(cmd.Env, "GOTOOLCHAIN=local", "GOPROXY=off", "GOSUMDB=off", "GOCACHE=/private/tmp/whippet-m10-go-cache",
 		"WHIPPET_M10_BRIDGE_URL="+server.URL, "WHIPPET_M10_BRIDGE_CA="+ca, "WHIPPET_M10_BRIDGE_TOKEN="+token, "WHIPPET_M10_BRIDGE_INPUT="+input,
-		"WHIPPET_M10_WORKER_ENTRY="+repositoryFile("runtimes", "worker", "dist", "author", "main.js"))
+		"WHIPPET_M10_WORKER_ENTRY="+workerEntry)
 	resultPath := filepath.Join(temp, "handoff.json")
 	callPath := filepath.Join(temp, "calls.json")
 	module := *inputAuthor.Platform.Module
 	module.Harness = "import {test,expect} from '@playwright/test'; import {prepare} from '@lib/setup'; test('module',async()=>{expect(await prepare({})).toEqual({name:'alpha'});});"
-	callsInput := []any{map[string]any{"name": "update_module_candidate", "arguments": map[string]any{"script": "export async function prepare(_args:any){return {name:'alpha'};}", "module": module}}, map[string]any{"name": "request_module_validation", "arguments": map[string]any{}}}
+	metadata := map[string]any{"slug": module.Slug, "moduleKind": module.ModuleKind, "exportName": module.ExportName, "signature": module.Signature, "inputs": module.Inputs, "returns": module.Returns, "preconditions": module.Preconditions, "postconditions": module.Postconditions}
+	callsInput := []any{
+		map[string]any{"name": "stage_module_candidate_part", "arguments": map[string]any{"part": "script", "content": "export async function prepare(_args:any){return {name:'alpha'};}", "stagingRevision": 0}},
+		map[string]any{"name": "stage_module_candidate_part", "arguments": map[string]any{"part": "harness", "content": module.Harness, "stagingRevision": 1}},
+		map[string]any{"name": "commit_module_candidate", "arguments": map[string]any{"stagingRevision": 2, "metadata": metadata}},
+		map[string]any{"name": "request_module_validation", "arguments": map[string]any{}},
+	}
 	if err = os.WriteFile(callPath, []byte(jsonText(callsInput)), 0600); err != nil {
 		t.Fatal(err)
 	}

@@ -42,7 +42,7 @@ async function main(): Promise<void> {
     const output = await runAuthor(input, readAIConfig(process.env), browser, {
       signal: stop.signal,
       ...(diagnostics?{moduleDiagnostics:diagnostics}:{}),
-      ...(process.env.WHIPPET_M106_OBSERVE === "1" ? {observer:(event:string)=>process.stdout.write(`${JSON.stringify({kind:"log",message:event})}\n`)} : {}),
+      ...(diagnostics || process.env.WHIPPET_M106_OBSERVE === "1" ? {observer:(event:string)=>process.stdout.write(`${JSON.stringify({kind:"log",message:event})}\n`)} : {}),
       progress: (message) => process.stdout.write(`${JSON.stringify({ kind: "log", message })}\n`),
       secrets:credentials?.secrets,
       history, harness,

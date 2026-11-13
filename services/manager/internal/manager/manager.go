@@ -471,7 +471,7 @@ func (m *Manager) emit(r record, kind, text string) {
 	if r.Kind == "author" {
 		if kind == "started" {
 			text = "Author Worker started"
-		} else if kind != "log" || !authorProgressPattern.MatchString(text) {
+		} else if kind != "log" || !(authorProgressPattern.MatchString(text) || m109Enabled() && authorObservationPattern.MatchString(text)) {
 			return // Never forward provider/browser stderr or model/tool content.
 		}
 	}

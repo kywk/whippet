@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -86,9 +87,10 @@ type skillPin struct {
 	ReferenceHashes map[string]string `json:"referenceHashes"`
 }
 type skillBudget struct {
-	MaxModelRequests int64 `json:"maxModelRequests"`
-	MaxToolCalls     int64 `json:"maxToolCalls"`
-	MaxDurationMS    int64 `json:"maxDurationMs"`
+	MaxOutputTokens  *int64 `json:"maxOutputTokens,omitempty"`
+	MaxModelRequests int64  `json:"maxModelRequests"`
+	MaxToolCalls     int64  `json:"maxToolCalls"`
+	MaxDurationMS    int64  `json:"maxDurationMs"`
 }
 type skillModel struct {
 	Provider        string `json:"provider"`
@@ -139,8 +141,8 @@ func validCapabilitySnapshot(a *AuthorTask) (*toolRegistry, error) {
 		}
 		seen[pin.ID] = true
 	}
-	var budgetFields map[string]json.RawMessage
-	if json.Unmarshal(a.Budget, &budgetFields) != nil {
+	budgetFields, validFields := uniqueBudgetFields(a.Budget)
+	if !validFields {
 		return nil, errCapability
 	}
 	for _, value := range budgetFields {
@@ -150,9 +152,41 @@ func validCapabilitySnapshot(a *AuthorTask) (*toolRegistry, error) {
 	}
 	var budget skillBudget
 	var model skillModel
-	if !exactWorkspaceObject(a.Budget, "maxModelRequests", "maxToolCalls", "maxDurationMs") || json.Unmarshal(a.Budget, &budget) != nil || budget.MaxModelRequests < 1 || budget.MaxToolCalls < 0 || budget.MaxDurationMS < 1 || budget.MaxModelRequests > 9007199254740991 || budget.MaxToolCalls > 9007199254740991 || budget.MaxDurationMS > 9007199254740991 ||
+	if !(exactWorkspaceObject(a.Budget, "maxModelRequests", "maxToolCalls", "maxDurationMs") || exactWorkspaceObject(a.Budget, "maxModelRequests", "maxToolCalls", "maxDurationMs", "maxOutputTokens")) || json.Unmarshal(a.Budget, &budget) != nil || budget.MaxModelRequests < 1 || budget.MaxToolCalls < 0 || budget.MaxDurationMS < 1 || budget.MaxModelRequests > 9007199254740991 || budget.MaxToolCalls > 9007199254740991 || budget.MaxDurationMS > 9007199254740991 ||
 		!exactWorkspaceObject(a.Model, "provider", "model", "reasoningEffort") || json.Unmarshal(a.Model, &model) != nil || model.Provider != "opencode" || model.Model == "" || model.ReasoningEffort != "low" && model.ReasoningEffort != "medium" && model.ReasoningEffort != "high" && model.ReasoningEffort != "xhigh" {
 		return nil, errCapability
 	}
+	if budget.MaxOutputTokens != nil && (*budget.MaxOutputTokens < 1 || *budget.MaxOutputTokens > 16384 || *budget.MaxOutputTokens > 8192 && *a.SkillID != "module-authoring") {
+		return nil, errCapability
+	}
 	return registry, nil
+}
+
+// Budget alone accepts two exact shapes; duplicate keys cannot hide an override.
+func uniqueBudgetFields(raw json.RawMessage) (map[string]json.RawMessage, bool) {
+	d := json.NewDecoder(bytes.NewReader(raw))
+	token, err := d.Token()
+	if err != nil || token != json.Delim('{') {
+		return nil, false
+	}
+	fields := map[string]json.RawMessage{}
+	for d.More() {
+		token, err = d.Token()
+		key, ok := token.(string)
+		if err != nil || !ok {
+			return nil, false
+		}
+		if _, duplicate := fields[key]; duplicate {
+			return nil, false
+		}
+		var value json.RawMessage
+		if d.Decode(&value) != nil {
+			return nil, false
+		}
+		fields[key] = value
+	}
+	if _, err = d.Token(); err != nil || d.Decode(new(any)) != io.EOF {
+		return nil, false
+	}
+	return fields, true
 }

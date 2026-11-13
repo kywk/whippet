@@ -98,3 +98,56 @@ func TestV10RegistryMissingFailsClosedAndLegacyRemainsValid(t *testing.T) {
 		t.Fatal("invalid registry accepted")
 	}
 }
+
+func TestOutputBudgetStrictSnapshotForwarding(t *testing.T) {
+	for _, skill := range []string{"test-author", "module-authoring"} {
+		for _, token := range []string{"", "1", "8192", "16384", "null", "true", `"16384"`, "0", "-1", "1.5", "16385", "9007199254740992"} {
+			t.Run(skill+"/"+token, func(t *testing.T) {
+				a := v10Author(t)
+				*a.SkillID = skill
+				a.Skills = json.RawMessage(strings.Replace(string(a.Skills), "test-author", skill, 1))
+				raw := `{"maxModelRequests":8,"maxToolCalls":12,"maxDurationMs":180000`
+				if token != "" {
+					raw += `,"maxOutputTokens":` + token
+				}
+				raw += "}"
+				a.Budget = json.RawMessage(raw)
+				valid := token == "" || token == "1" || token == "8192" || token == "16384" && skill == "module-authoring"
+				_, err := validCapabilitySnapshot(a)
+				if (err == nil) != valid {
+					t.Fatalf("validity mismatch: %v", err)
+				}
+				if valid {
+					body, err := json.Marshal(a)
+					if err != nil {
+						t.Fatal(err)
+					}
+					var restored AuthorTask
+					if json.Unmarshal(body, &restored) != nil {
+						t.Fatal("round trip rejected")
+					}
+					if string(restored.Budget) != raw {
+						t.Fatal("raw budget changed")
+					}
+					var budget skillBudget
+					if json.Unmarshal(restored.Budget, &budget) != nil {
+						t.Fatal("typed budget")
+					}
+					if (budget.MaxOutputTokens == nil) != (token == "") {
+						t.Fatal("missing default written")
+					}
+					if budget.MaxModelRequests != 8 || budget.MaxToolCalls != 12 || budget.MaxDurationMS != 180000 {
+						t.Fatal("other limits changed")
+					}
+				}
+			})
+		}
+	}
+	for _, suffix := range []string{`,"extra":1`, `,"maxOutputTokens":8192,"maxOutputTokens":8192`, `,"maxOutputTokens":8192,"maxOutputTokens":16384`} {
+		a := v10Author(t)
+		a.Budget = json.RawMessage(`{"maxModelRequests":8,"maxToolCalls":12,"maxDurationMs":180000` + suffix + `}`)
+		if _, err := validCapabilitySnapshot(a); err == nil {
+			t.Fatal("unknown or duplicate field accepted")
+		}
+	}
+}

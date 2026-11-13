@@ -5,7 +5,8 @@
     "read_skill_reference",
     "read_module_draft",
     "read_validation_report",
-    "update_module_candidate",
+    "stage_module_candidate_part",
+    "commit_module_candidate",
     "request_module_validation",
     "read_conversation_history",
     "browser_navigate",
@@ -17,7 +18,8 @@
   "budget": {
     "maxModelRequests": 8,
     "maxToolCalls": 12,
-    "maxDurationMs": 180000
+    "maxDurationMs": 180000,
+    "maxOutputTokens": 16384
   },
   "model": {
     "provider": "opencode",
