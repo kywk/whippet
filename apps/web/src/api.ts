@@ -1,6 +1,6 @@
 import { validRepairContent, editableStage } from './plan';
 import { RUN_STATUSES } from './types';
-import type { StageRetry, ModuleMetadata, Plan, PlanStage, PlanSummary, StageArgument, JsonValue, AuthorPartial, CatalogItem, AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
+import type { AgentToken, AgentToolAudit, StageRetry, ModuleMetadata, Plan, PlanStage, PlanSummary, StageArgument, JsonValue, AuthorPartial, CatalogItem, AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
 
 export class ApiError extends Error {
   readonly code: string;
@@ -368,8 +368,24 @@ function items<T>(value: unknown, parse: (item: unknown) => T): T[] {
   return data.items.map(parse);
 }
 
+function parseAgentToken(value: unknown, workspaceId: string): AgentToken {
+  const data = record(value);
+  if (Object.hasOwn(data, 'token') || Object.hasOwn(data, 'digest') || Object.hasOwn(data, 'hash') || Object.hasOwn(data, 'prefix')) throw new ApiError('Agent Token 清單含不應回傳的機密欄位。', 'INVALID_RESPONSE');
+  const result = { id: string(data.id), workspaceId: string(data.workspaceId), name: string(data.name), createdAt: string(data.createdAt), revokedAt: nullableString(data.revokedAt), lastUsedAt: nullableString(data.lastUsedAt) };
+  if (result.workspaceId !== workspaceId) throw new ApiError('Agent Token 所屬 Workspace 不符。', 'WORKSPACE_CONFLICT');
+  return result;
+}
+
+function parseAgentToolAudit(value: unknown, workspaceId: string): AgentToolAudit {
+  const data = record(value);
+  const result = { id: string(data.id), tokenId: string(data.tokenId), workspaceId: string(data.workspaceId), toolName: string(data.toolName), decision: choice(data.decision, ['allowed', 'denied', 'rate_limited', 'failed'] as const), occurredAt: string(data.occurredAt) };
+  if (result.workspaceId !== workspaceId) throw new ApiError('稽核紀錄所屬 Workspace 不符。', 'WORKSPACE_CONFLICT');
+  return result;
+}
+
 export function createHttpApi(apiBase = '/api'): WhippetApi {
   const base = apiBase.replace(/\/+$/, '');
+  let adminToken = '';
 
   async function request(path: string, method = 'GET', signal?: AbortSignal, body?: unknown, sensitive = false, expectedStatus?: number | number[]): Promise<unknown> {
     const controller = new AbortController();
@@ -380,10 +396,14 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 12_000);
 
     try {
+      if (adminToken && !isProtectedCredentialTransport(base, window.location.href)) throw new ApiError('管理 key 只能透過 HTTPS 或 loopback 本機連線傳送。', 'INSECURE_TRANSPORT');
+      const headers: Record<string, string> = { Accept: 'application/json' };
+      if (body !== undefined) headers['Content-Type'] = 'application/json';
+      if (adminToken) headers['X-Whippet-Admin-Token'] = adminToken;
       const response = await fetch(`${base}${path}`, {
         method, credentials: 'include',
-        cache: sensitive ? 'no-store' : 'default', redirect: sensitive ? 'error' : 'follow',
-        headers: body === undefined ? { Accept: 'application/json' } : { Accept: 'application/json', 'Content-Type': 'application/json' },
+        cache: sensitive || adminToken ? 'no-store' : 'default', redirect: sensitive || adminToken ? 'error' : 'follow',
+        headers,
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
       });
@@ -405,7 +425,7 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
         );
       }
       if (expectedStatus !== undefined && !(Array.isArray(expectedStatus) ? expectedStatus : [expectedStatus]).includes(response.status)) throw new ApiError('API 未依契約接受請求，請重新載入確認。', 'INVALID_RESPONSE', response.status);
-      if (data === null) throw new ApiError('API 未回傳 JSON，請確認 /api 代理設定。', 'INVALID_RESPONSE');
+      if (data === null && response.status !== 204) throw new ApiError('API 未回傳 JSON，請確認 /api 代理設定。', 'INVALID_RESPONSE');
       return data;
     } catch (error) {
       if (signal?.aborted) throw new DOMException('請求已取消', 'AbortError');
@@ -426,6 +446,24 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     return proposal;
   }
   return {
+    setAdminToken(token) { adminToken = token; },
+    async logout(signal) { await request('/dev-logout', 'POST', signal, undefined, false, 204); },
+    async listAgentTokens(workspaceId, signal) {
+      return items(await request(`/workspaces/${id(workspaceId)}/agent-tokens`, 'GET', signal, undefined, false, 200), (value) => parseAgentToken(value, workspaceId));
+    },
+    async createAgentToken(workspaceId, name, signal) {
+      const data = record(await request(`/workspaces/${id(workspaceId)}/agent-tokens`, 'POST', signal, { name }, false, 201));
+      return { token: string(data.token), agentToken: parseAgentToken(data.agentToken, workspaceId) };
+    },
+    async revokeAgentToken(workspaceId, tokenId, signal) {
+      await request(`/workspaces/${id(workspaceId)}/agent-tokens/${id(tokenId)}`, 'DELETE', signal, undefined, false, 204);
+    },
+    async listAgentToolAudit(workspaceId, before, signal) {
+      const query = new URLSearchParams({ limit: '20' });
+      if (before) query.set('before', before);
+      const data = record(await request(`/workspaces/${id(workspaceId)}/agent-tool-audit?${query}`, 'GET', signal, undefined, false, 200));
+      return { items: array(data.items, (value) => parseAgentToolAudit(value, workspaceId)), nextCursor: nullableString(data.nextCursor) };
+    },
     async login(signal) {
       const data = record(await request('/dev-login', 'POST', signal));
       const user = record(data.user);

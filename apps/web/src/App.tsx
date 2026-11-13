@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { errorMessage } from './api';
+import { ApiError, errorMessage } from './api';
 import { ModuleCatalog } from './ModuleCatalog';
 import { Loading, Notice } from './components';
 import { WorkspaceConversation } from './WorkspaceConversation';
@@ -29,7 +29,9 @@ type Surface = 'tests' | 'settings' | 'catalog';
 export function App({ api, apiBase, mock }: AppProps) {
   const [user, setUser] = useState<DevUser>();
   const [loggingIn, setLoggingIn] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [loginError, setLoginError] = useState<string>();
+  const [adminKeyInput, setAdminKeyInput] = useState('');
   const loginLock = useRef(false);
   const draftDirty = useRef(false);
   const settingsDirty = useRef(false);
@@ -45,9 +47,25 @@ export function App({ api, apiBase, mock }: AppProps) {
     loginLock.current = true;
     setLoggingIn(true);
     setLoginError(undefined);
-    try { setUser(await api.login()); }
-    catch (error) { setLoginError(errorMessage(error)); }
+    api.setAdminToken?.(adminKeyInput);
+    try { setUser(await api.login()); setAdminKeyInput(''); api.setAdminToken?.(''); }
+    catch (error) {
+      setLoginError(error instanceof ApiError && error.status === 401 ? '管理 gate 已啟用：請輸入正確的管理 key 再登入。' : errorMessage(error));
+      api.setAdminToken?.('');
+    }
     finally { setLoggingIn(false); loginLock.current = false; }
+  }
+
+  async function logout() {
+    if (!confirmNavigation()) return;
+    setUser(undefined);
+    setAdminKeyInput('');
+    api.setAdminToken?.('');
+    setLoginError(undefined);
+    setLoggingOut(true);
+    try { await api.logout?.(); }
+    catch (error) { setLoginError(`登出請求未確認：${errorMessage(error)} 請關閉此分頁並確認 Server session 已失效。`); }
+    finally { setLoggingOut(false); }
   }
 
   return (
@@ -65,15 +83,19 @@ export function App({ api, apiBase, mock }: AppProps) {
             <h1 id="login-title">Whippet</h1>
             <a href="?preview=m10">M10 合成資料預覽</a>
             <p>用對話建立 Playwright 測試。AI 改稿、真實驗證、你確認發佈，執行與報告都在同一個工作台。</p>
-            <button className="button primary login-button" disabled={loggingIn} onClick={login}>
-              {loggingIn ? '登入中…' : '以開發管理員登入'}<ArrowRightIcon />
+            {!mock ? <label className="settings-field admin-login-field">管理 key（管理 gate 啟用時必填）
+              <input className="text-input" type="password" value={adminKeyInput} onChange={(event) => setAdminKeyInput(event.target.value)} autoComplete="off" spellCheck={false} disabled={loggingIn || loggingOut} />
+              <span className="inline-hint">僅保留於此分頁記憶體；不會用作 Agent Token。未啟用管理 gate 時可留空，沿用既有登入模式。</span>
+            </label> : null}
+            <button className="button primary login-button" disabled={loggingIn || loggingOut} onClick={login}>
+              {loggingOut ? '登出中…' : loggingIn ? '登入中…' : '以開發管理員登入'}<ArrowRightIcon />
             </button>
             {loginError ? <Notice message={loginError} /> : null}
-            <p className="fine-print">M1 開發入口 · 不需帳號密碼<br />由 Server 提供固定 Superadmin 身分。</p>
+            <p className="fine-print">由 Server 提供固定 Superadmin 身分；啟用管理 gate 時需管理 key。</p>
             {mock ? <p className="mock-note" role="status">示範模式：使用本機 mock 資料，不會啟動 Playwright；重新整理後資料會清除。</p> : null}
           </section>
         </main>
-      ) : <WorkspaceView api={api} apiBase={apiBase} mock={mock} user={user} onLogout={() => { if (confirmNavigation()) setUser(undefined); }} onDirtyChange={onDirtyChange} confirmNavigation={confirmNavigation} onSettingsDirtyChange={onSettingsDirtyChange} confirmTestNavigation={confirmTestNavigation} />}
+      ) : <WorkspaceView api={api} apiBase={apiBase} mock={mock} user={user} onLogout={() => { void logout(); }} onDirtyChange={onDirtyChange} confirmNavigation={confirmNavigation} onSettingsDirtyChange={onSettingsDirtyChange} confirmTestNavigation={confirmTestNavigation} />}
     </>
   );
 }

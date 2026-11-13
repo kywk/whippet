@@ -19,7 +19,7 @@ MCP採明確啟用：部署端提供獨立 `WHIPPET_ADMIN_TOKEN`，不得使用M
 3. `GET /api/workspaces/{workspaceId}/agent-tokens` 只回metadata，無法取回原明文；遺失時撤銷舊Token並建立新的。
 4. `DELETE /api/workspaces/{workspaceId}/agent-tokens/{tokenId}` 撤銷；撤銷提交後的新MCP請求立即拒絕。
 
-每個Token固定屬於一個Workspace。不要把管理key交給外部Agent。管理UI首波僅將輸入的管理key保留在記憶體，離開／重新載入後需再輸入。
+每個Token固定屬於一個Workspace。不要把管理key交給外部Agent。管理UI輸入只保留在記憶體；登入成功清除輸入，以不含管理key的HttpOnly、SameSite Strict cookie維持最多8小時session，Server重啟即失效。原生報告與WebSocket使用同源cookie；部署須設定精確WHIPPET_PUBLIC_ORIGIN以通過寫入檢查。登出會撤銷session並清除一次性Token畫面。
 
 ## 外部客戶端
 

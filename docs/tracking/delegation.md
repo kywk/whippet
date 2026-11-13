@@ -179,3 +179,5 @@ M11、M12 依相同方式進行：先固定契約，再並行開發，最後做 
 檔案 owner 維持原角色邊界；最多三實作加 PM。子 agent 不 Git／部署／重啟共享服務。M11 先隔離測試，不動19287。首波收集 Server／Runtime 最小介面，由 PM 固定 v11；Web 待介面穩定再啟動。後續本地階段 commit 可執行，不自動 push／merge／tag。
 
 首波介面固定後啟動 Web t55（gpt-6-sol high、parent=t52），獨立 tab `tb2081d7e3947353996d4de83b21a5e8e8`，命名 Whippet M11 Web 11-14；argv/keep/outlive-parent/cwd/working 已實核。唯一 owner apps/web，先接管理gate、Token與稽核，不啟用尚未實作external engine。
+
+Web首切片交付停寫後，新增QA t56（全新gpt-6-sol high、parent=t52、crew=1、keep/outlive-parent/no-daemon/YOLO），獨立tab `tba3ee94e316121c59de0a0a2402f1743b`（Whippet M11 QA 11-14），已核cwd/argv/working。QA只寫scripts/test/m11-*及專用tmp證據，先審首波跨入口與敏感狀態，不重跑已通過build。實作中為Server、Runtime、QA三位。

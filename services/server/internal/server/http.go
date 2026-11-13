@@ -16,17 +16,27 @@ import (
 )
 
 type API struct {
-	store      Store
-	artifacts  ArtifactStorage
-	engine     *Engine
-	token      string
-	log        *slog.Logger
-	liveViewer http.Handler
-	liveMedia  http.Handler
+	store         Store
+	artifacts     ArtifactStorage
+	engine        *Engine
+	token         string
+	adminToken    string
+	publicOrigin  string
+	adminSessions *adminSessions
+	agentLimiter  *agentRateLimiter
+	log           *slog.Logger
+	liveViewer    http.Handler
+	liveMedia     http.Handler
 }
 
 func NewAPI(store Store, artifacts ArtifactStorage, engine *Engine, token string, log *slog.Logger) *API {
-	return &API{store: store, artifacts: artifacts, engine: engine, token: token, log: log}
+	return &API{store: store, artifacts: artifacts, engine: engine, token: token, log: log, adminSessions: newAdminSessions(), agentLimiter: newAgentRateLimiter()}
+}
+
+// WithAdminAccess enables the M11 opt-in management boundary.
+func (a *API) WithAdminAccess(token, publicOrigin string) *API {
+	a.adminToken, a.publicOrigin = token, publicOrigin
+	return a
 }
 
 // Configure once before serving; long-lived live sockets have their own lease.
@@ -49,11 +59,15 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 		}
 		writeJSON(w, 200, map[string]string{"status": "ready"})
 	})
-	mux.HandleFunc("POST /api/dev-login", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, 200, map[string]any{"user": map[string]string{"id": "dev-admin", "role": "superadmin"}})
-	})
+	mux.Handle("/mcp", a.newMCPHandler())
+	mux.HandleFunc("POST /api/dev-login", a.devLogin)
+	mux.HandleFunc("POST /api/dev-logout", a.devLogout)
 	mux.HandleFunc("GET /api/workspaces", a.workspaces)
 	mux.HandleFunc("POST /api/workspaces", a.createWorkspace)
+	mux.HandleFunc("POST /api/workspaces/{id}/agent-tokens", a.createAgentToken)
+	mux.HandleFunc("GET /api/workspaces/{id}/agent-tokens", a.listAgentTokens)
+	mux.HandleFunc("DELETE /api/workspaces/{id}/agent-tokens/{tokenId}", a.revokeAgentToken)
+	mux.HandleFunc("GET /api/workspaces/{id}/agent-tool-audit", a.listAgentAudit)
 	mux.HandleFunc("GET /api/workspaces/{id}/conversation", a.workspaceConversation)
 	mux.HandleFunc("POST /api/workspaces/{id}/messages", a.workspaceMessage)
 	mux.HandleFunc("GET /api/workspaces/{id}/proposals/{proposalId}", a.workspaceProposal)
@@ -110,6 +124,25 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { writeError(w, 404, "not_found", "route not found") })
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
+		managerPath := strings.HasPrefix(r.URL.Path, "/api/manager/")
+		if a.adminToken == "" && (r.URL.Path == "/mcp" || agentManagementPath(r.URL.Path)) {
+			writeError(w, http.StatusServiceUnavailable, "disabled", "MCP is disabled")
+			return
+		}
+		if a.adminToken != "" && strings.HasPrefix(r.URL.Path, "/api/") && !managerPath {
+			if len(r.Header.Values("Authorization")) != 0 {
+				writeError(w, http.StatusForbidden, "forbidden", "Bearer authentication is not accepted on management routes")
+				return
+			}
+			if !a.adminRequestAllowed(r) {
+				writeError(w, http.StatusUnauthorized, "unauthorized", "admin token required")
+				return
+			}
+			if !a.adminRequestOriginAllowed(r) {
+				writeError(w, http.StatusForbidden, "forbidden", "origin not allowed")
+				return
+			}
+		}
 		if err := authorizeDevelopment(r.Context()); err != nil {
 			a.fail(w, err)
 			return
@@ -126,6 +159,65 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 		}
 		mux.ServeHTTP(w, r)
 	})
+}
+
+func (a *API) adminHeaderValid(r *http.Request) bool {
+	values := r.Header.Values("X-Whippet-Admin-Token")
+	return len(values) == 1 && subtle.ConstantTimeCompare([]byte(values[0]), []byte(a.adminToken)) == 1
+}
+
+func (a *API) adminRequestAllowed(r *http.Request) bool {
+	if r.URL.Path == "/api/dev-logout" {
+		return true
+	}
+	if a.adminHeaderValid(r) {
+		return true
+	}
+	if r.URL.Path == "/api/dev-login" {
+		return false
+	}
+	return a.adminSessions.valid(adminCookie(r), time.Now())
+}
+
+func (a *API) adminRequestOriginAllowed(r *http.Request) bool {
+	origins := r.Header.Values("Origin")
+	if len(origins) > 0 && (len(origins) != 1 || a.publicOrigin == "" || origins[0] != a.publicOrigin) {
+		return false
+	}
+	if r.URL.Path == "/api/dev-logout" {
+		return len(origins) == 1 && origins[0] == a.publicOrigin
+	}
+	if r.URL.Path == "/api/dev-login" || a.adminHeaderValid(r) {
+		return true
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+		return len(origins) == 1 && origins[0] == a.publicOrigin
+	}
+	return true
+}
+
+func (a *API) devLogin(w http.ResponseWriter, r *http.Request) {
+	if a.adminToken != "" {
+		value, ok := a.adminSessions.issue(time.Now())
+		if !ok {
+			writeError(w, http.StatusServiceUnavailable, "session_capacity", "admin sessions unavailable")
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: adminCookieName, Value: value, Path: "/api", HttpOnly: true, Secure: r.TLS != nil || strings.HasPrefix(a.publicOrigin, "https://"), SameSite: http.SameSiteStrictMode, MaxAge: int(adminSessionLifetime.Seconds())})
+		w.Header().Set("Cache-Control", "no-store")
+	}
+	writeJSON(w, 200, map[string]any{"user": map[string]string{"id": "dev-admin", "role": "superadmin"}})
+}
+
+func (a *API) devLogout(w http.ResponseWriter, r *http.Request) {
+	a.adminSessions.revoke(adminCookie(r))
+	http.SetCookie(w, &http.Cookie{Name: adminCookieName, Path: "/api", MaxAge: -1, HttpOnly: true, Secure: r.TLS != nil || strings.HasPrefix(a.publicOrigin, "https://"), SameSite: http.SameSiteStrictMode})
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func agentManagementPath(path string) bool {
+	return strings.HasSuffix(path, "/agent-tokens") || strings.Contains(path, "/agent-tokens/") || strings.HasSuffix(path, "/agent-tool-audit")
 }
 
 func (a *API) ManagerAuth(next http.Handler) http.Handler {

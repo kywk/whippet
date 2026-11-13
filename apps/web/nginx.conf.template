@@ -24,6 +24,18 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    location = /mcp {
+        proxy_pass ${WHIPPET_API_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header Origin $http_origin;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_buffering off;
+    }
+
     location /assets/ {
         try_files $uri =404;
         add_header Cache-Control "public, max-age=31536000, immutable";

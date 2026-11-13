@@ -28,6 +28,24 @@ export interface WorkspaceRoleRef {
   configured: boolean;
 }
 
+export interface AgentToken {
+  id: string;
+  workspaceId: string;
+  name: string;
+  createdAt: string;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+}
+
+export interface AgentToolAudit {
+  id: string;
+  tokenId: string;
+  workspaceId: string;
+  toolName: string;
+  decision: 'allowed' | 'denied' | 'rate_limited' | 'failed';
+  occurredAt: string;
+}
+
 export type ScriptOrigin = 'ai' | 'manual' | 'legacy';
 export interface WorkspaceCapability { available: boolean; reason: string | null }
 export interface WorkspaceCapabilities {
@@ -338,6 +356,12 @@ export function isActiveRun(run: Run): boolean {
 }
 
 export interface WhippetApi {
+  setAdminToken?: (token: string) => void;
+  logout?: (signal?: AbortSignal) => Promise<void>;
+  listAgentTokens?: (workspaceId: string, signal?: AbortSignal) => Promise<AgentToken[]>;
+  createAgentToken?: (workspaceId: string, name: string, signal?: AbortSignal) => Promise<{ token: string; agentToken: AgentToken }>;
+  revokeAgentToken?: (workspaceId: string, tokenId: string, signal?: AbortSignal) => Promise<void>;
+  listAgentToolAudit?: (workspaceId: string, before?: string, signal?: AbortSignal) => Promise<{ items: AgentToolAudit[]; nextCursor: string | null }>;
   getPlan?: (testId: string, editingSessionId: string, signal?: AbortSignal) => Promise<Plan | null>;
   savePlan?: (testId: string, input: { editingSessionId: string; revision: number; planRevision: number; stages: PlanStageInput[] }, signal?: AbortSignal) => Promise<Plan>;
   getStageRetry?: (planId: string, stageId: string, signal?: AbortSignal) => Promise<StageRetry>;

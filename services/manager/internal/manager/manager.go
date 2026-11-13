@@ -21,20 +21,26 @@ const heartbeatInterval = 10 * time.Second
 const connectionReadTimeout = 35 * time.Second
 
 type Manager struct {
-	cfg      Config
-	docker   containerRuntime
-	http     *http.Client
-	lock     *os.File
-	mu       sync.Mutex // records and admission
-	records  map[string]record
-	controls map[string]context.CancelFunc // execution only; collection uses service context
-	wg       sync.WaitGroup
-	connMu   sync.Mutex // serializes writes and connection replacement
-	conn     *websocket.Conn
-	events   chan Envelope
-	liveMu   sync.Mutex
-	live     map[string]*liveSession
-	secrets  map[string][]string // attempt-local memory only, never journaled
+	cfg                        Config
+	docker                     containerRuntime
+	http                       *http.Client
+	lock                       *os.File
+	mu                         sync.Mutex // records and admission
+	records                    map[string]record
+	controls                   map[string]context.CancelFunc // execution only; collection uses service context
+	sessions                   map[string]sessionRecord
+	sessionControls            map[string]context.CancelFunc
+	sessionsRuntime            sessionRuntime
+	sessionWorking             map[string]*sessionWorkingState
+	sessionIdleTimeout         time.Duration
+	sessionCallTimeoutOverride time.Duration
+	wg                         sync.WaitGroup
+	connMu                     sync.Mutex // serializes writes and connection replacement
+	conn                       *websocket.Conn
+	events                     chan Envelope
+	liveMu                     sync.Mutex
+	live                       map[string]*liveSession
+	secrets                    map[string][]string // attempt-local memory only, never journaled
 }
 
 func New(cfg Config) (*Manager, error) {
@@ -50,8 +56,14 @@ func New(cfg Config) (*Manager, error) {
 		lock.Close()
 		return nil, err
 	}
-	m := &Manager{cfg: cfg, http: newHTTPClient(), lock: lock, records: records, controls: make(map[string]context.CancelFunc), events: make(chan Envelope, 64), secrets: make(map[string][]string)}
+	sessions, err := loadSessionRecords(cfg.WorkDir)
+	if err != nil {
+		lock.Close()
+		return nil, err
+	}
+	m := &Manager{cfg: cfg, http: newHTTPClient(), lock: lock, records: records, controls: make(map[string]context.CancelFunc), sessions: sessions, sessionControls: make(map[string]context.CancelFunc), sessionWorking: make(map[string]*sessionWorkingState), sessionIdleTimeout: 10 * time.Minute, events: make(chan Envelope, 64), secrets: make(map[string][]string)}
 	m.docker = dockerCLI{cfg: cfg, remember: m.rememberCredentials}
+	m.sessionsRuntime = newDockerSessionRuntime(cfg)
 	return m, nil
 }
 
@@ -71,6 +83,7 @@ func (m *Manager) recoverAttempts(ctx context.Context) {
 
 func (m *Manager) Run(ctx context.Context) error {
 	m.recoverAttempts(ctx)
+	m.recoverSessions(ctx)
 	eventsDone := make(chan struct{})
 	go func() {
 		defer close(eventsDone)
@@ -188,6 +201,22 @@ func (m *Manager) session(ctx context.Context) error {
 			}
 		case "live.stop":
 			_ = m.stopLive(env)
+		case "session.open":
+			m.handleSessionOpen(ctx, env)
+		case "session.call":
+			if err := m.callSession(ctx, env); err != nil {
+				var call sessionToolCall
+				if json.Unmarshal(env.Payload, &call) == nil && uuidPattern.MatchString(call.SessionID) && uuidPattern.MatchString(call.LeaseID) && uuidPattern.MatchString(call.CallID) {
+					code := "invalid_request"
+					var sessionErr sessionWireError
+					if errors.As(err, &sessionErr) {
+						code = string(sessionErr)
+					}
+					_ = m.send(message(m.cfg.ManagerID, "session.reply", "", "", sessionToolResult{SessionID: call.SessionID, LeaseID: call.LeaseID, CallID: call.CallID, Error: code}))
+				}
+			}
+		case "session.close":
+			_ = m.closeSession(env)
 		}
 	}
 }
@@ -232,7 +261,7 @@ func (m *Manager) heartbeatMessage() Envelope {
 			active = append(active, map[string]string{"runId": r.RunID, "attemptId": r.AttemptID})
 		}
 	}
-	return message(m.cfg.ManagerID, "heartbeat", "", "", map[string]any{"active": active})
+	return message(m.cfg.ManagerID, "heartbeat", "", "", map[string]any{"active": active, "sessions": m.sessionStates()})
 }
 
 func (m *Manager) validateCommand(env Envelope) error {
@@ -273,6 +302,7 @@ func (m *Manager) accept(ctx context.Context, env Envelope) error {
 			active++
 		}
 	}
+	active += m.sessionSlotCountLocked()
 	if active >= m.cfg.MaxWorkers {
 		m.mu.Unlock()
 		return errors.New("Worker slot is occupied; MAX_WORKERS reached, including cleanup")

@@ -378,6 +378,10 @@ M10.Z 清單：
 
 2026-11-14 首波v11已固定並派實作：t53為Token／管理gate／唯讀MCP與skill resources；t54為獨立browser session核心、IPC及共用容量回收。claim/submit、互動寫入與Server session代理尚待後切片，M11.0不提前列完成。MCP啟用時管理API必須同步受保護，避免既有開發身分入口繞過Token邊界；既有19287不改。
 
+首波Web已交付管理key記憶體登入／cookie接線、Token一次顯示／撤銷／稽核及MCP代理；`npm run build`與`node scripts/check-m11-agent-api.mjs`通過，隔離真Server整合待QA t56。external engine與來源徽章尚未啟用，M11.4維持進行中。
+
+2026-11-14 首波程式與隔離驗證已交付（各子項仍進行中）：Server TestM11/Postgres與build PASS，Manager定向race/build PASS，Worker session＋privacy 7/7 PASS，Web build/API檢查及QA合成UI PASS，PM真HTTP smoke 18項PASS。修復Token遲到回應、Catalog DB錯誤誤成功與匿名session敏感快照，均有行為red→green。新隔離服務已回收，未動19287。詳見 [首波交接](handoff/m11-first-wave-20261114.md)；後續先固定Server session／claim wire，未完成項不提前列完成。
+
 M11.Z 清單：
 1. M10.Z 第 1、2 項回歸，並用 builtin 跑一次黃金任務集。
 2. 互動模式端到端：外部 Agent 建立 Module 與 Use Case 草稿 → 真實驗證 → 人在 UI 發佈；MCP 沒有任何發佈路徑。

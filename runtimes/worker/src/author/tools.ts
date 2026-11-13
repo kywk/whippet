@@ -11,7 +11,7 @@ import { LiveObserver } from "../live/observer.js";
 import { fixtureBridge } from "../live/fixture-bridge.js";
 import {AIOriginGate,installAIOriginGate} from "./scope.js";
 import type {WorkspaceConfig} from "../workspace-context.js";
-import {CredentialClient} from '../login/client.js';
+import {CredentialClient,KnownSecrets} from '../login/client.js';
 import {loginBroker} from '../login/broker.js';
 import {submitLogin} from '../login/helper.js';
 import {installLoginPrivacy} from '../login/privacy.js';
@@ -50,13 +50,14 @@ export interface ExplorationBrowser {
   close(): Promise<void>;
 }
 
-export function explorationBrowser(env: Readonly<Record<string, string | undefined>>,options:{scope?:WorkspaceConfig;executablePath?:string;credentials?:CredentialClient;defaultTestUrl?:string;timeoutMs?:number}={}): ExplorationBrowser {
+export function explorationBrowser(env: Readonly<Record<string, string | undefined>>,options:{scope?:WorkspaceConfig;executablePath?:string;credentials?:CredentialClient;knownSecrets?:Pick<KnownSecrets,"add"|"clean">;defaultTestUrl?:string;timeoutMs?:number}={}): ExplorationBrowser {
   let browser: Browser | undefined;
   let context:BrowserContext|undefined;
   let page: Page | undefined;
   let closed = false;
   const live = new LiveObserver();
   const gate=options.scope?new AIOriginGate(options.scope):undefined;
+  const secrets=options.credentials?.secrets??options.knownSecrets??new KnownSecrets();
   let privacy:ReturnType<typeof installLoginPrivacy>|undefined;
   // Browser subprocesses do not inherit the AI key or Manager credentials.
   const browserEnv: Record<string, string> = {};
@@ -85,11 +86,11 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
   async function snapshot(): Promise<unknown> {
     const p = await getPage();
     if(gate)gate.require(p.url(),'observation');
-    if(options.credentials){
-      for(const cookie of await p.context().cookies())options.credentials.secrets.add(cookie.value);
+    {
+      for(const cookie of await p.context().cookies())secrets.add(cookie.value);
       const hidden=await p.locator('input[type="hidden"],input[type="password"]').evaluateAll((nodes)=>nodes.slice(0,100).map((n)=>(n as HTMLInputElement).value).filter((s)=>s.length<=4096));
-      for(const value of hidden)options.credentials.secrets.add(value);
-      privacy?.secrets.list().forEach((value)=>options.credentials!.secrets.add(value));
+      for(const value of hidden)secrets.add(value);
+      privacy?.secrets.list().forEach((value)=>secrets.add(value));
     }
     // This DOM extractor is fixed application code, never model-provided code.
     // It reads metadata only (not input values), and exposes no eval tool.
@@ -126,7 +127,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
     });
     const safeURL=new URL(p.url());safeURL.search='';safeURL.hash='';
     const result={ url: safeURL.href, snapshot: (await p.locator("body").ariaSnapshot({ timeout: 10000 })).slice(0, 12000), selectorHints,...(gate?{scopeIssues:gate.takeIssues()}:{}) };
-    return options.credentials?options.credentials.secrets.clean(result):result;
+    return secrets.clean(result);
   }
   return {
     async navigate(url) {

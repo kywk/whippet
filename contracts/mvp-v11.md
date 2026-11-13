@@ -12,6 +12,12 @@
 - `/mcp` 每個HTTP請求及工具執行前都查DB驗Token與撤銷，不以長效cache授權。Origin缺席可接受；有值須精確等於已設定 `WHIPPET_PUBLIC_ORIGIN` 的scheme/host/port，缺配置、null、複數或格式錯誤拒403，不信任轉送Host推導allowlist。部署只透過HTTPS或loopback隔離測試。
 - 每Token token bucket：每分鐘60次、burst10，超限429及Retry-After；未知Token不建立無界bucket。合法Token bucket需有界清理；速率上限不取代工具大小／期限限制。
 
+## 管理瀏覽器相容接縫（首波補充，優先於僅header敘述）
+
+原生報告連結與browser WebSocket不能附自訂header，因此啟用gate後提供最小管理session：`POST /api/dev-login`只有正確admin header能登入／續期，保留原user回應並設定opaque cookie（至少32-byte亂數、HttpOnly、SameSite=Strict、Path=/api，TLS或公開HTTPS時Secure），絕對期限8小時。Server只在有界記憶體存digest/expiry，重啟失效；不把管理key放cookie，session滿時拒新登入或只清已過期項。
+
+後續非Manager `/api` 可使用正確admin header或有效session cookie，仍拒所有Bearer；以cookie授權的寫入必須Origin精確符合已設定WHIPPET_PUBLIC_ORIGIN，無配置拒絕。GET／WebSocket若帶Origin亦須核對。`POST /api/dev-logout`撤銷本session、清cookie，重送204，仍核Origin。`/mcp`不接受cookie當授權。Web登入成功清輸入key，後續依同源cookie取報告／開WS；登出清管理狀態與一次性Token，不讀HttpOnly cookie。
+
 ## Agent Token 與稽核 HTTP
 
 管理gate通過後，沿Workspace權威關聯核對；未知欄位與錯誤型別拒絕。
@@ -38,6 +44,7 @@ session是獨立租約，不冒充author Run。沿WSS Envelope protocolVersion=1
 
 - Server→Manager `session.open` payload `{sessionId,leaseId,workspaceId,workspaceContext,allowedTools,toolRegistryVersion,toolRegistrySha256,idleTimeoutMs:600000,maxLifetimeMs:1800000}`。
 - Manager→Server `session.ready` payload `{sessionId,leaseId}`。
+- Manager→Server `session.open_rejected` payload `{sessionId,leaseId,error}`，error固定 `capacity_full|invalid_request|session_unavailable`。只回語法有效UUID識別；非法識別frame直接拒絕，不反射raw內容。拒絕不建立lease、不占新slot，也不能對既有其他lease發closed。Server不得把明確拒絕當未知結果重送open。
 - Server→Manager `session.call` payload `{sessionId,leaseId,callId,name,arguments}`。
 - Manager→Server `session.reply` payload `{sessionId,leaseId,callId,result}` 或 `{sessionId,leaseId,callId,error}`，兩者互斥。error固定為 `session_unavailable|tool_unavailable|invalid_request|busy|unknown_result|cancelled|timeout`，不含自由文字。
 - Server→Manager `session.close` payload `{sessionId,leaseId}`；Manager→Server `session.closed` payload `{sessionId,leaseId,reason,reclaimed}`；reason固定 `closed|idle_timeout|lifetime_timeout|cancelled|worker_failed|manager_restart`。reclaimed=true僅Docker確認移除後。

@@ -9,6 +9,7 @@ import { LiveView } from './LiveView';
 import { WorkspaceAvailability, WorkspaceSettings } from './WorkspaceSettings';
 import { WorkspaceProposalCard } from './WorkspaceProposal';
 import { WorkspaceCredentials } from './WorkspaceCredentials';
+import { WorkspaceAgentAccess } from './WorkspaceAgentAccess';
 import { isActiveRun } from './types';
 import { ArrowRightIcon, CloseIcon, EyeIcon, PanelIcon, RefreshIcon } from './icons';
 import type { Run, WhippetApi, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal } from './types';
@@ -201,12 +202,12 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
       </div>
     </header>
     <div className={`studio${sideOpen ? ' side-open' : ''}`}>
-      {sideOpen ? <div className="side-backdrop" aria-hidden="true" onClick={() => setSideOpen(false)} /> : null}
+      {sideOpen ? <div className="side-backdrop" aria-hidden="true" onClick={() => { setSideOpen(false); setSideTab('proposal'); }} /> : null}
       <section className="studio-chat" aria-labelledby="workspace-chat-title">
         <div className="chat-bar">
           <h2 id="workspace-chat-title" className="chat-bar-title">Workspace 設定對話</h2>
           <span className="chat-bar-spacer" />
-          <button className="button quiet compact side-toggle" aria-expanded={sideOpen} onClick={() => setSideOpen((open) => !open)}><PanelIcon />{sideOpen ? '收合設定面板' : '提案與登入資料'}</button>
+          <button className="button quiet compact side-toggle" aria-expanded={sideOpen} onClick={() => { if (sideOpen) setSideTab('proposal'); setSideOpen((open) => !open); }}><PanelIcon />{sideOpen ? '收合設定面板' : '提案與登入資料'}</button>
           <button className="rail-icon-button light small" aria-label="重新載入設定對話" title="重新載入設定對話" disabled={refreshing || mutating} onClick={() => { void refresh().catch(() => undefined); }}><RefreshIcon /></button>
         </div>
         <ChatScroll watch={`${messages.length}:${pendingTurn}:${trackedId}:${run?.status}:${Boolean(liveRun)}`} label="Workspace 設定對話">
@@ -264,6 +265,7 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
         <div id="ws-panel-settings" role="tabpanel" aria-labelledby="ws-tab-settings" className="side-panel" hidden={sideTab !== 'settings'}>
           <WorkspaceAvailability workspace={current} />
           <WorkspaceSettings workspace={current} />
+          <WorkspaceAgentAccess api={api} workspaceId={workspace.id} active={active && sideTab === 'settings'} />
           {conversation?.conversationSummary ? <section className="session-background" aria-label="Workspace 對話背景"><h4>Workspace 對話背景</h4><p className="summary-content">{conversation.conversationSummary}</p></section> : null}
         </div>
       </aside>
