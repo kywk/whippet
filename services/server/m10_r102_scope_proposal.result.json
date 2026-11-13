@@ -1,0 +1,400 @@
+{
+  "base": "http://127.0.0.1:19087/api",
+  "owner": "t4b",
+  "workspaceId": "f6f4fdd5-bf28-4044-9dd2-0c06bb077736",
+  "initialWorkspace": {
+    "id": "f6f4fdd5-bf28-4044-9dd2-0c06bb077736",
+    "name": "m10-r102-ui-scope",
+    "revision": 1,
+    "sites": [],
+    "defaultTestUrl": "",
+    "timeoutMs": 60000,
+    "lifecycle": "draft",
+    "authorizationRevision": 0,
+    "scopeStatus": "unconfirmed",
+    "settings": null,
+    "conversationId": "0c60318e-bb59-4c26-9baf-c058ca9e02c2",
+    "activeRunId": null,
+    "currentProposal": null,
+    "roles": [],
+    "secretsAvailable": false,
+    "executionAvailable": true,
+    "unavailableReason": null,
+    "capabilities": {
+      "aiExploration": {
+        "available": false,
+        "reason": "scope_confirmation_required"
+      },
+      "aiExecution": {
+        "available": false,
+        "reason": "scope_confirmation_required"
+      },
+      "manualExecution": {
+        "available": true,
+        "reason": null
+      },
+      "credentialLogin": {
+        "available": false,
+        "reason": "secrets_unavailable"
+      }
+    }
+  },
+  "initialConversation": {
+    "id": "0c60318e-bb59-4c26-9baf-c058ca9e02c2",
+    "workspaceId": "f6f4fdd5-bf28-4044-9dd2-0c06bb077736",
+    "ownerType": "workspace",
+    "contextRevision": 0,
+    "conversationSummary": null,
+    "messages": [],
+    "activeRunId": null
+  },
+  "messageRequested": true,
+  "messageRequest": {
+    "content": "請僅產生正式 Workspace proposal，不探索、不瀏覽、不發出站台網路請求、不確認或套用。Workspace 名稱 m10-r102-ui-scope；用途：純計算 Module 與 UseCase 的隔離 UI 驗收。唯一 target origin 必須為 https://m10-fixture.invalid（保留 .invalid；僅作合成授權範圍標記，沒有真實站台，本次及後續純計算驗收不得真瀏覽或發出網路請求）。defaultTestUrl 使用 https://m10-fixture.invalid；timeoutMs=60000。dependencies=[]、loginRoles=[]，不需要或索取任何credentials。exclusions文字必須明確禁止其他所有origin，並明確禁止瀏覽、網路、登入與憑證操作；excludedOrigins可空陣列，不以萬用字串假造origin。backgroundSummary說明只用純計算函式與Playwright test/expect完成本地斷言，沒有外部目標驗證。本輪只交完整proposal待PM審查，不進行confirm-scope/confirm。",
+    "revision": 1,
+    "contextRevision": 0
+  },
+  "submission": {
+    "run": {
+      "scriptOrigin": "legacy",
+      "workspaceId": "f6f4fdd5-bf28-4044-9dd2-0c06bb077736",
+      "id": "fe514441-653a-4a39-a417-1c66d3894ee2",
+      "testId": null,
+      "workspaceContext": {
+        "schemaVersion": "1",
+        "workspaceId": "f6f4fdd5-bf28-4044-9dd2-0c06bb077736",
+        "settingsRevision": 1,
+        "config": null,
+        "roleRefs": []
+      },
+      "status": "queued",
+      "createdAt": "2026-11-13T06:58:15.998131Z",
+      "kind": "author",
+      "workspaceSettings": {
+        "revision": 1,
+        "sites": [],
+        "defaultTestUrl": "",
+        "timeoutMs": 60000
+      },
+      "editingSessionId": null,
+      "authorMode": "workspace"
+    },
+    "conversationId": "0c60318e-bb59-4c26-9baf-c058ca9e02c2"
+  },
+  "runStatus": "succeeded",
+  "observedWorkspace": {
+    "id": "f6f4fdd5-bf28-4044-9dd2-0c06bb077736",
+    "name": "m10-r102-ui-scope",
+    "revision": 1,
+    "sites": [],
+    "defaultTestUrl": "",
+    "timeoutMs": 60000,
+    "lifecycle": "draft",
+    "authorizationRevision": 0,
+    "scopeStatus": "unconfirmed",
+    "settings": null,
+    "conversationId": "0c60318e-bb59-4c26-9baf-c058ca9e02c2",
+    "activeRunId": null,
+    "currentProposal": {
+      "id": "7bdc5215-d4ef-4b88-9faa-34b56236b7b9",
+      "workspaceId": "f6f4fdd5-bf28-4044-9dd2-0c06bb077736",
+      "conversationId": "0c60318e-bb59-4c26-9baf-c058ca9e02c2",
+      "sourceRunId": "fe514441-653a-4a39-a417-1c66d3894ee2",
+      "baseRevision": 1,
+      "contextRevision": 2,
+      "status": "pending",
+      "content": {
+        "name": "m10-r102-ui-scope",
+        "purpose": "純計算 Module 與 UseCase 的隔離 UI 驗收。",
+        "backgroundSummary": "只用純計算函式與 Playwright test/expect 完成本地斷言，沒有外部目標驗證。https://m10-fixture.invalid 僅為合成授權範圍標記（保留 .invalid），沒有真實站台，本次及後續純計算驗收不得真瀏覽或發出網路請求。",
+        "targets": [
+          {
+            "name": "m10-fixture",
+            "purpose": "合成授權範圍標記，僅作純計算驗收的範圍佔位，無真實站台，不瀏覽、不發請求。",
+            "origin": "https://m10-fixture.invalid"
+          }
+        ],
+        "dependencies": [],
+        "excludedOrigins": [],
+        "exclusions": "禁止其他所有 origin；明確禁止任何瀏覽、網路請求、登入與憑證操作（含索取或使用 credentials）；https://m10-fixture.invalid 僅為合成授權範圍標記（保留 .invalid），沒有真實站台，本次及後續純計算驗收不得真瀏覽或發出網路請求。",
+        "loginRoles": [],
+        "defaultTestUrl": "https://m10-fixture.invalid",
+        "timeoutMs": 60000
+      },
+      "scopeHash": "4f5c3108b655f1d68a37913954b431c45840d865f08094ea475172e3a3878bf3",
+      "scopeConfirmed": false,
+      "invalidationReason": null,
+      "appliedRevision": null,
+      "createdAt": "2026-11-13T06:58:29.489924Z"
+    },
+    "roles": [],
+    "secretsAvailable": false,
+    "executionAvailable": true,
+    "unavailableReason": null,
+    "capabilities": {
+      "aiExploration": {
+        "available": false,
+        "reason": "scope_confirmation_required"
+      },
+      "aiExecution": {
+        "available": false,
+        "reason": "scope_confirmation_required"
+      },
+      "manualExecution": {
+        "available": true,
+        "reason": null
+      },
+      "credentialLogin": {
+        "available": false,
+        "reason": "secrets_unavailable"
+      }
+    }
+  },
+  "proposal": {
+    "id": "7bdc5215-d4ef-4b88-9faa-34b56236b7b9",
+    "workspaceId": "f6f4fdd5-bf28-4044-9dd2-0c06bb077736",
+    "conversationId": "0c60318e-bb59-4c26-9baf-c058ca9e02c2",
+    "sourceRunId": "fe514441-653a-4a39-a417-1c66d3894ee2",
+    "baseRevision": 1,
+    "contextRevision": 2,
+    "status": "pending",
+    "content": {
+      "name": "m10-r102-ui-scope",
+      "purpose": "純計算 Module 與 UseCase 的隔離 UI 驗收。",
+      "backgroundSummary": "只用純計算函式與 Playwright test/expect 完成本地斷言，沒有外部目標驗證。https://m10-fixture.invalid 僅為合成授權範圍標記（保留 .invalid），沒有真實站台，本次及後續純計算驗收不得真瀏覽或發出網路請求。",
+      "targets": [
+        {
+          "name": "m10-fixture",
+          "purpose": "合成授權範圍標記，僅作純計算驗收的範圍佔位，無真實站台，不瀏覽、不發請求。",
+          "origin": "https://m10-fixture.invalid"
+        }
+      ],
+      "dependencies": [],
+      "excludedOrigins": [],
+      "exclusions": "禁止其他所有 origin；明確禁止任何瀏覽、網路請求、登入與憑證操作（含索取或使用 credentials）；https://m10-fixture.invalid 僅為合成授權範圍標記（保留 .invalid），沒有真實站台，本次及後續純計算驗收不得真瀏覽或發出網路請求。",
+      "loginRoles": [],
+      "defaultTestUrl": "https://m10-fixture.invalid",
+      "timeoutMs": 60000
+    },
+    "scopeHash": "4f5c3108b655f1d68a37913954b431c45840d865f08094ea475172e3a3878bf3",
+    "scopeConfirmed": false,
+    "invalidationReason": null,
+    "appliedRevision": null,
+    "createdAt": "2026-11-13T06:58:29.489924Z"
+  },
+  "confirmRequested": true,
+  "confirmResponse": {
+    "proposal": {
+      "id": "7bdc5215-d4ef-4b88-9faa-34b56236b7b9",
+      "workspaceId": "f6f4fdd5-bf28-4044-9dd2-0c06bb077736",
+      "conversationId": "0c60318e-bb59-4c26-9baf-c058ca9e02c2",
+      "sourceRunId": "fe514441-653a-4a39-a417-1c66d3894ee2",
+      "baseRevision": 1,
+      "contextRevision": 2,
+      "status": "applied",
+      "content": {
+        "name": "m10-r102-ui-scope",
+        "purpose": "純計算 Module 與 UseCase 的隔離 UI 驗收。",
+        "backgroundSummary": "只用純計算函式與 Playwright test/expect 完成本地斷言，沒有外部目標驗證。https://m10-fixture.invalid 僅為合成授權範圍標記（保留 .invalid），沒有真實站台，本次及後續純計算驗收不得真瀏覽或發出網路請求。",
+        "targets": [
+          {
+            "name": "m10-fixture",
+            "purpose": "合成授權範圍標記，僅作純計算驗收的範圍佔位，無真實站台，不瀏覽、不發請求。",
+            "origin": "https://m10-fixture.invalid"
+          }
+        ],
+        "dependencies": [],
+        "excludedOrigins": [],
+        "exclusions": "禁止其他所有 origin；明確禁止任何瀏覽、網路請求、登入與憑證操作（含索取或使用 credentials）；https://m10-fixture.invalid 僅為合成授權範圍標記（保留 .invalid），沒有真實站台，本次及後續純計算驗收不得真瀏覽或發出網路請求。",
+        "loginRoles": [],
+        "defaultTestUrl": "https://m10-fixture.invalid",
+        "timeoutMs": 60000
+      },
+      "scopeHash": "4f5c3108b655f1d68a37913954b431c45840d865f08094ea475172e3a3878bf3",
+      "scopeConfirmed": true,
+      "invalidationReason": null,
+      "appliedRevision": 2,
+      "createdAt": "2026-11-13T06:58:29.489924Z"
+    },
+    "workspace": {
+      "id": "f6f4fdd5-bf28-4044-9dd2-0c06bb077736",
+      "name": "m10-r102-ui-scope",
+      "revision": 2,
+      "sites": [
+        {
+          "name": "m10-fixture",
+          "url": "https://m10-fixture.invalid"
+        }
+      ],
+      "defaultTestUrl": "https://m10-fixture.invalid",
+      "timeoutMs": 60000,
+      "lifecycle": "active",
+      "authorizationRevision": 1,
+      "scopeStatus": "confirmed",
+      "settings": {
+        "name": "m10-r102-ui-scope",
+        "purpose": "純計算 Module 與 UseCase 的隔離 UI 驗收。",
+        "backgroundSummary": "只用純計算函式與 Playwright test/expect 完成本地斷言，沒有外部目標驗證。https://m10-fixture.invalid 僅為合成授權範圍標記（保留 .invalid），沒有真實站台，本次及後續純計算驗收不得真瀏覽或發出網路請求。",
+        "targets": [
+          {
+            "name": "m10-fixture",
+            "purpose": "合成授權範圍標記，僅作純計算驗收的範圍佔位，無真實站台，不瀏覽、不發請求。",
+            "origin": "https://m10-fixture.invalid"
+          }
+        ],
+        "dependencies": [],
+        "excludedOrigins": [],
+        "exclusions": "禁止其他所有 origin；明確禁止任何瀏覽、網路請求、登入與憑證操作（含索取或使用 credentials）；https://m10-fixture.invalid 僅為合成授權範圍標記（保留 .invalid），沒有真實站台，本次及後續純計算驗收不得真瀏覽或發出網路請求。",
+        "loginRoles": [],
+        "defaultTestUrl": "https://m10-fixture.invalid",
+        "timeoutMs": 60000
+      },
+      "conversationId": "0c60318e-bb59-4c26-9baf-c058ca9e02c2",
+      "activeRunId": null,
+      "currentProposal": {
+        "id": "7bdc5215-d4ef-4b88-9faa-34b56236b7b9",
+        "workspaceId": "f6f4fdd5-bf28-4044-9dd2-0c06bb077736",
+        "conversationId": "0c60318e-bb59-4c26-9baf-c058ca9e02c2",
+        "sourceRunId": "fe514441-653a-4a39-a417-1c66d3894ee2",
+        "baseRevision": 1,
+        "contextRevision": 2,
+        "status": "applied",
+        "content": {
+          "name": "m10-r102-ui-scope",
+          "purpose": "純計算 Module 與 UseCase 的隔離 UI 驗收。",
+          "backgroundSummary": "只用純計算函式與 Playwright test/expect 完成本地斷言，沒有外部目標驗證。https://m10-fixture.invalid 僅為合成授權範圍標記（保留 .invalid），沒有真實站台，本次及後續純計算驗收不得真瀏覽或發出網路請求。",
+          "targets": [
+            {
+              "name": "m10-fixture",
+              "purpose": "合成授權範圍標記，僅作純計算驗收的範圍佔位，無真實站台，不瀏覽、不發請求。",
+              "origin": "https://m10-fixture.invalid"
+            }
+          ],
+          "dependencies": [],
+          "excludedOrigins": [],
+          "exclusions": "禁止其他所有 origin；明確禁止任何瀏覽、網路請求、登入與憑證操作（含索取或使用 credentials）；https://m10-fixture.invalid 僅為合成授權範圍標記（保留 .invalid），沒有真實站台，本次及後續純計算驗收不得真瀏覽或發出網路請求。",
+          "loginRoles": [],
+          "defaultTestUrl": "https://m10-fixture.invalid",
+          "timeoutMs": 60000
+        },
+        "scopeHash": "4f5c3108b655f1d68a37913954b431c45840d865f08094ea475172e3a3878bf3",
+        "scopeConfirmed": true,
+        "invalidationReason": null,
+        "appliedRevision": 2,
+        "createdAt": "2026-11-13T06:58:29.489924Z"
+      },
+      "roles": [],
+      "secretsAvailable": false,
+      "executionAvailable": true,
+      "unavailableReason": null,
+      "capabilities": {
+        "aiExploration": {
+          "available": true,
+          "reason": null
+        },
+        "aiExecution": {
+          "available": true,
+          "reason": null
+        },
+        "manualExecution": {
+          "available": true,
+          "reason": null
+        },
+        "credentialLogin": {
+          "available": false,
+          "reason": "secrets_unavailable"
+        }
+      }
+    }
+  },
+  "confirmedWorkspace": {
+    "id": "f6f4fdd5-bf28-4044-9dd2-0c06bb077736",
+    "name": "m10-r102-ui-scope",
+    "revision": 2,
+    "sites": [
+      {
+        "name": "m10-fixture",
+        "url": "https://m10-fixture.invalid"
+      }
+    ],
+    "defaultTestUrl": "https://m10-fixture.invalid",
+    "timeoutMs": 60000,
+    "lifecycle": "active",
+    "authorizationRevision": 1,
+    "scopeStatus": "confirmed",
+    "settings": {
+      "name": "m10-r102-ui-scope",
+      "purpose": "純計算 Module 與 UseCase 的隔離 UI 驗收。",
+      "backgroundSummary": "只用純計算函式與 Playwright test/expect 完成本地斷言，沒有外部目標驗證。https://m10-fixture.invalid 僅為合成授權範圍標記（保留 .invalid），沒有真實站台，本次及後續純計算驗收不得真瀏覽或發出網路請求。",
+      "targets": [
+        {
+          "name": "m10-fixture",
+          "purpose": "合成授權範圍標記，僅作純計算驗收的範圍佔位，無真實站台，不瀏覽、不發請求。",
+          "origin": "https://m10-fixture.invalid"
+        }
+      ],
+      "dependencies": [],
+      "excludedOrigins": [],
+      "exclusions": "禁止其他所有 origin；明確禁止任何瀏覽、網路請求、登入與憑證操作（含索取或使用 credentials）；https://m10-fixture.invalid 僅為合成授權範圍標記（保留 .invalid），沒有真實站台，本次及後續純計算驗收不得真瀏覽或發出網路請求。",
+      "loginRoles": [],
+      "defaultTestUrl": "https://m10-fixture.invalid",
+      "timeoutMs": 60000
+    },
+    "conversationId": "0c60318e-bb59-4c26-9baf-c058ca9e02c2",
+    "activeRunId": null,
+    "currentProposal": {
+      "id": "7bdc5215-d4ef-4b88-9faa-34b56236b7b9",
+      "workspaceId": "f6f4fdd5-bf28-4044-9dd2-0c06bb077736",
+      "conversationId": "0c60318e-bb59-4c26-9baf-c058ca9e02c2",
+      "sourceRunId": "fe514441-653a-4a39-a417-1c66d3894ee2",
+      "baseRevision": 1,
+      "contextRevision": 2,
+      "status": "applied",
+      "content": {
+        "name": "m10-r102-ui-scope",
+        "purpose": "純計算 Module 與 UseCase 的隔離 UI 驗收。",
+        "backgroundSummary": "只用純計算函式與 Playwright test/expect 完成本地斷言，沒有外部目標驗證。https://m10-fixture.invalid 僅為合成授權範圍標記（保留 .invalid），沒有真實站台，本次及後續純計算驗收不得真瀏覽或發出網路請求。",
+        "targets": [
+          {
+            "name": "m10-fixture",
+            "purpose": "合成授權範圍標記，僅作純計算驗收的範圍佔位，無真實站台，不瀏覽、不發請求。",
+            "origin": "https://m10-fixture.invalid"
+          }
+        ],
+        "dependencies": [],
+        "excludedOrigins": [],
+        "exclusions": "禁止其他所有 origin；明確禁止任何瀏覽、網路請求、登入與憑證操作（含索取或使用 credentials）；https://m10-fixture.invalid 僅為合成授權範圍標記（保留 .invalid），沒有真實站台，本次及後續純計算驗收不得真瀏覽或發出網路請求。",
+        "loginRoles": [],
+        "defaultTestUrl": "https://m10-fixture.invalid",
+        "timeoutMs": 60000
+      },
+      "scopeHash": "4f5c3108b655f1d68a37913954b431c45840d865f08094ea475172e3a3878bf3",
+      "scopeConfirmed": true,
+      "invalidationReason": null,
+      "appliedRevision": 2,
+      "createdAt": "2026-11-13T06:58:29.489924Z"
+    },
+    "roles": [],
+    "secretsAvailable": false,
+    "executionAvailable": true,
+    "unavailableReason": null,
+    "capabilities": {
+      "aiExploration": {
+        "available": true,
+        "reason": null
+      },
+      "aiExecution": {
+        "available": true,
+        "reason": null
+      },
+      "manualExecution": {
+        "available": true,
+        "reason": null
+      },
+      "credentialLogin": {
+        "available": false,
+        "reason": "secrets_unavailable"
+      }
+    }
+  }
+}

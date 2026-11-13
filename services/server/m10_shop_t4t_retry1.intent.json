@@ -1,0 +1,40 @@
+{
+  "createdAt": "2026-11-14T01:16:09.287526+08:00",
+  "classification": "首次原Stage retry；新v2分類的受控診斷/修復；自試根因未知",
+  "managerContainerId": "369041a463ba32fdc439dbb5bc11c3bac012c9cf5ff44023a3d86959a839bf5e",
+  "managerImage": "sha256:c65025acdabeacbf1ec835c383f9d94c7a9e8571d3d7055f57898d8c31820bd8",
+  "safePreflight": [
+    {
+      "active": 0,
+      "unreclaimed": 0
+    },
+    {
+      "managerId": "1c87959b-9bb4-4933-bd94-75c8521c90d6",
+      "heartbeatAgeSeconds": 5.346521
+    }
+  ],
+  "retryGet": {
+    "eligible": true,
+    "reason": null,
+    "planRevision": 4,
+    "source": {
+      "moduleTestId": "64738e4b-c378-4c05-82ea-10dc20164e99",
+      "editingSessionId": "b63a9953-1764-4a0a-981c-e7154b3f5452",
+      "moduleRevision": 1,
+      "moduleContextRevision": 1,
+      "authorRunId": "89e442bb-4117-4063-98c3-b7ae1018a247",
+      "authorStatus": "failed",
+      "validationRunId": null,
+      "validationStatus": null,
+      "reclaimed": true
+    }
+  },
+  "request": {
+    "planRevision": 4,
+    "moduleRevision": 1,
+    "moduleContextRevision": 1,
+    "confirmed": true,
+    "content": "保留原search模組意圖、slug、回傳productId/price、同origin及完整loginAs受保護頁斷言。本次針對前次一次自試未通過且無checkpoint後LIMIT的情況修復；其自試根因未知，請勿假定已知selector或登入原因。現有description已提供路由與selectors，優先完成最小module與獨立harness並執行update_module_candidate自試；若自試回饋失敗，在既有預算內依實際回饋修正，不弱化斷言、不假登入、不硬編訂單、不改範圍。自試成功後依既有協定收尾。"
+  },
+  "url": "http://127.0.0.1:19287/api/plans/b7c83de2-5b1f-4531-b526-ba4d65682045/stages/search/retry"
+}

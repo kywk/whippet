@@ -1,0 +1,25 @@
+{
+  "owner": "t4t",
+  "pm": "t4s",
+  "observedAt": "2026-11-13T17:02:37.599616+00:00",
+  "originalState": "m10_shop_t4r_fixture.result.json",
+  "originalStateSha256": "3e3614211522d6acdb96501ae4b1fe541437a3ebdfbae1af57585d7eda30be7a",
+  "failedOperation": "create-usecase",
+  "observedHttpStatus": 400,
+  "plannerSubmitted": false,
+  "testId": null,
+  "editingSessionId": null,
+  "plannerRunId": null,
+  "classification": "fixture_request_contract_mismatch_usecase_slug_forbidden",
+  "evidence": [
+    "platform.go:145 rejects non-null slug for usecase",
+    "migrations/011_usecase_platform.sql:3 requires non-module slug NULL"
+  ],
+  "postFailureSafeProjection": {
+    "active": 0,
+    "unreclaimed": 0
+  },
+  "matchingTests": [],
+  "recoveryAuthorization": "PM t4s explicitly authorized corrected create -> session -> unique planner; retain original intent; no confirm",
+  "recoveryState": "m10_shop_t4t_recovery.result.json"
+}

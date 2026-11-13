@@ -1,0 +1,309 @@
+{
+  "base": "http://127.0.0.1:19187/api",
+  "owner": "t4b",
+  "budgetFixture": "maxModelRequests=1",
+  "expectedManifestSHA256": "d8c7150b3a0a3331a4a1785b97c2754ffd6c44e99d7493447856907b55486875",
+  "workspaceId": "00000000-0000-4000-8000-000000000001",
+  "initialWorkspace": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "name": "預設 Workspace",
+    "revision": 1,
+    "sites": [],
+    "defaultTestUrl": "",
+    "timeoutMs": 60000,
+    "lifecycle": "needs_confirmation",
+    "authorizationRevision": 0,
+    "scopeStatus": "unconfirmed",
+    "settings": null,
+    "conversationId": "e355a37b-73a6-434e-63b0-1ad6073a7607",
+    "activeRunId": null,
+    "currentProposal": null,
+    "roles": [],
+    "secretsAvailable": false,
+    "executionAvailable": true,
+    "unavailableReason": null,
+    "capabilities": {
+      "aiExploration": {
+        "available": false,
+        "reason": "scope_confirmation_required"
+      },
+      "aiExecution": {
+        "available": false,
+        "reason": "scope_confirmation_required"
+      },
+      "manualExecution": {
+        "available": true,
+        "reason": null
+      },
+      "credentialLogin": {
+        "available": false,
+        "reason": "secrets_unavailable"
+      }
+    }
+  },
+  "testId": "ca5a067d-2491-4456-8f94-6bc7975553d1",
+  "editingSessionId": "4e0dc1e5-06e8-4fd6-bd30-e628539eabf6",
+  "initialSession": {
+    "id": "4e0dc1e5-06e8-4fd6-bd30-e628539eabf6",
+    "testId": "ca5a067d-2491-4456-8f94-6bc7975553d1",
+    "workspaceId": "00000000-0000-4000-8000-000000000001",
+    "status": "active",
+    "sourceVersionId": null,
+    "sourceVersion": null,
+    "conversationId": "3f9c8ec1-38d1-457c-97af-53f5ad1075fb",
+    "conversationSummary": null,
+    "contextRevision": 0,
+    "draft": {
+      "scriptOrigin": "legacy",
+      "workspaceContext": {
+        "schemaVersion": "1",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "settingsRevision": 1,
+        "config": null,
+        "roleRefs": []
+      },
+      "editingSessionId": "4e0dc1e5-06e8-4fd6-bd30-e628539eabf6",
+      "testId": "ca5a067d-2491-4456-8f94-6bc7975553d1",
+      "revision": 1,
+      "script": "",
+      "updatedAt": "2026-11-13T07:35:00.800579Z",
+      "workspaceSettings": {
+        "revision": 1,
+        "sites": [],
+        "defaultTestUrl": "",
+        "timeoutMs": 60000
+      }
+    },
+    "summary": null,
+    "pendingRunIds": [],
+    "reclaimPending": false,
+    "publishedVersionId": null,
+    "createdAt": "2026-11-13T07:35:00.800579Z",
+    "closedAt": null
+  },
+  "initialDraft": {
+    "scriptOrigin": "legacy",
+    "workspaceContext": {
+      "schemaVersion": "1",
+      "workspaceId": "00000000-0000-4000-8000-000000000001",
+      "settingsRevision": 1,
+      "config": null,
+      "roleRefs": []
+    },
+    "editingSessionId": "4e0dc1e5-06e8-4fd6-bd30-e628539eabf6",
+    "testId": "ca5a067d-2491-4456-8f94-6bc7975553d1",
+    "revision": 1,
+    "script": "",
+    "updatedAt": "2026-11-13T07:35:00.800579Z",
+    "workspaceSettings": {
+      "revision": 1,
+      "sites": [],
+      "defaultTestUrl": "",
+      "timeoutMs": 60000
+    }
+  },
+  "messageRequest": {
+    "editingSessionId": "4e0dc1e5-06e8-4fd6-bd30-e628539eabf6",
+    "revision": 1,
+    "content": "這是一個分輪進行的純計算測試撰寫任務。本輪只做起始閱讀：請先呼叫 read_draft 了解目前草稿，後續輪次再續作 normalizeScore 的純計算邊界測試。這一輪不要呼叫 update_draft、request_validation 或任何修改/正式驗證工具；不要使用 browser、page、網路請求、站台瀏覽、登入或 credentials，不要求確認/擴張 Workspace scope。不要自行製造或宣稱 partial/checkpoint；讓平台按既有預算處理。只讀完目前草稿即可，後續再續作；不得 summary 或 publish。"
+  },
+  "phase": "terminal_reclaimed",
+  "messageRequested": true,
+  "submission": {
+    "run": {
+      "scriptOrigin": "legacy",
+      "workspaceId": "00000000-0000-4000-8000-000000000001",
+      "id": "8fdf1ec1-f878-48a5-977f-06ced5decdf5",
+      "testId": "ca5a067d-2491-4456-8f94-6bc7975553d1",
+      "workspaceContext": {
+        "schemaVersion": "1",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "settingsRevision": 1,
+        "config": null,
+        "roleRefs": []
+      },
+      "status": "queued",
+      "createdAt": "2026-11-13T07:35:00.806655Z",
+      "kind": "author",
+      "draftRevision": 1,
+      "workspaceSettings": {
+        "revision": 1,
+        "sites": [],
+        "defaultTestUrl": "",
+        "timeoutMs": 60000
+      },
+      "editingSessionId": "4e0dc1e5-06e8-4fd6-bd30-e628539eabf6",
+      "authorMode": "edit"
+    },
+    "conversationId": "3f9c8ec1-38d1-457c-97af-53f5ad1075fb"
+  },
+  "runId": "8fdf1ec1-f878-48a5-977f-06ced5decdf5",
+  "observedRun": {
+    "authorPartial": {
+      "reason": "budget_exhausted",
+      "nextStep": "繼續目前任務，先檢查最後通過自我試跑的候選稿，再完成剩餘驗證。"
+    },
+    "scriptOrigin": "legacy",
+    "workspaceId": "00000000-0000-4000-8000-000000000001",
+    "id": "8fdf1ec1-f878-48a5-977f-06ced5decdf5",
+    "testId": "ca5a067d-2491-4456-8f94-6bc7975553d1",
+    "workspaceContext": {
+      "schemaVersion": "1",
+      "workspaceId": "00000000-0000-4000-8000-000000000001",
+      "settingsRevision": 1,
+      "config": null,
+      "roleRefs": []
+    },
+    "status": "succeeded",
+    "createdAt": "2026-11-13T07:35:00.806655Z",
+    "startedAt": "2026-11-13T07:35:00.883228Z",
+    "finishedAt": "2026-11-13T07:35:07.482555Z",
+    "kind": "author",
+    "draftRevision": 1,
+    "workspaceSettings": {
+      "revision": 1,
+      "sites": [],
+      "defaultTestUrl": "",
+      "timeoutMs": 60000
+    },
+    "editingSessionId": "4e0dc1e5-06e8-4fd6-bd30-e628539eabf6",
+    "authorMode": "edit",
+    "progressEvents": [
+      "author:model:1:started",
+      "author:model:1:succeeded",
+      "author:tool:1:read_draft:started",
+      "author:tool:1:read_draft:succeeded"
+    ]
+  },
+  "observedSession": {
+    "id": "4e0dc1e5-06e8-4fd6-bd30-e628539eabf6",
+    "testId": "ca5a067d-2491-4456-8f94-6bc7975553d1",
+    "workspaceId": "00000000-0000-4000-8000-000000000001",
+    "status": "active",
+    "sourceVersionId": null,
+    "sourceVersion": null,
+    "conversationId": "3f9c8ec1-38d1-457c-97af-53f5ad1075fb",
+    "conversationSummary": null,
+    "contextRevision": 2,
+    "draft": {
+      "scriptOrigin": "legacy",
+      "workspaceContext": {
+        "schemaVersion": "1",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "settingsRevision": 1,
+        "config": null,
+        "roleRefs": []
+      },
+      "editingSessionId": "4e0dc1e5-06e8-4fd6-bd30-e628539eabf6",
+      "testId": "ca5a067d-2491-4456-8f94-6bc7975553d1",
+      "revision": 1,
+      "script": "",
+      "updatedAt": "2026-11-13T07:35:00.800579Z",
+      "workspaceSettings": {
+        "revision": 1,
+        "sites": [],
+        "defaultTestUrl": "",
+        "timeoutMs": 60000
+      }
+    },
+    "summary": null,
+    "pendingRunIds": [],
+    "reclaimPending": false,
+    "publishedVersionId": null,
+    "createdAt": "2026-11-13T07:35:00.800579Z",
+    "closedAt": null
+  },
+  "artifacts": {
+    "items": [
+      {
+        "name": "author.json",
+        "size": 284,
+        "contentType": "application/json",
+        "url": "/api/runs/8fdf1ec1-f878-48a5-977f-06ced5decdf5/artifacts/author.json"
+      }
+    ]
+  },
+  "testRuns": {
+    "items": [
+      {
+        "authorPartial": {
+          "reason": "budget_exhausted",
+          "nextStep": "繼續目前任務，先檢查最後通過自我試跑的候選稿，再完成剩餘驗證。"
+        },
+        "scriptOrigin": "legacy",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "id": "8fdf1ec1-f878-48a5-977f-06ced5decdf5",
+        "testId": "ca5a067d-2491-4456-8f94-6bc7975553d1",
+        "workspaceContext": {
+          "schemaVersion": "1",
+          "workspaceId": "00000000-0000-4000-8000-000000000001",
+          "settingsRevision": 1,
+          "config": null,
+          "roleRefs": []
+        },
+        "status": "succeeded",
+        "createdAt": "2026-11-13T07:35:00.806655Z",
+        "startedAt": "2026-11-13T07:35:00.883228Z",
+        "finishedAt": "2026-11-13T07:35:07.482555Z",
+        "kind": "author",
+        "draftRevision": 1,
+        "workspaceSettings": {
+          "revision": 1,
+          "sites": [],
+          "defaultTestUrl": "",
+          "timeoutMs": 60000
+        },
+        "editingSessionId": "4e0dc1e5-06e8-4fd6-bd30-e628539eabf6",
+        "authorMode": "edit",
+        "progressEvents": [
+          "author:model:1:started",
+          "author:model:1:succeeded",
+          "author:tool:1:read_draft:started",
+          "author:tool:1:read_draft:succeeded"
+        ]
+      }
+    ]
+  },
+  "authorArtifact": {
+    "message": "本輪已達預算上限，尚無可保留的已驗證候選稿。可繼續完成剩餘工作。",
+    "requestValidation": false,
+    "partial": {
+      "reason": "budget_exhausted",
+      "nextStep": "繼續目前任務，先檢查最後通過自我試跑的候選稿，再完成剩餘驗證。"
+    }
+  },
+  "partialEvidence": {
+    "sourceRunId": "8fdf1ec1-f878-48a5-977f-06ced5decdf5",
+    "sourceDraftRevision": 1,
+    "initialContextRevision": 0,
+    "currentContextRevision": 2,
+    "sessionId": "4e0dc1e5-06e8-4fd6-bd30-e628539eabf6",
+    "currentDraftRevision": 1,
+    "reason": "budget_exhausted",
+    "checkpointPresent": false,
+    "appliedRevisionPresent": false,
+    "artifactScriptPresent": false,
+    "artifactRequestValidation": false,
+    "reclaimed": true,
+    "runCount": 1,
+    "continued": false
+  },
+  "actualSnapshotEvidence": {
+    "provenance": "PM performed single-Run READ ONLY allowlisted query against B database; Server owner only read supplied evidence file",
+    "sourceFile": "/private/tmp/whippet-m10-budget1-environment/source-run-pin.json",
+    "pin": {
+      "runId": "8fdf1ec1-f878-48a5-977f-06ced5decdf5",
+      "budget": {
+        "maxToolCalls": 12,
+        "maxDurationMs": 180000,
+        "maxModelRequests": 1
+      },
+      "registryVersion": "10.2",
+      "registrySha256": "f38d8b32fa8554d8f27f4a824be038460f32df860d8cacd4444c01b269014f5a",
+      "primarySkillId": "test-author",
+      "primarySkillSha256": "d03279e22eeeb6232dede8aa0b4d62955c1c9fdded31f51203112bbae7e84700",
+      "primaryManifestSha256": "d8c7150b3a0a3331a4a1785b97c2754ffd6c44e99d7493447856907b55486875"
+    },
+    "matchesExpectedManifest": true
+  }
+}

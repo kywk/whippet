@@ -1,0 +1,393 @@
+{
+  "base": "http://127.0.0.1:19087/api",
+  "workspaceId": "33b9b990-e974-4732-b8f9-2d1e6bb26901",
+  "workspaceRevision": 2,
+  "authorizationRevision": 1,
+  "owner": "QA",
+  "preparedBy": "t4b",
+  "seeds": [
+    {
+      "goldenId": "G05",
+      "slug": "golden-ready-page",
+      "testId": "ef24df7d-a0a8-495b-8c6d-a847ecbf038e",
+      "editingSessionId": "29612605-2b10-4b5c-afa2-574d1c315424",
+      "saveRequest": {
+        "editingSessionId": "29612605-2b10-4b5c-afa2-574d1c315424",
+        "revision": 1,
+        "script": "export async function prepareReadyPage({page}) { await page.setContent('<h1>Whippet ready</h1>'); return {heading:'Whippet ready'}; }\n",
+        "module": {
+          "slug": "golden-ready-page",
+          "moduleKind": "setup",
+          "exportName": "prepareReadyPage",
+          "signature": "prepareReadyPage({page})",
+          "inputs": "Playwright page only; no account/password/secret arguments",
+          "returns": "Returns {heading:string}; local synthetic heading only",
+          "preconditions": "Confirmed local setContent scope; no navigation/network/credentials. G06 requires roles=[] and represents missing role, not login success.",
+          "postconditions": "Returns {heading:string}; local synthetic heading only",
+          "harness": "import {test,expect} from '@playwright/test';\nimport {prepareReadyPage} from '@lib/golden-ready-page';\ntest('G05 synthetic seed',async({page})=>{const result=await test.step('Stage 1: setContent',()=>prepareReadyPage({page}));await test.step('Stage 2: assertions',async()=>{await expect(page.getByRole('heading')).toHaveText('Whippet ready'); await expect(page.getByRole('heading')).toBeVisible(); expect(result.heading).toBe('Whippet ready');});});\n"
+        }
+      },
+      "revision": 2,
+      "validationRunId": "9d275d21-d9ca-4dcf-bc71-38c766ab3c12",
+      "validationStatus": "succeeded",
+      "reclaimPending": false,
+      "validationStats": {
+        "startTime": "2026-11-13T07:57:10.788Z",
+        "duration": 864.1829999999999,
+        "expected": 1,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "validationArtifacts": {
+        "items": [
+          {
+            "name": "report.html",
+            "size": 519084,
+            "contentType": "text/html; charset=utf-8",
+            "url": "/api/runs/9d275d21-d9ca-4dcf-bc71-38c766ab3c12/artifacts/report.html"
+          },
+          {
+            "name": "results.json",
+            "size": 4360,
+            "contentType": "application/json",
+            "url": "/api/runs/9d275d21-d9ca-4dcf-bc71-38c766ab3c12/artifacts/results.json"
+          }
+        ]
+      },
+      "summaryRequested": true,
+      "summaryRunId": "74fef950-a337-4d78-91b7-8d9b4f34df44",
+      "summary": {
+        "runId": "74fef950-a337-4d78-91b7-8d9b4f34df44",
+        "status": "succeeded",
+        "revision": 2,
+        "validationRunId": "9d275d21-d9ca-4dcf-bc71-38c766ab3c12",
+        "description": "目的：M10.8 黃金任務集隔離QA驗收之合成種子 setup 模組，提供本機 Whippet ready 標題頁供後續驗收識別，不代表真實站台功能。\n前置條件：僅需 Playwright page，無帳號/密碼/密鑰參數；確認僅用 page.setContent 本機合成範圍，禁止對 https://m10-golden.invalid 之實際造訪、導航或任何網路請求，禁止真實登入與憑證索取/使用/硬編碼；Workspace 未配置 loginRoles，G06 缺角色狀態僅代表缺口而非登入成功。\n匯出介面：prepareReadyPage({page})，輸入為 Playwright page only，回傳 {heading:string} 本機合成標題。\n步驟：Harness G05 synthetic seed 分兩階段：Stage 1 呼叫 prepareReadyPage({page}) 執行 setContent('<h1>Whippet ready</h1>')；Stage 2 斷言 page.getByRole('heading') 文字為 Whippet ready、可見，且回傳值 heading 為 Whippet ready。\n斷言與證據：validationEvidence runId 9d275d21... revision 2、scriptHash 78b0a5ab...、狀態 succeeded、stats expected 1、unexpected 0、flaky 0、skipped 0、耗時約864ms、reportsReady true；模組綁定 bodyHash c2e97daa...、bundleHash e6c4e6fa...、harnessHash 78b0a5ab... 僅作證據關聯，非發布許可。\n限制：僅覆蓋本機合成 DOM 標題顯示與回傳值，未覆蓋真實導航、網路、外網 origin、登入/憑證驗證；sourceVersion 與 conversationSummary 為 null 屬缺失資訊非證據；stats 僅能證明已記錄的 1 項檢查，不能推定未在腳本/Harness 出現的覆蓋率。",
+        "backgroundSummary": "Workspace m10-golden-r102 revision 2，workspaceId 33b9b990...，testId ef24df7d...，editingSessionId 29612605...，sites 僅 m10-golden-synthetic 標記 https://m10-golden.invalid（保留.invalid 合成授權範圍標記，無真實站台），defaultTestUrl 同上僅作測試上下文，timeoutMs 60000；exclusions 禁止外網導航、網路請求、真實登入與憑證處理；loginRoles 空；scriptOrigin manual，baseRevision 2；決策：維持本機 setContent+純計算+本機DOM斷言，不造訪目標，不補憑證。",
+        "name": "golden-ready-page revision 2 驗收摘要候選",
+        "validForCurrentDraft": true
+      },
+      "summaryReclaimPending": false,
+      "pendingRunIds": [],
+      "summaryReview": "Reviewed: synthetic local evidence only; G06 explicitly blocked, no successful login/credential claim.",
+      "publishRequested": true,
+      "publishedVersion": {
+        "module": {
+          "slug": "golden-ready-page",
+          "moduleKind": "setup",
+          "exportName": "prepareReadyPage",
+          "signature": "prepareReadyPage({page})",
+          "inputs": "Playwright page only; no account/password/secret arguments",
+          "returns": "Returns {heading:string}; local synthetic heading only",
+          "preconditions": "Confirmed local setContent scope; no navigation/network/credentials. G06 requires roles=[] and represents missing role, not login success.",
+          "postconditions": "Returns {heading:string}; local synthetic heading only",
+          "harness": "import {test,expect} from '@playwright/test';\nimport {prepareReadyPage} from '@lib/golden-ready-page';\ntest('G05 synthetic seed',async({page})=>{const result=await test.step('Stage 1: setContent',()=>prepareReadyPage({page}));await test.step('Stage 2: assertions',async()=>{await expect(page.getByRole('heading')).toHaveText('Whippet ready'); await expect(page.getByRole('heading')).toBeVisible(); expect(result.heading).toBe('Whippet ready');});});\n"
+        },
+        "scriptOrigin": "manual",
+        "workspaceContext": {
+          "schemaVersion": "1",
+          "workspaceId": "33b9b990-e974-4732-b8f9-2d1e6bb26901",
+          "settingsRevision": 2,
+          "config": {
+            "name": "m10-golden-r102",
+            "purpose": "M10.8黃金任務集隔離QA驗收。",
+            "backgroundSummary": "M10.8 黃金任務集隔離QA驗收用合成授權範圍標記。target https://m10-golden.invalid 為保留 .invalid 名稱，僅作合成授權範圍標記，沒有真實站台，不得真的造訪、導航或發出任何網路請求。允許本機 Playwright page.setContent 建立合成頁，以及純計算與本機DOM斷言。G06 缺角色/credentials 說明：本 Workspace 未配置 loginRoles 與任何憑證，如遇需真實登入或憑證驗證之任務，必須回報缺口、停止並等待PM指示，不得將合成表單顯示、假登入狀態或硬編碼帳密說成真正登入/credentials驗證成功，亦不得索取、使用或硬編碼憑證。",
+            "targets": [
+              {
+                "name": "m10-golden-synthetic",
+                "purpose": "合成授權範圍標記，僅供隔離QA驗收識別，無真實站台，不可實際造訪、導航或請求。",
+                "origin": "https://m10-golden.invalid"
+              }
+            ],
+            "dependencies": [],
+            "excludedOrigins": [],
+            "exclusions": "禁止外網導航、任何網路請求（含對 https://m10-golden.invalid 之實際造訪）、真實登入、憑證索取/使用/硬編碼，以及任何其他 origin 之存取與測試；除上述唯一 target 標記外，其他 origin 一律禁止，不以萬用 origin 表示。此文字僅為背景說明，不作為自動強制執行。",
+            "loginRoles": [],
+            "defaultTestUrl": "https://m10-golden.invalid",
+            "timeoutMs": 60000
+          },
+          "roleRefs": []
+        },
+        "description": "目的：M10.8 黃金任務集隔離QA驗收之合成種子 setup 模組，提供本機 Whippet ready 標題頁供後續驗收識別，不代表真實站台功能。\n前置條件：僅需 Playwright page，無帳號/密碼/密鑰參數；確認僅用 page.setContent 本機合成範圍，禁止對 https://m10-golden.invalid 之實際造訪、導航或任何網路請求，禁止真實登入與憑證索取/使用/硬編碼；Workspace 未配置 loginRoles，G06 缺角色狀態僅代表缺口而非登入成功。\n匯出介面：prepareReadyPage({page})，輸入為 Playwright page only，回傳 {heading:string} 本機合成標題。\n步驟：Harness G05 synthetic seed 分兩階段：Stage 1 呼叫 prepareReadyPage({page}) 執行 setContent('<h1>Whippet ready</h1>')；Stage 2 斷言 page.getByRole('heading') 文字為 Whippet ready、可見，且回傳值 heading 為 Whippet ready。\n斷言與證據：validationEvidence runId 9d275d21... revision 2、scriptHash 78b0a5ab...、狀態 succeeded、stats expected 1、unexpected 0、flaky 0、skipped 0、耗時約864ms、reportsReady true；模組綁定 bodyHash c2e97daa...、bundleHash e6c4e6fa...、harnessHash 78b0a5ab... 僅作證據關聯，非發布許可。\n限制：僅覆蓋本機合成 DOM 標題顯示與回傳值，未覆蓋真實導航、網路、外網 origin、登入/憑證驗證；sourceVersion 與 conversationSummary 為 null 屬缺失資訊非證據；stats 僅能證明已記錄的 1 項檢查，不能推定未在腳本/Harness 出現的覆蓋率。",
+        "backgroundSummary": "Workspace m10-golden-r102 revision 2，workspaceId 33b9b990...，testId ef24df7d...，editingSessionId 29612605...，sites 僅 m10-golden-synthetic 標記 https://m10-golden.invalid（保留.invalid 合成授權範圍標記，無真實站台），defaultTestUrl 同上僅作測試上下文，timeoutMs 60000；exclusions 禁止外網導航、網路請求、真實登入與憑證處理；loginRoles 空；scriptOrigin manual，baseRevision 2；決策：維持本機 setContent+純計算+本機DOM斷言，不造訪目標，不補憑證。",
+        "summaryRunId": "74fef950-a337-4d78-91b7-8d9b4f34df44",
+        "editingSessionId": "29612605-2b10-4b5c-afa2-574d1c315424",
+        "id": "7be6bb9a-997e-4669-b973-f450dcd4ebf8",
+        "testId": "ef24df7d-a0a8-495b-8c6d-a847ecbf038e",
+        "revision": 2,
+        "script": "export async function prepareReadyPage({page}) { await page.setContent('<h1>Whippet ready</h1>'); return {heading:'Whippet ready'}; }\n",
+        "createdAt": "2026-11-13T07:59:05.312064Z",
+        "validationRunId": "9d275d21-d9ca-4dcf-bc71-38c766ab3c12",
+        "workspaceSettings": {
+          "revision": 2,
+          "sites": [
+            {
+              "name": "m10-golden-synthetic",
+              "url": "https://m10-golden.invalid"
+            }
+          ],
+          "defaultTestUrl": "https://m10-golden.invalid",
+          "timeoutMs": 60000
+        }
+      },
+      "versionId": "7be6bb9a-997e-4669-b973-f450dcd4ebf8",
+      "catalogEntry": {
+        "testId": "ef24df7d-a0a8-495b-8c6d-a847ecbf038e",
+        "versionId": "7be6bb9a-997e-4669-b973-f450dcd4ebf8",
+        "name": "golden-ready-page revision 2 驗收摘要候選",
+        "description": "目的：M10.8 黃金任務集隔離QA驗收之合成種子 setup 模組，提供本機 Whippet ready 標題頁供後續驗收識別，不代表真實站台功能。\n前置條件：僅需 Playwright page，無帳號/密碼/密鑰參數；確認僅用 page.setContent 本機合成範圍，禁止對 https://m10-golden.invalid 之實際造訪、導航或任何網路請求，禁止真實登入與憑證索取/使用/硬編碼；Workspace 未配置 loginRoles，G06 缺角色狀態僅代表缺口而非登入成功。\n匯出介面：prepareReadyPage({page})，輸入為 Playwright page only，回傳 {heading:string} 本機合成標題。\n步驟：Harness G05 synthetic seed 分兩階段：Stage 1 呼叫 prepareReadyPage({page}) 執行 setContent('<h1>Whippet ready</h1>')；Stage 2 斷言 page.getByRole('heading') 文字為 Whippet ready、可見，且回傳值 heading 為 Whippet ready。\n斷言與證據：validationEvidence runId 9d275d21... revision 2、scriptHash 78b0a5ab...、狀態 succeeded、stats expected 1、unexpected 0、flaky 0、skipped 0、耗時約864ms、reportsReady true；模組綁定 bodyHash c2e97daa...、bundleHash e6c4e6fa...、harnessHash 78b0a5ab... 僅作證據關聯，非發布許可。\n限制：僅覆蓋本機合成 DOM 標題顯示與回傳值，未覆蓋真實導航、網路、外網 origin、登入/憑證驗證；sourceVersion 與 conversationSummary 為 null 屬缺失資訊非證據；stats 僅能證明已記錄的 1 項檢查，不能推定未在腳本/Harness 出現的覆蓋率。",
+        "module": {
+          "slug": "golden-ready-page",
+          "moduleKind": "setup",
+          "exportName": "prepareReadyPage",
+          "signature": "prepareReadyPage({page})",
+          "inputs": "Playwright page only; no account/password/secret arguments",
+          "returns": "Returns {heading:string}; local synthetic heading only",
+          "preconditions": "Confirmed local setContent scope; no navigation/network/credentials. G06 requires roles=[] and represents missing role, not login success.",
+          "postconditions": "Returns {heading:string}; local synthetic heading only",
+          "harness": "import {test,expect} from '@playwright/test';\nimport {prepareReadyPage} from '@lib/golden-ready-page';\ntest('G05 synthetic seed',async({page})=>{const result=await test.step('Stage 1: setContent',()=>prepareReadyPage({page}));await test.step('Stage 2: assertions',async()=>{await expect(page.getByRole('heading')).toHaveText('Whippet ready'); await expect(page.getByRole('heading')).toBeVisible(); expect(result.heading).toBe('Whippet ready');});});\n"
+        },
+        "validationRunId": "9d275d21-d9ca-4dcf-bc71-38c766ab3c12",
+        "validationStatus": "succeeded",
+        "referencedBy": []
+      }
+    },
+    {
+      "goldenId": "G06",
+      "slug": "golden-login-role-gap",
+      "testId": "7f53cf3c-0975-4fba-a85e-001d3d319b62",
+      "editingSessionId": "3fc439a4-6566-4726-98b1-0379f7fd7434",
+      "saveRequest": {
+        "editingSessionId": "3fc439a4-6566-4726-98b1-0379f7fd7434",
+        "revision": 1,
+        "script": "export async function prepareLoginRoleGap({page}) { await page.setContent('<label>帳號<input name=\"username\"></label><label>密碼<input name=\"password\" type=\"password\"></label><button disabled>登入</button><p role=\"status\">缺少 Workspace 角色與 credentials；未執行登入</p>'); return {status:'blocked',reason:'workspace_role_not_configured'}; }\n",
+        "module": {
+          "slug": "golden-login-role-gap",
+          "moduleKind": "setup",
+          "exportName": "prepareLoginRoleGap",
+          "signature": "prepareLoginRoleGap({page})",
+          "inputs": "Playwright page only; no account/password/secret arguments",
+          "returns": "Returns blocked/workspace_role_not_configured; only missing-role UI validation, never successful login or credentials verification",
+          "preconditions": "Confirmed local setContent scope; no navigation/network/credentials. G06 requires roles=[] and represents missing role, not login success.",
+          "postconditions": "Returns blocked/workspace_role_not_configured; only missing-role UI validation, never successful login or credentials verification",
+          "harness": "import {test,expect} from '@playwright/test';\nimport {prepareLoginRoleGap} from '@lib/golden-login-role-gap';\ntest('G06 synthetic seed',async({page})=>{const result=await test.step('Stage 1: setContent',()=>prepareLoginRoleGap({page}));await test.step('Stage 2: assertions',async()=>{await expect(page.getByLabel('帳號')).toHaveValue(''); await expect(page.getByLabel('密碼')).toHaveValue(''); await expect(page.getByRole('button',{name:'登入'})).toBeDisabled(); await expect(page.getByRole('status')).toHaveText('缺少 Workspace 角色與 credentials；未執行登入'); expect(result).toEqual({status:'blocked',reason:'workspace_role_not_configured'});});});\n"
+        }
+      },
+      "revision": 2,
+      "validationRunId": "9d05441b-f40a-4dd0-a882-a29428036e4f",
+      "validationStatus": "succeeded",
+      "reclaimPending": false,
+      "validationStats": {
+        "startTime": "2026-11-13T07:57:12.957Z",
+        "duration": 703.567,
+        "expected": 1,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "validationArtifacts": {
+        "items": [
+          {
+            "name": "report.html",
+            "size": 519416,
+            "contentType": "text/html; charset=utf-8",
+            "url": "/api/runs/9d05441b-f40a-4dd0-a882-a29428036e4f/artifacts/report.html"
+          },
+          {
+            "name": "results.json",
+            "size": 4350,
+            "contentType": "application/json",
+            "url": "/api/runs/9d05441b-f40a-4dd0-a882-a29428036e4f/artifacts/results.json"
+          }
+        ]
+      },
+      "summaryRequested": true,
+      "summaryRunId": "2862478c-e0e2-419f-99ad-ffc1571b53f0",
+      "summary": {
+        "runId": "2862478c-e0e2-419f-99ad-ffc1571b53f0",
+        "status": "succeeded",
+        "revision": 2,
+        "validationRunId": "9d05441b-f40a-4dd0-a882-a29428036e4f",
+        "description": "目的：提供 M10.8 黃金任務集隔離QA用的 G06 缺角色合成種子，明確表達缺少 Workspace 角色與 credentials、未執行登入，絕不偽裝為登入成功或憑證驗證。\n\n匯出介面：module slug 為 golden-login-role-gap，moduleKind 為 setup，exportName 為 prepareLoginRoleGap，簽章為 prepareLoginRoleGap({page})。輸入僅 Playwright page，不接受帳號/密碼/密鑰參數。回傳固定為 {status:'blocked', reason:'workspace_role_not_configured'}。\n\n前置條件：僅允許本機 Playwright page.setContent 建立合成頁，禁止對 https://m10-golden.invalid 或任何 origin 的導航與網路請求，禁止真實登入、索取/使用/硬編碼憑證。Workspace loginRoles 為空，代表缺口而非成功。\n\n步驟（Module 本體）：以 setContent 建立含「帳號」input、「密碼」input[type=password]、disabled「登入」按鈕、role=status 提示文字「缺少 Workspace 角色與 credentials；未執行登入」的合成頁，然後回傳 blocked 物件。\n\n斷言（已記錄 harness）：G06 synthetic seed 兩階段：Stage 1 呼叫 prepareLoginRoleGap({page})；Stage 2 驗證帳號欄為空值、密碼欄為空值、登入按鈕為 disabled、status 文字完全相符，並驗證回傳值 deep equal blocked 物件。驗證證據：runId 9d05441b-f40a-4dd0-a882-a29428036e4f，draftRevision 2 對應 baseRevision 2，harnessHash/scriptHash 516cd318c41247d83fa50d8ffaba81173c49c128fcd97979525b65c162ce3a96，bodyHash 317f3aa67e593e7669afc87b4e364c76fcb32735edc76246fd18291a1dbc1b6d，bundleHash 2169b07546ce37ebd8b7ddc4832a5d0e30648219123374953709ec14c43ac9e8，狀態 succeeded，stats expected:1, unexpected:0, flaky:0, skipped:0, duration 703.567ms, reportsReady true。\n\n限制：僅覆蓋上述本機DOM與回傳值檢查；未測試真實導航、真實登入、憑證驗證或其他流程。target https://m10-golden.invalid 為保留 .invalid 合成授權範圍標記，無真實站台。sourceVersion 與 conversationSummary 為 null，視為缺失資訊而非證據。stats 的 1 通過不能證明腳本外覆蓋率，被略過的真實登入檢查屬刻意排除。不推斷發布資格。",
+        "backgroundSummary": "Workspace m10-golden-r102（ID 33b9b990-e974-4732-b8f9-2d1e6bb26901），用途為 M10.8 黃金任務集隔離QA驗收，settingsRevision/baseRevision 均為 2，defaultTestUrl https://m10-golden.invalid，timeoutMs 60000。唯一 target m10-golden-synthetic 僅為合成授權範圍標記，不可造訪。excludedOrigins 為空但 exclusions 明確禁止外網導航、任何網路請求、真實登入與憑證處理，其他 origin 一律禁止。loginRoles 為空，G06 決策為回報缺口、停止並等待PM指示。editingSessionId 3fc439a4-6566-4726-98b1-0379f7fd7434，testId 7f53cf3c-0975-4fba-a85e-001d3d319b62，scriptOrigin manual。後續編輯需沿用本機合成與缺口回報原則，不得加入導航或憑證邏輯。",
+        "name": "golden-login-role-gap G06合成缺口驗收摘要",
+        "validForCurrentDraft": true
+      },
+      "summaryReclaimPending": false,
+      "pendingRunIds": [],
+      "summaryReview": "Reviewed: synthetic local evidence only; G06 explicitly blocked, no successful login/credential claim.",
+      "publishRequested": true,
+      "publishedVersion": {
+        "module": {
+          "slug": "golden-login-role-gap",
+          "moduleKind": "setup",
+          "exportName": "prepareLoginRoleGap",
+          "signature": "prepareLoginRoleGap({page})",
+          "inputs": "Playwright page only; no account/password/secret arguments",
+          "returns": "Returns blocked/workspace_role_not_configured; only missing-role UI validation, never successful login or credentials verification",
+          "preconditions": "Confirmed local setContent scope; no navigation/network/credentials. G06 requires roles=[] and represents missing role, not login success.",
+          "postconditions": "Returns blocked/workspace_role_not_configured; only missing-role UI validation, never successful login or credentials verification",
+          "harness": "import {test,expect} from '@playwright/test';\nimport {prepareLoginRoleGap} from '@lib/golden-login-role-gap';\ntest('G06 synthetic seed',async({page})=>{const result=await test.step('Stage 1: setContent',()=>prepareLoginRoleGap({page}));await test.step('Stage 2: assertions',async()=>{await expect(page.getByLabel('帳號')).toHaveValue(''); await expect(page.getByLabel('密碼')).toHaveValue(''); await expect(page.getByRole('button',{name:'登入'})).toBeDisabled(); await expect(page.getByRole('status')).toHaveText('缺少 Workspace 角色與 credentials；未執行登入'); expect(result).toEqual({status:'blocked',reason:'workspace_role_not_configured'});});});\n"
+        },
+        "scriptOrigin": "manual",
+        "workspaceContext": {
+          "schemaVersion": "1",
+          "workspaceId": "33b9b990-e974-4732-b8f9-2d1e6bb26901",
+          "settingsRevision": 2,
+          "config": {
+            "name": "m10-golden-r102",
+            "purpose": "M10.8黃金任務集隔離QA驗收。",
+            "backgroundSummary": "M10.8 黃金任務集隔離QA驗收用合成授權範圍標記。target https://m10-golden.invalid 為保留 .invalid 名稱，僅作合成授權範圍標記，沒有真實站台，不得真的造訪、導航或發出任何網路請求。允許本機 Playwright page.setContent 建立合成頁，以及純計算與本機DOM斷言。G06 缺角色/credentials 說明：本 Workspace 未配置 loginRoles 與任何憑證，如遇需真實登入或憑證驗證之任務，必須回報缺口、停止並等待PM指示，不得將合成表單顯示、假登入狀態或硬編碼帳密說成真正登入/credentials驗證成功，亦不得索取、使用或硬編碼憑證。",
+            "targets": [
+              {
+                "name": "m10-golden-synthetic",
+                "purpose": "合成授權範圍標記，僅供隔離QA驗收識別，無真實站台，不可實際造訪、導航或請求。",
+                "origin": "https://m10-golden.invalid"
+              }
+            ],
+            "dependencies": [],
+            "excludedOrigins": [],
+            "exclusions": "禁止外網導航、任何網路請求（含對 https://m10-golden.invalid 之實際造訪）、真實登入、憑證索取/使用/硬編碼，以及任何其他 origin 之存取與測試；除上述唯一 target 標記外，其他 origin 一律禁止，不以萬用 origin 表示。此文字僅為背景說明，不作為自動強制執行。",
+            "loginRoles": [],
+            "defaultTestUrl": "https://m10-golden.invalid",
+            "timeoutMs": 60000
+          },
+          "roleRefs": []
+        },
+        "description": "目的：提供 M10.8 黃金任務集隔離QA用的 G06 缺角色合成種子，明確表達缺少 Workspace 角色與 credentials、未執行登入，絕不偽裝為登入成功或憑證驗證。\n\n匯出介面：module slug 為 golden-login-role-gap，moduleKind 為 setup，exportName 為 prepareLoginRoleGap，簽章為 prepareLoginRoleGap({page})。輸入僅 Playwright page，不接受帳號/密碼/密鑰參數。回傳固定為 {status:'blocked', reason:'workspace_role_not_configured'}。\n\n前置條件：僅允許本機 Playwright page.setContent 建立合成頁，禁止對 https://m10-golden.invalid 或任何 origin 的導航與網路請求，禁止真實登入、索取/使用/硬編碼憑證。Workspace loginRoles 為空，代表缺口而非成功。\n\n步驟（Module 本體）：以 setContent 建立含「帳號」input、「密碼」input[type=password]、disabled「登入」按鈕、role=status 提示文字「缺少 Workspace 角色與 credentials；未執行登入」的合成頁，然後回傳 blocked 物件。\n\n斷言（已記錄 harness）：G06 synthetic seed 兩階段：Stage 1 呼叫 prepareLoginRoleGap({page})；Stage 2 驗證帳號欄為空值、密碼欄為空值、登入按鈕為 disabled、status 文字完全相符，並驗證回傳值 deep equal blocked 物件。驗證證據：runId 9d05441b-f40a-4dd0-a882-a29428036e4f，draftRevision 2 對應 baseRevision 2，harnessHash/scriptHash 516cd318c41247d83fa50d8ffaba81173c49c128fcd97979525b65c162ce3a96，bodyHash 317f3aa67e593e7669afc87b4e364c76fcb32735edc76246fd18291a1dbc1b6d，bundleHash 2169b07546ce37ebd8b7ddc4832a5d0e30648219123374953709ec14c43ac9e8，狀態 succeeded，stats expected:1, unexpected:0, flaky:0, skipped:0, duration 703.567ms, reportsReady true。\n\n限制：僅覆蓋上述本機DOM與回傳值檢查；未測試真實導航、真實登入、憑證驗證或其他流程。target https://m10-golden.invalid 為保留 .invalid 合成授權範圍標記，無真實站台。sourceVersion 與 conversationSummary 為 null，視為缺失資訊而非證據。stats 的 1 通過不能證明腳本外覆蓋率，被略過的真實登入檢查屬刻意排除。不推斷發布資格。",
+        "backgroundSummary": "Workspace m10-golden-r102（ID 33b9b990-e974-4732-b8f9-2d1e6bb26901），用途為 M10.8 黃金任務集隔離QA驗收，settingsRevision/baseRevision 均為 2，defaultTestUrl https://m10-golden.invalid，timeoutMs 60000。唯一 target m10-golden-synthetic 僅為合成授權範圍標記，不可造訪。excludedOrigins 為空但 exclusions 明確禁止外網導航、任何網路請求、真實登入與憑證處理，其他 origin 一律禁止。loginRoles 為空，G06 決策為回報缺口、停止並等待PM指示。editingSessionId 3fc439a4-6566-4726-98b1-0379f7fd7434，testId 7f53cf3c-0975-4fba-a85e-001d3d319b62，scriptOrigin manual。後續編輯需沿用本機合成與缺口回報原則，不得加入導航或憑證邏輯。",
+        "summaryRunId": "2862478c-e0e2-419f-99ad-ffc1571b53f0",
+        "editingSessionId": "3fc439a4-6566-4726-98b1-0379f7fd7434",
+        "id": "1b82353e-8f36-4a34-a5ba-490ce44e661a",
+        "testId": "7f53cf3c-0975-4fba-a85e-001d3d319b62",
+        "revision": 2,
+        "script": "export async function prepareLoginRoleGap({page}) { await page.setContent('<label>帳號<input name=\"username\"></label><label>密碼<input name=\"password\" type=\"password\"></label><button disabled>登入</button><p role=\"status\">缺少 Workspace 角色與 credentials；未執行登入</p>'); return {status:'blocked',reason:'workspace_role_not_configured'}; }\n",
+        "createdAt": "2026-11-13T07:59:05.331913Z",
+        "validationRunId": "9d05441b-f40a-4dd0-a882-a29428036e4f",
+        "workspaceSettings": {
+          "revision": 2,
+          "sites": [
+            {
+              "name": "m10-golden-synthetic",
+              "url": "https://m10-golden.invalid"
+            }
+          ],
+          "defaultTestUrl": "https://m10-golden.invalid",
+          "timeoutMs": 60000
+        }
+      },
+      "versionId": "1b82353e-8f36-4a34-a5ba-490ce44e661a",
+      "catalogEntry": {
+        "testId": "7f53cf3c-0975-4fba-a85e-001d3d319b62",
+        "versionId": "1b82353e-8f36-4a34-a5ba-490ce44e661a",
+        "name": "golden-login-role-gap G06合成缺口驗收摘要",
+        "description": "目的：提供 M10.8 黃金任務集隔離QA用的 G06 缺角色合成種子，明確表達缺少 Workspace 角色與 credentials、未執行登入，絕不偽裝為登入成功或憑證驗證。\n\n匯出介面：module slug 為 golden-login-role-gap，moduleKind 為 setup，exportName 為 prepareLoginRoleGap，簽章為 prepareLoginRoleGap({page})。輸入僅 Playwright page，不接受帳號/密碼/密鑰參數。回傳固定為 {status:'blocked', reason:'workspace_role_not_configured'}。\n\n前置條件：僅允許本機 Playwright page.setContent 建立合成頁，禁止對 https://m10-golden.invalid 或任何 origin 的導航與網路請求，禁止真實登入、索取/使用/硬編碼憑證。Workspace loginRoles 為空，代表缺口而非成功。\n\n步驟（Module 本體）：以 setContent 建立含「帳號」input、「密碼」input[type=password]、disabled「登入」按鈕、role=status 提示文字「缺少 Workspace 角色與 credentials；未執行登入」的合成頁，然後回傳 blocked 物件。\n\n斷言（已記錄 harness）：G06 synthetic seed 兩階段：Stage 1 呼叫 prepareLoginRoleGap({page})；Stage 2 驗證帳號欄為空值、密碼欄為空值、登入按鈕為 disabled、status 文字完全相符，並驗證回傳值 deep equal blocked 物件。驗證證據：runId 9d05441b-f40a-4dd0-a882-a29428036e4f，draftRevision 2 對應 baseRevision 2，harnessHash/scriptHash 516cd318c41247d83fa50d8ffaba81173c49c128fcd97979525b65c162ce3a96，bodyHash 317f3aa67e593e7669afc87b4e364c76fcb32735edc76246fd18291a1dbc1b6d，bundleHash 2169b07546ce37ebd8b7ddc4832a5d0e30648219123374953709ec14c43ac9e8，狀態 succeeded，stats expected:1, unexpected:0, flaky:0, skipped:0, duration 703.567ms, reportsReady true。\n\n限制：僅覆蓋上述本機DOM與回傳值檢查；未測試真實導航、真實登入、憑證驗證或其他流程。target https://m10-golden.invalid 為保留 .invalid 合成授權範圍標記，無真實站台。sourceVersion 與 conversationSummary 為 null，視為缺失資訊而非證據。stats 的 1 通過不能證明腳本外覆蓋率，被略過的真實登入檢查屬刻意排除。不推斷發布資格。",
+        "module": {
+          "slug": "golden-login-role-gap",
+          "moduleKind": "setup",
+          "exportName": "prepareLoginRoleGap",
+          "signature": "prepareLoginRoleGap({page})",
+          "inputs": "Playwright page only; no account/password/secret arguments",
+          "returns": "Returns blocked/workspace_role_not_configured; only missing-role UI validation, never successful login or credentials verification",
+          "preconditions": "Confirmed local setContent scope; no navigation/network/credentials. G06 requires roles=[] and represents missing role, not login success.",
+          "postconditions": "Returns blocked/workspace_role_not_configured; only missing-role UI validation, never successful login or credentials verification",
+          "harness": "import {test,expect} from '@playwright/test';\nimport {prepareLoginRoleGap} from '@lib/golden-login-role-gap';\ntest('G06 synthetic seed',async({page})=>{const result=await test.step('Stage 1: setContent',()=>prepareLoginRoleGap({page}));await test.step('Stage 2: assertions',async()=>{await expect(page.getByLabel('帳號')).toHaveValue(''); await expect(page.getByLabel('密碼')).toHaveValue(''); await expect(page.getByRole('button',{name:'登入'})).toBeDisabled(); await expect(page.getByRole('status')).toHaveText('缺少 Workspace 角色與 credentials；未執行登入'); expect(result).toEqual({status:'blocked',reason:'workspace_role_not_configured'});});});\n"
+        },
+        "validationRunId": "9d05441b-f40a-4dd0-a882-a29428036e4f",
+        "validationStatus": "succeeded",
+        "referencedBy": []
+      }
+    }
+  ],
+  "finalWorkspace": {
+    "id": "33b9b990-e974-4732-b8f9-2d1e6bb26901",
+    "name": "m10-golden-r102",
+    "revision": 2,
+    "sites": [
+      {
+        "name": "m10-golden-synthetic",
+        "url": "https://m10-golden.invalid"
+      }
+    ],
+    "defaultTestUrl": "https://m10-golden.invalid",
+    "timeoutMs": 60000,
+    "lifecycle": "active",
+    "authorizationRevision": 1,
+    "scopeStatus": "confirmed",
+    "settings": {
+      "name": "m10-golden-r102",
+      "purpose": "M10.8黃金任務集隔離QA驗收。",
+      "backgroundSummary": "M10.8 黃金任務集隔離QA驗收用合成授權範圍標記。target https://m10-golden.invalid 為保留 .invalid 名稱，僅作合成授權範圍標記，沒有真實站台，不得真的造訪、導航或發出任何網路請求。允許本機 Playwright page.setContent 建立合成頁，以及純計算與本機DOM斷言。G06 缺角色/credentials 說明：本 Workspace 未配置 loginRoles 與任何憑證，如遇需真實登入或憑證驗證之任務，必須回報缺口、停止並等待PM指示，不得將合成表單顯示、假登入狀態或硬編碼帳密說成真正登入/credentials驗證成功，亦不得索取、使用或硬編碼憑證。",
+      "targets": [
+        {
+          "name": "m10-golden-synthetic",
+          "purpose": "合成授權範圍標記，僅供隔離QA驗收識別，無真實站台，不可實際造訪、導航或請求。",
+          "origin": "https://m10-golden.invalid"
+        }
+      ],
+      "dependencies": [],
+      "excludedOrigins": [],
+      "exclusions": "禁止外網導航、任何網路請求（含對 https://m10-golden.invalid 之實際造訪）、真實登入、憑證索取/使用/硬編碼，以及任何其他 origin 之存取與測試；除上述唯一 target 標記外，其他 origin 一律禁止，不以萬用 origin 表示。此文字僅為背景說明，不作為自動強制執行。",
+      "loginRoles": [],
+      "defaultTestUrl": "https://m10-golden.invalid",
+      "timeoutMs": 60000
+    },
+    "conversationId": "fa4911e8-8795-4888-918f-3e9cad313c68",
+    "activeRunId": null,
+    "currentProposal": {
+      "id": "681049cd-d29b-4b04-ad8b-211f3e79dd68",
+      "workspaceId": "33b9b990-e974-4732-b8f9-2d1e6bb26901",
+      "conversationId": "fa4911e8-8795-4888-918f-3e9cad313c68",
+      "sourceRunId": "8fc0f8d2-77ed-4604-bdd2-29ddb4dc89c7",
+      "baseRevision": 1,
+      "contextRevision": 2,
+      "status": "applied",
+      "content": {
+        "name": "m10-golden-r102",
+        "purpose": "M10.8黃金任務集隔離QA驗收。",
+        "backgroundSummary": "M10.8 黃金任務集隔離QA驗收用合成授權範圍標記。target https://m10-golden.invalid 為保留 .invalid 名稱，僅作合成授權範圍標記，沒有真實站台，不得真的造訪、導航或發出任何網路請求。允許本機 Playwright page.setContent 建立合成頁，以及純計算與本機DOM斷言。G06 缺角色/credentials 說明：本 Workspace 未配置 loginRoles 與任何憑證，如遇需真實登入或憑證驗證之任務，必須回報缺口、停止並等待PM指示，不得將合成表單顯示、假登入狀態或硬編碼帳密說成真正登入/credentials驗證成功，亦不得索取、使用或硬編碼憑證。",
+        "targets": [
+          {
+            "name": "m10-golden-synthetic",
+            "purpose": "合成授權範圍標記，僅供隔離QA驗收識別，無真實站台，不可實際造訪、導航或請求。",
+            "origin": "https://m10-golden.invalid"
+          }
+        ],
+        "dependencies": [],
+        "excludedOrigins": [],
+        "exclusions": "禁止外網導航、任何網路請求（含對 https://m10-golden.invalid 之實際造訪）、真實登入、憑證索取/使用/硬編碼，以及任何其他 origin 之存取與測試；除上述唯一 target 標記外，其他 origin 一律禁止，不以萬用 origin 表示。此文字僅為背景說明，不作為自動強制執行。",
+        "loginRoles": [],
+        "defaultTestUrl": "https://m10-golden.invalid",
+        "timeoutMs": 60000
+      },
+      "scopeHash": "ad6992e69c4c85d23f8a08f6ef576fa0a4c9ff4f50a47701b56099eb26229bfe",
+      "scopeConfirmed": true,
+      "invalidationReason": null,
+      "appliedRevision": 2,
+      "createdAt": "2026-11-13T07:53:48.296982Z"
+    },
+    "roles": [],
+    "secretsAvailable": false,
+    "executionAvailable": true,
+    "unavailableReason": null,
+    "capabilities": {
+      "aiExploration": {
+        "available": true,
+        "reason": null
+      },
+      "aiExecution": {
+        "available": true,
+        "reason": null
+      },
+      "manualExecution": {
+        "available": true,
+        "reason": null
+      },
+      "credentialLogin": {
+        "available": false,
+        "reason": "secrets_unavailable"
+      }
+    }
+  },
+  "phase": "published_seeds"
+}

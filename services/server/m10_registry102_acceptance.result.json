@@ -1,0 +1,214 @@
+{
+  "base": "http://127.0.0.1:19087/api",
+  "owner": "t4b",
+  "phase": "draft_plan_saved",
+  "workspaceId": "00000000-0000-4000-8000-000000000001",
+  "moduleTestId": "f013a9bd-817d-4c68-9e65-5368266db354",
+  "editingSessionId": "3ab06061-56ad-4de8-bcab-1dc367e995a0",
+  "saveRequest": {
+    "editingSessionId": "3ab06061-56ad-4de8-bcab-1dc367e995a0",
+    "revision": 1,
+    "script": "export async function prepare(_args: any){return {name:'alpha',value:2};}\n",
+    "module": {
+      "slug": "t4b-r102-seed",
+      "moduleKind": "setup",
+      "exportName": "prepare",
+      "signature": "prepare({ ...args })",
+      "inputs": "No required arguments",
+      "returns": "{name: string, value: number}",
+      "preconditions": "None; no browser, network or credentials",
+      "postconditions": "Returns name alpha and value 2 without side effects",
+      "harness": "import {test,expect} from '@playwright/test';\nimport {prepare} from '@lib/t4b-r102-seed';\ntest('pure-compute seed',async()=>{const result=await test.step('Stage 1: compute',()=>prepare({}));await test.step('Stage 2: verify',async()=>{expect(result).toEqual({name:'alpha',value:2});});});\n"
+    }
+  },
+  "revision": 2,
+  "validationRunId": "ecd6f472-2ce3-48a4-9fd8-6344513c1dc2",
+  "validationStatus": "succeeded",
+  "reclaimPending": false,
+  "validationStats": {
+    "startTime": "2026-11-13T06:50:29.130Z",
+    "duration": 288.642,
+    "expected": 1,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "validationArtifacts": {
+    "items": [
+      {
+        "name": "report.html",
+        "size": 518468,
+        "contentType": "text/html; charset=utf-8",
+        "url": "/api/runs/ecd6f472-2ce3-48a4-9fd8-6344513c1dc2/artifacts/report.html"
+      },
+      {
+        "name": "results.json",
+        "size": 4288,
+        "contentType": "application/json",
+        "url": "/api/runs/ecd6f472-2ce3-48a4-9fd8-6344513c1dc2/artifacts/results.json"
+      }
+    ]
+  },
+  "summaryRequested": true,
+  "summaryRunId": "a11042c2-d362-4545-aaed-1a53a14a4fd0",
+  "summaryStatus": "succeeded",
+  "summaryReclaimPending": false,
+  "summary": {
+    "runId": "a11042c2-d362-4545-aaed-1a53a14a4fd0",
+    "status": "succeeded",
+    "revision": 2,
+    "validationRunId": "ecd6f472-2ce3-48a4-9fd8-6344513c1dc2",
+    "description": "目的：提供純運算 setup 模組 prepare，回傳固定值 {name:'alpha', value:2}，無副作用。匯出介面：模組 slug t4b-r102-seed，種類 setup，匯出名稱 prepare，簽章 prepare({...args})，無必要參數，前提為 None（無需瀏覽器、網路或憑證），回傳 {name:string, value:number}，後置條件為回傳 name alpha 與 value 2。測試步驟（紀錄之 harness）：Stage 1 compute 呼叫 prepare({}) 取得 result；Stage 2 verify 以 expect(result).toEqual({name:'alpha',value:2}) 斷言。驗證證據：draftRevision 2，狀態 succeeded，expected 1、unexpected 0、flaky 0、skipped 0，reportsReady true，scriptHash 綁定 harness。限制：僅覆蓋上述純運算回傳值比對，未測試瀏覽器流程、定位器、網路、登入或發佈資格；統計數字不能證明 harness 以外的覆蓋率；workspace sites/defaultTestUrl 為空，無外部目標。",
+    "backgroundSummary": "Workspace 00000000-0000-4000-8000-000000000001，testId f013a9bd-817d-4c68-9e65-5368266db354，baseRevision 2，scriptOrigin manual，settingsRevision 1，sites 空，defaultTestUrl 空，timeoutMs 60000。sourceVersion 與 conversationSummary 為 null，視為缺失資訊而非證據。moduleSummary bodyHash 與 bundleHash 綁定本文與中繼資料，harnessHash 對應驗證之 harness。無祕密背景，保留供下次編輯週期使用，不推斷發佈資格。",
+    "name": "t4b-r102-seed 純運算驗收摘要",
+    "validForCurrentDraft": true
+  },
+  "publishRequested": true,
+  "versionId": "32793ca5-ead9-4563-8d82-595b4e62f68d",
+  "publishedVersion": {
+    "module": {
+      "slug": "t4b-r102-seed",
+      "moduleKind": "setup",
+      "exportName": "prepare",
+      "signature": "prepare({ ...args })",
+      "inputs": "No required arguments",
+      "returns": "{name: string, value: number}",
+      "preconditions": "None; no browser, network or credentials",
+      "postconditions": "Returns name alpha and value 2 without side effects",
+      "harness": "import {test,expect} from '@playwright/test';\nimport {prepare} from '@lib/t4b-r102-seed';\ntest('pure-compute seed',async()=>{const result=await test.step('Stage 1: compute',()=>prepare({}));await test.step('Stage 2: verify',async()=>{expect(result).toEqual({name:'alpha',value:2});});});\n"
+    },
+    "scriptOrigin": "manual",
+    "workspaceContext": {
+      "schemaVersion": "1",
+      "workspaceId": "00000000-0000-4000-8000-000000000001",
+      "settingsRevision": 1,
+      "config": null,
+      "roleRefs": []
+    },
+    "description": "目的：提供純運算 setup 模組 prepare，回傳固定值 {name:'alpha', value:2}，無副作用。匯出介面：模組 slug t4b-r102-seed，種類 setup，匯出名稱 prepare，簽章 prepare({...args})，無必要參數，前提為 None（無需瀏覽器、網路或憑證），回傳 {name:string, value:number}，後置條件為回傳 name alpha 與 value 2。測試步驟（紀錄之 harness）：Stage 1 compute 呼叫 prepare({}) 取得 result；Stage 2 verify 以 expect(result).toEqual({name:'alpha',value:2}) 斷言。驗證證據：draftRevision 2，狀態 succeeded，expected 1、unexpected 0、flaky 0、skipped 0，reportsReady true，scriptHash 綁定 harness。限制：僅覆蓋上述純運算回傳值比對，未測試瀏覽器流程、定位器、網路、登入或發佈資格；統計數字不能證明 harness 以外的覆蓋率；workspace sites/defaultTestUrl 為空，無外部目標。",
+    "backgroundSummary": "Workspace 00000000-0000-4000-8000-000000000001，testId f013a9bd-817d-4c68-9e65-5368266db354，baseRevision 2，scriptOrigin manual，settingsRevision 1，sites 空，defaultTestUrl 空，timeoutMs 60000。sourceVersion 與 conversationSummary 為 null，視為缺失資訊而非證據。moduleSummary bodyHash 與 bundleHash 綁定本文與中繼資料，harnessHash 對應驗證之 harness。無祕密背景，保留供下次編輯週期使用，不推斷發佈資格。",
+    "summaryRunId": "a11042c2-d362-4545-aaed-1a53a14a4fd0",
+    "editingSessionId": "3ab06061-56ad-4de8-bcab-1dc367e995a0",
+    "id": "32793ca5-ead9-4563-8d82-595b4e62f68d",
+    "testId": "f013a9bd-817d-4c68-9e65-5368266db354",
+    "revision": 2,
+    "script": "export async function prepare(_args: any){return {name:'alpha',value:2};}\n",
+    "createdAt": "2026-11-13T06:51:37.561114Z",
+    "validationRunId": "ecd6f472-2ce3-48a4-9fd8-6344513c1dc2",
+    "workspaceSettings": {
+      "revision": 1,
+      "sites": [],
+      "defaultTestUrl": "",
+      "timeoutMs": 60000
+    }
+  },
+  "catalogEntry": {
+    "testId": "f013a9bd-817d-4c68-9e65-5368266db354",
+    "versionId": "32793ca5-ead9-4563-8d82-595b4e62f68d",
+    "name": "t4b-r102-seed 純運算驗收摘要",
+    "description": "目的：提供純運算 setup 模組 prepare，回傳固定值 {name:'alpha', value:2}，無副作用。匯出介面：模組 slug t4b-r102-seed，種類 setup，匯出名稱 prepare，簽章 prepare({...args})，無必要參數，前提為 None（無需瀏覽器、網路或憑證），回傳 {name:string, value:number}，後置條件為回傳 name alpha 與 value 2。測試步驟（紀錄之 harness）：Stage 1 compute 呼叫 prepare({}) 取得 result；Stage 2 verify 以 expect(result).toEqual({name:'alpha',value:2}) 斷言。驗證證據：draftRevision 2，狀態 succeeded，expected 1、unexpected 0、flaky 0、skipped 0，reportsReady true，scriptHash 綁定 harness。限制：僅覆蓋上述純運算回傳值比對，未測試瀏覽器流程、定位器、網路、登入或發佈資格；統計數字不能證明 harness 以外的覆蓋率；workspace sites/defaultTestUrl 為空，無外部目標。",
+    "module": {
+      "slug": "t4b-r102-seed",
+      "moduleKind": "setup",
+      "exportName": "prepare",
+      "signature": "prepare({ ...args })",
+      "inputs": "No required arguments",
+      "returns": "{name: string, value: number}",
+      "preconditions": "None; no browser, network or credentials",
+      "postconditions": "Returns name alpha and value 2 without side effects",
+      "harness": "import {test,expect} from '@playwright/test';\nimport {prepare} from '@lib/t4b-r102-seed';\ntest('pure-compute seed',async()=>{const result=await test.step('Stage 1: compute',()=>prepare({}));await test.step('Stage 2: verify',async()=>{expect(result).toEqual({name:'alpha',value:2});});});\n"
+    },
+    "validationRunId": "ecd6f472-2ce3-48a4-9fd8-6344513c1dc2",
+    "validationStatus": "succeeded",
+    "referencedBy": []
+  },
+  "usecaseTestId": "001a8f35-937c-448c-8891-fdfdeaab71b8",
+  "usecaseSessionId": "a83022b7-a7e2-4c6a-be1a-337968efb178",
+  "planRequest": {
+    "editingSessionId": "a83022b7-a7e2-4c6a-be1a-337968efb178",
+    "revision": 1,
+    "planRevision": 0,
+    "stages": [
+      {
+        "id": "seed",
+        "title": "Reuse fixed pure-compute seed",
+        "action": "reuse",
+        "moduleTestId": "f013a9bd-817d-4c68-9e65-5368266db354",
+        "moduleVersionId": "32793ca5-ead9-4563-8d82-595b4e62f68d",
+        "args": {},
+        "bind": "seedResult"
+      },
+      {
+        "id": "double",
+        "title": "Create pure-compute doubling candidate",
+        "action": "create",
+        "module": {
+          "slug": "t4b-r102-double",
+          "moduleKind": "step",
+          "description": "純計算模組，export async function doubleValue({value})，回傳 {doubled:value*2}；harness用Playwright test/expect與test.step驗value=2得到4。不使用page/browser、網路、登入或憑證。"
+        },
+        "args": {
+          "value": {
+            "kind": "binding",
+            "stageId": "seed",
+            "path": [
+              "value"
+            ]
+          }
+        },
+        "bind": "doubleResult"
+      }
+    ]
+  },
+  "plan": {
+    "id": "059ae857-abf0-4868-8628-4d0d03684845",
+    "testId": "001a8f35-937c-448c-8891-fdfdeaab71b8",
+    "editingSessionId": "a83022b7-a7e2-4c6a-be1a-337968efb178",
+    "revision": 1,
+    "baseRevision": 1,
+    "contextRevision": 1,
+    "status": "draft",
+    "stages": [
+      {
+        "id": "seed",
+        "title": "Reuse fixed pure-compute seed",
+        "action": "reuse",
+        "moduleTestId": "f013a9bd-817d-4c68-9e65-5368266db354",
+        "moduleVersionId": "32793ca5-ead9-4563-8d82-595b4e62f68d",
+        "args": {},
+        "bind": "seedResult",
+        "status": "pending"
+      },
+      {
+        "id": "double",
+        "title": "Create pure-compute doubling candidate",
+        "action": "create",
+        "module": {
+          "slug": "t4b-r102-double",
+          "moduleKind": "step",
+          "description": "純計算模組，export async function doubleValue({value})，回傳 {doubled:value*2}；harness用Playwright test/expect與test.step驗value=2得到4。不使用page/browser、網路、登入或憑證。"
+        },
+        "args": {
+          "value": {
+            "kind": "binding",
+            "stageId": "seed",
+            "path": [
+              "value"
+            ]
+          }
+        },
+        "bind": "doubleResult",
+        "status": "pending"
+      }
+    ]
+  },
+  "usecaseRuns": {
+    "items": []
+  },
+  "versionVerified": {
+    "bodyMatches": true,
+    "moduleMetadataAndHarnessMatch": true,
+    "summaryRunMatches": true,
+    "validationRunMatches": true
+  }
+}

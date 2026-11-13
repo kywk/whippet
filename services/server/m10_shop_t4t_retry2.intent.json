@@ -1,0 +1,42 @@
+{
+  "createdAt": "2026-11-14T01:19:28.940367+08:00",
+  "url": "http://127.0.0.1:19287/api/plans/b7c83de2-5b1f-4531-b526-ba4d65682045/stages/search/retry",
+  "request": {
+    "planRevision": 6,
+    "moduleRevision": 1,
+    "moduleContextRevision": 2,
+    "confirmed": true,
+    "content": "前次已確認8次模型全用於read_module_draft/read_skill_reference與browser_navigate4/browser_snapshot1/browser_login1，完全沒有update_module_candidate。這次修復重點是先產稿自試，不再重複瀏覽探索。路由、selectors、完整loginAs與受保護頁斷言已在description；請勿呼叫browser_navigate/browser_snapshot/browser_login/browser_click/browser_fill探索工具。必要時僅讀一次既有Module草稿或必要skill reference，接著立即update_module_candidate提交最小search模組及獨立harness，自試內使用page與loginAs真登入、搜尋Whippet並取當次productId與price120；不得省略登入成功與搜尋結果斷言。若自試失敗，在剩餘既有預算內按工具實際錯誤修正候選；通過後立即依協定final收尾。保留原scope/slug/輸出/所有斷言，不硬編productId、不改budget/skills，不將禁止探索等同禁止harness真瀏覽。"
+  },
+  "retryGet": {
+    "eligible": true,
+    "reason": null,
+    "planRevision": 6,
+    "source": {
+      "moduleTestId": "64738e4b-c378-4c05-82ea-10dc20164e99",
+      "editingSessionId": "b63a9953-1764-4a0a-981c-e7154b3f5452",
+      "moduleRevision": 1,
+      "moduleContextRevision": 2,
+      "authorRunId": "7fc9f5b0-c906-4e54-851c-916065bf2745",
+      "authorStatus": "failed",
+      "validationRunId": null,
+      "validationStatus": null,
+      "reclaimed": true
+    }
+  },
+  "runCounts": {
+    "active": 0,
+    "unreclaimed": 0
+  },
+  "scope": {
+    "id": "f7918b78-2171-47cf-b000-407ca05f86d3",
+    "revision": 2,
+    "authorizationRevision": 2,
+    "lifecycle": "active",
+    "scopeStatus": "confirmed"
+  },
+  "targetOrigins": [
+    "http://host.docker.internal:19387"
+  ],
+  "classification": "retry2 directed repair from retry1 fixed tool evidence; no budget/skills changes"
+}

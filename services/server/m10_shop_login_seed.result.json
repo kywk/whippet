@@ -1,0 +1,250 @@
+{
+  "base": "http://127.0.0.1:19287/api",
+  "workspaceId": "f7918b78-2171-47cf-b000-407ca05f86d3",
+  "workspaceRevision": 2,
+  "authorizationRevision": 2,
+  "owner": "t4b",
+  "publishRequested": true,
+  "testId": "85cb8d95-0b97-4e8f-ab9f-9b45ebcc65cd",
+  "editingSessionId": "8869bdb2-e7b1-4bb5-963c-1b138b5ec5d9",
+  "saveRequest": {
+    "editingSessionId": "8869bdb2-e7b1-4bb5-963c-1b138b5ec5d9",
+    "revision": 1,
+    "script": "import {expect} from '@playwright/test';\nimport {loginAs} from 'whippet/login';\nexport async function loginShop({page}) {\n  await page.goto('http://host.docker.internal:19387/login');\n  await loginAs(page, '7da20730-874d-41ff-aea0-7a5650f37c12', 'input[name=username]', 'input[name=password]', 'button[type=submit]');\n  await expect(page).toHaveURL('http://host.docker.internal:19387/products');\n  await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer');\n  return {authenticated:true};\n}\n",
+    "module": {
+      "slug": "shop-login",
+      "moduleKind": "setup",
+      "exportName": "loginShop",
+      "signature": "loginShop({page})",
+      "inputs": "Playwright page only; no username/password arguments",
+      "returns": "{authenticated:true} only after protected products URL and account-state assertions pass",
+      "preconditions": "Confirmed single origin http://host.docker.internal:19387; buyer role 7da20730-874d-41ff-aea0-7a5650f37c12 configured through platform credentials API",
+      "postconditions": "Page at /products with Authenticated synthetic customer; same page session can be reused. Synthetic account only, no external origin/payment.",
+      "harness": "import {test,expect} from '@playwright/test';\nimport {loginShop} from '@lib/shop-login';\ntest('shop login with platform role',async({page})=>{\n const result=await test.step('Stage 1: platform role login',()=>loginShop({page}));\n await test.step('Stage 2: protected page assertions',async()=>{\n  await expect(page).toHaveURL('http://host.docker.internal:19387/products');\n  await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer');\n  expect(result).toEqual({authenticated:true});\n });\n});\n"
+    }
+  },
+  "revision": 2,
+  "validationRequested": true,
+  "validationRunId": "db785e6e-4677-4403-a6a4-4f52dcce8d03",
+  "validationStatus": "succeeded",
+  "sessionAfterValidation": {
+    "session": {
+      "id": "8869bdb2-e7b1-4bb5-963c-1b138b5ec5d9",
+      "testId": "85cb8d95-0b97-4e8f-ab9f-9b45ebcc65cd",
+      "workspaceId": "f7918b78-2171-47cf-b000-407ca05f86d3",
+      "status": "active",
+      "sourceVersionId": null,
+      "sourceVersion": null,
+      "conversationId": "cf960b41-e094-4581-8675-564dc0a0ba10",
+      "conversationSummary": null,
+      "contextRevision": 0,
+      "draft": {
+        "module": {
+          "slug": "shop-login",
+          "moduleKind": "setup",
+          "exportName": "loginShop",
+          "signature": "loginShop({page})",
+          "inputs": "Playwright page only; no username/password arguments",
+          "returns": "{authenticated:true} only after protected products URL and account-state assertions pass",
+          "preconditions": "Confirmed single origin http://host.docker.internal:19387; buyer role 7da20730-874d-41ff-aea0-7a5650f37c12 configured through platform credentials API",
+          "postconditions": "Page at /products with Authenticated synthetic customer; same page session can be reused. Synthetic account only, no external origin/payment.",
+          "harness": "import {test,expect} from '@playwright/test';\nimport {loginShop} from '@lib/shop-login';\ntest('shop login with platform role',async({page})=>{\n const result=await test.step('Stage 1: platform role login',()=>loginShop({page}));\n await test.step('Stage 2: protected page assertions',async()=>{\n  await expect(page).toHaveURL('http://host.docker.internal:19387/products');\n  await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer');\n  expect(result).toEqual({authenticated:true});\n });\n});\n"
+        },
+        "scriptOrigin": "manual",
+        "workspaceContext": {
+          "schemaVersion": "1",
+          "workspaceId": "f7918b78-2171-47cf-b000-407ca05f86d3",
+          "settingsRevision": 2,
+          "config": {
+            "name": "m10-shop",
+            "purpose": "M10.9 隔離合成商店四階段登入→搜尋→下單→驗證。",
+            "backgroundSummary": "合成商店隔離驗證：GET /login 為登入入口，需透過平台 loginAs 安全登入後才可存取受保護 /products?q=Whippet；合成下單 POST /orders，每次產生新 UUID，並以目前 session 查詢 /orders/<UUID> 進行驗證。登入成功必須以受保護頁 account-state 斷言，表單提交不等於登入成功。無外部 dependencies、CDN 與付款流程，不使用真實帳號資料。此次僅產 proposal，等待 PM 審核及另行正式確認。",
+            "targets": [
+              {
+                "name": "m10-shop",
+                "purpose": "M10.9 隔離合成商店四階段驗證：登入→搜尋→下單→驗證，僅限此單一 origin 合成資料流程。",
+                "origin": "http://host.docker.internal:19387"
+              }
+            ],
+            "dependencies": [],
+            "excludedOrigins": [],
+            "exclusions": "僅允許唯一 target origin http://host.docker.internal:19387 的合成資料流程；明確禁止其他任何 origin、外部網路與外部資源（含 CDN/API/第三方服務）、真付款流程與真實帳號資料；不得索取、產生、硬編碼或輸出任何帳密。",
+            "loginRoles": [
+              {
+                "roleId": "7da20730-874d-41ff-aea0-7a5650f37c12",
+                "name": "buyer",
+                "loginMethod": "form",
+                "loginOrigin": "http://host.docker.internal:19387"
+              }
+            ],
+            "defaultTestUrl": "http://host.docker.internal:19387/login",
+            "timeoutMs": 60000
+          },
+          "roleRefs": [
+            {
+              "roleId": "7da20730-874d-41ff-aea0-7a5650f37c12",
+              "secretRef": "04c61aad-8f1f-458d-bd99-c5842d6bfa83",
+              "secretVersion": 1,
+              "configured": true
+            }
+          ]
+        },
+        "editingSessionId": "8869bdb2-e7b1-4bb5-963c-1b138b5ec5d9",
+        "testId": "85cb8d95-0b97-4e8f-ab9f-9b45ebcc65cd",
+        "revision": 2,
+        "script": "import {expect} from '@playwright/test';\nimport {loginAs} from 'whippet/login';\nexport async function loginShop({page}) {\n  await page.goto('http://host.docker.internal:19387/login');\n  await loginAs(page, '7da20730-874d-41ff-aea0-7a5650f37c12', 'input[name=username]', 'input[name=password]', 'button[type=submit]');\n  await expect(page).toHaveURL('http://host.docker.internal:19387/products');\n  await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer');\n  return {authenticated:true};\n}\n",
+        "updatedAt": "2026-11-13T08:25:41.721872Z",
+        "validationRunId": "db785e6e-4677-4403-a6a4-4f52dcce8d03",
+        "validationStatus": "succeeded",
+        "reportUrl": "/api/runs/db785e6e-4677-4403-a6a4-4f52dcce8d03/artifacts/report.html",
+        "workspaceSettings": {
+          "revision": 2,
+          "sites": [
+            {
+              "name": "m10-shop",
+              "url": "http://host.docker.internal:19387"
+            }
+          ],
+          "defaultTestUrl": "http://host.docker.internal:19387/login",
+          "timeoutMs": 60000
+        }
+      },
+      "summary": null,
+      "pendingRunIds": [],
+      "reclaimPending": false,
+      "publishedVersionId": null,
+      "createdAt": "2026-11-13T08:25:41.713529Z",
+      "closedAt": null
+    }
+  },
+  "validationStats": {
+    "duration": 952.6239999999999,
+    "expected": 1,
+    "flaky": 0,
+    "skipped": 0,
+    "startTime": "2026-11-13T08:25:42.244Z",
+    "unexpected": 0
+  },
+  "validationReclaimed": true,
+  "summaryRequested": true,
+  "summaryRunId": "5783f96a-3bcc-49ad-9eca-c064105abe56",
+  "summaryStatus": "succeeded",
+  "summary": {
+    "runId": "5783f96a-3bcc-49ad-9eca-c064105abe56",
+    "status": "succeeded",
+    "revision": 2,
+    "validationRunId": "db785e6e-4677-4403-a6a4-4f52dcce8d03",
+    "description": "目的：提供 M10.9 隔離合成商店四階段驗證（登入→搜尋→下單→驗證）共用 Setup 模組 loginShop，供後續搜尋/下單/驗證重用同一 page session。僅涵蓋 Stage 1 登入，不包含搜尋、下單、訂單驗證、付款流程。\n匯出介面：export async function loginShop({page})；輸入僅 Playwright page，不接受 username/password 參數；前置為已確認單一 origin http://host.docker.internal:19387 與 buyer role 7da20730-874d-41ff-aea0-7a5650f37c12 經平台 credentials API 配置；成功後回傳 {authenticated:true}，失敗則不回傳（斷言拋錯）。\n步驟：1) page.goto('http://host.docker.internal:19387/login')；2) loginAs(page, roleId, 'input[name=username]', 'input[name=password]', 'button[type=submit]') 經平台安全登入，不硬編碼帳密；3) expect(page).toHaveURL('http://host.docker.internal:19387/products')；4) expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')；5) return {authenticated:true}。\nHarness（已驗證綁定 harnessHash c80637cf…）：test('shop login with platform role') 呼叫 loginShop，Stage 1 執行模組，Stage 2 再次斷言 /products URL、account-state 文字並 expect(result).toEqual({authenticated:true})。\n驗證證據：runId db785e6e-4677-4403-a6a4-4f52dcce8d03 / attempt 70da8ef9… / draftRevision 2 / scriptHash c80637cf… / status succeeded / expected 1, unexpected 0, flaky 0, skipped 0, duration ~953ms, reportsReady true。bodyHash ced9d00b… 與 bundleHash fc8035b2… 綁定本次主體與詮釋資料。\n限制：stats 僅證明該 1 個 harness 通過，不能證明搜尋 q=Whippet、POST /orders 新 UUID、下單後 /orders/<UUID> 驗證等未在 script/harness 出現的涵蓋率；sourceVersion 與 conversationSummary 為 null 屬缺失資訊非證據；合成帳號與合成資料專用，無外部 origin/CDN/API、無真實帳號與真付款。",
+    "backgroundSummary": "Workspace f7918b78-2171-47cf-b000-407ca05f86d3 / test 85cb8d95-0b97-4e8f-ab9f-9b45ebcc65cd / settingsRevision 2, baseRevision 2, scriptOrigin manual, defaultTestUrl http://host.docker.internal:19387/login, timeoutMs 60000, target 唯一 m10-shop origin http://host.docker.internal:19387。目的 M10.9 隔離合成商店登入→搜尋→下單→驗證；明確排除其他 origin、外部網路/CDN/API/第三方、真付款與真實帳密，不得索取或硬編碼帳密。dependencies 空；loginRoles buyer form 單一；roleRefs 已配置 configured true 不含秘密值。決策：登入成功必須以受保護頁 account-state 斷言，表單提交不等於成功；此次僅產 Setup proposal 供重用，搜尋/下單/驗證待下一編輯循環新增模組。保留 hashes 供追溯：body ced9d00b…, bundle fc8035b2…, harness c80637cf…。",
+    "name": "shop-login 登入模組驗證摘要",
+    "validForCurrentDraft": true
+  },
+  "summaryReclaimPending": false,
+  "pendingRunIds": [],
+  "reviewCandidate": {
+    "testId": "85cb8d95-0b97-4e8f-ab9f-9b45ebcc65cd",
+    "editingSessionId": "8869bdb2-e7b1-4bb5-963c-1b138b5ec5d9",
+    "revision": 2,
+    "bodyHash": "ced9d00b66d920d2e7abbb7991d076066312512f3dda1f0f74d63d9f2fd97fdc",
+    "harnessHash": "c80637cfa6b121510fac9cab51a53e712f3e570a3adf4aefd198c81b18fd453a",
+    "summaryRunId": "5783f96a-3bcc-49ad-9eca-c064105abe56",
+    "validationRunId": "db785e6e-4677-4403-a6a4-4f52dcce8d03",
+    "published": false
+  },
+  "summaryReview": "Summary accurately limits evidence to actual login/protected page assertions; search/order/verification remain untested.",
+  "publishPreflightPassed": true,
+  "publishedVersion": {
+    "module": {
+      "slug": "shop-login",
+      "moduleKind": "setup",
+      "exportName": "loginShop",
+      "signature": "loginShop({page})",
+      "inputs": "Playwright page only; no username/password arguments",
+      "returns": "{authenticated:true} only after protected products URL and account-state assertions pass",
+      "preconditions": "Confirmed single origin http://host.docker.internal:19387; buyer role 7da20730-874d-41ff-aea0-7a5650f37c12 configured through platform credentials API",
+      "postconditions": "Page at /products with Authenticated synthetic customer; same page session can be reused. Synthetic account only, no external origin/payment.",
+      "harness": "import {test,expect} from '@playwright/test';\nimport {loginShop} from '@lib/shop-login';\ntest('shop login with platform role',async({page})=>{\n const result=await test.step('Stage 1: platform role login',()=>loginShop({page}));\n await test.step('Stage 2: protected page assertions',async()=>{\n  await expect(page).toHaveURL('http://host.docker.internal:19387/products');\n  await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer');\n  expect(result).toEqual({authenticated:true});\n });\n});\n"
+    },
+    "scriptOrigin": "manual",
+    "workspaceContext": {
+      "schemaVersion": "1",
+      "workspaceId": "f7918b78-2171-47cf-b000-407ca05f86d3",
+      "settingsRevision": 2,
+      "config": {
+        "name": "m10-shop",
+        "purpose": "M10.9 隔離合成商店四階段登入→搜尋→下單→驗證。",
+        "backgroundSummary": "合成商店隔離驗證：GET /login 為登入入口，需透過平台 loginAs 安全登入後才可存取受保護 /products?q=Whippet；合成下單 POST /orders，每次產生新 UUID，並以目前 session 查詢 /orders/<UUID> 進行驗證。登入成功必須以受保護頁 account-state 斷言，表單提交不等於登入成功。無外部 dependencies、CDN 與付款流程，不使用真實帳號資料。此次僅產 proposal，等待 PM 審核及另行正式確認。",
+        "targets": [
+          {
+            "name": "m10-shop",
+            "purpose": "M10.9 隔離合成商店四階段驗證：登入→搜尋→下單→驗證，僅限此單一 origin 合成資料流程。",
+            "origin": "http://host.docker.internal:19387"
+          }
+        ],
+        "dependencies": [],
+        "excludedOrigins": [],
+        "exclusions": "僅允許唯一 target origin http://host.docker.internal:19387 的合成資料流程；明確禁止其他任何 origin、外部網路與外部資源（含 CDN/API/第三方服務）、真付款流程與真實帳號資料；不得索取、產生、硬編碼或輸出任何帳密。",
+        "loginRoles": [
+          {
+            "roleId": "7da20730-874d-41ff-aea0-7a5650f37c12",
+            "name": "buyer",
+            "loginMethod": "form",
+            "loginOrigin": "http://host.docker.internal:19387"
+          }
+        ],
+        "defaultTestUrl": "http://host.docker.internal:19387/login",
+        "timeoutMs": 60000
+      },
+      "roleRefs": [
+        {
+          "roleId": "7da20730-874d-41ff-aea0-7a5650f37c12",
+          "secretRef": "04c61aad-8f1f-458d-bd99-c5842d6bfa83",
+          "secretVersion": 1,
+          "configured": true
+        }
+      ]
+    },
+    "description": "目的：提供 M10.9 隔離合成商店四階段驗證（登入→搜尋→下單→驗證）共用 Setup 模組 loginShop，供後續搜尋/下單/驗證重用同一 page session。僅涵蓋 Stage 1 登入，不包含搜尋、下單、訂單驗證、付款流程。\n匯出介面：export async function loginShop({page})；輸入僅 Playwright page，不接受 username/password 參數；前置為已確認單一 origin http://host.docker.internal:19387 與 buyer role 7da20730-874d-41ff-aea0-7a5650f37c12 經平台 credentials API 配置；成功後回傳 {authenticated:true}，失敗則不回傳（斷言拋錯）。\n步驟：1) page.goto('http://host.docker.internal:19387/login')；2) loginAs(page, roleId, 'input[name=username]', 'input[name=password]', 'button[type=submit]') 經平台安全登入，不硬編碼帳密；3) expect(page).toHaveURL('http://host.docker.internal:19387/products')；4) expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')；5) return {authenticated:true}。\nHarness（已驗證綁定 harnessHash c80637cf…）：test('shop login with platform role') 呼叫 loginShop，Stage 1 執行模組，Stage 2 再次斷言 /products URL、account-state 文字並 expect(result).toEqual({authenticated:true})。\n驗證證據：runId db785e6e-4677-4403-a6a4-4f52dcce8d03 / attempt 70da8ef9… / draftRevision 2 / scriptHash c80637cf… / status succeeded / expected 1, unexpected 0, flaky 0, skipped 0, duration ~953ms, reportsReady true。bodyHash ced9d00b… 與 bundleHash fc8035b2… 綁定本次主體與詮釋資料。\n限制：stats 僅證明該 1 個 harness 通過，不能證明搜尋 q=Whippet、POST /orders 新 UUID、下單後 /orders/<UUID> 驗證等未在 script/harness 出現的涵蓋率；sourceVersion 與 conversationSummary 為 null 屬缺失資訊非證據；合成帳號與合成資料專用，無外部 origin/CDN/API、無真實帳號與真付款。",
+    "backgroundSummary": "Workspace f7918b78-2171-47cf-b000-407ca05f86d3 / test 85cb8d95-0b97-4e8f-ab9f-9b45ebcc65cd / settingsRevision 2, baseRevision 2, scriptOrigin manual, defaultTestUrl http://host.docker.internal:19387/login, timeoutMs 60000, target 唯一 m10-shop origin http://host.docker.internal:19387。目的 M10.9 隔離合成商店登入→搜尋→下單→驗證；明確排除其他 origin、外部網路/CDN/API/第三方、真付款與真實帳密，不得索取或硬編碼帳密。dependencies 空；loginRoles buyer form 單一；roleRefs 已配置 configured true 不含秘密值。決策：登入成功必須以受保護頁 account-state 斷言，表單提交不等於成功；此次僅產 Setup proposal 供重用，搜尋/下單/驗證待下一編輯循環新增模組。保留 hashes 供追溯：body ced9d00b…, bundle fc8035b2…, harness c80637cf…。",
+    "summaryRunId": "5783f96a-3bcc-49ad-9eca-c064105abe56",
+    "editingSessionId": "8869bdb2-e7b1-4bb5-963c-1b138b5ec5d9",
+    "id": "21457a77-f2f7-4f84-a24f-f63f0ce53497",
+    "testId": "85cb8d95-0b97-4e8f-ab9f-9b45ebcc65cd",
+    "revision": 2,
+    "script": "import {expect} from '@playwright/test';\nimport {loginAs} from 'whippet/login';\nexport async function loginShop({page}) {\n  await page.goto('http://host.docker.internal:19387/login');\n  await loginAs(page, '7da20730-874d-41ff-aea0-7a5650f37c12', 'input[name=username]', 'input[name=password]', 'button[type=submit]');\n  await expect(page).toHaveURL('http://host.docker.internal:19387/products');\n  await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer');\n  return {authenticated:true};\n}\n",
+    "createdAt": "2026-11-13T08:28:20.682178Z",
+    "validationRunId": "db785e6e-4677-4403-a6a4-4f52dcce8d03",
+    "workspaceSettings": {
+      "revision": 2,
+      "sites": [
+        {
+          "name": "m10-shop",
+          "url": "http://host.docker.internal:19387"
+        }
+      ],
+      "defaultTestUrl": "http://host.docker.internal:19387/login",
+      "timeoutMs": 60000
+    }
+  },
+  "versionId": "21457a77-f2f7-4f84-a24f-f63f0ce53497",
+  "catalogEntry": {
+    "testId": "85cb8d95-0b97-4e8f-ab9f-9b45ebcc65cd",
+    "versionId": "21457a77-f2f7-4f84-a24f-f63f0ce53497",
+    "name": "shop-login 登入模組驗證摘要",
+    "description": "目的：提供 M10.9 隔離合成商店四階段驗證（登入→搜尋→下單→驗證）共用 Setup 模組 loginShop，供後續搜尋/下單/驗證重用同一 page session。僅涵蓋 Stage 1 登入，不包含搜尋、下單、訂單驗證、付款流程。\n匯出介面：export async function loginShop({page})；輸入僅 Playwright page，不接受 username/password 參數；前置為已確認單一 origin http://host.docker.internal:19387 與 buyer role 7da20730-874d-41ff-aea0-7a5650f37c12 經平台 credentials API 配置；成功後回傳 {authenticated:true}，失敗則不回傳（斷言拋錯）。\n步驟：1) page.goto('http://host.docker.internal:19387/login')；2) loginAs(page, roleId, 'input[name=username]', 'input[name=password]', 'button[type=submit]') 經平台安全登入，不硬編碼帳密；3) expect(page).toHaveURL('http://host.docker.internal:19387/products')；4) expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')；5) return {authenticated:true}。\nHarness（已驗證綁定 harnessHash c80637cf…）：test('shop login with platform role') 呼叫 loginShop，Stage 1 執行模組，Stage 2 再次斷言 /products URL、account-state 文字並 expect(result).toEqual({authenticated:true})。\n驗證證據：runId db785e6e-4677-4403-a6a4-4f52dcce8d03 / attempt 70da8ef9… / draftRevision 2 / scriptHash c80637cf… / status succeeded / expected 1, unexpected 0, flaky 0, skipped 0, duration ~953ms, reportsReady true。bodyHash ced9d00b… 與 bundleHash fc8035b2… 綁定本次主體與詮釋資料。\n限制：stats 僅證明該 1 個 harness 通過，不能證明搜尋 q=Whippet、POST /orders 新 UUID、下單後 /orders/<UUID> 驗證等未在 script/harness 出現的涵蓋率；sourceVersion 與 conversationSummary 為 null 屬缺失資訊非證據；合成帳號與合成資料專用，無外部 origin/CDN/API、無真實帳號與真付款。",
+    "module": {
+      "slug": "shop-login",
+      "moduleKind": "setup",
+      "exportName": "loginShop",
+      "signature": "loginShop({page})",
+      "inputs": "Playwright page only; no username/password arguments",
+      "returns": "{authenticated:true} only after protected products URL and account-state assertions pass",
+      "preconditions": "Confirmed single origin http://host.docker.internal:19387; buyer role 7da20730-874d-41ff-aea0-7a5650f37c12 configured through platform credentials API",
+      "postconditions": "Page at /products with Authenticated synthetic customer; same page session can be reused. Synthetic account only, no external origin/payment.",
+      "harness": "import {test,expect} from '@playwright/test';\nimport {loginShop} from '@lib/shop-login';\ntest('shop login with platform role',async({page})=>{\n const result=await test.step('Stage 1: platform role login',()=>loginShop({page}));\n await test.step('Stage 2: protected page assertions',async()=>{\n  await expect(page).toHaveURL('http://host.docker.internal:19387/products');\n  await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer');\n  expect(result).toEqual({authenticated:true});\n });\n});\n"
+    },
+    "validationRunId": "db785e6e-4677-4403-a6a4-4f52dcce8d03",
+    "validationStatus": "succeeded",
+    "referencedBy": []
+  }
+}

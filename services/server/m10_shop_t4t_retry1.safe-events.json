@@ -1,0 +1,330 @@
+{
+  "runId": "7fc9f5b0-c906-4e54-851c-916065bf2745",
+  "observedAt": "2026-11-14T01:18:09.703949+08:00",
+  "registryVersion": "10.2",
+  "eventEvidence": {
+    "events": [
+      {
+        "seq": 2,
+        "event_kind": "model",
+        "ordinal": 1,
+        "tool_name": null,
+        "status": "started"
+      },
+      {
+        "seq": 3,
+        "event_kind": "model",
+        "ordinal": 1,
+        "tool_name": null,
+        "status": "succeeded"
+      },
+      {
+        "seq": 4,
+        "event_kind": "tool",
+        "ordinal": 1,
+        "tool_name": "read_module_draft",
+        "status": "started"
+      },
+      {
+        "seq": 5,
+        "event_kind": "tool",
+        "ordinal": 1,
+        "tool_name": "read_module_draft",
+        "status": "succeeded"
+      },
+      {
+        "seq": 6,
+        "event_kind": "model",
+        "ordinal": 2,
+        "tool_name": null,
+        "status": "started"
+      },
+      {
+        "seq": 7,
+        "event_kind": "model",
+        "ordinal": 2,
+        "tool_name": null,
+        "status": "succeeded"
+      },
+      {
+        "seq": 8,
+        "event_kind": "tool",
+        "ordinal": 2,
+        "tool_name": "read_skill_reference",
+        "status": "started"
+      },
+      {
+        "seq": 9,
+        "event_kind": "tool",
+        "ordinal": 2,
+        "tool_name": "read_skill_reference",
+        "status": "succeeded"
+      },
+      {
+        "seq": 10,
+        "event_kind": "model",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "started"
+      },
+      {
+        "seq": 11,
+        "event_kind": "model",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "succeeded"
+      },
+      {
+        "seq": 12,
+        "event_kind": "tool",
+        "ordinal": 3,
+        "tool_name": "browser_navigate",
+        "status": "started"
+      },
+      {
+        "seq": 13,
+        "event_kind": "tool",
+        "ordinal": 3,
+        "tool_name": "browser_navigate",
+        "status": "succeeded"
+      },
+      {
+        "seq": 14,
+        "event_kind": "model",
+        "ordinal": 4,
+        "tool_name": null,
+        "status": "started"
+      },
+      {
+        "seq": 15,
+        "event_kind": "model",
+        "ordinal": 4,
+        "tool_name": null,
+        "status": "succeeded"
+      },
+      {
+        "seq": 16,
+        "event_kind": "tool",
+        "ordinal": 4,
+        "tool_name": "browser_navigate",
+        "status": "started"
+      },
+      {
+        "seq": 17,
+        "event_kind": "tool",
+        "ordinal": 4,
+        "tool_name": "browser_navigate",
+        "status": "succeeded"
+      },
+      {
+        "seq": 18,
+        "event_kind": "model",
+        "ordinal": 5,
+        "tool_name": null,
+        "status": "started"
+      },
+      {
+        "seq": 19,
+        "event_kind": "model",
+        "ordinal": 5,
+        "tool_name": null,
+        "status": "succeeded"
+      },
+      {
+        "seq": 20,
+        "event_kind": "tool",
+        "ordinal": 5,
+        "tool_name": "browser_snapshot",
+        "status": "started"
+      },
+      {
+        "seq": 21,
+        "event_kind": "tool",
+        "ordinal": 5,
+        "tool_name": "browser_snapshot",
+        "status": "succeeded"
+      },
+      {
+        "seq": 22,
+        "event_kind": "model",
+        "ordinal": 6,
+        "tool_name": null,
+        "status": "started"
+      },
+      {
+        "seq": 23,
+        "event_kind": "model",
+        "ordinal": 6,
+        "tool_name": null,
+        "status": "succeeded"
+      },
+      {
+        "seq": 24,
+        "event_kind": "tool",
+        "ordinal": 6,
+        "tool_name": "browser_navigate",
+        "status": "started"
+      },
+      {
+        "seq": 25,
+        "event_kind": "tool",
+        "ordinal": 6,
+        "tool_name": "browser_navigate",
+        "status": "succeeded"
+      },
+      {
+        "seq": 26,
+        "event_kind": "model",
+        "ordinal": 7,
+        "tool_name": null,
+        "status": "started"
+      },
+      {
+        "seq": 27,
+        "event_kind": "model",
+        "ordinal": 7,
+        "tool_name": null,
+        "status": "succeeded"
+      },
+      {
+        "seq": 28,
+        "event_kind": "tool",
+        "ordinal": 7,
+        "tool_name": "browser_login",
+        "status": "started"
+      },
+      {
+        "seq": 29,
+        "event_kind": "tool",
+        "ordinal": 7,
+        "tool_name": "browser_login",
+        "status": "succeeded"
+      },
+      {
+        "seq": 30,
+        "event_kind": "model",
+        "ordinal": 8,
+        "tool_name": null,
+        "status": "started"
+      },
+      {
+        "seq": 31,
+        "event_kind": "model",
+        "ordinal": 8,
+        "tool_name": null,
+        "status": "succeeded"
+      },
+      {
+        "seq": 32,
+        "event_kind": "tool",
+        "ordinal": 8,
+        "tool_name": "browser_navigate",
+        "status": "started"
+      },
+      {
+        "seq": 33,
+        "event_kind": "tool",
+        "ordinal": 8,
+        "tool_name": "browser_navigate",
+        "status": "succeeded"
+      }
+    ],
+    "unknownEventCount": 1,
+    "counts": [
+      {
+        "event_kind": "model",
+        "tool_name": null,
+        "status": "started",
+        "count": 8
+      },
+      {
+        "event_kind": "model",
+        "tool_name": null,
+        "status": "succeeded",
+        "count": 8
+      },
+      {
+        "event_kind": "tool",
+        "tool_name": "browser_login",
+        "status": "started",
+        "count": 1
+      },
+      {
+        "event_kind": "tool",
+        "tool_name": "browser_login",
+        "status": "succeeded",
+        "count": 1
+      },
+      {
+        "event_kind": "tool",
+        "tool_name": "browser_navigate",
+        "status": "started",
+        "count": 4
+      },
+      {
+        "event_kind": "tool",
+        "tool_name": "browser_navigate",
+        "status": "succeeded",
+        "count": 4
+      },
+      {
+        "event_kind": "tool",
+        "tool_name": "browser_snapshot",
+        "status": "started",
+        "count": 1
+      },
+      {
+        "event_kind": "tool",
+        "tool_name": "browser_snapshot",
+        "status": "succeeded",
+        "count": 1
+      },
+      {
+        "event_kind": "tool",
+        "tool_name": "read_module_draft",
+        "status": "started",
+        "count": 1
+      },
+      {
+        "event_kind": "tool",
+        "tool_name": "read_module_draft",
+        "status": "succeeded",
+        "count": 1
+      },
+      {
+        "event_kind": "tool",
+        "tool_name": "read_skill_reference",
+        "status": "started",
+        "count": 1
+      },
+      {
+        "event_kind": "tool",
+        "tool_name": "read_skill_reference",
+        "status": "succeeded",
+        "count": 1
+      }
+    ]
+  },
+  "budget": {
+    "maxModelRequests": 8,
+    "maxToolCalls": 12,
+    "maxDurationMs": 180000
+  },
+  "fixedErrorCodes": {
+    "availability": "not_present_in_fixed_author_event_grammar",
+    "values": []
+  },
+  "limitations": [
+    "Tool succeeded is not self-test passed",
+    "Unknown/unmatched events only counted; no content returned",
+    "Event sequence is row_number by created_at,event_id, not raw event_id",
+    "No model configuration, arguments, messages or raw payload returned"
+  ],
+  "updateModuleCandidate": {
+    "started": 0,
+    "succeeded": 0,
+    "failed": 0,
+    "heartbeat": 0
+  },
+  "finding": "固定事件未到達 update_module_candidate；8次 model started/succeeded，8次工具 started/succeeded，無已識別 failed。模型請求計數達快照上限8，工具計數8未達上限12；結合sidecar LIMIT，但不推論模型為何採此路徑或自試失敗根因。"
+}

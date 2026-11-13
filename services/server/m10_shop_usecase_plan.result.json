@@ -1,0 +1,980 @@
+{
+  "base": "http://127.0.0.1:19287/api",
+  "workspaceId": "f7918b78-2171-47cf-b000-407ca05f86d3",
+  "owner": "t4b",
+  "seedVersionId": "21457a77-f2f7-4f84-a24f-f63f0ce53497",
+  "confirmRequested": true,
+  "testId": "2945eec9-ab9a-40c9-9ac4-62390dbced51",
+  "editingSessionId": "ff62cbe1-89e9-4722-a4ec-03f4c9b4862c",
+  "messageRequest": {
+    "editingSessionId": "ff62cbe1-89e9-4722-a4ec-03f4c9b4862c",
+    "revision": 1,
+    "content": "請產生並保存草稿 Plan 供 PM 審閱，恰好4個依序 Stage，不確認、不執行、不發布。1 login 必須 reuse 已發布 Module shop-login 固定 moduleVersionId=21457a77-f2f7-4f84-a24f-f63f0ce53497（請讀 Catalog 核對），export loginShop({page})，真平台角色登入後斷言受保護頁。2 search 必須 create 新 Module，搜尋 q=Whippet，回傳 productId/price。3 order 必須 create 新 Module，使用 search 輸出 productId/price，quantity=2，建立當次新 UUID 訂單，回傳 orderId/productId/quantity/total。4 verify 必須 create 新 Module，以 order 當次 orderId 重新查同筆，斷言商品與 search productId 相同、quantity=2、total=240、status=confirmed。四 Stage 共用同一 page session，args/bindings 明確傳遞當次輸出，不用舊訂單或硬編 orderId。\n以下是 PM 部署 fixture 的精確背景，不是額外授權：唯一 origin http://host.docker.internal:19387。GET /login 有 input[name=username]、input[name=password]、button[type=submit]。平台登入 helper import {loginAs} from 'whippet/login'，loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]')；帳密由平台 broker 提供，不得讀寫/索取/硬編碼。成功 redirect /products；data-testid=account-state 文字必為 Authenticated synthetic customer，submitted 不算成功。\n/products 搜尋表單：input[name=q]、按鈕名稱 Search，GET /products?q=Whippet。商品 article[data-testid=product] 的 data-product-id 為商品ID；內含 h2 與 data-testid=unit-price（120 TWD）。下單表單含 hidden input[name=productId]、input[name=quantity]、按鈕名稱 Create synthetic order，POST /orders 成功 redirect /orders/<新UUID>。訂單頁 data-testid 分別 order-id/product-id/quantity/total/status，status文字confirmed。GET /orders/<當次UUID> 必須同一登入session，不能換session讀別筆。\n新 Module harness 必須可獨立 bootstrap 自己前置：使用上述平台 loginAs 真登入；需要訂單者自行以頁面表單建立當次訂單。不准 import 其他 Module（只有 harness 可 import 自己 Module），Module 主體不能相互依賴。組合時沿用登入 Stage 的 page session。僅透過 Playwright 頁面與同origin表單；不任意 Node 網路、不外網、不真付款、不真帳號、不假登入、不舊訂單。各 create description 請保存所需selectors/路由/獨立harness與scope限制，讓後續 author 可實作。此次僅提出4Stage draft Plan並回候選，不調度 create。"
+  },
+  "messageRequested": true,
+  "plannerRunId": "4e887f4b-500c-4338-be9d-5a69a11cc9cc",
+  "plannerStatus": "succeeded",
+  "planResponse": {
+    "plan": {
+      "id": "5f532f99-8dc9-42b5-9e27-8823276e3bcb",
+      "testId": "2945eec9-ab9a-40c9-9ac4-62390dbced51",
+      "editingSessionId": "ff62cbe1-89e9-4722-a4ec-03f4c9b4862c",
+      "revision": 1,
+      "baseRevision": 1,
+      "contextRevision": 2,
+      "status": "draft",
+      "stages": [
+        {
+          "id": "login",
+          "title": "1 login 平台角色登入並斷言受保護頁",
+          "action": "reuse",
+          "moduleTestId": "85cb8d95-0b97-4e8f-ab9f-9b45ebcc65cd",
+          "moduleVersionId": "21457a77-f2f7-4f84-a24f-f63f0ce53497",
+          "args": {},
+          "bind": "login",
+          "status": "pending"
+        },
+        {
+          "id": "search",
+          "title": "2 search 搜尋 Whippet 回傳 productId 與 price",
+          "action": "create",
+          "module": {
+            "slug": "shop-search-whippet",
+            "moduleKind": "step",
+            "description": "搜尋合成商品 q=Whippet，回傳 productId/price。流程：GET /products?q=Whippet，表單 input[name=q] + 按鈕名稱 Search；解析 article[data-testid=product] 的 data-product-id 為 productId，內含 h2 與 data-testid=unit-price（120 TWD）。獨立harness：使用 whippet/login 的 loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]') 真登入後再搜尋，不得硬編碼帳密、不得假登入。Module 主體僅用 Playwright 頁面與同origin表單，不 import 其他 Module、不做任意 Node 網路。Scope 僅限唯一 origin http://host.docker.internal:19387，禁止外網/CDN/真付款/真帳號/舊訂單。組合時沿用 login Stage 同一 page session。"
+          },
+          "args": {
+            "query": {
+              "kind": "literal",
+              "value": "Whippet"
+            }
+          },
+          "bind": "search",
+          "status": "pending"
+        },
+        {
+          "id": "order",
+          "title": "3 order 以 search 輸出建立 quantity=2 新訂單",
+          "action": "create",
+          "module": {
+            "slug": "shop-order-create",
+            "moduleKind": "step",
+            "description": "以下單表單建立當次新 UUID 訂單，回傳 orderId/productId/quantity/total。輸入：search 輸出 productId/price 綁定 + quantity=2。流程：填 hidden input[name=productId]、input[name=quantity]=2，點按鈕名稱 Create synthetic order，POST /orders 成功 redirect /orders/<新UUID>；解析 data-testid order-id/product-id/quantity/total/status。獨立harness：先以 whippet/login loginAs 真登入（同 search 參數），再自行以頁面表單建立當次訂單，不沿用舊訂單、不硬編 orderId。Module 主體僅用 Playwright 同origin表單，不 import 其他 Module。Scope 僅限 http://host.docker.internal:19387，禁止外網/真付款/真帳號/假登入。組合時沿用 login Stage 同一 page session。"
+          },
+          "args": {
+            "price": {
+              "kind": "binding",
+              "stageId": "search",
+              "path": [
+                "price"
+              ]
+            },
+            "productId": {
+              "kind": "binding",
+              "stageId": "search",
+              "path": [
+                "productId"
+              ]
+            },
+            "quantity": {
+              "kind": "literal",
+              "value": 2
+            }
+          },
+          "bind": "order",
+          "status": "pending"
+        },
+        {
+          "id": "verify",
+          "title": "4 verify 重查當次訂單斷言商品數量金額狀態",
+          "action": "create",
+          "module": {
+            "slug": "shop-order-verify",
+            "moduleKind": "step",
+            "description": "以 order 當次 orderId 重新查同筆並斷言，回傳驗證結果。輸入：orderId 綁定 order 輸出 + expectedProductId 綁定 search productId + 預期 quantity=2/total=240/status=confirmed。流程：GET /orders/<當次UUID> 必須同一登入 session，不換 session、不讀別筆；斷言 data-testid product-id 與 search productId 相同、quantity=2、total=240、status 文字 confirmed、order-id 等於當次 orderId。獨立harness：先以 whippet/login loginAs 真登入，再自行以表單建立當次訂單後再驗證該筆，不用舊訂單、不硬編 orderId。Module 主體僅用 Playwright 頁面，不 import 其他 Module。Scope 僅限 http://host.docker.internal:19387，禁止外網/真付款/真帳號。組合時沿用 login Stage 同一 page session。"
+          },
+          "args": {
+            "expectedProductId": {
+              "kind": "binding",
+              "stageId": "search",
+              "path": [
+                "productId"
+              ]
+            },
+            "expectedQuantity": {
+              "kind": "literal",
+              "value": 2
+            },
+            "expectedStatus": {
+              "kind": "literal",
+              "value": "confirmed"
+            },
+            "expectedTotal": {
+              "kind": "literal",
+              "value": 240
+            },
+            "orderId": {
+              "kind": "binding",
+              "stageId": "order",
+              "path": [
+                "orderId"
+              ]
+            }
+          },
+          "bind": "verify",
+          "status": "pending"
+        }
+      ]
+    }
+  },
+  "reclaimPending": true,
+  "pendingRunIds": [
+    "4e887f4b-500c-4338-be9d-5a69a11cc9cc"
+  ],
+  "reviewNotes": [
+    "Exactly 4 stages; login fixed-version reuse plus search/order/verify create; forward bindings preserved.",
+    "Order description says fill hidden productId: Playwright locator.fill cannot fill hidden input; recommended interpretation is assert existing form hidden value equals bound productId, fill quantity only.",
+    "Order and verify harness descriptions abbreviate login bootstrap; later author must receive exact login route/role/selectors independently, without importing other modules."
+  ],
+  "originalAIPlan": {
+    "id": "5f532f99-8dc9-42b5-9e27-8823276e3bcb",
+    "testId": "2945eec9-ab9a-40c9-9ac4-62390dbced51",
+    "editingSessionId": "ff62cbe1-89e9-4722-a4ec-03f4c9b4862c",
+    "revision": 1,
+    "baseRevision": 1,
+    "contextRevision": 2,
+    "status": "draft",
+    "stages": [
+      {
+        "id": "login",
+        "title": "1 login 平台角色登入並斷言受保護頁",
+        "action": "reuse",
+        "moduleTestId": "85cb8d95-0b97-4e8f-ab9f-9b45ebcc65cd",
+        "moduleVersionId": "21457a77-f2f7-4f84-a24f-f63f0ce53497",
+        "args": {},
+        "bind": "login",
+        "status": "pending"
+      },
+      {
+        "id": "search",
+        "title": "2 search 搜尋 Whippet 回傳 productId 與 price",
+        "action": "create",
+        "module": {
+          "slug": "shop-search-whippet",
+          "moduleKind": "step",
+          "description": "搜尋合成商品 q=Whippet，回傳 productId/price。流程：GET /products?q=Whippet，表單 input[name=q] + 按鈕名稱 Search；解析 article[data-testid=product] 的 data-product-id 為 productId，內含 h2 與 data-testid=unit-price（120 TWD）。獨立harness：使用 whippet/login 的 loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]') 真登入後再搜尋，不得硬編碼帳密、不得假登入。Module 主體僅用 Playwright 頁面與同origin表單，不 import 其他 Module、不做任意 Node 網路。Scope 僅限唯一 origin http://host.docker.internal:19387，禁止外網/CDN/真付款/真帳號/舊訂單。組合時沿用 login Stage 同一 page session。"
+        },
+        "args": {
+          "query": {
+            "kind": "literal",
+            "value": "Whippet"
+          }
+        },
+        "bind": "search",
+        "status": "pending"
+      },
+      {
+        "id": "order",
+        "title": "3 order 以 search 輸出建立 quantity=2 新訂單",
+        "action": "create",
+        "module": {
+          "slug": "shop-order-create",
+          "moduleKind": "step",
+          "description": "以下單表單建立當次新 UUID 訂單，回傳 orderId/productId/quantity/total。輸入：search 輸出 productId/price 綁定 + quantity=2。流程：填 hidden input[name=productId]、input[name=quantity]=2，點按鈕名稱 Create synthetic order，POST /orders 成功 redirect /orders/<新UUID>；解析 data-testid order-id/product-id/quantity/total/status。獨立harness：先以 whippet/login loginAs 真登入（同 search 參數），再自行以頁面表單建立當次訂單，不沿用舊訂單、不硬編 orderId。Module 主體僅用 Playwright 同origin表單，不 import 其他 Module。Scope 僅限 http://host.docker.internal:19387，禁止外網/真付款/真帳號/假登入。組合時沿用 login Stage 同一 page session。"
+        },
+        "args": {
+          "price": {
+            "kind": "binding",
+            "stageId": "search",
+            "path": [
+              "price"
+            ]
+          },
+          "productId": {
+            "kind": "binding",
+            "stageId": "search",
+            "path": [
+              "productId"
+            ]
+          },
+          "quantity": {
+            "kind": "literal",
+            "value": 2
+          }
+        },
+        "bind": "order",
+        "status": "pending"
+      },
+      {
+        "id": "verify",
+        "title": "4 verify 重查當次訂單斷言商品數量金額狀態",
+        "action": "create",
+        "module": {
+          "slug": "shop-order-verify",
+          "moduleKind": "step",
+          "description": "以 order 當次 orderId 重新查同筆並斷言，回傳驗證結果。輸入：orderId 綁定 order 輸出 + expectedProductId 綁定 search productId + 預期 quantity=2/total=240/status=confirmed。流程：GET /orders/<當次UUID> 必須同一登入 session，不換 session、不讀別筆；斷言 data-testid product-id 與 search productId 相同、quantity=2、total=240、status 文字 confirmed、order-id 等於當次 orderId。獨立harness：先以 whippet/login loginAs 真登入，再自行以表單建立當次訂單後再驗證該筆，不用舊訂單、不硬編 orderId。Module 主體僅用 Playwright 頁面，不 import 其他 Module。Scope 僅限 http://host.docker.internal:19387，禁止外網/真付款/真帳號。組合時沿用 login Stage 同一 page session。"
+        },
+        "args": {
+          "expectedProductId": {
+            "kind": "binding",
+            "stageId": "search",
+            "path": [
+              "productId"
+            ]
+          },
+          "expectedQuantity": {
+            "kind": "literal",
+            "value": 2
+          },
+          "expectedStatus": {
+            "kind": "literal",
+            "value": "confirmed"
+          },
+          "expectedTotal": {
+            "kind": "literal",
+            "value": 240
+          },
+          "orderId": {
+            "kind": "binding",
+            "stageId": "order",
+            "path": [
+              "orderId"
+            ]
+          }
+        },
+        "bind": "verify",
+        "status": "pending"
+      }
+    ]
+  },
+  "manualDiff": [
+    {
+      "stageId": "search",
+      "field": "module.description",
+      "before": "搜尋合成商品 q=Whippet，回傳 productId/price。流程：GET /products?q=Whippet，表單 input[name=q] + 按鈕名稱 Search；解析 article[data-testid=product] 的 data-product-id 為 productId，內含 h2 與 data-testid=unit-price（120 TWD）。獨立harness：使用 whippet/login 的 loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]') 真登入後再搜尋，不得硬編碼帳密、不得假登入。Module 主體僅用 Playwright 頁面與同origin表單，不 import 其他 Module、不做任意 Node 網路。Scope 僅限唯一 origin http://host.docker.internal:19387，禁止外網/CDN/真付款/真帳號/舊訂單。組合時沿用 login Stage 同一 page session。",
+      "after": "搜尋合成商品 q=Whippet，回傳 productId/price。流程：GET /products?q=Whippet，表單 input[name=q] + 按鈕名稱 Search；解析 article[data-testid=product] 的 data-product-id 為 productId，內含 h2 與 data-testid=unit-price（120 TWD）。獨立harness：使用 whippet/login 的 loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]') 真登入後再搜尋，不得硬編碼帳密、不得假登入。Module 主體僅用 Playwright 頁面與同origin表單，不 import 其他 Module、不做任意 Node 網路。Scope 僅限唯一 origin http://host.docker.internal:19387，禁止外網/CDN/真付款/真帳號/舊訂單。組合時沿用 login Stage 同一 page session。 獨立 harness 完整前置：await page.goto('http://host.docker.internal:19387/login')；import {loginAs} from 'whippet/login'；await loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]')；await expect(page).toHaveURL('http://host.docker.internal:19387/products')；await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')。登入成功後自行建立本 Module 所需頁面或當次新訂單；不得 import 其他 Module，harness 僅可 import 自己 Module；不讀寫帳密，不以submitted代表登入成功。"
+    },
+    {
+      "stageId": "order",
+      "field": "module.description",
+      "before": "以下單表單建立當次新 UUID 訂單，回傳 orderId/productId/quantity/total。輸入：search 輸出 productId/price 綁定 + quantity=2。流程：填 hidden input[name=productId]、input[name=quantity]=2，點按鈕名稱 Create synthetic order，POST /orders 成功 redirect /orders/<新UUID>；解析 data-testid order-id/product-id/quantity/total/status。獨立harness：先以 whippet/login loginAs 真登入（同 search 參數），再自行以頁面表單建立當次訂單，不沿用舊訂單、不硬編 orderId。Module 主體僅用 Playwright 同origin表單，不 import 其他 Module。Scope 僅限 http://host.docker.internal:19387，禁止外網/真付款/真帳號/假登入。組合時沿用 login Stage 同一 page session。",
+      "after": "以下單表單建立當次新 UUID 訂單，回傳 orderId/productId/quantity/total。輸入：search 輸出 productId/price 綁定 + quantity=2。流程：核對既有 hidden input[name=productId] 的 value 等於綁定 productId；絕不 fill hidden，只 fill input[name=quantity]=2，點按鈕名稱 Create synthetic order，POST /orders 成功 redirect /orders/<新UUID>；解析 data-testid order-id/product-id/quantity/total/status。獨立harness：先以 whippet/login loginAs 真登入（同 search 參數），再自行以頁面表單建立當次訂單，不沿用舊訂單、不硬編 orderId。Module 主體僅用 Playwright 同origin表單，不 import 其他 Module。Scope 僅限 http://host.docker.internal:19387，禁止外網/真付款/真帳號/假登入。組合時沿用 login Stage 同一 page session。 獨立 harness 完整前置：await page.goto('http://host.docker.internal:19387/login')；import {loginAs} from 'whippet/login'；await loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]')；await expect(page).toHaveURL('http://host.docker.internal:19387/products')；await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')。登入成功後自行建立本 Module 所需頁面或當次新訂單；不得 import 其他 Module，harness 僅可 import 自己 Module；不讀寫帳密，不以submitted代表登入成功。"
+    },
+    {
+      "stageId": "verify",
+      "field": "module.description",
+      "before": "以 order 當次 orderId 重新查同筆並斷言，回傳驗證結果。輸入：orderId 綁定 order 輸出 + expectedProductId 綁定 search productId + 預期 quantity=2/total=240/status=confirmed。流程：GET /orders/<當次UUID> 必須同一登入 session，不換 session、不讀別筆；斷言 data-testid product-id 與 search productId 相同、quantity=2、total=240、status 文字 confirmed、order-id 等於當次 orderId。獨立harness：先以 whippet/login loginAs 真登入，再自行以表單建立當次訂單後再驗證該筆，不用舊訂單、不硬編 orderId。Module 主體僅用 Playwright 頁面，不 import 其他 Module。Scope 僅限 http://host.docker.internal:19387，禁止外網/真付款/真帳號。組合時沿用 login Stage 同一 page session。",
+      "after": "以 order 當次 orderId 重新查同筆並斷言，回傳驗證結果。輸入：orderId 綁定 order 輸出 + expectedProductId 綁定 search productId + 預期 quantity=2/total=240/status=confirmed。流程：GET /orders/<當次UUID> 必須同一登入 session，不換 session、不讀別筆；斷言 data-testid product-id 與 search productId 相同、quantity=2、total=240、status 文字 confirmed、order-id 等於當次 orderId。獨立harness：先以 whippet/login loginAs 真登入，再自行以表單建立當次訂單後再驗證該筆，不用舊訂單、不硬編 orderId。Module 主體僅用 Playwright 頁面，不 import 其他 Module。Scope 僅限 http://host.docker.internal:19387，禁止外網/真付款/真帳號。組合時沿用 login Stage 同一 page session。 獨立 harness 完整前置：await page.goto('http://host.docker.internal:19387/login')；import {loginAs} from 'whippet/login'；await loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]')；await expect(page).toHaveURL('http://host.docker.internal:19387/products')；await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')。登入成功後自行建立本 Module 所需頁面或當次新訂單；不得 import 其他 Module，harness 僅可 import 自己 Module；不讀寫帳密，不以submitted代表登入成功。"
+    }
+  ],
+  "manualPutRequest": {
+    "editingSessionId": "ff62cbe1-89e9-4722-a4ec-03f4c9b4862c",
+    "revision": 1,
+    "planRevision": 1,
+    "stages": [
+      {
+        "id": "login",
+        "title": "1 login 平台角色登入並斷言受保護頁",
+        "action": "reuse",
+        "moduleTestId": "85cb8d95-0b97-4e8f-ab9f-9b45ebcc65cd",
+        "moduleVersionId": "21457a77-f2f7-4f84-a24f-f63f0ce53497",
+        "args": {},
+        "bind": "login"
+      },
+      {
+        "id": "search",
+        "title": "2 search 搜尋 Whippet 回傳 productId 與 price",
+        "action": "create",
+        "module": {
+          "slug": "shop-search-whippet",
+          "moduleKind": "step",
+          "description": "搜尋合成商品 q=Whippet，回傳 productId/price。流程：GET /products?q=Whippet，表單 input[name=q] + 按鈕名稱 Search；解析 article[data-testid=product] 的 data-product-id 為 productId，內含 h2 與 data-testid=unit-price（120 TWD）。獨立harness：使用 whippet/login 的 loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]') 真登入後再搜尋，不得硬編碼帳密、不得假登入。Module 主體僅用 Playwright 頁面與同origin表單，不 import 其他 Module、不做任意 Node 網路。Scope 僅限唯一 origin http://host.docker.internal:19387，禁止外網/CDN/真付款/真帳號/舊訂單。組合時沿用 login Stage 同一 page session。 獨立 harness 完整前置：await page.goto('http://host.docker.internal:19387/login')；import {loginAs} from 'whippet/login'；await loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]')；await expect(page).toHaveURL('http://host.docker.internal:19387/products')；await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')。登入成功後自行建立本 Module 所需頁面或當次新訂單；不得 import 其他 Module，harness 僅可 import 自己 Module；不讀寫帳密，不以submitted代表登入成功。"
+        },
+        "args": {
+          "query": {
+            "kind": "literal",
+            "value": "Whippet"
+          }
+        },
+        "bind": "search"
+      },
+      {
+        "id": "order",
+        "title": "3 order 以 search 輸出建立 quantity=2 新訂單",
+        "action": "create",
+        "module": {
+          "slug": "shop-order-create",
+          "moduleKind": "step",
+          "description": "以下單表單建立當次新 UUID 訂單，回傳 orderId/productId/quantity/total。輸入：search 輸出 productId/price 綁定 + quantity=2。流程：核對既有 hidden input[name=productId] 的 value 等於綁定 productId；絕不 fill hidden，只 fill input[name=quantity]=2，點按鈕名稱 Create synthetic order，POST /orders 成功 redirect /orders/<新UUID>；解析 data-testid order-id/product-id/quantity/total/status。獨立harness：先以 whippet/login loginAs 真登入（同 search 參數），再自行以頁面表單建立當次訂單，不沿用舊訂單、不硬編 orderId。Module 主體僅用 Playwright 同origin表單，不 import 其他 Module。Scope 僅限 http://host.docker.internal:19387，禁止外網/真付款/真帳號/假登入。組合時沿用 login Stage 同一 page session。 獨立 harness 完整前置：await page.goto('http://host.docker.internal:19387/login')；import {loginAs} from 'whippet/login'；await loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]')；await expect(page).toHaveURL('http://host.docker.internal:19387/products')；await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')。登入成功後自行建立本 Module 所需頁面或當次新訂單；不得 import 其他 Module，harness 僅可 import 自己 Module；不讀寫帳密，不以submitted代表登入成功。"
+        },
+        "args": {
+          "price": {
+            "kind": "binding",
+            "stageId": "search",
+            "path": [
+              "price"
+            ]
+          },
+          "productId": {
+            "kind": "binding",
+            "stageId": "search",
+            "path": [
+              "productId"
+            ]
+          },
+          "quantity": {
+            "kind": "literal",
+            "value": 2
+          }
+        },
+        "bind": "order"
+      },
+      {
+        "id": "verify",
+        "title": "4 verify 重查當次訂單斷言商品數量金額狀態",
+        "action": "create",
+        "module": {
+          "slug": "shop-order-verify",
+          "moduleKind": "step",
+          "description": "以 order 當次 orderId 重新查同筆並斷言，回傳驗證結果。輸入：orderId 綁定 order 輸出 + expectedProductId 綁定 search productId + 預期 quantity=2/total=240/status=confirmed。流程：GET /orders/<當次UUID> 必須同一登入 session，不換 session、不讀別筆；斷言 data-testid product-id 與 search productId 相同、quantity=2、total=240、status 文字 confirmed、order-id 等於當次 orderId。獨立harness：先以 whippet/login loginAs 真登入，再自行以表單建立當次訂單後再驗證該筆，不用舊訂單、不硬編 orderId。Module 主體僅用 Playwright 頁面，不 import 其他 Module。Scope 僅限 http://host.docker.internal:19387，禁止外網/真付款/真帳號。組合時沿用 login Stage 同一 page session。 獨立 harness 完整前置：await page.goto('http://host.docker.internal:19387/login')；import {loginAs} from 'whippet/login'；await loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]')；await expect(page).toHaveURL('http://host.docker.internal:19387/products')；await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')。登入成功後自行建立本 Module 所需頁面或當次新訂單；不得 import 其他 Module，harness 僅可 import 自己 Module；不讀寫帳密，不以submitted代表登入成功。"
+        },
+        "args": {
+          "expectedProductId": {
+            "kind": "binding",
+            "stageId": "search",
+            "path": [
+              "productId"
+            ]
+          },
+          "expectedQuantity": {
+            "kind": "literal",
+            "value": 2
+          },
+          "expectedStatus": {
+            "kind": "literal",
+            "value": "confirmed"
+          },
+          "expectedTotal": {
+            "kind": "literal",
+            "value": 240
+          },
+          "orderId": {
+            "kind": "binding",
+            "stageId": "order",
+            "path": [
+              "orderId"
+            ]
+          }
+        },
+        "bind": "verify"
+      }
+    ]
+  },
+  "manualPutRequested": true,
+  "manualPutResponse": {
+    "plan": {
+      "id": "5f532f99-8dc9-42b5-9e27-8823276e3bcb",
+      "testId": "2945eec9-ab9a-40c9-9ac4-62390dbced51",
+      "editingSessionId": "ff62cbe1-89e9-4722-a4ec-03f4c9b4862c",
+      "revision": 2,
+      "baseRevision": 1,
+      "contextRevision": 3,
+      "status": "draft",
+      "stages": [
+        {
+          "id": "login",
+          "title": "1 login 平台角色登入並斷言受保護頁",
+          "action": "reuse",
+          "moduleTestId": "85cb8d95-0b97-4e8f-ab9f-9b45ebcc65cd",
+          "moduleVersionId": "21457a77-f2f7-4f84-a24f-f63f0ce53497",
+          "args": {},
+          "bind": "login",
+          "status": "pending"
+        },
+        {
+          "id": "search",
+          "title": "2 search 搜尋 Whippet 回傳 productId 與 price",
+          "action": "create",
+          "module": {
+            "slug": "shop-search-whippet",
+            "moduleKind": "step",
+            "description": "搜尋合成商品 q=Whippet，回傳 productId/price。流程：GET /products?q=Whippet，表單 input[name=q] + 按鈕名稱 Search；解析 article[data-testid=product] 的 data-product-id 為 productId，內含 h2 與 data-testid=unit-price（120 TWD）。獨立harness：使用 whippet/login 的 loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]') 真登入後再搜尋，不得硬編碼帳密、不得假登入。Module 主體僅用 Playwright 頁面與同origin表單，不 import 其他 Module、不做任意 Node 網路。Scope 僅限唯一 origin http://host.docker.internal:19387，禁止外網/CDN/真付款/真帳號/舊訂單。組合時沿用 login Stage 同一 page session。 獨立 harness 完整前置：await page.goto('http://host.docker.internal:19387/login')；import {loginAs} from 'whippet/login'；await loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]')；await expect(page).toHaveURL('http://host.docker.internal:19387/products')；await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')。登入成功後自行建立本 Module 所需頁面或當次新訂單；不得 import 其他 Module，harness 僅可 import 自己 Module；不讀寫帳密，不以submitted代表登入成功。"
+          },
+          "args": {
+            "query": {
+              "kind": "literal",
+              "value": "Whippet"
+            }
+          },
+          "bind": "search",
+          "status": "pending"
+        },
+        {
+          "id": "order",
+          "title": "3 order 以 search 輸出建立 quantity=2 新訂單",
+          "action": "create",
+          "module": {
+            "slug": "shop-order-create",
+            "moduleKind": "step",
+            "description": "以下單表單建立當次新 UUID 訂單，回傳 orderId/productId/quantity/total。輸入：search 輸出 productId/price 綁定 + quantity=2。流程：核對既有 hidden input[name=productId] 的 value 等於綁定 productId；絕不 fill hidden，只 fill input[name=quantity]=2，點按鈕名稱 Create synthetic order，POST /orders 成功 redirect /orders/<新UUID>；解析 data-testid order-id/product-id/quantity/total/status。獨立harness：先以 whippet/login loginAs 真登入（同 search 參數），再自行以頁面表單建立當次訂單，不沿用舊訂單、不硬編 orderId。Module 主體僅用 Playwright 同origin表單，不 import 其他 Module。Scope 僅限 http://host.docker.internal:19387，禁止外網/真付款/真帳號/假登入。組合時沿用 login Stage 同一 page session。 獨立 harness 完整前置：await page.goto('http://host.docker.internal:19387/login')；import {loginAs} from 'whippet/login'；await loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]')；await expect(page).toHaveURL('http://host.docker.internal:19387/products')；await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')。登入成功後自行建立本 Module 所需頁面或當次新訂單；不得 import 其他 Module，harness 僅可 import 自己 Module；不讀寫帳密，不以submitted代表登入成功。"
+          },
+          "args": {
+            "price": {
+              "kind": "binding",
+              "stageId": "search",
+              "path": [
+                "price"
+              ]
+            },
+            "productId": {
+              "kind": "binding",
+              "stageId": "search",
+              "path": [
+                "productId"
+              ]
+            },
+            "quantity": {
+              "kind": "literal",
+              "value": 2
+            }
+          },
+          "bind": "order",
+          "status": "pending"
+        },
+        {
+          "id": "verify",
+          "title": "4 verify 重查當次訂單斷言商品數量金額狀態",
+          "action": "create",
+          "module": {
+            "slug": "shop-order-verify",
+            "moduleKind": "step",
+            "description": "以 order 當次 orderId 重新查同筆並斷言，回傳驗證結果。輸入：orderId 綁定 order 輸出 + expectedProductId 綁定 search productId + 預期 quantity=2/total=240/status=confirmed。流程：GET /orders/<當次UUID> 必須同一登入 session，不換 session、不讀別筆；斷言 data-testid product-id 與 search productId 相同、quantity=2、total=240、status 文字 confirmed、order-id 等於當次 orderId。獨立harness：先以 whippet/login loginAs 真登入，再自行以表單建立當次訂單後再驗證該筆，不用舊訂單、不硬編 orderId。Module 主體僅用 Playwright 頁面，不 import 其他 Module。Scope 僅限 http://host.docker.internal:19387，禁止外網/真付款/真帳號。組合時沿用 login Stage 同一 page session。 獨立 harness 完整前置：await page.goto('http://host.docker.internal:19387/login')；import {loginAs} from 'whippet/login'；await loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]')；await expect(page).toHaveURL('http://host.docker.internal:19387/products')；await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')。登入成功後自行建立本 Module 所需頁面或當次新訂單；不得 import 其他 Module，harness 僅可 import 自己 Module；不讀寫帳密，不以submitted代表登入成功。"
+          },
+          "args": {
+            "expectedProductId": {
+              "kind": "binding",
+              "stageId": "search",
+              "path": [
+                "productId"
+              ]
+            },
+            "expectedQuantity": {
+              "kind": "literal",
+              "value": 2
+            },
+            "expectedStatus": {
+              "kind": "literal",
+              "value": "confirmed"
+            },
+            "expectedTotal": {
+              "kind": "literal",
+              "value": 240
+            },
+            "orderId": {
+              "kind": "binding",
+              "stageId": "order",
+              "path": [
+                "orderId"
+              ]
+            }
+          },
+          "bind": "verify",
+          "status": "pending"
+        }
+      ]
+    }
+  },
+  "confirmedPreflightPlan": {
+    "id": "5f532f99-8dc9-42b5-9e27-8823276e3bcb",
+    "testId": "2945eec9-ab9a-40c9-9ac4-62390dbced51",
+    "editingSessionId": "ff62cbe1-89e9-4722-a4ec-03f4c9b4862c",
+    "revision": 2,
+    "baseRevision": 1,
+    "contextRevision": 3,
+    "status": "draft",
+    "stages": [
+      {
+        "id": "login",
+        "title": "1 login 平台角色登入並斷言受保護頁",
+        "action": "reuse",
+        "moduleTestId": "85cb8d95-0b97-4e8f-ab9f-9b45ebcc65cd",
+        "moduleVersionId": "21457a77-f2f7-4f84-a24f-f63f0ce53497",
+        "args": {},
+        "bind": "login",
+        "status": "pending"
+      },
+      {
+        "id": "search",
+        "title": "2 search 搜尋 Whippet 回傳 productId 與 price",
+        "action": "create",
+        "module": {
+          "slug": "shop-search-whippet",
+          "moduleKind": "step",
+          "description": "搜尋合成商品 q=Whippet，回傳 productId/price。流程：GET /products?q=Whippet，表單 input[name=q] + 按鈕名稱 Search；解析 article[data-testid=product] 的 data-product-id 為 productId，內含 h2 與 data-testid=unit-price（120 TWD）。獨立harness：使用 whippet/login 的 loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]') 真登入後再搜尋，不得硬編碼帳密、不得假登入。Module 主體僅用 Playwright 頁面與同origin表單，不 import 其他 Module、不做任意 Node 網路。Scope 僅限唯一 origin http://host.docker.internal:19387，禁止外網/CDN/真付款/真帳號/舊訂單。組合時沿用 login Stage 同一 page session。 獨立 harness 完整前置：await page.goto('http://host.docker.internal:19387/login')；import {loginAs} from 'whippet/login'；await loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]')；await expect(page).toHaveURL('http://host.docker.internal:19387/products')；await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')。登入成功後自行建立本 Module 所需頁面或當次新訂單；不得 import 其他 Module，harness 僅可 import 自己 Module；不讀寫帳密，不以submitted代表登入成功。"
+        },
+        "args": {
+          "query": {
+            "kind": "literal",
+            "value": "Whippet"
+          }
+        },
+        "bind": "search",
+        "status": "pending"
+      },
+      {
+        "id": "order",
+        "title": "3 order 以 search 輸出建立 quantity=2 新訂單",
+        "action": "create",
+        "module": {
+          "slug": "shop-order-create",
+          "moduleKind": "step",
+          "description": "以下單表單建立當次新 UUID 訂單，回傳 orderId/productId/quantity/total。輸入：search 輸出 productId/price 綁定 + quantity=2。流程：核對既有 hidden input[name=productId] 的 value 等於綁定 productId；絕不 fill hidden，只 fill input[name=quantity]=2，點按鈕名稱 Create synthetic order，POST /orders 成功 redirect /orders/<新UUID>；解析 data-testid order-id/product-id/quantity/total/status。獨立harness：先以 whippet/login loginAs 真登入（同 search 參數），再自行以頁面表單建立當次訂單，不沿用舊訂單、不硬編 orderId。Module 主體僅用 Playwright 同origin表單，不 import 其他 Module。Scope 僅限 http://host.docker.internal:19387，禁止外網/真付款/真帳號/假登入。組合時沿用 login Stage 同一 page session。 獨立 harness 完整前置：await page.goto('http://host.docker.internal:19387/login')；import {loginAs} from 'whippet/login'；await loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]')；await expect(page).toHaveURL('http://host.docker.internal:19387/products')；await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')。登入成功後自行建立本 Module 所需頁面或當次新訂單；不得 import 其他 Module，harness 僅可 import 自己 Module；不讀寫帳密，不以submitted代表登入成功。"
+        },
+        "args": {
+          "price": {
+            "kind": "binding",
+            "stageId": "search",
+            "path": [
+              "price"
+            ]
+          },
+          "productId": {
+            "kind": "binding",
+            "stageId": "search",
+            "path": [
+              "productId"
+            ]
+          },
+          "quantity": {
+            "kind": "literal",
+            "value": 2
+          }
+        },
+        "bind": "order",
+        "status": "pending"
+      },
+      {
+        "id": "verify",
+        "title": "4 verify 重查當次訂單斷言商品數量金額狀態",
+        "action": "create",
+        "module": {
+          "slug": "shop-order-verify",
+          "moduleKind": "step",
+          "description": "以 order 當次 orderId 重新查同筆並斷言，回傳驗證結果。輸入：orderId 綁定 order 輸出 + expectedProductId 綁定 search productId + 預期 quantity=2/total=240/status=confirmed。流程：GET /orders/<當次UUID> 必須同一登入 session，不換 session、不讀別筆；斷言 data-testid product-id 與 search productId 相同、quantity=2、total=240、status 文字 confirmed、order-id 等於當次 orderId。獨立harness：先以 whippet/login loginAs 真登入，再自行以表單建立當次訂單後再驗證該筆，不用舊訂單、不硬編 orderId。Module 主體僅用 Playwright 頁面，不 import 其他 Module。Scope 僅限 http://host.docker.internal:19387，禁止外網/真付款/真帳號。組合時沿用 login Stage 同一 page session。 獨立 harness 完整前置：await page.goto('http://host.docker.internal:19387/login')；import {loginAs} from 'whippet/login'；await loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]')；await expect(page).toHaveURL('http://host.docker.internal:19387/products')；await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')。登入成功後自行建立本 Module 所需頁面或當次新訂單；不得 import 其他 Module，harness 僅可 import 自己 Module；不讀寫帳密，不以submitted代表登入成功。"
+        },
+        "args": {
+          "expectedProductId": {
+            "kind": "binding",
+            "stageId": "search",
+            "path": [
+              "productId"
+            ]
+          },
+          "expectedQuantity": {
+            "kind": "literal",
+            "value": 2
+          },
+          "expectedStatus": {
+            "kind": "literal",
+            "value": "confirmed"
+          },
+          "expectedTotal": {
+            "kind": "literal",
+            "value": 240
+          },
+          "orderId": {
+            "kind": "binding",
+            "stageId": "order",
+            "path": [
+              "orderId"
+            ]
+          }
+        },
+        "bind": "verify",
+        "status": "pending"
+      }
+    ]
+  },
+  "confirmRequest": {
+    "planRevision": 2,
+    "confirmed": true
+  },
+  "confirmResponse": {
+    "plan": {
+      "id": "5f532f99-8dc9-42b5-9e27-8823276e3bcb",
+      "testId": "2945eec9-ab9a-40c9-9ac4-62390dbced51",
+      "editingSessionId": "ff62cbe1-89e9-4722-a4ec-03f4c9b4862c",
+      "revision": 3,
+      "baseRevision": 1,
+      "contextRevision": 3,
+      "status": "running",
+      "stages": [
+        {
+          "id": "login",
+          "title": "1 login 平台角色登入並斷言受保護頁",
+          "action": "reuse",
+          "moduleTestId": "85cb8d95-0b97-4e8f-ab9f-9b45ebcc65cd",
+          "moduleVersionId": "21457a77-f2f7-4f84-a24f-f63f0ce53497",
+          "args": {},
+          "bind": "login",
+          "status": "ready"
+        },
+        {
+          "id": "search",
+          "title": "2 search 搜尋 Whippet 回傳 productId 與 price",
+          "action": "create",
+          "moduleTestId": "4f246191-b1c7-4d61-9f34-a33bae1d6890",
+          "module": {
+            "slug": "shop-search-whippet",
+            "moduleKind": "step",
+            "description": "搜尋合成商品 q=Whippet，回傳 productId/price。流程：GET /products?q=Whippet，表單 input[name=q] + 按鈕名稱 Search；解析 article[data-testid=product] 的 data-product-id 為 productId，內含 h2 與 data-testid=unit-price（120 TWD）。獨立harness：使用 whippet/login 的 loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]') 真登入後再搜尋，不得硬編碼帳密、不得假登入。Module 主體僅用 Playwright 頁面與同origin表單，不 import 其他 Module、不做任意 Node 網路。Scope 僅限唯一 origin http://host.docker.internal:19387，禁止外網/CDN/真付款/真帳號/舊訂單。組合時沿用 login Stage 同一 page session。 獨立 harness 完整前置：await page.goto('http://host.docker.internal:19387/login')；import {loginAs} from 'whippet/login'；await loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]')；await expect(page).toHaveURL('http://host.docker.internal:19387/products')；await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')。登入成功後自行建立本 Module 所需頁面或當次新訂單；不得 import 其他 Module，harness 僅可 import 自己 Module；不讀寫帳密，不以submitted代表登入成功。"
+          },
+          "args": {
+            "query": {
+              "kind": "literal",
+              "value": "Whippet"
+            }
+          },
+          "bind": "search",
+          "status": "authoring",
+          "draftRevision": 1,
+          "authorRunId": "513cba2a-7b23-4f13-b623-7b2733637d85"
+        },
+        {
+          "id": "order",
+          "title": "3 order 以 search 輸出建立 quantity=2 新訂單",
+          "action": "create",
+          "module": {
+            "slug": "shop-order-create",
+            "moduleKind": "step",
+            "description": "以下單表單建立當次新 UUID 訂單，回傳 orderId/productId/quantity/total。輸入：search 輸出 productId/price 綁定 + quantity=2。流程：核對既有 hidden input[name=productId] 的 value 等於綁定 productId；絕不 fill hidden，只 fill input[name=quantity]=2，點按鈕名稱 Create synthetic order，POST /orders 成功 redirect /orders/<新UUID>；解析 data-testid order-id/product-id/quantity/total/status。獨立harness：先以 whippet/login loginAs 真登入（同 search 參數），再自行以頁面表單建立當次訂單，不沿用舊訂單、不硬編 orderId。Module 主體僅用 Playwright 同origin表單，不 import 其他 Module。Scope 僅限 http://host.docker.internal:19387，禁止外網/真付款/真帳號/假登入。組合時沿用 login Stage 同一 page session。 獨立 harness 完整前置：await page.goto('http://host.docker.internal:19387/login')；import {loginAs} from 'whippet/login'；await loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]')；await expect(page).toHaveURL('http://host.docker.internal:19387/products')；await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')。登入成功後自行建立本 Module 所需頁面或當次新訂單；不得 import 其他 Module，harness 僅可 import 自己 Module；不讀寫帳密，不以submitted代表登入成功。"
+          },
+          "args": {
+            "price": {
+              "kind": "binding",
+              "stageId": "search",
+              "path": [
+                "price"
+              ]
+            },
+            "productId": {
+              "kind": "binding",
+              "stageId": "search",
+              "path": [
+                "productId"
+              ]
+            },
+            "quantity": {
+              "kind": "literal",
+              "value": 2
+            }
+          },
+          "bind": "order",
+          "status": "pending"
+        },
+        {
+          "id": "verify",
+          "title": "4 verify 重查當次訂單斷言商品數量金額狀態",
+          "action": "create",
+          "module": {
+            "slug": "shop-order-verify",
+            "moduleKind": "step",
+            "description": "以 order 當次 orderId 重新查同筆並斷言，回傳驗證結果。輸入：orderId 綁定 order 輸出 + expectedProductId 綁定 search productId + 預期 quantity=2/total=240/status=confirmed。流程：GET /orders/<當次UUID> 必須同一登入 session，不換 session、不讀別筆；斷言 data-testid product-id 與 search productId 相同、quantity=2、total=240、status 文字 confirmed、order-id 等於當次 orderId。獨立harness：先以 whippet/login loginAs 真登入，再自行以表單建立當次訂單後再驗證該筆，不用舊訂單、不硬編 orderId。Module 主體僅用 Playwright 頁面，不 import 其他 Module。Scope 僅限 http://host.docker.internal:19387，禁止外網/真付款/真帳號。組合時沿用 login Stage 同一 page session。 獨立 harness 完整前置：await page.goto('http://host.docker.internal:19387/login')；import {loginAs} from 'whippet/login'；await loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]')；await expect(page).toHaveURL('http://host.docker.internal:19387/products')；await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')。登入成功後自行建立本 Module 所需頁面或當次新訂單；不得 import 其他 Module，harness 僅可 import 自己 Module；不讀寫帳密，不以submitted代表登入成功。"
+          },
+          "args": {
+            "expectedProductId": {
+              "kind": "binding",
+              "stageId": "search",
+              "path": [
+                "productId"
+              ]
+            },
+            "expectedQuantity": {
+              "kind": "literal",
+              "value": 2
+            },
+            "expectedStatus": {
+              "kind": "literal",
+              "value": "confirmed"
+            },
+            "expectedTotal": {
+              "kind": "literal",
+              "value": 240
+            },
+            "orderId": {
+              "kind": "binding",
+              "stageId": "order",
+              "path": [
+                "orderId"
+              ]
+            }
+          },
+          "bind": "verify",
+          "status": "pending"
+        }
+      ]
+    }
+  },
+  "latestPlan": {
+    "id": "5f532f99-8dc9-42b5-9e27-8823276e3bcb",
+    "testId": "2945eec9-ab9a-40c9-9ac4-62390dbced51",
+    "editingSessionId": "ff62cbe1-89e9-4722-a4ec-03f4c9b4862c",
+    "revision": 4,
+    "baseRevision": 1,
+    "contextRevision": 3,
+    "status": "stopped",
+    "stages": [
+      {
+        "id": "login",
+        "title": "1 login 平台角色登入並斷言受保護頁",
+        "action": "reuse",
+        "moduleTestId": "85cb8d95-0b97-4e8f-ab9f-9b45ebcc65cd",
+        "moduleVersionId": "21457a77-f2f7-4f84-a24f-f63f0ce53497",
+        "args": {},
+        "bind": "login",
+        "status": "ready"
+      },
+      {
+        "id": "search",
+        "title": "2 search 搜尋 Whippet 回傳 productId 與 price",
+        "action": "create",
+        "moduleTestId": "4f246191-b1c7-4d61-9f34-a33bae1d6890",
+        "module": {
+          "slug": "shop-search-whippet",
+          "moduleKind": "step",
+          "description": "搜尋合成商品 q=Whippet，回傳 productId/price。流程：GET /products?q=Whippet，表單 input[name=q] + 按鈕名稱 Search；解析 article[data-testid=product] 的 data-product-id 為 productId，內含 h2 與 data-testid=unit-price（120 TWD）。獨立harness：使用 whippet/login 的 loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]') 真登入後再搜尋，不得硬編碼帳密、不得假登入。Module 主體僅用 Playwright 頁面與同origin表單，不 import 其他 Module、不做任意 Node 網路。Scope 僅限唯一 origin http://host.docker.internal:19387，禁止外網/CDN/真付款/真帳號/舊訂單。組合時沿用 login Stage 同一 page session。 獨立 harness 完整前置：await page.goto('http://host.docker.internal:19387/login')；import {loginAs} from 'whippet/login'；await loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]')；await expect(page).toHaveURL('http://host.docker.internal:19387/products')；await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')。登入成功後自行建立本 Module 所需頁面或當次新訂單；不得 import 其他 Module，harness 僅可 import 自己 Module；不讀寫帳密，不以submitted代表登入成功。"
+        },
+        "args": {
+          "query": {
+            "kind": "literal",
+            "value": "Whippet"
+          }
+        },
+        "bind": "search",
+        "status": "failed",
+        "draftRevision": 1,
+        "authorRunId": "513cba2a-7b23-4f13-b623-7b2733637d85"
+      },
+      {
+        "id": "order",
+        "title": "3 order 以 search 輸出建立 quantity=2 新訂單",
+        "action": "create",
+        "module": {
+          "slug": "shop-order-create",
+          "moduleKind": "step",
+          "description": "以下單表單建立當次新 UUID 訂單，回傳 orderId/productId/quantity/total。輸入：search 輸出 productId/price 綁定 + quantity=2。流程：核對既有 hidden input[name=productId] 的 value 等於綁定 productId；絕不 fill hidden，只 fill input[name=quantity]=2，點按鈕名稱 Create synthetic order，POST /orders 成功 redirect /orders/<新UUID>；解析 data-testid order-id/product-id/quantity/total/status。獨立harness：先以 whippet/login loginAs 真登入（同 search 參數），再自行以頁面表單建立當次訂單，不沿用舊訂單、不硬編 orderId。Module 主體僅用 Playwright 同origin表單，不 import 其他 Module。Scope 僅限 http://host.docker.internal:19387，禁止外網/真付款/真帳號/假登入。組合時沿用 login Stage 同一 page session。 獨立 harness 完整前置：await page.goto('http://host.docker.internal:19387/login')；import {loginAs} from 'whippet/login'；await loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]')；await expect(page).toHaveURL('http://host.docker.internal:19387/products')；await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')。登入成功後自行建立本 Module 所需頁面或當次新訂單；不得 import 其他 Module，harness 僅可 import 自己 Module；不讀寫帳密，不以submitted代表登入成功。"
+        },
+        "args": {
+          "price": {
+            "kind": "binding",
+            "stageId": "search",
+            "path": [
+              "price"
+            ]
+          },
+          "productId": {
+            "kind": "binding",
+            "stageId": "search",
+            "path": [
+              "productId"
+            ]
+          },
+          "quantity": {
+            "kind": "literal",
+            "value": 2
+          }
+        },
+        "bind": "order",
+        "status": "pending"
+      },
+      {
+        "id": "verify",
+        "title": "4 verify 重查當次訂單斷言商品數量金額狀態",
+        "action": "create",
+        "module": {
+          "slug": "shop-order-verify",
+          "moduleKind": "step",
+          "description": "以 order 當次 orderId 重新查同筆並斷言，回傳驗證結果。輸入：orderId 綁定 order 輸出 + expectedProductId 綁定 search productId + 預期 quantity=2/total=240/status=confirmed。流程：GET /orders/<當次UUID> 必須同一登入 session，不換 session、不讀別筆；斷言 data-testid product-id 與 search productId 相同、quantity=2、total=240、status 文字 confirmed、order-id 等於當次 orderId。獨立harness：先以 whippet/login loginAs 真登入，再自行以表單建立當次訂單後再驗證該筆，不用舊訂單、不硬編 orderId。Module 主體僅用 Playwright 頁面，不 import 其他 Module。Scope 僅限 http://host.docker.internal:19387，禁止外網/真付款/真帳號。組合時沿用 login Stage 同一 page session。 獨立 harness 完整前置：await page.goto('http://host.docker.internal:19387/login')；import {loginAs} from 'whippet/login'；await loginAs(page,'7da20730-874d-41ff-aea0-7a5650f37c12','input[name=username]','input[name=password]','button[type=submit]')；await expect(page).toHaveURL('http://host.docker.internal:19387/products')；await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer')。登入成功後自行建立本 Module 所需頁面或當次新訂單；不得 import 其他 Module，harness 僅可 import 自己 Module；不讀寫帳密，不以submitted代表登入成功。"
+        },
+        "args": {
+          "expectedProductId": {
+            "kind": "binding",
+            "stageId": "search",
+            "path": [
+              "productId"
+            ]
+          },
+          "expectedQuantity": {
+            "kind": "literal",
+            "value": 2
+          },
+          "expectedStatus": {
+            "kind": "literal",
+            "value": "confirmed"
+          },
+          "expectedTotal": {
+            "kind": "literal",
+            "value": 240
+          },
+          "orderId": {
+            "kind": "binding",
+            "stageId": "order",
+            "path": [
+              "orderId"
+            ]
+          }
+        },
+        "bind": "verify",
+        "status": "pending"
+      }
+    ],
+    "error": "Module author did not succeed"
+  },
+  "stageEvidence": [
+    {
+      "stageId": "login",
+      "status": "ready"
+    },
+    {
+      "stageId": "search",
+      "status": "failed",
+      "authorRun": {
+        "scriptOrigin": "ai",
+        "workspaceId": "f7918b78-2171-47cf-b000-407ca05f86d3",
+        "id": "513cba2a-7b23-4f13-b623-7b2733637d85",
+        "testId": "4f246191-b1c7-4d61-9f34-a33bae1d6890",
+        "workspaceContext": {
+          "schemaVersion": "1",
+          "workspaceId": "f7918b78-2171-47cf-b000-407ca05f86d3",
+          "settingsRevision": 2,
+          "config": {
+            "name": "m10-shop",
+            "purpose": "M10.9 隔離合成商店四階段登入→搜尋→下單→驗證。",
+            "backgroundSummary": "合成商店隔離驗證：GET /login 為登入入口，需透過平台 loginAs 安全登入後才可存取受保護 /products?q=Whippet；合成下單 POST /orders，每次產生新 UUID，並以目前 session 查詢 /orders/<UUID> 進行驗證。登入成功必須以受保護頁 account-state 斷言，表單提交不等於登入成功。無外部 dependencies、CDN 與付款流程，不使用真實帳號資料。此次僅產 proposal，等待 PM 審核及另行正式確認。",
+            "targets": [
+              {
+                "name": "m10-shop",
+                "purpose": "M10.9 隔離合成商店四階段驗證：登入→搜尋→下單→驗證，僅限此單一 origin 合成資料流程。",
+                "origin": "http://host.docker.internal:19387"
+              }
+            ],
+            "dependencies": [],
+            "excludedOrigins": [],
+            "exclusions": "僅允許唯一 target origin http://host.docker.internal:19387 的合成資料流程；明確禁止其他任何 origin、外部網路與外部資源（含 CDN/API/第三方服務）、真付款流程與真實帳號資料；不得索取、產生、硬編碼或輸出任何帳密。",
+            "loginRoles": [
+              {
+                "roleId": "7da20730-874d-41ff-aea0-7a5650f37c12",
+                "name": "buyer",
+                "loginMethod": "form",
+                "loginOrigin": "http://host.docker.internal:19387"
+              }
+            ],
+            "defaultTestUrl": "http://host.docker.internal:19387/login",
+            "timeoutMs": 60000
+          },
+          "roleRefs": [
+            {
+              "roleId": "7da20730-874d-41ff-aea0-7a5650f37c12",
+              "secretRef": "04c61aad-8f1f-458d-bd99-c5842d6bfa83",
+              "secretVersion": 1,
+              "configured": true
+            }
+          ]
+        },
+        "status": "failed",
+        "createdAt": "2026-11-13T08:31:09.506126Z",
+        "startedAt": "2026-11-13T08:31:09.569216Z",
+        "finishedAt": "2026-11-13T08:32:13.053326Z",
+        "error": "AI authoring failed. The saved conversation and draft are preserved; you can retry.",
+        "kind": "author",
+        "draftRevision": 1,
+        "workspaceSettings": {
+          "revision": 2,
+          "sites": [
+            {
+              "name": "m10-shop",
+              "url": "http://host.docker.internal:19387"
+            }
+          ],
+          "defaultTestUrl": "http://host.docker.internal:19387/login",
+          "timeoutMs": 60000
+        },
+        "editingSessionId": "27ae0d95-7426-426a-b5f6-4d3e1f05137a",
+        "authorMode": "edit",
+        "progressEvents": [
+          "author:model:1:started",
+          "author:model:1:succeeded",
+          "author:tool:1:read_module_draft:started",
+          "author:tool:1:read_module_draft:succeeded",
+          "author:model:2:started",
+          "author:model:2:succeeded",
+          "author:tool:2:read_skill_reference:started",
+          "author:tool:2:read_skill_reference:succeeded",
+          "author:model:3:started",
+          "author:model:3:succeeded",
+          "author:tool:3:browser_navigate:started",
+          "author:tool:3:browser_navigate:succeeded",
+          "author:model:4:started",
+          "author:model:4:succeeded",
+          "author:tool:4:browser_login:started",
+          "author:tool:4:browser_login:succeeded",
+          "author:model:5:started",
+          "author:model:5:succeeded",
+          "author:tool:5:browser_navigate:started",
+          "author:tool:5:browser_navigate:succeeded",
+          "author:model:6:started",
+          "author:model:6:succeeded",
+          "author:tool:6:browser_snapshot:started",
+          "author:tool:6:browser_snapshot:succeeded",
+          "author:model:7:started",
+          "author:model:7:heartbeat",
+          "author:model:7:heartbeat",
+          "author:model:7:succeeded",
+          "author:tool:7:update_module_candidate:started",
+          "author:tool:7:update_module_candidate:succeeded",
+          "author:model:8:started",
+          "author:model:8:succeeded",
+          "author:tool:8:update_module_candidate:started",
+          "author:tool:8:update_module_candidate:succeeded"
+        ]
+      },
+      "authorArtifacts": {
+        "items": []
+      },
+      "session": {
+        "id": "27ae0d95-7426-426a-b5f6-4d3e1f05137a",
+        "status": "active",
+        "pendingRunIds": [],
+        "reclaimPending": false,
+        "contextRevision": 1
+      }
+    },
+    {
+      "stageId": "order",
+      "status": "pending"
+    },
+    {
+      "stageId": "verify",
+      "status": "pending"
+    }
+  ],
+  "finalSession": {
+    "id": "ff62cbe1-89e9-4722-a4ec-03f4c9b4862c",
+    "status": "active",
+    "pendingRunIds": [],
+    "reclaimPending": false,
+    "contextRevision": 3
+  },
+  "serverErrorObservation": {
+    "workerErrorEnum": "unknown",
+    "basis": "Public Run only exposes generic error; Result struct has status/error but no errorCode; authorResultDisposition replaces failed error with authorFailureMessage before persistence. Server may also convert successful incoming result to failed on artifact/finalization checks; public evidence cannot distinguish.",
+    "sourceLocations": [
+      "services/server/internal/server/model.go:217",
+      "services/server/internal/server/engine.go:209",
+      "services/server/internal/server/author.go:71",
+      "services/server/internal/server/author.go:125",
+      "services/server/internal/server/author.go:289"
+    ],
+    "noDatabaseOrRawLogsRead": true
+  }
+}

@@ -1,0 +1,247 @@
+{
+  "base": "http://127.0.0.1:19087/api",
+  "owner": "t4b",
+  "workspaceId": "f6f4fdd5-bf28-4044-9dd2-0c06bb077736",
+  "moduleTestId": "62991262-6c87-40a0-ace7-099aaabd5f60",
+  "editingSessionId": "3a85ea6d-700d-45e2-af2b-62573ece9d40",
+  "saveRequest": {
+    "editingSessionId": "3a85ea6d-700d-45e2-af2b-62573ece9d40",
+    "revision": 1,
+    "script": "export async function prepare(_args: any){return {name:'alpha',value:2};}\n",
+    "module": {
+      "slug": "t4b-r102-scoped-seed",
+      "moduleKind": "setup",
+      "exportName": "prepare",
+      "signature": "prepare({ ...args })",
+      "inputs": "No required arguments",
+      "returns": "{name: string, value: number}",
+      "preconditions": "Pure computation; no browser, network, credentials or scope expansion permitted",
+      "postconditions": "Returns alpha and 2 without side effects",
+      "harness": "import {test,expect} from '@playwright/test';\nimport {prepare} from '@lib/t4b-r102-scoped-seed';\ntest('pure-compute seed',async()=>{const result=await test.step('Stage 1: compute',()=>prepare({}));await test.step('Stage 2: verify',async()=>{expect(result).toEqual({name:'alpha',value:2});});});\n"
+    }
+  },
+  "revision": 2,
+  "validationRunId": "41a02589-d788-4eb9-8cfa-c3307184a2da",
+  "phase": "draft_plan_saved",
+  "validationStatus": "succeeded",
+  "validationStats": {
+    "startTime": "2026-11-13T07:00:26.408Z",
+    "duration": 337.211,
+    "expected": 1,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "validationArtifacts": {
+    "items": [
+      {
+        "name": "report.html",
+        "size": 518468,
+        "contentType": "text/html; charset=utf-8",
+        "url": "/api/runs/41a02589-d788-4eb9-8cfa-c3307184a2da/artifacts/report.html"
+      },
+      {
+        "name": "results.json",
+        "size": 4340,
+        "contentType": "application/json",
+        "url": "/api/runs/41a02589-d788-4eb9-8cfa-c3307184a2da/artifacts/results.json"
+      }
+    ]
+  },
+  "summaryRequested": true,
+  "summaryRunId": "0115688f-a939-470b-8535-ab30fe27593f",
+  "summaryStatus": "succeeded",
+  "summary": {
+    "runId": "0115688f-a939-470b-8535-ab30fe27593f",
+    "status": "succeeded",
+    "revision": 2,
+    "validationRunId": "41a02589-d788-4eb9-8cfa-c3307184a2da",
+    "description": "本摘要僅描述已驗證修訂版 revision 2 的 Module 本體 t4b-r102-scoped-seed（moduleKind: setup，exportName: prepare，signature: prepare({ ...args })）。用途：純計算隔離驗收，提供可預測種子資料而不觸及外部目標。前提：純計算，無需參數、無瀏覽器、無網路請求、無登入與憑證操作、不得擴張授權範圍；defaultTestUrl https://m10-fixture.invalid 僅為合成授權範圍標記（保留 .invalid），無真實站台。步驟（來自已記錄 harness）：Stage 1 compute 呼叫 prepare({}) 取得結果；Stage 2 verify 進行斷言。斷言：expect(result).toEqual({name:'alpha',value:2})，驗證回傳 {name:string,value:number} 且等於 alpha/2、無副作用。驗證證據：runId 41a02589-d788-4eb9-8cfa-c3307184a2da / attempt 88d7d2b5-2ce0-4f89-9583-72c8c00f2521，draftRevision 2，scriptHash 5ab1c4bde5cf97ad5de81900a79998b14a9ea96dd9b1850e0d49f394039df1fb 與 harnessHash 一致，狀態 succeeded，stats expected 1, unexpected 0, flaky 0, skipped 0, duration 337.211ms，reportsReady true。限制：僅覆蓋上述單一本地斷言；未驗證任何 UI 導覽、真實站台流程、定位器、網路、登入或逾時行為；統計數字不能證明腳本未包含的覆蓋；sourceVersion 與 conversationSummary 為 null，屬缺失資訊而非證據；bodyHash 5f38e80c4e3fe19af5676b75478dffed434acda0fc7c7a66351fe52fd3400196 與 bundleHash 1407402f4388bc50c1eb0cd3191a1d268b08a5ea161a99ed77bbbaf06e3f1798 綁定本次本體與詮釋資料，不推斷發布資格。",
+    "backgroundSummary": "工作區 m10-r102-ui-scope（workspaceId f6f4fdd5-bf28-4044-9dd2-0c06bb077736，settingsRevision 2，timeoutMs 60000，defaultTestUrl https://m10-fixture.invalid 為合成佔位）。Targets：m10-fixture 僅作純計算驗收範圍佔位，不瀏覽、不發請求；明確禁止其他所有 origin、任何瀏覽、網路請求、登入與憑證操作。決策：只用純計算函式與 Playwright test/expect 完成本地斷言，無外部目標驗證，本次及後續純計算驗收不得真瀏覽或發請求。Module 介面：slug t4b-r102-scoped-seed，prepare({ ...args }) -> {name:string,value:number}，前置純計算，後置回傳 alpha/2 無副作用。綁定雜湊：bodyHash 5f38e80c...、bundleHash 1407402f...、harnessHash/scriptHash 5ab1c4bd...，驗證 runId 41a02589... succeeded。下輪編輯須沿用隔離約束，若需真實站台流程須另行確認授權範圍。",
+    "name": "t4b-r102-scoped-seed 純計算種子驗收",
+    "validForCurrentDraft": true
+  },
+  "summaryReclaimPending": false,
+  "publishRequested": true,
+  "versionId": "f1dd26ab-d65d-4d35-9bcf-ffb2094ad9e2",
+  "publishedVersion": {
+    "module": {
+      "slug": "t4b-r102-scoped-seed",
+      "moduleKind": "setup",
+      "exportName": "prepare",
+      "signature": "prepare({ ...args })",
+      "inputs": "No required arguments",
+      "returns": "{name: string, value: number}",
+      "preconditions": "Pure computation; no browser, network, credentials or scope expansion permitted",
+      "postconditions": "Returns alpha and 2 without side effects",
+      "harness": "import {test,expect} from '@playwright/test';\nimport {prepare} from '@lib/t4b-r102-scoped-seed';\ntest('pure-compute seed',async()=>{const result=await test.step('Stage 1: compute',()=>prepare({}));await test.step('Stage 2: verify',async()=>{expect(result).toEqual({name:'alpha',value:2});});});\n"
+    },
+    "scriptOrigin": "manual",
+    "workspaceContext": {
+      "schemaVersion": "1",
+      "workspaceId": "f6f4fdd5-bf28-4044-9dd2-0c06bb077736",
+      "settingsRevision": 2,
+      "config": {
+        "name": "m10-r102-ui-scope",
+        "purpose": "純計算 Module 與 UseCase 的隔離 UI 驗收。",
+        "backgroundSummary": "只用純計算函式與 Playwright test/expect 完成本地斷言，沒有外部目標驗證。https://m10-fixture.invalid 僅為合成授權範圍標記（保留 .invalid），沒有真實站台，本次及後續純計算驗收不得真瀏覽或發出網路請求。",
+        "targets": [
+          {
+            "name": "m10-fixture",
+            "purpose": "合成授權範圍標記，僅作純計算驗收的範圍佔位，無真實站台，不瀏覽、不發請求。",
+            "origin": "https://m10-fixture.invalid"
+          }
+        ],
+        "dependencies": [],
+        "excludedOrigins": [],
+        "exclusions": "禁止其他所有 origin；明確禁止任何瀏覽、網路請求、登入與憑證操作（含索取或使用 credentials）；https://m10-fixture.invalid 僅為合成授權範圍標記（保留 .invalid），沒有真實站台，本次及後續純計算驗收不得真瀏覽或發出網路請求。",
+        "loginRoles": [],
+        "defaultTestUrl": "https://m10-fixture.invalid",
+        "timeoutMs": 60000
+      },
+      "roleRefs": []
+    },
+    "description": "本摘要僅描述已驗證修訂版 revision 2 的 Module 本體 t4b-r102-scoped-seed（moduleKind: setup，exportName: prepare，signature: prepare({ ...args })）。用途：純計算隔離驗收，提供可預測種子資料而不觸及外部目標。前提：純計算，無需參數、無瀏覽器、無網路請求、無登入與憑證操作、不得擴張授權範圍；defaultTestUrl https://m10-fixture.invalid 僅為合成授權範圍標記（保留 .invalid），無真實站台。步驟（來自已記錄 harness）：Stage 1 compute 呼叫 prepare({}) 取得結果；Stage 2 verify 進行斷言。斷言：expect(result).toEqual({name:'alpha',value:2})，驗證回傳 {name:string,value:number} 且等於 alpha/2、無副作用。驗證證據：runId 41a02589-d788-4eb9-8cfa-c3307184a2da / attempt 88d7d2b5-2ce0-4f89-9583-72c8c00f2521，draftRevision 2，scriptHash 5ab1c4bde5cf97ad5de81900a79998b14a9ea96dd9b1850e0d49f394039df1fb 與 harnessHash 一致，狀態 succeeded，stats expected 1, unexpected 0, flaky 0, skipped 0, duration 337.211ms，reportsReady true。限制：僅覆蓋上述單一本地斷言；未驗證任何 UI 導覽、真實站台流程、定位器、網路、登入或逾時行為；統計數字不能證明腳本未包含的覆蓋；sourceVersion 與 conversationSummary 為 null，屬缺失資訊而非證據；bodyHash 5f38e80c4e3fe19af5676b75478dffed434acda0fc7c7a66351fe52fd3400196 與 bundleHash 1407402f4388bc50c1eb0cd3191a1d268b08a5ea161a99ed77bbbaf06e3f1798 綁定本次本體與詮釋資料，不推斷發布資格。",
+    "backgroundSummary": "工作區 m10-r102-ui-scope（workspaceId f6f4fdd5-bf28-4044-9dd2-0c06bb077736，settingsRevision 2，timeoutMs 60000，defaultTestUrl https://m10-fixture.invalid 為合成佔位）。Targets：m10-fixture 僅作純計算驗收範圍佔位，不瀏覽、不發請求；明確禁止其他所有 origin、任何瀏覽、網路請求、登入與憑證操作。決策：只用純計算函式與 Playwright test/expect 完成本地斷言，無外部目標驗證，本次及後續純計算驗收不得真瀏覽或發請求。Module 介面：slug t4b-r102-scoped-seed，prepare({ ...args }) -> {name:string,value:number}，前置純計算，後置回傳 alpha/2 無副作用。綁定雜湊：bodyHash 5f38e80c...、bundleHash 1407402f...、harnessHash/scriptHash 5ab1c4bd...，驗證 runId 41a02589... succeeded。下輪編輯須沿用隔離約束，若需真實站台流程須另行確認授權範圍。",
+    "summaryRunId": "0115688f-a939-470b-8535-ab30fe27593f",
+    "editingSessionId": "3a85ea6d-700d-45e2-af2b-62573ece9d40",
+    "id": "f1dd26ab-d65d-4d35-9bcf-ffb2094ad9e2",
+    "testId": "62991262-6c87-40a0-ace7-099aaabd5f60",
+    "revision": 2,
+    "script": "export async function prepare(_args: any){return {name:'alpha',value:2};}\n",
+    "createdAt": "2026-11-13T07:02:03.396994Z",
+    "validationRunId": "41a02589-d788-4eb9-8cfa-c3307184a2da",
+    "workspaceSettings": {
+      "revision": 2,
+      "sites": [
+        {
+          "name": "m10-fixture",
+          "url": "https://m10-fixture.invalid"
+        }
+      ],
+      "defaultTestUrl": "https://m10-fixture.invalid",
+      "timeoutMs": 60000
+    }
+  },
+  "catalogEntry": {
+    "testId": "62991262-6c87-40a0-ace7-099aaabd5f60",
+    "versionId": "f1dd26ab-d65d-4d35-9bcf-ffb2094ad9e2",
+    "name": "t4b-r102-scoped-seed 純計算種子驗收",
+    "description": "本摘要僅描述已驗證修訂版 revision 2 的 Module 本體 t4b-r102-scoped-seed（moduleKind: setup，exportName: prepare，signature: prepare({ ...args })）。用途：純計算隔離驗收，提供可預測種子資料而不觸及外部目標。前提：純計算，無需參數、無瀏覽器、無網路請求、無登入與憑證操作、不得擴張授權範圍；defaultTestUrl https://m10-fixture.invalid 僅為合成授權範圍標記（保留 .invalid），無真實站台。步驟（來自已記錄 harness）：Stage 1 compute 呼叫 prepare({}) 取得結果；Stage 2 verify 進行斷言。斷言：expect(result).toEqual({name:'alpha',value:2})，驗證回傳 {name:string,value:number} 且等於 alpha/2、無副作用。驗證證據：runId 41a02589-d788-4eb9-8cfa-c3307184a2da / attempt 88d7d2b5-2ce0-4f89-9583-72c8c00f2521，draftRevision 2，scriptHash 5ab1c4bde5cf97ad5de81900a79998b14a9ea96dd9b1850e0d49f394039df1fb 與 harnessHash 一致，狀態 succeeded，stats expected 1, unexpected 0, flaky 0, skipped 0, duration 337.211ms，reportsReady true。限制：僅覆蓋上述單一本地斷言；未驗證任何 UI 導覽、真實站台流程、定位器、網路、登入或逾時行為；統計數字不能證明腳本未包含的覆蓋；sourceVersion 與 conversationSummary 為 null，屬缺失資訊而非證據；bodyHash 5f38e80c4e3fe19af5676b75478dffed434acda0fc7c7a66351fe52fd3400196 與 bundleHash 1407402f4388bc50c1eb0cd3191a1d268b08a5ea161a99ed77bbbaf06e3f1798 綁定本次本體與詮釋資料，不推斷發布資格。",
+    "module": {
+      "slug": "t4b-r102-scoped-seed",
+      "moduleKind": "setup",
+      "exportName": "prepare",
+      "signature": "prepare({ ...args })",
+      "inputs": "No required arguments",
+      "returns": "{name: string, value: number}",
+      "preconditions": "Pure computation; no browser, network, credentials or scope expansion permitted",
+      "postconditions": "Returns alpha and 2 without side effects",
+      "harness": "import {test,expect} from '@playwright/test';\nimport {prepare} from '@lib/t4b-r102-scoped-seed';\ntest('pure-compute seed',async()=>{const result=await test.step('Stage 1: compute',()=>prepare({}));await test.step('Stage 2: verify',async()=>{expect(result).toEqual({name:'alpha',value:2});});});\n"
+    },
+    "validationRunId": "41a02589-d788-4eb9-8cfa-c3307184a2da",
+    "validationStatus": "succeeded",
+    "referencedBy": []
+  },
+  "usecaseTestId": "0d349191-ed4a-44ec-8daa-ca950397efc7",
+  "usecaseSessionId": "c2a69d2f-bfe0-4731-b2df-5ed890bcc63e",
+  "planRequest": {
+    "editingSessionId": "c2a69d2f-bfe0-4731-b2df-5ed890bcc63e",
+    "revision": 1,
+    "planRevision": 0,
+    "stages": [
+      {
+        "id": "seed",
+        "title": "Reuse scoped fixed pure-compute seed",
+        "action": "reuse",
+        "moduleTestId": "62991262-6c87-40a0-ace7-099aaabd5f60",
+        "moduleVersionId": "f1dd26ab-d65d-4d35-9bcf-ffb2094ad9e2",
+        "args": {},
+        "bind": "seedResult"
+      },
+      {
+        "id": "double",
+        "title": "Create pure-compute double; no browser/network/credentials",
+        "action": "create",
+        "module": {
+          "slug": "t4b-r102-scoped-double",
+          "moduleKind": "step",
+          "description": "純計算doubleValue({value})回傳{doubled:value*2}，獨立harness用Playwright test/expect及test.step驗value=2得到4。禁止browser/page、瀏覽、網路請求、登入、憑證、scope擴張；https://m10-fixture.invalid僅授權範圍標記，不得造訪。"
+        },
+        "args": {
+          "value": {
+            "kind": "binding",
+            "stageId": "seed",
+            "path": [
+              "value"
+            ]
+          }
+        },
+        "bind": "doubleResult"
+      }
+    ]
+  },
+  "plan": {
+    "id": "a4c96e46-b57f-4bdb-9d8f-150f4b8c9af7",
+    "testId": "0d349191-ed4a-44ec-8daa-ca950397efc7",
+    "editingSessionId": "c2a69d2f-bfe0-4731-b2df-5ed890bcc63e",
+    "revision": 1,
+    "baseRevision": 1,
+    "contextRevision": 1,
+    "status": "draft",
+    "stages": [
+      {
+        "id": "seed",
+        "title": "Reuse scoped fixed pure-compute seed",
+        "action": "reuse",
+        "moduleTestId": "62991262-6c87-40a0-ace7-099aaabd5f60",
+        "moduleVersionId": "f1dd26ab-d65d-4d35-9bcf-ffb2094ad9e2",
+        "args": {},
+        "bind": "seedResult",
+        "status": "pending"
+      },
+      {
+        "id": "double",
+        "title": "Create pure-compute double; no browser/network/credentials",
+        "action": "create",
+        "module": {
+          "slug": "t4b-r102-scoped-double",
+          "moduleKind": "step",
+          "description": "純計算doubleValue({value})回傳{doubled:value*2}，獨立harness用Playwright test/expect及test.step驗value=2得到4。禁止browser/page、瀏覽、網路請求、登入、憑證、scope擴張；https://m10-fixture.invalid僅授權範圍標記，不得造訪。"
+        },
+        "args": {
+          "value": {
+            "kind": "binding",
+            "stageId": "seed",
+            "path": [
+              "value"
+            ]
+          }
+        },
+        "bind": "doubleResult",
+        "status": "pending"
+      }
+    ]
+  },
+  "usecaseRuns": {
+    "items": []
+  },
+  "workspaceCapabilities": {
+    "aiExploration": {
+      "available": true,
+      "reason": null
+    },
+    "aiExecution": {
+      "available": true,
+      "reason": null
+    },
+    "manualExecution": {
+      "available": true,
+      "reason": null
+    },
+    "credentialLogin": {
+      "available": false,
+      "reason": "secrets_unavailable"
+    }
+  }
+}

@@ -1,0 +1,206 @@
+{
+  "base": "http://127.0.0.1:19087/api",
+  "owner": "t4b",
+  "modules": [
+    {
+      "testId": "4144fee0-7ace-47e2-a03c-00636cd61e25",
+      "slug": "t4b-manual-success",
+      "expected": "success",
+      "editingSessionId": "b121fa07-2c21-4c75-9dba-278594f02570",
+      "saveRequest": {
+        "editingSessionId": "b121fa07-2c21-4c75-9dba-278594f02570",
+        "revision": 1,
+        "script": "export async function prepare(_args: any){return {name:'alpha'};}\n",
+        "module": {
+          "slug": "t4b-manual-success",
+          "moduleKind": "step",
+          "exportName": "prepare",
+          "signature": "prepare({ ...args })",
+          "inputs": "No arguments required",
+          "returns": "{name: string}",
+          "preconditions": "None",
+          "postconditions": "Returns alpha without external I/O",
+          "harness": "import {test,expect} from '@playwright/test';\nimport {prepare} from '@lib/t4b-manual-success';\ntest('manual Module stages',async()=>{\nconst result=await test.step('Stage 1: prepare',()=>prepare({}));\nawait test.step('Stage 2: verify',async()=>{expect(result.name).toBe('alpha');});\n});\n"
+        }
+      },
+      "revision": 2,
+      "runId": "1861abfd-1fdd-4a46-8456-11bc2ba97a89",
+      "observedRun": {
+        "scriptOrigin": "manual",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "id": "1861abfd-1fdd-4a46-8456-11bc2ba97a89",
+        "testId": "4144fee0-7ace-47e2-a03c-00636cd61e25",
+        "workspaceContext": {
+          "schemaVersion": "1",
+          "workspaceId": "00000000-0000-4000-8000-000000000001",
+          "settingsRevision": 1,
+          "config": null,
+          "roleRefs": []
+        },
+        "status": "succeeded",
+        "createdAt": "2026-11-13T05:11:37.318769Z",
+        "startedAt": "2026-11-13T05:11:37.379935Z",
+        "finishedAt": "2026-11-13T05:11:38.310678Z",
+        "reportUrl": "/api/runs/1861abfd-1fdd-4a46-8456-11bc2ba97a89/artifacts/report.html",
+        "kind": "validation",
+        "draftRevision": 2,
+        "workspaceSettings": {
+          "revision": 1,
+          "sites": [],
+          "defaultTestUrl": "",
+          "timeoutMs": 60000
+        },
+        "editingSessionId": "b121fa07-2c21-4c75-9dba-278594f02570"
+      },
+      "artifacts": {
+        "items": [
+          {
+            "name": "report.html",
+            "size": 518436,
+            "contentType": "text/html; charset=utf-8",
+            "url": "/api/runs/1861abfd-1fdd-4a46-8456-11bc2ba97a89/artifacts/report.html"
+          },
+          {
+            "name": "results.json",
+            "size": 4291,
+            "contentType": "application/json",
+            "url": "/api/runs/1861abfd-1fdd-4a46-8456-11bc2ba97a89/artifacts/results.json"
+          }
+        ]
+      },
+      "reportEvidence": {
+        "stats": {
+          "startTime": "2026-11-13T05:11:37.840Z",
+          "duration": 300.413,
+          "expected": 1,
+          "skipped": 0,
+          "unexpected": 0,
+          "flaky": 0
+        },
+        "steps": [
+          {
+            "title": "Stage 1: prepare"
+          },
+          {
+            "title": "Stage 2: verify"
+          }
+        ]
+      }
+    },
+    {
+      "testId": "ecd4bb35-ebfa-41e9-ad29-b89d86a1aa16",
+      "slug": "t4b-manual-failure",
+      "expected": "failure",
+      "editingSessionId": "83190534-8111-43b8-a1cd-acd3a8319ba0",
+      "saveRequest": {
+        "editingSessionId": "83190534-8111-43b8-a1cd-acd3a8319ba0",
+        "revision": 1,
+        "script": "export async function prepare(_args: any){return {name:'alpha'};}\n",
+        "module": {
+          "slug": "t4b-manual-failure",
+          "moduleKind": "step",
+          "exportName": "prepare",
+          "signature": "prepare({ ...args })",
+          "inputs": "No arguments required",
+          "returns": "{name: string}",
+          "preconditions": "None",
+          "postconditions": "Returns alpha without external I/O",
+          "harness": "import {test,expect} from '@playwright/test';\nimport {prepare} from '@lib/t4b-manual-failure';\ntest('manual Module stages',async()=>{\nconst result=await test.step('Stage 1: prepare',()=>prepare({}));\nawait test.step('Stage 2: verify',async()=>{expect(result.name).toBe('intentional-mismatch');});\n});\n"
+        }
+      },
+      "revision": 2,
+      "runId": "0ec31292-7923-46aa-bb33-cf88ce803e25",
+      "observedRun": {
+        "scriptOrigin": "manual",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "id": "0ec31292-7923-46aa-bb33-cf88ce803e25",
+        "testId": "ecd4bb35-ebfa-41e9-ad29-b89d86a1aa16",
+        "workspaceContext": {
+          "schemaVersion": "1",
+          "workspaceId": "00000000-0000-4000-8000-000000000001",
+          "settingsRevision": 1,
+          "config": null,
+          "roleRefs": []
+        },
+        "status": "failed",
+        "createdAt": "2026-11-13T05:11:37.337655Z",
+        "startedAt": "2026-11-13T05:11:39.459581Z",
+        "finishedAt": "2026-11-13T05:11:40.365379Z",
+        "error": "Playwright exit=1: Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m\"intentional-mismatch\"\u001b[39m\nReceived: \u001b[31m\"alpha\"\u001b[39m",
+        "reportUrl": "/api/runs/0ec31292-7923-46aa-bb33-cf88ce803e25/artifacts/report.html",
+        "kind": "validation",
+        "draftRevision": 2,
+        "workspaceSettings": {
+          "revision": 1,
+          "sites": [],
+          "defaultTestUrl": "",
+          "timeoutMs": 60000
+        },
+        "editingSessionId": "83190534-8111-43b8-a1cd-acd3a8319ba0"
+      },
+      "artifacts": {
+        "items": [
+          {
+            "name": "data/d4ae79d426707cf21fcdc013ee32316cd1c74ae5.md",
+            "size": 910,
+            "contentType": "text/markdown; charset=utf-8",
+            "url": "/api/runs/0ec31292-7923-46aa-bb33-cf88ce803e25/artifacts/data/d4ae79d426707cf21fcdc013ee32316cd1c74ae5.md"
+          },
+          {
+            "name": "data/f247a949cc7d6585711cdc2262101d6157fe84db.zip",
+            "size": 2079,
+            "contentType": "application/zip",
+            "url": "/api/runs/0ec31292-7923-46aa-bb33-cf88ce803e25/artifacts/data/f247a949cc7d6585711cdc2262101d6157fe84db.zip"
+          },
+          {
+            "name": "report.html",
+            "size": 519156,
+            "contentType": "text/html; charset=utf-8",
+            "url": "/api/runs/0ec31292-7923-46aa-bb33-cf88ce803e25/artifacts/report.html"
+          },
+          {
+            "name": "results.json",
+            "size": 8793,
+            "contentType": "application/json",
+            "url": "/api/runs/0ec31292-7923-46aa-bb33-cf88ce803e25/artifacts/results.json"
+          }
+        ]
+      },
+      "reportEvidence": {
+        "stats": {
+          "startTime": "2026-11-13T05:11:39.841Z",
+          "duration": 352.463,
+          "expected": 0,
+          "skipped": 0,
+          "unexpected": 1,
+          "flaky": 0
+        },
+        "steps": [
+          {
+            "title": "Stage 1: prepare"
+          },
+          {
+            "title": "Stage 2: verify",
+            "error": {
+              "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m\"intentional-mismatch\"\u001b[39m\nReceived: \u001b[31m\"alpha\"\u001b[39m",
+              "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m\"intentional-mismatch\"\u001b[39m\nReceived: \u001b[31m\"alpha\"\u001b[39m\n    at /tmp/whippet-playwright-ruyaKe/tests/test.spec.ts:5:65\n    at /tmp/whippet-playwright-ruyaKe/tests/test.spec.ts:5:1",
+              "location": {
+                "file": "/tmp/whippet-playwright-ruyaKe/tests/test.spec.ts",
+                "column": 65,
+                "line": 5
+              },
+              "snippet": "  3 | test('manual Module stages',async()=>{\n  4 | const result=await test.step('Stage 1: prepare',()=>prepare({}));\n> 5 | await test.step('Stage 2: verify',async()=>{expect(result.name).toBe('intentional-mismatch');});\n    |                                                                 ^\n  6 | });\n  7 |"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "usecase": {
+    "testId": "52cf7b3c-1223-4b90-bc4d-cfc59fc22a6d",
+    "editingSessionId": "ee2e77a5-2c24-4358-918e-1f9952034e21",
+    "plan": {
+      "plan": null
+    }
+  }
+}

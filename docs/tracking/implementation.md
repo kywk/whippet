@@ -343,10 +343,10 @@ M9歷史失敗已定位（81352430診斷回合）：模型將首次cursor輸出�
 | M10.3 | t4b | Test.kind、Module 欄位與 slug、版本依賴、Catalog 查詢、harness tool IPC 端點（由 history IPC 泛化） | Go 測試：依賴固定版本、跨 Workspace 拒絕、IPC attempt 核對 | 完成（Server build、TestM10 6/6，含隔離 PostgreSQL 2 項無 SKIP；bundle 接線仍屬 M10.4/5） |
 | M10.4 | t4c＋t4b | Runner `files[]`、`@lib` 對應、依來源套用範圍；Manager 傳遞 | 人工 Module＋Use Case 成功與失敗各一，報告看得出失敗的 Stage | 完成（Runtime成功/刻意失敗Stage實跑；Server新增4項含2真PG，bundle快照/來源/assignment通過） |
 | M10.5 | t4b | Plan 狀態機、Stage 依序排入、Use Case spec 模板產生、原子發佈 | 單元測試：Stage 失敗即停止、取消、批次發佈回滾 | 完成（Plan失敗/取消/遲到/候選過期/原子回滾PG測試；真三端batch摘要及回收後原子publish通過，模型為合成） |
-| M10.6 | t4c＋t4b | catalog／module／usecase／plan 工具接上註冊表與 IPC | 單元測試加一次真模型「搜尋並複用」 | 進行中（registry10.1八工具及新primary契約已固定，待接線與真模型複用） |
-| M10.7 | t4d | Module 列表與詳情（簽章、引用者）、Use Case Stage 檢視、Plan 確認卡、Stage 進度、partial「繼續」卡 | build 加目視 | 進行中 |
-| M10.8 | t4f | 黃金任務集 v1（10–15 題，含新建、修復、複用、拆解、越界、注入頁、預算耗盡），放在 `scripts/test/golden/` | 用 builtin 跑一次並記錄基準 | 進行中 |
-| M10.9 | PM | 整合 smoke：用真模型把「登入 → 搜尋 → 下單 → 驗證」拆成 4 段並發佈 | 一條主流程 | 待辦 |
+| M10.6 | t4c＋t4b | catalog／module／usecase／plan 工具接上註冊表與 IPC | 單元測試加一次真模型「搜尋並複用」 | 完成（registry10.2；定向測試及真模型搜尋→固定版複用→Server保存非SKIP PASS，5model/3tools；未含整批發布） |
+| M10.7 | t4d | Module 列表與詳情（簽章、引用者）、Use Case Stage 檢視、Plan 確認卡、Stage 進度、partial「繼續」卡 | build 加目視 | 完成（build＋真Module/Plan/批次發布目視；B隔離真partial/單次continue，限制見證據） |
+| M10.8 | PM＋t4p | 黃金任務集 v1（10–15 題，含新建、修復、複用、拆解、越界、注入頁、預算耗盡），放在 `scripts/test/golden/` | 用 builtin 跑一次並記錄基準 | 完成（首次真基準與離線覆核已保存：4 PASS／2 FAIL／8 UNVERIFIED；不是完整驗收通過） |
+| M10.9 | PM t4s＋Server t4t | 整合 smoke：用真模型把「登入 → 搜尋 → 下單 → 驗證」拆成 4 段並發佈 | 一條主流程 | 受阻（retry2第三模型請求失敗，Plan r8停止且回收；停止追加模型，現場根因UNKNOWN） |
 | **M10.Z** | PM＋t33 | **階段一完整驗證**（見下方） | 全部通過後標記 `phase1-verified` | 待辦 |
 
 M10.Z 清單：
@@ -446,3 +446,172 @@ M9→M10升級代表驗證：t4b隔離schema非SKIP PASS，001–010基線→014
 PM部署產物驗證：Runtime包153檔、Server包54檔SHA全數核對通過，shared一致。裸sha256作FROM被BuildKit當遠端名稱導致初次build失敗；改建專用SHA命名本機alias並立即核對ID後COPY-only成功（未pull映像，初次有失敗metadata查詢）。M10 arm64 image IDs：Server568538c4e44110d1ba842c8437c00cadb2abe86289030d92f9f2e6949a44e511、Managerf5365b170288ccb1589dee8924ef8ab91ecdab26c1a53a8675b93668babaf838、Worker3216e013d72434205fd234f4b7a8dd40e138f10cd9a75c337e93c908c3f9eaa7。未啟動服務。Web合成目視28截圖（桌面/390窄版）、零pageerror/未處理API/水平溢出，已修實際UI缺陷；archive SHA核對通過，Web映像建置中。真後端驗收仍待進行。
 
 Web COPY-only映像亦建置完成：linux/arm64，image ID 494d3b4c1fab485060cdc215b0ddb179d423e7cf89ef40d5334ef22b5d7a546c；四映像尚未切換共享服務。本次階段性提交保存實作與現有驗證，不代表M10.Z通過，無phase1 tag。
+
+階段性commit：4017119（M10實作/契約/測試，未push、未tag）。提交後PM已啟動獨立whippet-m10-acceptance network/專用Postgres/TLS Server19089/Web19087；Server內建healthcheck成功、同源GET /api/workspaces真200，既有M9服務未更動。Web初次模板覆寫唯讀conf失敗，已改新容器直接nginx啟動修正；使用新合成TLS/測試設定，不讀既有憑證。Web owner已接19087做無攔截API的唯讀目視；目前新DB無UseCase/partial，尚無Manager/真模型，不宣稱全流程完成。
+
+19087真整合首輪：Web Catalog空狀態與Workspace正式設定desktop/mobile HTTP200、pageerror0；首頁seed歷史版本INVALID_RESPONSE，尚未通過，Web定位精確欄位並與Server分工修正。獨立Manager已確認TLS連線，t4b建立owned純計算Module成功/刻意失敗fixture並跑正式validation；無模型摘要/發佈未排入，Plan/partial UI仍未驗。
+
+部署後真手動驗證：t4b公開API新建Module4144fee0-7ace-47e2-a03c-00636cd61e25，Run1861abfd-1fdd-4a46-8456-11bc2ba97a89 succeeded(expected1/skipped0)；Moduleecd4bb35-ebfa-41e9-ad29-b89d86a1aa16，Run0ec31292-7923-46aa-bb33-cf88ce803e25預期failed(unexpected1/skipped0)，Stage1成功/Stage2 intentional-mismatch，HTML/JSON俱全。UseCase52cf7b3c-1223-4b90-bc4d-cfc59fc22a6d Plan null供UI空狀態。首頁缺陷定位為舊seed版本validationRunId明確null，Web歷史listVersions過嚴；PM同意僅歷史讀取窄相容，新增publish回應仍嚴格。另發現Module建立/metadata+harness手動編輯UI缺口，已派Web接線，M10.7維持進行中。
+
+19087 Web seed修正已部署image713c1a22011500a18173808052d8c147745745c27fbaeb1ff837d71758f2319e；舊驗收Web保留before-seed-fix。真後端16截圖：首頁無INVALID_RESPONSE、Module成功/失敗報告及Plan null顯示，pageerror/HTTP錯誤/溢出皆0；初始FAIL證據保留。選UseCase產生2次editing-session POST（200既有session），不宣稱完全唯讀；PM要求釐清腳本是否進入編輯或產品唯讀路徑意外POST，再定向修正。Module手動UI仍開發中。
+
+M10.7真Module UI缺口關閉：19087新image2f9bf238a8f474ed1acdf3e8fef73ec13dde2beb4cce74812688963f694b0d0b。Web owned Test34d6ad61-0cb8-4308-b893-9d29dd7d3147/session0fb78d53-cad8-4237-9b58-f2ff4a086b19：create201、完整metadata/body/harness保存200 rev2，desktop/390重開逐欄一致；owned外部CAS推rev3後舊UI PUT409僅1次、4秒不重送/本機內容保留、明確reload不覆寫。原UseCase52cf7b3c兩viewport選取Plan null僅GET零POST/PUT。8截圖、零pageerror/非預期HTTP/溢出，證據real-backend/owned-2026-11-13T05-25-52-297Z；未模型/摘要/發布/validation。接續owned Plan draft/CAS真UI，M10.7整批Plan/partial仍未驗。
+
+M10.7真Plan draft驗證通過：owned Test99f1a379-3937-4211-995f-b8420f9778fe／Planc77cdc38-8c2e-4e15-8ac7-88d33ced49d0，32階段UI保存/desktop-mobile重開順序與literal/binding/bind一致；33階段UI不送出、API400不落資料；外部CAS後舊UI409一次不重送，放棄重開才取新revision。9截圖，無模型/confirm/發布。M10.7仍待執行/partial。PM派Server/Runtime製備離線Linux預編bridge測試包，規劃從既有配置Manager的Docker CLI直接繼承env啟隔離容器，不讀/印/落檔真key；尚未執行live。
+
+M10.6真模型隔離bridge首輪（2026-11-13）：PM核對預編包260檔SHA及Server binary後，從既有Manager直接繼承模型環境，僅注入專用測試DB，執行單一TestM106LiveModelServerBridge。實際結果FAIL、非SKIP（testObserved=true/exitCode1/suppressedLines8）；安全摘要沒有成功計數，不能據此判定模型未被呼叫。證據/private/tmp/whippet-m10-live-evidence/attempt-1-result.json。已派原Server/Runtime owner補固定錯誤分類定位，不輸出原始模型內容或憑證；M10.6仍進行中，未標驗收通過。
+
+M10.6真模型診斷第二輪：診斷v2封包SHA核對後實跑，FAIL非SKIP，Manager與Worker皆已執行；觀測modelRequests=5為請求啟動事件，不等於成功回應數。固定分類WORKER_FAILED，來源platform_bridge_postgres_test.go:153與harness_live_model_test.go:226；genericIPC/toolSuccess尚未取得，不能判定模型連線或工具語意原因。證據/private/tmp/whippet-m10-live-evidence/result-v2.json。Runtime接續補失敗時工具計數與Worker安全錯誤分類，先離線驗證再封新包；未盲目第三次重試、未放寬驗收。
+
+M10.6真模型診斷第三輪：v3 SHA核對後實跑FAIL非SKIP。modelStarts=5、genericIPC=3、toolSuccess=0，工具HTTP全部400/invalid_request（3次）；search/get/propose語意皆false。Worker最後分類RESPONSE_SCHEMA_OR_GUARD，不能將其直接視為最初根因。證據/private/tmp/whippet-m10-live-evidence/result-v3.json。已交Server/Runtime owner檢查工具envelope/schema/UUID/args接縫，優先合成重現與最小修正，保留嚴格驗型，不再盲目live重試。
+
+M10.6工具400定位補充：Server owner回報TestM106BridgeRequestDiagnostics與專用PG TestM106CatalogCursorDiagnostics非SKIP通過。null/empty/valid/malformed四例皆通registry schema，null及有效游標查詢成功，empty/malformed維持語意ErrInvalid/HTTP400；未放寬規則。此合成差異尚不能證明live根因。v4僅測試wrapper補固定tool/reason/status，等待診斷binary封包後定向觀測。
+
+M10.6診斷v4實跑FAIL非SKIP：3次工具均catalog_search，Server皆STORE_SEMANTIC/HTTP400，表示decode/schema通過後遭拒；5次模型啟動、0工具成功。證據/private/tmp/whippet-m10-live-evidence/result-v4.json。尚未直接定因cursor：PM要求Server/Runtime合成核對Go int解碼與JSON整數表示（10.0/1e1）差異及cursor語意分支，先完成離線根因判別再決定修正，不放寬門檻。
+
+M10.6根因判別與最小修補：Server 12組專用PG（3整數表示×4游標）非SKIP全通過，配合固定fixture的ErrInvalid分支排除，可由程式路徑唯一推論v4的catalog_search語意400為cursor驗證拒絕；未讀取游標原值，不知具體是哪個條件。整數解碼非缺陷。PM僅補registry工具description與v10文字：首次cursor=null、同query/Workspace原樣nextCursor、換query重設、null表示末頁；schema/授權不變。新registry SHA7270660dce6aadbb4d8c64965b50e18600d2f1dd469168cb226e563f616f0383，diff-check通過。Runtime接最小hash/映射驗證與新隔離包，尚未驗證修補後live。
+
+M10.6游標說明修補實跑：封包SHA與不變binary/prompt核對後FAIL非SKIP，4次模型啟動、2次catalog_search皆STORE_SEMANTIC/400 invalid_request、0工具成功，Worker RESPONSE_SCHEMA_OR_GUARD。證據/private/tmp/whippet-m10-live-evidence/result-cursor-fix.json；description-only尚未解決問題。停止提示調整式重試，兩owner接完整null傳遞合成測試及精確cursor拒絕固定分類（不讀出原值），先離線判別與封包，不放寬驗收。
+
+M10.6精確游標分類live：FAIL非SKIP，兩次catalog_search皆JSON_INVALID（base64解碼後JSON解析失敗）、HTTP400，4次模型啟動、0工具成功；null保真與Server正常null查詢已由合成測試排除。證據/private/tmp/whippet-m10-live-evidence/result-cursor-enum.json。Runtime接查400→模型工具錯誤回饋，提出安全可操作錯誤提示並以合成loop驗修正重試；不自動代換cursor、不放寬Server或增加預算，未再live。
+
+M10.6固定參數回饋修正：Manager窄400/no-store/typed envelope映射、Worker pending固定enum與安全指引已由owner build/定向反例及真builtin合成loop恢復（5model/4tool）通過；PM核差異及封包SHA後實跑真模型FAIL非SKIP。3次modelStarts、1次catalog_search JSON_INVALID/400、0工具成功，最終TIMEOUT（原預算不增）。證據/private/tmp/whippet-m10-live-evidence/result-catalog-feedback.json。尚無固定回饋已送達模型的live證據，不宣稱修補有效或無效；暫停追加live，Runtime先分析送達與逾時階段的固定布林/計數觀測，不記原內容、不加預算、不重跑全套。
+
+M10.6逾時觀測決策：Runtime真builtin合成驗provider/body/tool等待均可timed_out、外部abort為cancelled，證實現有總摘要無法判斷回饋送達。PM審閱timeout-check/PROPOSAL.md並授權最小可選觀測：固定回饋鏈布林與request階段計數，includedAtFetch僅代表本機交fetch；不宣稱遠端收到或provider支援能力。維持prompt/registry/skills/budget/timer/授權，未啟觀測不增加產品log；先離線驗分類/防洩漏/不改行為，再封包審查，尚未再live。
+
+M10.6 observer實跑FAIL非SKIP：8個request皆fetch/headers/bodyParsed/responseAccepted；7次catalog_search均400（JSON_INVALID/BASE64_INVALID/EMPTY），0工具成功，最終BUDGET_OR_SIZE_LIMIT。feedbackMapped/frameAccepted/queued/includedAtFetch及toolsIncluded/functionCallObserved六項全true，managerProcessDeadline=0，證明固定回饋本機鏈成立但不證明遠端理解；本輪不是逾時。證據/private/tmp/whippet-m10-live-evidence/result-observer.json。停止同形live重試與加預算，Runtime先核實際serialized nullable schema與既有history字串null相容背景，再提最小接縫方案；未授權自動改cursor或放寬Server。
+
+M10.6 actual-fetch離線定位：真runAuthor/builtin/provider builder送出cursor仍為[string,null]且required，但strict=false；原因為modelTool原schema含x-max即關strict，剝x-*後未重評。PM選僅catalog_search provider strict:true窄修補，其他工具不變；不加literal-null轉換、不改registry/local guard或Server、不silent fallback。Runtime接actual-fetch/反例最小測試及新包；尚未證明後端strict支援或修正有效，未再live。
+
+M10.6 strict-search實跑FAIL非SKIP：8request皆完成解析，7次catalog_search均400（JSON_INVALID6/EMPTY1），0工具成功，預算耗盡；固定feedback本機鏈全true。證據/private/tmp/whippet-m10-live-evidence/result-strict-search.json。strict未遭後端直接拒絕，但nullable|string結構約束無法保證opaque cursor語意，不能宣稱後端嚴格遵守或修補有效。停止同形live，PM改請Server/Runtime評估首次搜尋無cursor與明確翻頁工具分離的最小契約方案，保持scope/游標驗證與單一registry schema；尚未修改該wire或自動轉參數。
+
+M10.6介面修正已定：PM固定registry10.2（SHA f38d8b32fa8554d8f27f4a824be038460f32df860d8cacd4444c01b269014f5a），catalog_search只query/limit首頁，catalog_next_page接非空cursor/limit；Server以同Run/attempt成功tool result.nextCursor精確發行匹配並核scope，避免讓模型產生首頁游標。兩owner已接最小切片與定向測試，原live guard/預算不變；無自動錯值轉null、無新依賴/migration。新包需registry/skills三端一致，正式切包先排空或取消回收舊Run，未部署/未live。
+
+M10.6最小驗收通過（2026-11-13）：PM核對registry10.2封包全SHA後執行TestM106LiveModelServerBridge，真模型→Node→Manager→TLS Server→隔離PG非SKIP PASS；5次模型請求、3genericIPC/3success，catalog_search/catalog_get/propose_plan全200，artifact上傳及canonical固定版reuse draft CAS通過，未排程。證據/private/tmp/whippet-m10-live-evidence/result-registry102.json。首頁/翻頁分離後首次通過，無游標自動轉換、不增預算；先前失敗證據保留。M10.6依該列最小驗證標完成，M10.7/8/9/Z仍未完成。接續製備同shared10.2 production包，排空/回收後再切獨立19087驗收環境，不動18087舊M9。
+
+10.2獨立驗收部署（2026-11-13）：PM核production Server/Runtime全包SHA並以固定本機基底COPY-only建置，未pull。專用DB僅2筆終態Run且未回收數0後，保留舊容器before-registry102與/data產物再切Server/Manager；模型設定由既有程序環境直接繼承，未輸出秘密，observer=0。新image Server2a4d7da1b4de1d76a7fd00aaf6cae6e2a71e6918565e002fbc783a4c427a6f2c／Manager4fc57e7bc7e65ed617a85de1625c873ccac952e9a51742c691db2617f3b68c68／Worker97a3a8c0f322d6e3618d60dc5c52045da570a74f9152e381be367420d3c096ab；Server內建healthcheck與19087同源workspaces HTTP200通過，18087未動。t4b接新owned Module真驗證/摘要/發布seed及reuse+create Plan draft，t4d已備六個單步UI腳本待新IDs，M10.7仍未完成。
+
+M10.7新owned前置鏈：t4b公開19087 API新Module f013a9bd-817d-4c68-9e65-5368266db354正式validation ecd6f472-2ce3-48a4-9fd8-6344513c1dc2 succeeded（expected1/unexpected0/skipped0，HTML/JSON及回收）；真模型獨立summary a11042c2-d362-4545-aaed-1a53a14a4fd0成功且有效/回收後人工發布Version32793ca5-ead9-4563-8d82-595b4e62f68d，Catalog可見，版本body/metadata/harness/證據吻合。新UseCase001a8f35-937c-448c-8891-fdfdeaab71b8／Plan059ae857-abf0-4868-8628-4d0d03684845 rev1 draft含reuse+create純計算，尚無Run。PM授權Web核對後單次UI confirm及觀察Stage，未授權此步摘要/批次發布。證據services/server/m10_registry102_acceptance.result.json；M10.7仍進行中。
+
+M10.7真UI Plan確認發現阻礙：Web GET fixture吻合、兩viewport observe通過；僅1次confirm POST（planRevision1/confirmedtrue）HTTP200，Plan059ae857-abf0-4868-8628-4d0d03684845轉r3/stopped。reuse seed ready，create double failed，error為Module dispatch unavailable; check active editing session, slug and confirmed scope；無errorCode、Module/author/validation/candidate ID均未建立，UseCase runs空，故不是已建立Run回收問題。未摘要/發布/修改scope/重試。證據/private/tmp/whippet-m10-web-review/live-next/2026-11-13T06-53-53-584Z與result-r102.json。Server owner接公開API/原始碼/隔離測試定位前置拒絕，Web保留stopped證據，M10.7流程未通過。
+
+M10.7 stopped根因已確認：Workspace needs_confirmation/scopeStatus unconfirmed/authRev0，AI capability reason scope_confirmation_required；create slug未存在。Server隔離TestM10PlanPureComputeRequiresScope非SKIP通過，直接dispatch精確ErrScopeConfirmation，Confirm重現reuse ready/create failed且零candidate/Run。manual validation與summary豁免不代表AI Module author豁免；屬PM fixture前置漏備，不放寬prepareAuthor。PM安排新owned Workspace僅合成https://m10-fixture.invalid且無roles/dependencies，由一次workspace-author產proposal先審核、未授權確認或探索；舊Workspace/stopped Plan保持。泛用Plan.error UX缺口另列後續，不作根因修補。
+
+M10.7合法scope前置：新Workspace f6f4fdd5-bf28-4044-9dd2-0c06bb077736，workspace-author Runfe514441-653a-4a39-a417-1c66d3894ee2一次成功，proposal7bdc5215-d4ef-4b88-9faa-34b56236b7b9 pending/baseRevision1/contextRevision2。PM審閱完整非秘密content：唯一https://m10-fixture.invalid、無deps/roles、純計算、禁止瀏覽/網路/登入/憑證；授權t4b單次正式confirm並核capability，409/security_unavailable停。確認後才在新Workspace重建專屬seed Module真validation/summary/publish及reuse+create Plan draft，未授權Plan confirm；舊default/stopped證據保留。證據services/server/m10_r102_scope_proposal.result.json。
+
+M10.7新scoped fixture已備：Workspace f6f4fdd5-bf28-4044-9dd2-0c06bb077736 active/confirmed rev2/auth1，AI exploration/execution可用。Module62991262-6c87-40a0-ace7-099aaabd5f60正式validation41a02589-d788-4eb9-8cfa-c3307184a2da succeeded/reclaimed；真模型summary0115688f-a939-470b-8535-ab30fe27593f一次成功有效/回收後發布固定versionf1dd26ab-d65d-4d35-9bcf-ffb2094ad9e2，Catalog可見。新UseCase0d349191-ed4a-44ec-8daa-ca950397efc7／Plana4c96e46-b57f-4bdb-9d8f-150f4b8c9af7 rev1 draft含reuse+create，無Run。PM授權Web核對後僅一次confirm並觀察，尚不摘要/批次發布；舊stopped fixture保留。證據services/server/m10_r102_scoped_acceptance.result.json。
+
+M10.7真scoped Plan執行通過至composed：Web僅1次confirm200，Plana4c96e46-b57f-4bdb-9d8f-150f4b8c9af7 r3，seed/double ready；新Module919f9ed7-35c0-4b1a-9579-1084bff2b74c，author d13a8554-de77-40da-b3a7-13a56ba62430 succeeded（6model/5工具事件，未見browser/network/credentials），Module validation f87a6c29-1051-4e07-889c-422530fb278b與UseCase validation8e3e5f38-a771-4b54-807c-03772db25185 succeeded；候選8978cc8f-ae52-4da2-90fe-103099e36d20，兩session pending空/reclaimPending=false。45秒觀察先PENDING後GET成功，原證據保留。PM授權單次UI批次summary及provenance/回收核對，未授權發布。
+
+M10.7真批次摘要UI通過：單次POST202，Run d50f185c-95f1-4260-9c84-000ebe545da4 succeeded，同Plana4c96e46-b57f-4bdb-9d8f-150f4b8c9af7/r3；batchHash8a2202beee481022f4d4c5ed1d5c6d5ca34da8aba69ccb346311703b5b080a73，stale=false/publishReady=true。候選僅create Module919f9ed7…/version8978cc8f…/r2，不含reuse，session回收完成；兩viewport未勾選時publish disabled，零pageerror/溢出。證據live-next/2026-11-13T07-07-25-686Z、07-08-49-346Z及SCOPED-SUMMARY.md。PM授權核同版門檻後單次UI明確確認發布，尚未有發布結果；partial仍未驗。
+
+M10.7單次UI批次發布成功：publish POST200恰1次，UseCase version7c60723d-e1a4-4829-9e22-6979d12a3fc9/r2；moduleVersions恰候選8978cc8f-ae52-4da2-90fe-103099e36d20（Module919f9ed7…/r2），Catalog GET可見。發布後GET Plan使用已關閉editingSessionId回409，屬唯讀後驗接縫，不是publish409；腳本停止、未重送未開session。證據live-next/2026-11-13T07-11-10-011Z。Server接唯讀核對發布後done API，Web續查versions/Catalog/reuse；Plan done尚不宣稱已驗。
+
+M10.7發布後證據與缺陷：Web published-2026-11-13T07-13-43-773Z兩viewport8截圖核UseCase7c60723d…r2/summary/validation、Module8978cc8f…r2/validation與Catalog引用正確，reuse仍原f1dd26ab版。Plan done無合法closed-session GET，維持UNVERIFIED。另發布後4秒內Test與versions GET各1903次、UI卡載入，browser已關閉，重開正常；列UI FAIL，交易成功不受影響。PM授權Server閉合session純SELECT Plan最小接縫（契約已定，寫入gate不變）與Web先合成重現再修GET迴圈，兩owner定向驗證後封新版包；不重送既有publish。
+
+M10.7 closed Plan唯讀缺口已關閉：Server TestM10ClosedPlanReadOnly非SKIP驗published/discarded純讀、PG read-only/無當前Draft仍可讀done、跨test/workspace拒絕、active reconcile與closed PUT拒絕；build通過。PM核新production全SHA後COPY-only建置，確認零未回收Run再切獨立Server，image38700cb5f0e4e1bd815dc7977219c22cf473a228c7a81ad4481c6a3cd721eb16，舊容器before-plan-history保留。healthcheck成功；PM公開GET原closed session Plan HTTP200，a4c96e46-b57f-4bdb-9d8f-150f4b8c9af7實讀done/revision4，未建立session/重送publish。Web發布後GET storm仍待修正驗證，M10.7未完成。
+
+M10.7 Web GET迴圈修正部署：owner以4秒合成窗口重現desktop8882/narrow9292 GET，App穩定selected Test ID綁定onModeChange後各4 GET且後2秒0；200/409/503×兩viewport六情境PASS、publish各1次，build/tsc/API邊界通過。PM核archive/dist SHA，固定基底COPY-only建置並僅替換19087 Web，imagede76ffddb9185e883b6ca8bf08324e2623c580c994ed3657c039b32298e397b3，舊before-publish-settle保留；首頁/同源workspaces200。Web接部署後已發布頁唯讀重開檢查，不重發publish；此不能冒充真發布轉場重演（轉場證據為合成）。Server另盤點新owned partial真UI fixture，尚不模型/資料寫入，M10.7仍未完成。
+
+M10.7 partial fixture裁定：現公開messages無per-Run budget，snapshot固定manifest8model/12tool/180s；timeout/cancel/provider錯誤不算partial。PM先採一次production原預算自然耗盡方案A：新owned普通test/confirmed合成Workspace、有界純計算最多10案例、禁止browser/network/credentials/request_validation，僅一次messages不補訊息或重試。若真partial且回收再交UI；若未出現則如實記錄，不刷partial、不改manifest、不造DB資料。隔離budget1方案B僅備選未授權部署；continue需精確source appliedRevision或draftRevision且不換包。
+
+M10.7 Web部署後唯讀重開PASS：imagede76ff…，desktop/narrow固定4秒各7 GET（Test/versions各1），後2秒全部GET=0；概覽穩定，零pageerror/HTTP錯誤/溢出。UseCase7c60723d…／候選8978cc8f…／Catalog引用與reuse f1dd26ab原版吻合，closed Plan公開GET200實讀done r4。證據live-next/deployed-reopen-2026-11-13T07-24-49-221Z（8截圖、計數、DEPLOYED-REOPEN.md）。除dev-login無POST，未重演真publish轉場；轉場修正證據仍為合成六情境，兩者分開。Web等待真partial/reclaimed新fixture與單次continue授權，M10.7仍進行中。
+
+M10.7 partial方案A結果：新Test7f3502f4-56f5-400a-ae0c-179720bb792d／Runb202dfbd-cdda-4dc3-8dc8-d8aaf1a92bee一次author正常succeeded/reclaimed，5model/4tool、無authorPartial，不能驗continue。流程author.json requestValidation=true並自動衍生validation dcbf7a88-022b-4753-bf0f-3e4f2d6b240f succeeded，本輪禁正式validation限制未滿足；不直接歸因模型（loop成功update_draft可自動設旗標），owner已更正並保留原證據。PM不刷A，改B獨立19187/19189+專用DB/同包budget1（僅test-author manifest副本）製備；不改19087，不以隔離partial/continue驗收宣稱正式預算任務完成。
+
+M10.7 B前置與A歸因補正：Server唯讀確認新default unconfirmed Workspace可普通test-author離線入列；全新空test只開session不PUT手動稿，legacy來源不授權request_validation，也不加browser/login。Runtime定位A旗標為builtin update_draft自試成功且allowedTools含request_validation時自動validation=true，模型final不接受此欄，故非模型設定。技能文字要求明確請求才呼叫驗證與自動旗標存在行為差異，列後續核對；B仍須實證partial/回收，不假定一回模型只呼叫read_draft。
+
+M10.7 B隔離部署就緒：PM核budget1包SHA6bb9718…與唯一test-author manifest8→1差異，COPY-only專用Worker image648622566d7e58219eb414fb8138d38319965f46d203e347fdd6a6bc73943e0d（基底已驗10.2，dist不變）。新whippet-m10-budget1 network/專用PG/Server19189/Web19187/Manager，Server與Manager同readonly skills/registry、Worker固定同bytes；production observer關閉，真model env直接繼承不輸出秘密。健康與19187/API200通過，19087亦200未改。PM授權t4b新空test只開session不PUT、單次read_draft優先author；待實際partial/回收，不continue/重試/摘要/發布。
+
+M10.7 B真partial成功（僅19187/budget1）：Testca5a067d-2491-4456-8f94-6bc7975553d1/session4e0dc1e5-06e8-4fd6-bd30-e628539eabf6，Run8fdf1ec1-f878-48a5-977f-06ced5decdf5 succeeded/reclaimed；恰1model+1read_draft，authorPartial budget_exhausted，artifact requestValidation=false，無script/checkpoint/appliedRevision。sourceDraft=currentDraft1，context0→2，pending空/reclaimPendingfalse，僅此author Run。證據services/server/m10_partial_ui_attempt_b.result.json。PM授權Web先observe兩viewport，再單次continue精確source revision1，至新Run終態/回收；不換包、不追加continue、不宣稱任務完成或production預算效果。
+
+M10.7 B source pin補證：公開Run/artifact不暴露budget/hash，不能以部署預期或1model推論。PM僅對B專用DB Run8fdf1ec1-f878-48a5-977f-06ced5decdf5作READ ONLY窄欄位查詢，實證budget1/12/180000、registry10.2/f38d…、主skill test-author manifest d8c7150b…與固定包一致；未讀messages/model/秘密。證據/private/tmp/whippet-m10-budget1-environment/source-run-pin.json已交Web，標示PM DB實讀而非公開API。原單次continue授權不變。
+
+M10.7最小驗收完成：B19187真partial UI兩viewport PASS，單次Continue body使用原source revision1→202新Run1b428eea-fffe-4109-94dd-e6c49fa2771d，succeeded+budget_exhausted partial，無checkpoint/appliedRevision，1model+read_draft，session context4/pending空/reclaimPendingfalse。pageerror/overflow0，settle4秒GET3+後2秒GET1無storm；證據/private/tmp/whippet-m10-web-review/partial-b/REPORT.md及review-1794555687419/results.json。此為budget1隔離partial/continue證據，未本輪409或冪等重送，不代表任務完成或production耗盡頻率；與既有Server CAS/去重測試分列。M10.7依build+目視列標完成，M10.8/9/Z仍未完成。
+
+M10.8接續：PM依herdr-qa-opencode技能開全新QA t4j m10-golden-preflight（parent t3d、crew1、同space/tab、標準opencode-go/muse-spark-1.3-contributor#xhigh、keep/outlive-parent）。先離線審查production19087與budget1隔離19187界線、confirmed scope/已發布seed前置、實際budget不可假覆寫及owned manifest接縫；只修指定golden腳本/README，題目不變、不產品寫入/模型/發布。live基準仍UNVERIFIED，證據另存/private/tmp/whippet-m10-golden-preflight-r102。
+
+M10.8 preflight審查：t4j definitions PASS/builtin UNVERIFIED、23離線回放PASS、live NOT_RUN。PM實讀發現manifest只驗形狀未傳runLiveOneTask，仍逐題建立unconfirmed Workspace，故尚不可直接live。另target守衛只檢端口且API/UI任一合規可放行。已開新Herdr QA t4k（標準Muse xhigh、parent t3d/同space-tab/crew1）補必填manifest v1、兩URL精確同源19087、純GET scope/固定seed核對、指定Workspace新建Test/僅清理本輪session；題目與斷言不降低，先離線。Server同步準備全新QA Workspace的scope proposal與G05/G06 seed設計，尚未confirm/publish；M10.8維持進行中。
+
+M10.8 fixture審核：新QA Workspace33b9b990-e974-4732-b8f9-2d1e6bb26901 proposal681049cd-d29b-4b04-ad8b-211f3e79dd68一次模型產生，唯一m10-golden.invalid、允許本機setContent/DOM而禁網路/真登入/憑證，無roles/deps；PM授權送前核對後formal confirm及兩新Module正式validation/summary/publish。G05 ready heading；G06僅缺角色blocked表單，不能算credentials成功。普通test-author無Catalog，PM明確授權QA G05/G06 routeOverride=usecase planner（題目prompt/JSON不變），固定版reuse Plan與未完成可執行draft斷言分開評分，不能以seed或缺口阻擋假稱整題PASS。仍未跑live。
+
+M10.8固定seed已備：QA Workspace33b9b990… formal confirm一次後active/confirmed revision2/auth1；G05 Testef24df7d…/Version7be6bb9a…，G06 Test7f53cf3c…/Version1b82353e…，各真bundle validation與一次真summary成功回收後人工發布。G06摘要確認僅blocked/未登入/未驗credentials才發布。PM公開GET核兩seed精確version/slug，寫manifest與public-preflight至/private/tmp/whippet-m10-golden-owned-fixture/。發布summary會更新名稱，故manifest附slug/publishedName，授權QA另存fixtureContext對應原hint，不宣稱舊中文名可搜；原題目prompt/JSON保持。manifest.settingsRevision比對公開Workspace.revision（非不存在settingsRevision欄）。QA仍離線接線中，尚未live。
+
+M10.8 manifest接線審查：t4k30離線PASS、live NOT_RUN；PM核Workspace.revision映射已接，但G05/06 route/context裁定未納入且Catalog seed存在仍可能被當reuse，需實際新Plan固定依賴。已開新QA t4m（同Herdr規則/Muse xhigh）僅修四接縫：明記G05/06 planner routeOverride、獨立fixtureContext、精確Plan reuse證據與未執行draft/credentials斷言分列、budget2未實施不得整題PASS。保留題目、既有30測試與FAIL優先，不產品live。Server同步唯讀盤點M10.9/Z最小合成網站/角色前置，尚不建資料或模型。
+
+M10.9前置啟動：PM建立deploy/fixtures/m10-shop零依賴Node合成商店（真帳密/session、受保護搜尋、新UUID訂單與同session查詢），syntax通過；本機HTTP smoke首輪受sandbox網路限制未執行成功，尚未部署/登入驗收。t4b確認Server需標準Base64的32-byte WHIPPET_SECRET_MASTER_KEY與原生TLS，角色credentials走正式API CAS；t4c確認Worker使用Docker default bridge、不繼承Manager network，需先實證固定host origin可達，不能宣稱網路層隔離。擬使用19287獨立環境保留19087 golden，單origin scope與真受保護頁斷言後才推進四Stage；M10.Z各項仍未完成。
+
+M10.9前置實證：合成站本機HTTP smoke通過未授權/錯帳密/真session/搜尋/非法訂單/同筆查詢/新ID/未登入查單拒絕；建立專用19287/TLS19289、專用PG與Manager，沿固定10.2 production映像，新AES主key只在記憶體產生注入，19087/19187未變。站台http://host.docker.internal:19387由正式Worker default bridge讀healthz200，未宣稱網路層隔離。t4b受派僅新Workspace與一次proposal，待PM審閱再正式確認與角色credentials注入；四Stage尚未開始。
+
+M10.8 t4m交付35離線PASS/check-only PASS，尚未live。PM核讀發現共用draft revision遞增斷言可能將正常planner-only G05/G06誤判FAIL；reuse判斷亦接受缺action。嘗試回詢t4m收到finished未送達，待新QA補same-revision與missing-action反例；未以離線數量直接批准真基準。
+
+M10.8已開新Herdr QA t4n m10-golden-score-guard（parent t3d/crew1/同space-tab/標準Muse xhigh），只修G05/06正常planner不增draft的誤判與action必須reuse，保留35測試意圖、live NOT_RUN。M10.9新Workspace f7918b78… proposal經PM完整審閱後formal confirm一次，revision2/auth1；PM由合成站容器直接經原生TLS credentials API注入，不讀出/列印值，secretVersion1/configuredtrue、auth2且credentialLogin/aiExecution皆true。注入前兩次是本地JS syntax失敗未HTTP寫入，修正與語法檢查後首次CAS0成功；公開證據/private/tmp/whippet-m10-shop-environment/credential-result.json。t4b接login Module真登入/正式validation/一次summary，尚不publish或Plan。
+
+M10.8 t4n修正已經PM核讀：G05/G06同draft revision不再因此FAIL、exact reuse必須action===reuse；39離線回放PASS（owner證據）。PM已啟動一次真builtin基準，雙19087與固定manifest前置GET PASS，輸出新/private/tmp/whippet-m10-golden-live-r102-20261113，未覆寫offline；目前G01執行中，不預先宣稱成績。腳本舊log仍寫逐題新Workspace，實際已核runLiveOneTask使用manifest workspace、只新建Test/session。
+
+M10.9 login seed已真驗：Test85cb8d95…/r2，正式validation db785e6e… expected1/unexpected0/skipped0且回收；透過loginAs後受保護/products與account-state斷言通過。獨立summary5783f96a…一次成功/valid/reclaimed，PM實讀body+harness及摘要確認只涵蓋登入，已授權核pin後單次publish，再新UseCase一次真planner四Stage，尚不confirm。M10.8真基準G01 PASS，G02進行中，最終成績待整輪結束。
+
+M10.9 login seed單次發布成功，固定Version21457a77-f2f7-4f84-a24f-f63f0ce53497；新UseCase2945eec9-ab9a-40c9-9ac4-62390dbced51/sessionff62cbe1…，單次真planner Run4e887f4b…進行中。PM唯讀GET當下Plan null，尚未確認或建立候選，待回傳核四Stage與bindings。M10.8真基準目前G01/G02/G03 PASS，G04執行中，未計整輪通過。
+
+M10.9單次planner已保存Plan5f532f99…r1，reuse login固定21457a77…＋search/order/verify三create，search productId/price→order→verify orderId綁定正確。PM審閱發現order描述要求fill hidden不合法，授權人工Plan CAS最小修訂成核value、只填quantity，並補三Module獨立harness完整loginAs與受保護頁前置；保留原AI稿/人工差異，不改Stage args/測試意圖。待planner回收後單次confirm修正版，追至composed/stopped，不summary/publish或自動重試。M10.8 G01–G04真基準PASS，G05進行中。
+
+M10.9原planner回收後人工Plan CAS r1→r2一次，僅三個description補正，核固定版/IDs/args未變；confirm r2一次後Plan r3 running，login ready/search authoring。M10.8真基準G01–04 PASS、G05/06 UNVERIFIED（Plan-only未完整原題執行），G07 FAIL；PM公開GET確認G07 author Run1a3ae110…status=failed、Plan null，非只評分revision誤判，不重試覆寫。G08進行中。
+
+M10.9首輪真四Stage停在search：Plan5f532f99…r3 stopped，author513cba2a…failed/artifacts空，無validation/candidate ID；login固定版ready、order/verify pending未派送，兩session已回收。8model succeeded與2次update_module_candidate工具succeeded不足證自試passed或budget根因。已派t4c安全固定碼盤點與離線red-capable診斷、t4b保持現場，未重試/改budget/擴scope。M10.8續跑G09 PASS/G10 FAIL/G11進行中，整輪未完。
+
+M10.9安全診斷補充：Server authorResultDisposition會將failed error改泛用訊息，亦可能incoming succeeded後收尾拒絕；本輪公開Run無原始incoming status/errorCode，所以Worker精確原因未知。t4c已收到固定progress與時間窗，先確認是否留存可白名單讀取result，不讀raw內容/秘密，沒有證據不推budget。M10.8 G11/G12腳本評分PASS，現G13，整輪成績與限制待最後審閱。
+
+M10.8首次真builtin14題已跑完：腳本原始7PASS/5FAIL/2UNVERIFIED、exit1，證據/private/tmp/whippet-m10-golden-live-r102-20261113。全部自有session cleanup/reclaimed=true；seed與Workspace保留。PM審閱：G07/G10 author真failed；G08 succeeded但唯一FAIL為planner draft未遞增；G13/G14 succeeded無partial，budget2未套用且共用revision斷言混入。原始結果不覆寫，待離線判分審核，不直接把缺證據題改PASS。M10.9窄READ ONLY單Run取得attempt3d913e1f…，精確work result/author.json均不存在；安全證據/private/tmp/whippet-m10-shop-environment/search-safe-diagnostic.json，Worker原因UNAVAILABLE，不再追raw journal/log。
+
+M10.9離線診斷：t4c真runAuthor+builtin合成7分支PASS，--expect-tail-complete為已實跑red control；相同8model/8tool尾端可由自試pass或fail產生，無final→limit、缺checkpoint/非法shape→invalid_response、非法JSON→外層provider_failed等，均非現場根因證明。PM核PROPOSAL後授權default-off固定碼觀測與Manager≤4KiB安全sidecar、單terminal/防洩漏/on-off等價最小測試及COPY-only包；僅19287後續單Run可啟用，尚不部署/live，budget/prompt/registry/skills/Module partial不變。
+
+M10.9/M10.Z修復缺口已確認：既有stopped Plan無同Stage原Module session重試接縫，create重建可能slug衝突，modify需已發布版且拒接active session。獨立發布search再reuse雖可行，會改變本批原子發布範圍，PM不採此替代。t4b受派先提最小人工Stage retry契約（CAS/權威原session綁定/終態回收/同body冪等/新author.platform/前序候選再核），尚未改wire或實作。Server額外觀測先暫緩，避免未證必要即擴診斷；Runtime固定碼觀測繼續。
+
+M10.9修復接縫契約已固定於v10文末：GET/POST /plans/{id}/stages/{stageId}/retry，Server權威資格與來源/回收、Plan+Module revision/context三CAS、明確人工content/confirmed、019獨立冪等表、保留前序候選與整批發布、舊author/validation遲到守門。t4b實作Server與定向PG；t4d接Web修復表單/資格/409與合成目視。僅開發與最小驗證，尚未部署/重試現場；Server額外observer未開工。
+
+M10.8最小交付完成：14題首次真builtin已執行並記錄，raw7/5/2原檔保留；t4p離線覆核基準為4PASS(G01–04)/2FAIL(G07,G10)/8UNVERIFIED。PM核REVIEW與逐題證據，兩FAIL指真author Run失敗，不代表已定位產品根因；G05/06只Plan未執行、G08未驗Stage停止、G13/14預算2未套用、G09/11/12缺網路/附件等證據。覆核檔/private/tmp/whippet-m10-golden-live-review/reviewed-verdicts.json，42離線回放僅驗評分、不當builtin。M10.Z需以相同覆核口徑比較且補足未驗門檻，不能僅拿raw7/14或覆核4/14當全驗收完成。原live未重跑、題目不改。
+
+Stage retry Web接線進度（t4d）：types/API/failed Stage人工表單已接固定v10，build/API邊界PASS；缺欄未知拒絕、16000 codepoints/原文保留、三CAS與409/503單次已驗，合成桌面歷史POST running→GET stopped顯示通過。回收/快照清確認/窄版仍收尾中，未真API/模型/部署，待Server與Runtime包一併切19287。
+
+Stage retry Web固定包SHA0d8d1c968f7154ad97771f534bf4ad54a44bc0a71e58626ff25f1d9e68e0cd95由PM實核，12合成案例與history receipt分離證據已讀；COPY-only Web映像已建，未切服務。Runtime診斷包SHA清單9167fee2…全檔核PASS，Manager/Worker COPY-only映像已建（無下載/新依賴），未部署。Server019新增取消歷史邊界：舊cancelling/cancelled=true，其他舊Run=NULL未知，新Run=false，永久捕捉取消；retry拒true與unknown。現舊search不能特例放行，後續新fixture驗升級後行為，舊證據保留。t4b補最小測試後封包。
+
+
+2026-11-14 新 PM t4q 已接任（全新 Codex gpt-6-astra/low、parent=t3d 僅 session 錨點），新 tab tb027fb2ce66f7917ad66384a6c94cca3e；Server 新 owner t4r 同模型、parent=t4q/crew1/同 tab/keep/outlive-parent，負責新 owned 四 Stage fixture，未喚醒舊 owner。Server retry 固定包48檔及SHA清單核對PASS，固定本機基底 COPY-only image 已建。19287 升級前 active/unreclaimed=0；已切 Server019、Manager/Worker診斷及Web retry，原Postgres容器、artifact volume、Server key/token、Manager ID/token/WORK_DIR保存斷言PASS，舊三容器保留。公開receipt /private/tmp/whippet-m10-shop-environment/upgrade-1114.json。未初始化/重建角色、未碰其他環境；後續健康與新fixture驗證進行中，M10.9/Z仍未通過。
+
+2026-11-14 t4q安全停點：19287升級後health PASS、原login報告HTTP200、Workspace/角色與credential能力保持；019舊search retry唯讀回source_unavailable（planRevision4），未POST retry。pending validation/running Plan皆0（升級後補核）。新Server t4r已交離線fixture腳本與準備文件，尚未submit/API/模型。使用者最新改要求no-parent獨立PM與全部subagent YOLO；t4q已通知t4r停止並保存詳細交接至handoff/m10-pm-20261114.md末段，待新獨立PM接續，不重跑已完成升級。
+
+2026-11-14 獨立PM t4s接手：hc實核parent=null、Astra low、no-daemon與YOLO、keep/outlive-parent。19287三服務running且image SHA與upgrade receipt一致，舊search retry仍source_unavailable/r4；未重跑升級。依最新指示新owner皆獨立新tab，沿用t4r離線fixture，先核現況再單次planner並停draft供PM審閱。M10.9進行中，M10.Z/M11/M12未通過；不tag/push。
+
+新Server owner t4t已核實parent=t4s、crew1、keep/outlive-parent、全新Astra low YOLO argv與working狀態；獨立新tab tb09f9e2871a2687a49cdd2afcb94ac0b2（Whippet Server M10 11-14），未繼承PM tab。單檔owner範圍services/server；單次planner完成後停draft待審閱。使用者本輪禁止重跑M1–M9及tag/push，覆蓋Z清單對應舊操作要求；相關歷史證據沿用並明記未重跑。
+
+M10.9 t4t初次fixture submit於create-usecase收到HTTP400，未送planner；PM核CreatePlatformTest既有規則禁止UseCase slug，t4r離線fixture誤帶該欄位。已要求保留原intent、核無新增資源後僅修正fixture欄位，用獨立recovery state接續一次planner；不修改產品契約、不重送原錯誤body、不計為模型失敗。
+
+M10.9修正fixture後唯一planner已提交：UseCase 7bb3430f-3acc-4eb6-ba72-556441acc145／session 6947dc0f-9417-4b36-b0e9-c57c88f713bc／Run d97e63a7-57f4-4546-93d1-a22d7a241570。原HTTP400 intent保留，recovery receipt證明matchingTests空、active/unreclaimed=0；新state為services/server/m10_shop_t4t_recovery.result.json。尚未confirm，等待planner回收與PM審閱。
+
+M10.9唯一planner succeeded且公開session pendingRunIds=[]/reclaimPending=false；Plan b7c83de2-5b1f-4531-b526-ba4d65682045 r1/draft，四Stage與固定login版本符合。PM已讀完整Plan，要求僅手動補order/verify獨立搜尋前置描述，保留原AI提案與diff，不再呼叫planner；修訂完成後最後核閱再confirm。
+
+M10.9 PM完成r2審閱：僅order/verify description擴充，其他Stage欄位與args逐項不變；Compose來源核實以stageId保存回傳，不需額外bind。PM以exclusive intent單次confirm成功，Plan r3/running、login ready/search authoring；receipt /private/tmp/whippet-m10-shop-environment/t4s-confirm.json。t4t接只讀Stage/正式validation及安全sidecar觀察，失敗先GET retry，不自動重試/摘要/發布。
+
+M10.Z離線缺口覆核派新QA t4v：標準opencode run --auto --model opencode-go/muse-spark-1.3-contributor#xhigh；當版help證實--auto為未明拒權限自動核准。parent=t4s/crew1/keep/outlive-parent/cwd已核，新獨立tab tb87286382cab3e19954ac197a2e62aa56命名Whippet QA M10Z 11-14。僅讀指定公開證據並寫/private/tmp/whippet-m10z-t4s-evidence/REPORT.md，不跑API/模型/測試。初期hc status=null但實際畫面已開始讀任務，模型effective/OSC待核，不冒稱working。
+
+M10.9新Plan停止r4：search author 89e442bb-4117-4063-98c3-b7ae1018a247 failed/slotReleased=true，login ready、後兩Stage pending、無正式validation。安全sidecar觀測LIMIT、自試0pass/1fail、無checkpoint、Manager WORKER_FAILED；自試根因UNKNOWN，不能猜特定預算或selector。GET retry eligible=true/r4/moduleRevision1/context1/reclaimed=true，尚未POST。新Runtime owner受派最小離線診斷與必要fixed enum增補提案，不模型/部署；不盲目retry。
+
+新Runtime t4w已實核全新Astra low YOLO/parent=t4s/crew1/keep/outlive-parent/working，新tab tb297de7eaf32d3271de1ce356d6b320eb已命名。QA t4v離線REPORT完成exit0，PM已讀；另用sanitized session export僅投影model metadata，確認providerID=opencode-go/id=muse-spark-1.3-contributor/variant=xhigh（session ses_e2a200575ffezJP7ayFN2aRCEq）。QA未跑產品模型或測試，Z缺口不等於新失敗；執行期間hc status=null限制保留。
+
+Runtime t4w離線原7分支與新增8標籤接縫檢查PASS，反向區分控制exit1；只證現有分類遺失，不當現場根因。PM採最小v2安全自試類別（v10文末），沿既有default-off M109 gate、嚴格v1/v2相容，不新增第二開關、不擴預算/提示/skills。t4w實作與必要測試/固定包，尚未部署或retry。
+
+Server t4t安全reader v1/v2已交：外層版本與worker精確欄位、enum、duplicates/超限拒絕、v1與未觀測投影UNKNOWN、NOFOLLOW不變；5項離線測試一般與python -O皆PASS（owner回報），PM已檢視程式與diff-check。未重讀真sidecar/重試；Runtime分類與固定包仍製備中。
+
+M109 v2：PM核固定包159檔SHA與基底一致，COPY-only --pull=false/--network=none建Manager c65025ac…與Worker cc7f5234…。排空Run/validation/Plan後僅切Manager，原ID/token/WORK_DIR及全部設定保存斷言PASS，Server/DB/Web容器ID未變，舊Manager保留；receipt /private/tmp/whippet-m10-shop-environment/diag-v2-switch.json。未重跑原upgrade-1114 apply。已授權t4t先核資格與環境後原Stage單次retry（CAS4/1/1）；目的為依實際自試回饋修復及取得新v2分類，根因仍UNKNOWN，不增預算或弱化斷言。尚待POST及結果，不當PASS。
+
+原Stage首次retry已成功：t4t核Manager heartbeat約5秒、active/unreclaimed=0與三CAS後單次POST，Plan r5/running，search author 7fc9f5b0-c906-4e54-851c-916065bf2745。尚待結果與v2診斷，不自動再次retry。
+
+首次retry已failed且回收：Plan stopped/r6，Run 7fc9f5b0… v2 terminalClass=LIMIT、selftest pass0/fail0、lastSelfTestFailureClass=UNKNOWN、無checkpoint/artifact/正式validation，order/verify pending。新GET retry仍eligible r6/m1/c2，但PM明令不再模型重試；先收固定grammar/registry白名單工具事件及預算數值投影，區分未進自試與前置工具拒絕，禁止raw內容/秘密。證據services/server/m10_shop_t4t_retry1.final.json。M10.9/Z未通過。
+
+retry1安全事件定位：8model started/succeeded已達權威上限8，工具8/12（read_module_draft1/read_skill_reference1/browser_navigate4/browser_snapshot1/browser_login1），update_module_candidate0；未曾進入自試，無固定工具failed。不能推模型內部原因，但可定向修正探索耗盡行為。PM授權僅一次retry2，以人工content禁止重複探索工具、依已給完整fixture直接候選自試，真harness登入/斷言與原預算不變；三CAS預期r6/m1/c2需重核，不自動第三次retry。
+
+retry2定向修復結果：原Plan stopped/r8，search Run 6e54e4b5-c9e1-4e6f-8c58-eb07fc7b6b58 failed且回收，CAS現8/1/3。browser探索0，read_module_draft/read_skill_reference各1成功，model started3/succeeded2/failed1，第3請求6heartbeat後failed，update_module_candidate0；v2 terminal/selftest皆UNKNOWN，自試0/0，無正式validation，後兩Stage pending。探索耗盡行為已消除，但新失敗不能歸因provider或timeout。PM停止後續模型retry，t4w僅離線核固定錯誤→UNKNOWN映射，不部署/模型；t4t保存intent/outcome/final/safe-events。M10.9/Z未通過，M11/M12未啟動。
+
+retry2離線真engine案例已證AuthorError(invalid_response)會漏映射為UNKNOWN，不能據此判定現場回應。PM授權最後最小離線修補terminal INVALID_RESPONSE與可信cancelled映射，保留精確既有分類、不推原生例外；不模型/封包/部署。Server reader已同步terminal白名單，selftest拒該值，6項離線測試PASS。Runtime實作中，已部署v2固定包保持不變。
+
+最後離線修補完成：Worker可信invalid_response→INVALID_RESPONSE、main cancelled→CANCELLED，既有精確類別優先、原生未知保持UNKNOWN；Manager/reader白名單同步。真engine同案例red exit1→green exit0、Worker build＋4最小測試、Manager3項、Linux arm64 build及diff-check PASS；main code-only cancelled僅靜態核對。報告/private/tmp/whippet-m109-t4s-diagnosis/FINAL-OFFLINE-FIX.md。source ahead of deployment，已部署v2 release逐檔SHA不變，未再封包/部署/模型。原retry2現場仍UNKNOWN；M10.9受阻、M10.Z未過，M11/M12待依賴。後續先決定模型失敗的安全觀測方案，不能把此合成修補當現場定因或直接第三次retry。

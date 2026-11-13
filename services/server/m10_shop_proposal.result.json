@@ -1,0 +1,538 @@
+{
+  "base": "http://127.0.0.1:19287/api",
+  "owner": "t4b",
+  "confirmRequested": true,
+  "credentialsRequested": false,
+  "seedCreated": false,
+  "workspaceId": "f7918b78-2171-47cf-b000-407ca05f86d3",
+  "initialWorkspace": {
+    "id": "f7918b78-2171-47cf-b000-407ca05f86d3",
+    "name": "m10-shop",
+    "revision": 1,
+    "sites": [],
+    "defaultTestUrl": "",
+    "timeoutMs": 60000,
+    "lifecycle": "draft",
+    "authorizationRevision": 0,
+    "scopeStatus": "unconfirmed",
+    "settings": null,
+    "conversationId": "c8d2c7e4-0ae4-4852-b8df-8a9682159192",
+    "activeRunId": null,
+    "currentProposal": null,
+    "roles": [],
+    "secretsAvailable": true,
+    "executionAvailable": true,
+    "unavailableReason": null,
+    "capabilities": {
+      "aiExploration": {
+        "available": false,
+        "reason": "scope_confirmation_required"
+      },
+      "aiExecution": {
+        "available": false,
+        "reason": "scope_confirmation_required"
+      },
+      "manualExecution": {
+        "available": true,
+        "reason": null
+      },
+      "credentialLogin": {
+        "available": false,
+        "reason": "scope_confirmation_required"
+      }
+    }
+  },
+  "messageRequest": {
+    "content": "請只產生正式 Workspace proposal 供 PM 審核，不確認 scope、不套用、不探索或造訪站台。名稱 m10-shop，用途 M10.9 隔離合成商店四階段登入→搜尋→下單→驗證。唯一 target origin 必須是 http://host.docker.internal:19387，defaultTestUrl 必須是 http://host.docker.internal:19387/login，timeoutMs=60000。僅允許該單一 origin 的合成資料流程，dependencies=[]、excludedOrigins=[]，exclusions 明確禁止其他 origin、外部網路/資源、真付款與真實帳號資料。配置唯一 buyer 角色：name=buyer、loginMethod=form、loginOrigin=http://host.docker.internal:19387、新 roleId=null 交由 Server 配置。不得索取、產生、硬編碼或輸出任何帳密；後續 PM 會透過正式 credentials API 安全注入，憑證不進 proposal/prompt/script。背景說明：GET /login，透過平台 loginAs 安全登入後才可存取受保護 /products?q=Whippet；合成下單 POST /orders，每次新 UUID，/orders/<UUID> 依目前 session 查詢。登入成功必須斷言受保護頁 account-state，表單提交不等於登入成功。沒有外部 dependencies/CDN/付款。此次僅產 proposal，等待 PM 審核及另行正式確認。",
+    "revision": 1,
+    "contextRevision": 0
+  },
+  "messageRequested": true,
+  "submission": {
+    "run": {
+      "scriptOrigin": "legacy",
+      "workspaceId": "f7918b78-2171-47cf-b000-407ca05f86d3",
+      "id": "bf3aa00c-888f-4b29-bc54-e3d2ddf73c5d",
+      "testId": null,
+      "workspaceContext": {
+        "schemaVersion": "1",
+        "workspaceId": "f7918b78-2171-47cf-b000-407ca05f86d3",
+        "settingsRevision": 1,
+        "config": null,
+        "roleRefs": []
+      },
+      "status": "queued",
+      "createdAt": "2026-11-13T08:20:34.355355Z",
+      "kind": "author",
+      "workspaceSettings": {
+        "revision": 1,
+        "sites": [],
+        "defaultTestUrl": "",
+        "timeoutMs": 60000
+      },
+      "editingSessionId": null,
+      "authorMode": "workspace"
+    },
+    "conversationId": "c8d2c7e4-0ae4-4852-b8df-8a9682159192"
+  },
+  "runId": "bf3aa00c-888f-4b29-bc54-e3d2ddf73c5d",
+  "runStatus": "succeeded",
+  "run": {
+    "scriptOrigin": "legacy",
+    "workspaceId": "f7918b78-2171-47cf-b000-407ca05f86d3",
+    "id": "bf3aa00c-888f-4b29-bc54-e3d2ddf73c5d",
+    "testId": null,
+    "workspaceContext": {
+      "schemaVersion": "1",
+      "workspaceId": "f7918b78-2171-47cf-b000-407ca05f86d3",
+      "settingsRevision": 1,
+      "config": null,
+      "roleRefs": []
+    },
+    "status": "succeeded",
+    "createdAt": "2026-11-13T08:20:34.355355Z",
+    "startedAt": "2026-11-13T08:20:34.427043Z",
+    "finishedAt": "2026-11-13T08:20:52.823341Z",
+    "kind": "author",
+    "workspaceSettings": {
+      "revision": 1,
+      "sites": [],
+      "defaultTestUrl": "",
+      "timeoutMs": 60000
+    },
+    "editingSessionId": null,
+    "authorMode": "workspace",
+    "progressEvents": [
+      "author:model:1:started",
+      "author:model:1:heartbeat",
+      "author:model:1:succeeded"
+    ]
+  },
+  "workspace": {
+    "id": "f7918b78-2171-47cf-b000-407ca05f86d3",
+    "name": "m10-shop",
+    "revision": 1,
+    "sites": [],
+    "defaultTestUrl": "",
+    "timeoutMs": 60000,
+    "lifecycle": "draft",
+    "authorizationRevision": 0,
+    "scopeStatus": "unconfirmed",
+    "settings": null,
+    "conversationId": "c8d2c7e4-0ae4-4852-b8df-8a9682159192",
+    "activeRunId": null,
+    "currentProposal": {
+      "id": "f7c76b19-3990-4eeb-99cd-c46a0d79d59b",
+      "workspaceId": "f7918b78-2171-47cf-b000-407ca05f86d3",
+      "conversationId": "c8d2c7e4-0ae4-4852-b8df-8a9682159192",
+      "sourceRunId": "bf3aa00c-888f-4b29-bc54-e3d2ddf73c5d",
+      "baseRevision": 1,
+      "contextRevision": 2,
+      "status": "pending",
+      "content": {
+        "name": "m10-shop",
+        "purpose": "M10.9 隔離合成商店四階段登入→搜尋→下單→驗證。",
+        "backgroundSummary": "合成商店隔離驗證：GET /login 為登入入口，需透過平台 loginAs 安全登入後才可存取受保護 /products?q=Whippet；合成下單 POST /orders，每次產生新 UUID，並以目前 session 查詢 /orders/<UUID> 進行驗證。登入成功必須以受保護頁 account-state 斷言，表單提交不等於登入成功。無外部 dependencies、CDN 與付款流程，不使用真實帳號資料。此次僅產 proposal，等待 PM 審核及另行正式確認。",
+        "targets": [
+          {
+            "name": "m10-shop",
+            "purpose": "M10.9 隔離合成商店四階段驗證：登入→搜尋→下單→驗證，僅限此單一 origin 合成資料流程。",
+            "origin": "http://host.docker.internal:19387"
+          }
+        ],
+        "dependencies": [],
+        "excludedOrigins": [],
+        "exclusions": "僅允許唯一 target origin http://host.docker.internal:19387 的合成資料流程；明確禁止其他任何 origin、外部網路與外部資源（含 CDN/API/第三方服務）、真付款流程與真實帳號資料；不得索取、產生、硬編碼或輸出任何帳密。",
+        "loginRoles": [
+          {
+            "roleId": "7da20730-874d-41ff-aea0-7a5650f37c12",
+            "name": "buyer",
+            "loginMethod": "form",
+            "loginOrigin": "http://host.docker.internal:19387"
+          }
+        ],
+        "defaultTestUrl": "http://host.docker.internal:19387/login",
+        "timeoutMs": 60000
+      },
+      "scopeHash": "5a50b8c4c807d058a7d55f2d05c6c97b9472a7a6e866fa4d5f4bb5530c49f241",
+      "scopeConfirmed": false,
+      "invalidationReason": null,
+      "appliedRevision": null,
+      "createdAt": "2026-11-13T08:20:52.823341Z"
+    },
+    "roles": [
+      {
+        "roleId": "7da20730-874d-41ff-aea0-7a5650f37c12",
+        "secretRef": null,
+        "secretVersion": null,
+        "configured": false
+      }
+    ],
+    "secretsAvailable": true,
+    "executionAvailable": true,
+    "unavailableReason": null,
+    "capabilities": {
+      "aiExploration": {
+        "available": false,
+        "reason": "scope_confirmation_required"
+      },
+      "aiExecution": {
+        "available": false,
+        "reason": "scope_confirmation_required"
+      },
+      "manualExecution": {
+        "available": true,
+        "reason": null
+      },
+      "credentialLogin": {
+        "available": false,
+        "reason": "scope_confirmation_required"
+      }
+    }
+  },
+  "proposal": {
+    "id": "f7c76b19-3990-4eeb-99cd-c46a0d79d59b",
+    "workspaceId": "f7918b78-2171-47cf-b000-407ca05f86d3",
+    "conversationId": "c8d2c7e4-0ae4-4852-b8df-8a9682159192",
+    "sourceRunId": "bf3aa00c-888f-4b29-bc54-e3d2ddf73c5d",
+    "baseRevision": 1,
+    "contextRevision": 2,
+    "status": "pending",
+    "content": {
+      "name": "m10-shop",
+      "purpose": "M10.9 隔離合成商店四階段登入→搜尋→下單→驗證。",
+      "backgroundSummary": "合成商店隔離驗證：GET /login 為登入入口，需透過平台 loginAs 安全登入後才可存取受保護 /products?q=Whippet；合成下單 POST /orders，每次產生新 UUID，並以目前 session 查詢 /orders/<UUID> 進行驗證。登入成功必須以受保護頁 account-state 斷言，表單提交不等於登入成功。無外部 dependencies、CDN 與付款流程，不使用真實帳號資料。此次僅產 proposal，等待 PM 審核及另行正式確認。",
+      "targets": [
+        {
+          "name": "m10-shop",
+          "purpose": "M10.9 隔離合成商店四階段驗證：登入→搜尋→下單→驗證，僅限此單一 origin 合成資料流程。",
+          "origin": "http://host.docker.internal:19387"
+        }
+      ],
+      "dependencies": [],
+      "excludedOrigins": [],
+      "exclusions": "僅允許唯一 target origin http://host.docker.internal:19387 的合成資料流程；明確禁止其他任何 origin、外部網路與外部資源（含 CDN/API/第三方服務）、真付款流程與真實帳號資料；不得索取、產生、硬編碼或輸出任何帳密。",
+      "loginRoles": [
+        {
+          "roleId": "7da20730-874d-41ff-aea0-7a5650f37c12",
+          "name": "buyer",
+          "loginMethod": "form",
+          "loginOrigin": "http://host.docker.internal:19387"
+        }
+      ],
+      "defaultTestUrl": "http://host.docker.internal:19387/login",
+      "timeoutMs": 60000
+    },
+    "scopeHash": "5a50b8c4c807d058a7d55f2d05c6c97b9472a7a6e866fa4d5f4bb5530c49f241",
+    "scopeConfirmed": false,
+    "invalidationReason": null,
+    "appliedRevision": null,
+    "createdAt": "2026-11-13T08:20:52.823341Z"
+  },
+  "confirmPreflight": {
+    "id": "f7c76b19-3990-4eeb-99cd-c46a0d79d59b",
+    "workspaceId": "f7918b78-2171-47cf-b000-407ca05f86d3",
+    "conversationId": "c8d2c7e4-0ae4-4852-b8df-8a9682159192",
+    "sourceRunId": "bf3aa00c-888f-4b29-bc54-e3d2ddf73c5d",
+    "baseRevision": 1,
+    "contextRevision": 2,
+    "status": "pending",
+    "content": {
+      "name": "m10-shop",
+      "purpose": "M10.9 隔離合成商店四階段登入→搜尋→下單→驗證。",
+      "backgroundSummary": "合成商店隔離驗證：GET /login 為登入入口，需透過平台 loginAs 安全登入後才可存取受保護 /products?q=Whippet；合成下單 POST /orders，每次產生新 UUID，並以目前 session 查詢 /orders/<UUID> 進行驗證。登入成功必須以受保護頁 account-state 斷言，表單提交不等於登入成功。無外部 dependencies、CDN 與付款流程，不使用真實帳號資料。此次僅產 proposal，等待 PM 審核及另行正式確認。",
+      "targets": [
+        {
+          "name": "m10-shop",
+          "purpose": "M10.9 隔離合成商店四階段驗證：登入→搜尋→下單→驗證，僅限此單一 origin 合成資料流程。",
+          "origin": "http://host.docker.internal:19387"
+        }
+      ],
+      "dependencies": [],
+      "excludedOrigins": [],
+      "exclusions": "僅允許唯一 target origin http://host.docker.internal:19387 的合成資料流程；明確禁止其他任何 origin、外部網路與外部資源（含 CDN/API/第三方服務）、真付款流程與真實帳號資料；不得索取、產生、硬編碼或輸出任何帳密。",
+      "loginRoles": [
+        {
+          "roleId": "7da20730-874d-41ff-aea0-7a5650f37c12",
+          "name": "buyer",
+          "loginMethod": "form",
+          "loginOrigin": "http://host.docker.internal:19387"
+        }
+      ],
+      "defaultTestUrl": "http://host.docker.internal:19387/login",
+      "timeoutMs": 60000
+    },
+    "scopeHash": "5a50b8c4c807d058a7d55f2d05c6c97b9472a7a6e866fa4d5f4bb5530c49f241",
+    "scopeConfirmed": false,
+    "invalidationReason": null,
+    "appliedRevision": null,
+    "createdAt": "2026-11-13T08:20:52.823341Z"
+  },
+  "confirmRequest": {
+    "baseRevision": 1,
+    "confirmed": true
+  },
+  "confirmation": {
+    "proposal": {
+      "id": "f7c76b19-3990-4eeb-99cd-c46a0d79d59b",
+      "workspaceId": "f7918b78-2171-47cf-b000-407ca05f86d3",
+      "conversationId": "c8d2c7e4-0ae4-4852-b8df-8a9682159192",
+      "sourceRunId": "bf3aa00c-888f-4b29-bc54-e3d2ddf73c5d",
+      "baseRevision": 1,
+      "contextRevision": 2,
+      "status": "applied",
+      "content": {
+        "name": "m10-shop",
+        "purpose": "M10.9 隔離合成商店四階段登入→搜尋→下單→驗證。",
+        "backgroundSummary": "合成商店隔離驗證：GET /login 為登入入口，需透過平台 loginAs 安全登入後才可存取受保護 /products?q=Whippet；合成下單 POST /orders，每次產生新 UUID，並以目前 session 查詢 /orders/<UUID> 進行驗證。登入成功必須以受保護頁 account-state 斷言，表單提交不等於登入成功。無外部 dependencies、CDN 與付款流程，不使用真實帳號資料。此次僅產 proposal，等待 PM 審核及另行正式確認。",
+        "targets": [
+          {
+            "name": "m10-shop",
+            "purpose": "M10.9 隔離合成商店四階段驗證：登入→搜尋→下單→驗證，僅限此單一 origin 合成資料流程。",
+            "origin": "http://host.docker.internal:19387"
+          }
+        ],
+        "dependencies": [],
+        "excludedOrigins": [],
+        "exclusions": "僅允許唯一 target origin http://host.docker.internal:19387 的合成資料流程；明確禁止其他任何 origin、外部網路與外部資源（含 CDN/API/第三方服務）、真付款流程與真實帳號資料；不得索取、產生、硬編碼或輸出任何帳密。",
+        "loginRoles": [
+          {
+            "roleId": "7da20730-874d-41ff-aea0-7a5650f37c12",
+            "name": "buyer",
+            "loginMethod": "form",
+            "loginOrigin": "http://host.docker.internal:19387"
+          }
+        ],
+        "defaultTestUrl": "http://host.docker.internal:19387/login",
+        "timeoutMs": 60000
+      },
+      "scopeHash": "5a50b8c4c807d058a7d55f2d05c6c97b9472a7a6e866fa4d5f4bb5530c49f241",
+      "scopeConfirmed": true,
+      "invalidationReason": null,
+      "appliedRevision": 2,
+      "createdAt": "2026-11-13T08:20:52.823341Z"
+    },
+    "workspace": {
+      "id": "f7918b78-2171-47cf-b000-407ca05f86d3",
+      "name": "m10-shop",
+      "revision": 2,
+      "sites": [
+        {
+          "name": "m10-shop",
+          "url": "http://host.docker.internal:19387"
+        }
+      ],
+      "defaultTestUrl": "http://host.docker.internal:19387/login",
+      "timeoutMs": 60000,
+      "lifecycle": "active",
+      "authorizationRevision": 1,
+      "scopeStatus": "confirmed",
+      "settings": {
+        "name": "m10-shop",
+        "purpose": "M10.9 隔離合成商店四階段登入→搜尋→下單→驗證。",
+        "backgroundSummary": "合成商店隔離驗證：GET /login 為登入入口，需透過平台 loginAs 安全登入後才可存取受保護 /products?q=Whippet；合成下單 POST /orders，每次產生新 UUID，並以目前 session 查詢 /orders/<UUID> 進行驗證。登入成功必須以受保護頁 account-state 斷言，表單提交不等於登入成功。無外部 dependencies、CDN 與付款流程，不使用真實帳號資料。此次僅產 proposal，等待 PM 審核及另行正式確認。",
+        "targets": [
+          {
+            "name": "m10-shop",
+            "purpose": "M10.9 隔離合成商店四階段驗證：登入→搜尋→下單→驗證，僅限此單一 origin 合成資料流程。",
+            "origin": "http://host.docker.internal:19387"
+          }
+        ],
+        "dependencies": [],
+        "excludedOrigins": [],
+        "exclusions": "僅允許唯一 target origin http://host.docker.internal:19387 的合成資料流程；明確禁止其他任何 origin、外部網路與外部資源（含 CDN/API/第三方服務）、真付款流程與真實帳號資料；不得索取、產生、硬編碼或輸出任何帳密。",
+        "loginRoles": [
+          {
+            "roleId": "7da20730-874d-41ff-aea0-7a5650f37c12",
+            "name": "buyer",
+            "loginMethod": "form",
+            "loginOrigin": "http://host.docker.internal:19387"
+          }
+        ],
+        "defaultTestUrl": "http://host.docker.internal:19387/login",
+        "timeoutMs": 60000
+      },
+      "conversationId": "c8d2c7e4-0ae4-4852-b8df-8a9682159192",
+      "activeRunId": null,
+      "currentProposal": {
+        "id": "f7c76b19-3990-4eeb-99cd-c46a0d79d59b",
+        "workspaceId": "f7918b78-2171-47cf-b000-407ca05f86d3",
+        "conversationId": "c8d2c7e4-0ae4-4852-b8df-8a9682159192",
+        "sourceRunId": "bf3aa00c-888f-4b29-bc54-e3d2ddf73c5d",
+        "baseRevision": 1,
+        "contextRevision": 2,
+        "status": "applied",
+        "content": {
+          "name": "m10-shop",
+          "purpose": "M10.9 隔離合成商店四階段登入→搜尋→下單→驗證。",
+          "backgroundSummary": "合成商店隔離驗證：GET /login 為登入入口，需透過平台 loginAs 安全登入後才可存取受保護 /products?q=Whippet；合成下單 POST /orders，每次產生新 UUID，並以目前 session 查詢 /orders/<UUID> 進行驗證。登入成功必須以受保護頁 account-state 斷言，表單提交不等於登入成功。無外部 dependencies、CDN 與付款流程，不使用真實帳號資料。此次僅產 proposal，等待 PM 審核及另行正式確認。",
+          "targets": [
+            {
+              "name": "m10-shop",
+              "purpose": "M10.9 隔離合成商店四階段驗證：登入→搜尋→下單→驗證，僅限此單一 origin 合成資料流程。",
+              "origin": "http://host.docker.internal:19387"
+            }
+          ],
+          "dependencies": [],
+          "excludedOrigins": [],
+          "exclusions": "僅允許唯一 target origin http://host.docker.internal:19387 的合成資料流程；明確禁止其他任何 origin、外部網路與外部資源（含 CDN/API/第三方服務）、真付款流程與真實帳號資料；不得索取、產生、硬編碼或輸出任何帳密。",
+          "loginRoles": [
+            {
+              "roleId": "7da20730-874d-41ff-aea0-7a5650f37c12",
+              "name": "buyer",
+              "loginMethod": "form",
+              "loginOrigin": "http://host.docker.internal:19387"
+            }
+          ],
+          "defaultTestUrl": "http://host.docker.internal:19387/login",
+          "timeoutMs": 60000
+        },
+        "scopeHash": "5a50b8c4c807d058a7d55f2d05c6c97b9472a7a6e866fa4d5f4bb5530c49f241",
+        "scopeConfirmed": true,
+        "invalidationReason": null,
+        "appliedRevision": 2,
+        "createdAt": "2026-11-13T08:20:52.823341Z"
+      },
+      "roles": [
+        {
+          "roleId": "7da20730-874d-41ff-aea0-7a5650f37c12",
+          "secretRef": null,
+          "secretVersion": null,
+          "configured": false
+        }
+      ],
+      "secretsAvailable": true,
+      "executionAvailable": true,
+      "unavailableReason": null,
+      "capabilities": {
+        "aiExploration": {
+          "available": true,
+          "reason": null
+        },
+        "aiExecution": {
+          "available": true,
+          "reason": null
+        },
+        "manualExecution": {
+          "available": true,
+          "reason": null
+        },
+        "credentialLogin": {
+          "available": false,
+          "reason": "credentials_required"
+        }
+      }
+    }
+  },
+  "confirmedWorkspace": {
+    "id": "f7918b78-2171-47cf-b000-407ca05f86d3",
+    "name": "m10-shop",
+    "revision": 2,
+    "sites": [
+      {
+        "name": "m10-shop",
+        "url": "http://host.docker.internal:19387"
+      }
+    ],
+    "defaultTestUrl": "http://host.docker.internal:19387/login",
+    "timeoutMs": 60000,
+    "lifecycle": "active",
+    "authorizationRevision": 1,
+    "scopeStatus": "confirmed",
+    "settings": {
+      "name": "m10-shop",
+      "purpose": "M10.9 隔離合成商店四階段登入→搜尋→下單→驗證。",
+      "backgroundSummary": "合成商店隔離驗證：GET /login 為登入入口，需透過平台 loginAs 安全登入後才可存取受保護 /products?q=Whippet；合成下單 POST /orders，每次產生新 UUID，並以目前 session 查詢 /orders/<UUID> 進行驗證。登入成功必須以受保護頁 account-state 斷言，表單提交不等於登入成功。無外部 dependencies、CDN 與付款流程，不使用真實帳號資料。此次僅產 proposal，等待 PM 審核及另行正式確認。",
+      "targets": [
+        {
+          "name": "m10-shop",
+          "purpose": "M10.9 隔離合成商店四階段驗證：登入→搜尋→下單→驗證，僅限此單一 origin 合成資料流程。",
+          "origin": "http://host.docker.internal:19387"
+        }
+      ],
+      "dependencies": [],
+      "excludedOrigins": [],
+      "exclusions": "僅允許唯一 target origin http://host.docker.internal:19387 的合成資料流程；明確禁止其他任何 origin、外部網路與外部資源（含 CDN/API/第三方服務）、真付款流程與真實帳號資料；不得索取、產生、硬編碼或輸出任何帳密。",
+      "loginRoles": [
+        {
+          "roleId": "7da20730-874d-41ff-aea0-7a5650f37c12",
+          "name": "buyer",
+          "loginMethod": "form",
+          "loginOrigin": "http://host.docker.internal:19387"
+        }
+      ],
+      "defaultTestUrl": "http://host.docker.internal:19387/login",
+      "timeoutMs": 60000
+    },
+    "conversationId": "c8d2c7e4-0ae4-4852-b8df-8a9682159192",
+    "activeRunId": null,
+    "currentProposal": {
+      "id": "f7c76b19-3990-4eeb-99cd-c46a0d79d59b",
+      "workspaceId": "f7918b78-2171-47cf-b000-407ca05f86d3",
+      "conversationId": "c8d2c7e4-0ae4-4852-b8df-8a9682159192",
+      "sourceRunId": "bf3aa00c-888f-4b29-bc54-e3d2ddf73c5d",
+      "baseRevision": 1,
+      "contextRevision": 2,
+      "status": "applied",
+      "content": {
+        "name": "m10-shop",
+        "purpose": "M10.9 隔離合成商店四階段登入→搜尋→下單→驗證。",
+        "backgroundSummary": "合成商店隔離驗證：GET /login 為登入入口，需透過平台 loginAs 安全登入後才可存取受保護 /products?q=Whippet；合成下單 POST /orders，每次產生新 UUID，並以目前 session 查詢 /orders/<UUID> 進行驗證。登入成功必須以受保護頁 account-state 斷言，表單提交不等於登入成功。無外部 dependencies、CDN 與付款流程，不使用真實帳號資料。此次僅產 proposal，等待 PM 審核及另行正式確認。",
+        "targets": [
+          {
+            "name": "m10-shop",
+            "purpose": "M10.9 隔離合成商店四階段驗證：登入→搜尋→下單→驗證，僅限此單一 origin 合成資料流程。",
+            "origin": "http://host.docker.internal:19387"
+          }
+        ],
+        "dependencies": [],
+        "excludedOrigins": [],
+        "exclusions": "僅允許唯一 target origin http://host.docker.internal:19387 的合成資料流程；明確禁止其他任何 origin、外部網路與外部資源（含 CDN/API/第三方服務）、真付款流程與真實帳號資料；不得索取、產生、硬編碼或輸出任何帳密。",
+        "loginRoles": [
+          {
+            "roleId": "7da20730-874d-41ff-aea0-7a5650f37c12",
+            "name": "buyer",
+            "loginMethod": "form",
+            "loginOrigin": "http://host.docker.internal:19387"
+          }
+        ],
+        "defaultTestUrl": "http://host.docker.internal:19387/login",
+        "timeoutMs": 60000
+      },
+      "scopeHash": "5a50b8c4c807d058a7d55f2d05c6c97b9472a7a6e866fa4d5f4bb5530c49f241",
+      "scopeConfirmed": true,
+      "invalidationReason": null,
+      "appliedRevision": 2,
+      "createdAt": "2026-11-13T08:20:52.823341Z"
+    },
+    "roles": [
+      {
+        "roleId": "7da20730-874d-41ff-aea0-7a5650f37c12",
+        "secretRef": null,
+        "secretVersion": null,
+        "configured": false
+      }
+    ],
+    "secretsAvailable": true,
+    "executionAvailable": true,
+    "unavailableReason": null,
+    "capabilities": {
+      "aiExploration": {
+        "available": true,
+        "reason": null
+      },
+      "aiExecution": {
+        "available": true,
+        "reason": null
+      },
+      "manualExecution": {
+        "available": true,
+        "reason": null
+      },
+      "credentialLogin": {
+        "available": false,
+        "reason": "credentials_required"
+      }
+    }
+  }
+}

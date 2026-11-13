@@ -91,3 +91,56 @@ SHA-256：`da57ff8c2354fac99cdc8b96a57801801bf735fc7fa37708ae7484d7a38c370a`。
 封包與逐檔清單：同目錄 `archive-SHA256SUMS`、`dist-SHA256SUMS`。
 
 交 PM 部署；尚未驗證真模型、真後端 Plan/partial、Worker回收與原子發佈。M10.7整體不標完成，未 commit/push。
+
+## 2026-11-13：真 API 回歸與 Module 手動入口
+
+- 19087 seed-null 修正映像已實際目視：歷史首頁不再 INVALID_RESPONSE，Catalog 空狀態與 Workspace 設定正常。owned Module 成功／失敗 HTML 報告可開啟，失敗明細顯示 Stage 1 prepare 通過、Stage 2 verify intentional-mismatch；UseCase GET Plan 200 null 顯示空狀態。桌面 1440 與窄版 390 均無 pageerror、HTTP 錯誤或水平溢出。
+- 真證據：`/private/tmp/whippet-m10-web-review/real-backend/2026-11-13T05-18-47-727Z`（20 張，無 API 攔截）。保留初始首頁 FAIL 於 `2026-11-13T05-12-02-366Z`。此輪選取 UseCase 時各 viewport 有一次冪等 editing-session POST，不能宣稱零 mutation；未執行 Run、摘要或發佈。
+- 已定位初始編輯模式在 Test 尚未載入時誤判缺 session。修正等待 Test 回應、既有 pointer 用 GET、GET 失敗不自動 POST；新版真部署待 PM 驗證。
+- 依 t4b 確認的既有 API 補新增 Module（slug/name/description），以及完整 metadata／harness／本體的手動編輯。slug 只採 Test 回應且不可改；完整 Module 一併 PUT，使用 session+revision CAS；409 禁止自動重送，須重新載入。UseCase 本體唯讀，走 Plan/Compose。
+- 加入 Module create/parse/full-save/409 API 邊界。歷史 listVersions 僅接受明確 null；新 publish/batch 維持 string，不以寬鬆型別掩蓋缺欄位。
+- 5187 合成攔截操作證據：`/private/tmp/whippet-m10-web-review/module-ui/`，建立／編輯／儲存／409／既有 session GET，desktop 1440×1000、narrow 390×844。畫面明標合成，不能當真後端寫入驗收。
+- 限制：Module 新入口與 session 修正尚待新版部署後真 API 驗證；無真模型、Plan 執行／整批發佈、partial Continue 真流程驗收。M10.7 整體不標完成。
+
+## 2026-11-13：新版部署後 owned 真 UI 定向驗證
+
+PM 部署 image `2f9bf238a8f474ed1acdf3e8fef73ec13dde2beb4cce74812688963f694b0d0b` 至 19087 後，使用真同源 API、無攔截完成：
+
+- UI 新建 `m10-web-fixture-1794547552297`，Test `34d6ad61-0cb8-4308-b893-9d29dd7d3147`，editing session `0fb78d53-cad8-4237-9b58-f2ff4a086b19`。
+- 完整 body／metadata／harness 真保存 revision 2，重新登入選取後逐欄比對一致；390×844 窄版亦重開確認。
+- 只對本輪 owned 草稿，以目前 revision 2 的完整 CAS PUT 更新至 revision 3；原 UI 使用舊 revision 保存得到預期 409，保留未儲存內容、禁用儲存。觀察 4 秒僅一次 PUT，沒有盲重送。使用者明確確認放棄並重新載入後讀到 revision 3，未覆寫外部更新。
+- 既有 UseCase `52cf7b3c-1223-4b90-bc4d-cfc59fc22a6d` 左側選取與 Plan 空狀態，desktop／narrow 均只有 GET，零 POST／PUT；已驗證 session 載入競態修正。
+- 8 張真畫面與請求狀態：`/private/tmp/whippet-m10-web-review/real-backend/owned-2026-11-13T05-25-52-297Z/`。腳本 `real-backend/owned-module.mjs`；results.json 記錄 IDs、狀態與斷言。無 pageerror、非預期 HTTP 錯誤或水平溢出，409 為指定測試的預期結果。
+- 沒有呼叫模型、summary、publish、validate 或 continue；未碰 18087。保留 owned fixture revision 3 供 PM 追溯。沒有新產品程式變動，原固定 dist/SHA 不變，不需為此文件重建。
+- 尚未驗證真 Plan 執行／Stage 產稿／整批發佈及 partial Continue；M10.7 整體維持進行中。
+
+## 2026-11-13：owned UseCase 真 Plan draft 最小切片
+
+- 僅 19087、無 API 攔截。新建 `m10-web-plan-fixture-1794547718681`，Test `99f1a379-3937-4211-995f-b8420f9778fe`；session `0d687f71-62c0-4848-89cb-7705aa797f3d`，草稿 revision 1；Plan `c77cdc38-8c2e-4e15-8ac7-88d33ced49d0`，最終 draft Plan revision 2。未改動 t4b UseCase。
+- 初始 GET `{plan:null}`。32 個 action=create Stage 皆明標合成 Module 描述、只保存不執行；UI PUT200 得 Plan revision 1。桌面／窄版重開逐項核對順序、巢狀 literal、前一階段 binding path、bind 全部一致。
+- 第 33 Stage 的 UI 本機檢查拒絕且未發 PUT；以同一 owned UseCase 直接送出 33 Stage 得 HTTP400 `invalid_request`，再次 GET 仍為 null；沒有以無效請求產生 Plan。
+- 開啟 editor 鎖定 Plan r1 後，僅 owned Plan 外部 CAS PUT 更新至 r2；舊 UI 保存真409恰一次。輪詢4秒後仍保留本機 JSON、禁用儲存，無盲重送。明確重新載入不替換本機編輯 CAS；放棄本機編輯並再次修訂才讀到 r2 的完整內容。
+- 最終證據（9張、desktop1440×1000/narrow390×844、無pageerror/非預期HTTP錯誤/溢出）：`/private/tmp/whippet-m10-web-review/real-backend/plan-2026-11-13T05-29-12-156Z/`。第一次建立UseCase及腳本selector失敗保留於 `plan-2026-11-13T05-28-38-681Z/`；測試定位由button修為實際tab後沿用同一owned Test，未重複建立。
+- 未 POST confirm/summary/publish/continue/validate/messages。Plan UI 僅自動 GET 批次摘要（null），沒有排任務；32筆Module僅Plan描述，未建立Module或宣稱驗證／發佈。固定dist/SHA不變，本輪只追加此紀錄與tmp證據，無需重建。
+- 真 Plan 執行／Stage產稿／批次發佈與 partial Continue 仍未驗，M10.7整體維持進行中。
+
+## 2026-11-13：發布後 GET storm 修正（合成回歸）
+
+- 真發布原證據保留於 `/private/tmp/whippet-m10-web-review/live-next/2026-11-13T07-11-10-011Z`：publish200僅一次，接著Test/versions各1903次GET，UI卡載入。後續版本/Catalog只讀核對通過不掩蓋此UI缺陷。
+- 以 `scripts/check-publish-settle.mjs` 在獨立5187攔截合成API重現真React路徑，畫面明標合成。4秒測量窗口中，修前desktop 8882次／narrow9292次Test+versions GET，後2秒仍4712／4694次，publish各一次。證據 `publish-storm/red-valid-fixture/`；初版fixture缺Workspace欄位的測試建立錯誤另留 `publish-storm/red/`，不算產品重現。
+- 根因：App傳給TestWorkspace的inline onModeChange在每次render改變identity；session published effect依賴它並retry Test/versions，onTestUpdated回寫父層後再render，形成循環。只把callback綁定穩定selected Test ID，用useCallback保持identity；不更改輪詢上限、publish/session API或CAS語意。
+- 修後同一4秒窗口：desktop/narrow成功均4次GET，後2秒新增0；概覽模式穩定、無載入骨架。409/503各自只POST一次，零Test/versions重抓、不開新session、不要求摘要，保留編輯模式且發布禁用。六情境PASS、無pageerror/水平溢出。綠燈與截圖：`/private/tmp/whippet-m10-web-review/publish-storm/green/`。
+- 驗證：`npm --prefix apps/web run build`（含tsc）PASS；`node apps/web/scripts/check-m10-api.mjs` PASS；`REVIEW_OUT=<tmp> node apps/web/scripts/check-publish-settle.mjs` PASS。回歸只用已存在worker Playwright與Chromium，可用CHROMIUM_EXECUTABLE指定路徑，不安裝依賴。
+- 變更僅 `src/App.tsx`、新增 `scripts/check-publish-settle.mjs` 與本紀錄。新版固定dist另交PM；尚待部署後驗證，不重做已成功真發布。本輪無真fixture寫入。
+- Server新image38700cb5f0e4e1bd815dc7977219c22cf473a228c7a81ad4481c6a3cd721eb16部署後，依PM授權單次公開GET原closed session Plan HTTP200，實讀a4c96e46-b57f-4bdb-9d8f-150f4b8c9af7 done/r4，兩Stage ready。證據 `/private/tmp/whippet-m10-web-review/live-next/plan-done-public-get.json`，原GET409證據保留；不以發布200推論done。
+- partial尚未真驗，M10.7整體維持進行中。
+
+### 失敗 Stage 人工修復（2026-11-13，合成驗證）
+
+依 contracts/mvp-v10.md 固定 retry wire 新增 `StageRetryForm.tsx`，failed create/modify Stage 可查詢資格；原 Module/session、author/validation 狀態、回收證據及三 CAS 明列。人工修復指示必填、最多 16000 Unicode code points、保留原文；文字或資格快照改變清除獨立確認。未知／缺欄／source null／未回收／非 eligible 不可提交。409 與不確定結果鎖住，須明確重新載入、重新人工確認；不自動重送或替換 CAS。
+
+POST 回應可能是冪等歷史 Plan，故成功後另 GET 現況，不把歷史 running 回應當正在執行。仍走整批候選驗證／摘要／發布，不獨立發布 Module。
+
+檢查：`npm run build --prefix apps/web`、`node apps/web/scripts/check-m10-api.mjs` 通過。`check-stage-retry.mjs` 使用既有 5187 預覽、完全攔截合成 API、畫面明標非真驗收；桌面／窄版各驗歷史 receipt、409、503、content/snapshot 清確認、source null/reclaimed=false、未知 reason、網路中斷。無 pageerror／水平溢出，寫入案例各一次，禁用案例零次；歷史 receipt 另保存 response 與 GET 現況。未呼叫真 API／模型／部署。
+
+證據 `/private/tmp/whippet-m10-web-review/stage-retry/{latest,extra,history-receipts}/`；固定包 `fixed-release/whippet-stage-retry-dist.tar.gz` SHA256 `0d8d1c968f7154ad97771f534bf4ad54a44bc0a71e58626ff25f1d9e68e0cd95`。保留舊包，真重試待 PM 授權，M10.7 未自行標整體完成。

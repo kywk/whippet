@@ -1,0 +1,394 @@
+{
+  "base": "http://127.0.0.1:19087/api",
+  "owner": "QA",
+  "preparedBy": "t4b",
+  "workspaceId": "33b9b990-e974-4732-b8f9-2d1e6bb26901",
+  "initialWorkspace": {
+    "id": "33b9b990-e974-4732-b8f9-2d1e6bb26901",
+    "name": "m10-golden-r102",
+    "revision": 1,
+    "sites": [],
+    "defaultTestUrl": "",
+    "timeoutMs": 60000,
+    "lifecycle": "draft",
+    "authorizationRevision": 0,
+    "scopeStatus": "unconfirmed",
+    "settings": null,
+    "conversationId": "fa4911e8-8795-4888-918f-3e9cad313c68",
+    "activeRunId": null,
+    "currentProposal": null,
+    "roles": [],
+    "secretsAvailable": false,
+    "executionAvailable": true,
+    "unavailableReason": null,
+    "capabilities": {
+      "aiExploration": {
+        "available": false,
+        "reason": "scope_confirmation_required"
+      },
+      "aiExecution": {
+        "available": false,
+        "reason": "scope_confirmation_required"
+      },
+      "manualExecution": {
+        "available": true,
+        "reason": null
+      },
+      "credentialLogin": {
+        "available": false,
+        "reason": "secrets_unavailable"
+      }
+    }
+  },
+  "conversationId": "fa4911e8-8795-4888-918f-3e9cad313c68",
+  "messageRequest": {
+    "content": "請只產生正式Workspace proposal供PM審核，不確認scope或套用、不探索。名稱m10-golden-r102，用途M10.8黃金任務集隔離QA驗收。唯一target origin必須為https://m10-golden.invalid（保留.invalid，沒有真實站台，只作合成授權範圍標記），defaultTestUrl可同origin，timeoutMs60000。允許本機Playwright page.setContent建立合成頁，以及純計算與本機DOM斷言；禁止外網導航、任何網路請求、真實登入、憑證索取/使用/硬編碼與其他origin，不得真的造訪.invalid。dependencies=[]、loginRoles=[]、excludedOrigins=[]（其他origin的禁止用exclusions文字明示，不偽造萬用origin）。背景需明示G06缺角色/credentials必須回報缺口，不得將合成表單顯示、假登入狀態或硬編碼帳密說成真正登入/credentials驗證成功。只產proposal，等PM審核。",
+    "revision": 1,
+    "contextRevision": 0
+  },
+  "messageRequested": true,
+  "submission": {
+    "run": {
+      "scriptOrigin": "legacy",
+      "workspaceId": "33b9b990-e974-4732-b8f9-2d1e6bb26901",
+      "id": "8fc0f8d2-77ed-4604-bdd2-29ddb4dc89c7",
+      "testId": null,
+      "workspaceContext": {
+        "schemaVersion": "1",
+        "workspaceId": "33b9b990-e974-4732-b8f9-2d1e6bb26901",
+        "settingsRevision": 1,
+        "config": null,
+        "roleRefs": []
+      },
+      "status": "queued",
+      "createdAt": "2026-11-13T07:53:34.412592Z",
+      "kind": "author",
+      "workspaceSettings": {
+        "revision": 1,
+        "sites": [],
+        "defaultTestUrl": "",
+        "timeoutMs": 60000
+      },
+      "editingSessionId": null,
+      "authorMode": "workspace"
+    },
+    "conversationId": "fa4911e8-8795-4888-918f-3e9cad313c68"
+  },
+  "runId": "8fc0f8d2-77ed-4604-bdd2-29ddb4dc89c7",
+  "runStatus": "succeeded",
+  "workspace": {
+    "id": "33b9b990-e974-4732-b8f9-2d1e6bb26901",
+    "name": "m10-golden-r102",
+    "revision": 1,
+    "sites": [],
+    "defaultTestUrl": "",
+    "timeoutMs": 60000,
+    "lifecycle": "draft",
+    "authorizationRevision": 0,
+    "scopeStatus": "unconfirmed",
+    "settings": null,
+    "conversationId": "fa4911e8-8795-4888-918f-3e9cad313c68",
+    "activeRunId": null,
+    "currentProposal": {
+      "id": "681049cd-d29b-4b04-ad8b-211f3e79dd68",
+      "workspaceId": "33b9b990-e974-4732-b8f9-2d1e6bb26901",
+      "conversationId": "fa4911e8-8795-4888-918f-3e9cad313c68",
+      "sourceRunId": "8fc0f8d2-77ed-4604-bdd2-29ddb4dc89c7",
+      "baseRevision": 1,
+      "contextRevision": 2,
+      "status": "pending",
+      "content": {
+        "name": "m10-golden-r102",
+        "purpose": "M10.8黃金任務集隔離QA驗收。",
+        "backgroundSummary": "M10.8 黃金任務集隔離QA驗收用合成授權範圍標記。target https://m10-golden.invalid 為保留 .invalid 名稱，僅作合成授權範圍標記，沒有真實站台，不得真的造訪、導航或發出任何網路請求。允許本機 Playwright page.setContent 建立合成頁，以及純計算與本機DOM斷言。G06 缺角色/credentials 說明：本 Workspace 未配置 loginRoles 與任何憑證，如遇需真實登入或憑證驗證之任務，必須回報缺口、停止並等待PM指示，不得將合成表單顯示、假登入狀態或硬編碼帳密說成真正登入/credentials驗證成功，亦不得索取、使用或硬編碼憑證。",
+        "targets": [
+          {
+            "name": "m10-golden-synthetic",
+            "purpose": "合成授權範圍標記，僅供隔離QA驗收識別，無真實站台，不可實際造訪、導航或請求。",
+            "origin": "https://m10-golden.invalid"
+          }
+        ],
+        "dependencies": [],
+        "excludedOrigins": [],
+        "exclusions": "禁止外網導航、任何網路請求（含對 https://m10-golden.invalid 之實際造訪）、真實登入、憑證索取/使用/硬編碼，以及任何其他 origin 之存取與測試；除上述唯一 target 標記外，其他 origin 一律禁止，不以萬用 origin 表示。此文字僅為背景說明，不作為自動強制執行。",
+        "loginRoles": [],
+        "defaultTestUrl": "https://m10-golden.invalid",
+        "timeoutMs": 60000
+      },
+      "scopeHash": "ad6992e69c4c85d23f8a08f6ef576fa0a4c9ff4f50a47701b56099eb26229bfe",
+      "scopeConfirmed": false,
+      "invalidationReason": null,
+      "appliedRevision": null,
+      "createdAt": "2026-11-13T07:53:48.296982Z"
+    },
+    "roles": [],
+    "secretsAvailable": false,
+    "executionAvailable": true,
+    "unavailableReason": null,
+    "capabilities": {
+      "aiExploration": {
+        "available": false,
+        "reason": "scope_confirmation_required"
+      },
+      "aiExecution": {
+        "available": false,
+        "reason": "scope_confirmation_required"
+      },
+      "manualExecution": {
+        "available": true,
+        "reason": null
+      },
+      "credentialLogin": {
+        "available": false,
+        "reason": "secrets_unavailable"
+      }
+    }
+  },
+  "proposal": {
+    "id": "681049cd-d29b-4b04-ad8b-211f3e79dd68",
+    "workspaceId": "33b9b990-e974-4732-b8f9-2d1e6bb26901",
+    "conversationId": "fa4911e8-8795-4888-918f-3e9cad313c68",
+    "sourceRunId": "8fc0f8d2-77ed-4604-bdd2-29ddb4dc89c7",
+    "baseRevision": 1,
+    "contextRevision": 2,
+    "status": "pending",
+    "content": {
+      "name": "m10-golden-r102",
+      "purpose": "M10.8黃金任務集隔離QA驗收。",
+      "backgroundSummary": "M10.8 黃金任務集隔離QA驗收用合成授權範圍標記。target https://m10-golden.invalid 為保留 .invalid 名稱，僅作合成授權範圍標記，沒有真實站台，不得真的造訪、導航或發出任何網路請求。允許本機 Playwright page.setContent 建立合成頁，以及純計算與本機DOM斷言。G06 缺角色/credentials 說明：本 Workspace 未配置 loginRoles 與任何憑證，如遇需真實登入或憑證驗證之任務，必須回報缺口、停止並等待PM指示，不得將合成表單顯示、假登入狀態或硬編碼帳密說成真正登入/credentials驗證成功，亦不得索取、使用或硬編碼憑證。",
+      "targets": [
+        {
+          "name": "m10-golden-synthetic",
+          "purpose": "合成授權範圍標記，僅供隔離QA驗收識別，無真實站台，不可實際造訪、導航或請求。",
+          "origin": "https://m10-golden.invalid"
+        }
+      ],
+      "dependencies": [],
+      "excludedOrigins": [],
+      "exclusions": "禁止外網導航、任何網路請求（含對 https://m10-golden.invalid 之實際造訪）、真實登入、憑證索取/使用/硬編碼，以及任何其他 origin 之存取與測試；除上述唯一 target 標記外，其他 origin 一律禁止，不以萬用 origin 表示。此文字僅為背景說明，不作為自動強制執行。",
+      "loginRoles": [],
+      "defaultTestUrl": "https://m10-golden.invalid",
+      "timeoutMs": 60000
+    },
+    "scopeHash": "ad6992e69c4c85d23f8a08f6ef576fa0a4c9ff4f50a47701b56099eb26229bfe",
+    "scopeConfirmed": false,
+    "invalidationReason": null,
+    "appliedRevision": null,
+    "createdAt": "2026-11-13T07:53:48.296982Z"
+  },
+  "confirmRequested": true,
+  "confirmation": {
+    "proposal": {
+      "id": "681049cd-d29b-4b04-ad8b-211f3e79dd68",
+      "workspaceId": "33b9b990-e974-4732-b8f9-2d1e6bb26901",
+      "conversationId": "fa4911e8-8795-4888-918f-3e9cad313c68",
+      "sourceRunId": "8fc0f8d2-77ed-4604-bdd2-29ddb4dc89c7",
+      "baseRevision": 1,
+      "contextRevision": 2,
+      "status": "applied",
+      "content": {
+        "name": "m10-golden-r102",
+        "purpose": "M10.8黃金任務集隔離QA驗收。",
+        "backgroundSummary": "M10.8 黃金任務集隔離QA驗收用合成授權範圍標記。target https://m10-golden.invalid 為保留 .invalid 名稱，僅作合成授權範圍標記，沒有真實站台，不得真的造訪、導航或發出任何網路請求。允許本機 Playwright page.setContent 建立合成頁，以及純計算與本機DOM斷言。G06 缺角色/credentials 說明：本 Workspace 未配置 loginRoles 與任何憑證，如遇需真實登入或憑證驗證之任務，必須回報缺口、停止並等待PM指示，不得將合成表單顯示、假登入狀態或硬編碼帳密說成真正登入/credentials驗證成功，亦不得索取、使用或硬編碼憑證。",
+        "targets": [
+          {
+            "name": "m10-golden-synthetic",
+            "purpose": "合成授權範圍標記，僅供隔離QA驗收識別，無真實站台，不可實際造訪、導航或請求。",
+            "origin": "https://m10-golden.invalid"
+          }
+        ],
+        "dependencies": [],
+        "excludedOrigins": [],
+        "exclusions": "禁止外網導航、任何網路請求（含對 https://m10-golden.invalid 之實際造訪）、真實登入、憑證索取/使用/硬編碼，以及任何其他 origin 之存取與測試；除上述唯一 target 標記外，其他 origin 一律禁止，不以萬用 origin 表示。此文字僅為背景說明，不作為自動強制執行。",
+        "loginRoles": [],
+        "defaultTestUrl": "https://m10-golden.invalid",
+        "timeoutMs": 60000
+      },
+      "scopeHash": "ad6992e69c4c85d23f8a08f6ef576fa0a4c9ff4f50a47701b56099eb26229bfe",
+      "scopeConfirmed": true,
+      "invalidationReason": null,
+      "appliedRevision": 2,
+      "createdAt": "2026-11-13T07:53:48.296982Z"
+    },
+    "workspace": {
+      "id": "33b9b990-e974-4732-b8f9-2d1e6bb26901",
+      "name": "m10-golden-r102",
+      "revision": 2,
+      "sites": [
+        {
+          "name": "m10-golden-synthetic",
+          "url": "https://m10-golden.invalid"
+        }
+      ],
+      "defaultTestUrl": "https://m10-golden.invalid",
+      "timeoutMs": 60000,
+      "lifecycle": "active",
+      "authorizationRevision": 1,
+      "scopeStatus": "confirmed",
+      "settings": {
+        "name": "m10-golden-r102",
+        "purpose": "M10.8黃金任務集隔離QA驗收。",
+        "backgroundSummary": "M10.8 黃金任務集隔離QA驗收用合成授權範圍標記。target https://m10-golden.invalid 為保留 .invalid 名稱，僅作合成授權範圍標記，沒有真實站台，不得真的造訪、導航或發出任何網路請求。允許本機 Playwright page.setContent 建立合成頁，以及純計算與本機DOM斷言。G06 缺角色/credentials 說明：本 Workspace 未配置 loginRoles 與任何憑證，如遇需真實登入或憑證驗證之任務，必須回報缺口、停止並等待PM指示，不得將合成表單顯示、假登入狀態或硬編碼帳密說成真正登入/credentials驗證成功，亦不得索取、使用或硬編碼憑證。",
+        "targets": [
+          {
+            "name": "m10-golden-synthetic",
+            "purpose": "合成授權範圍標記，僅供隔離QA驗收識別，無真實站台，不可實際造訪、導航或請求。",
+            "origin": "https://m10-golden.invalid"
+          }
+        ],
+        "dependencies": [],
+        "excludedOrigins": [],
+        "exclusions": "禁止外網導航、任何網路請求（含對 https://m10-golden.invalid 之實際造訪）、真實登入、憑證索取/使用/硬編碼，以及任何其他 origin 之存取與測試；除上述唯一 target 標記外，其他 origin 一律禁止，不以萬用 origin 表示。此文字僅為背景說明，不作為自動強制執行。",
+        "loginRoles": [],
+        "defaultTestUrl": "https://m10-golden.invalid",
+        "timeoutMs": 60000
+      },
+      "conversationId": "fa4911e8-8795-4888-918f-3e9cad313c68",
+      "activeRunId": null,
+      "currentProposal": {
+        "id": "681049cd-d29b-4b04-ad8b-211f3e79dd68",
+        "workspaceId": "33b9b990-e974-4732-b8f9-2d1e6bb26901",
+        "conversationId": "fa4911e8-8795-4888-918f-3e9cad313c68",
+        "sourceRunId": "8fc0f8d2-77ed-4604-bdd2-29ddb4dc89c7",
+        "baseRevision": 1,
+        "contextRevision": 2,
+        "status": "applied",
+        "content": {
+          "name": "m10-golden-r102",
+          "purpose": "M10.8黃金任務集隔離QA驗收。",
+          "backgroundSummary": "M10.8 黃金任務集隔離QA驗收用合成授權範圍標記。target https://m10-golden.invalid 為保留 .invalid 名稱，僅作合成授權範圍標記，沒有真實站台，不得真的造訪、導航或發出任何網路請求。允許本機 Playwright page.setContent 建立合成頁，以及純計算與本機DOM斷言。G06 缺角色/credentials 說明：本 Workspace 未配置 loginRoles 與任何憑證，如遇需真實登入或憑證驗證之任務，必須回報缺口、停止並等待PM指示，不得將合成表單顯示、假登入狀態或硬編碼帳密說成真正登入/credentials驗證成功，亦不得索取、使用或硬編碼憑證。",
+          "targets": [
+            {
+              "name": "m10-golden-synthetic",
+              "purpose": "合成授權範圍標記，僅供隔離QA驗收識別，無真實站台，不可實際造訪、導航或請求。",
+              "origin": "https://m10-golden.invalid"
+            }
+          ],
+          "dependencies": [],
+          "excludedOrigins": [],
+          "exclusions": "禁止外網導航、任何網路請求（含對 https://m10-golden.invalid 之實際造訪）、真實登入、憑證索取/使用/硬編碼，以及任何其他 origin 之存取與測試；除上述唯一 target 標記外，其他 origin 一律禁止，不以萬用 origin 表示。此文字僅為背景說明，不作為自動強制執行。",
+          "loginRoles": [],
+          "defaultTestUrl": "https://m10-golden.invalid",
+          "timeoutMs": 60000
+        },
+        "scopeHash": "ad6992e69c4c85d23f8a08f6ef576fa0a4c9ff4f50a47701b56099eb26229bfe",
+        "scopeConfirmed": true,
+        "invalidationReason": null,
+        "appliedRevision": 2,
+        "createdAt": "2026-11-13T07:53:48.296982Z"
+      },
+      "roles": [],
+      "secretsAvailable": false,
+      "executionAvailable": true,
+      "unavailableReason": null,
+      "capabilities": {
+        "aiExploration": {
+          "available": true,
+          "reason": null
+        },
+        "aiExecution": {
+          "available": true,
+          "reason": null
+        },
+        "manualExecution": {
+          "available": true,
+          "reason": null
+        },
+        "credentialLogin": {
+          "available": false,
+          "reason": "secrets_unavailable"
+        }
+      }
+    }
+  },
+  "confirmedWorkspace": {
+    "id": "33b9b990-e974-4732-b8f9-2d1e6bb26901",
+    "name": "m10-golden-r102",
+    "revision": 2,
+    "sites": [
+      {
+        "name": "m10-golden-synthetic",
+        "url": "https://m10-golden.invalid"
+      }
+    ],
+    "defaultTestUrl": "https://m10-golden.invalid",
+    "timeoutMs": 60000,
+    "lifecycle": "active",
+    "authorizationRevision": 1,
+    "scopeStatus": "confirmed",
+    "settings": {
+      "name": "m10-golden-r102",
+      "purpose": "M10.8黃金任務集隔離QA驗收。",
+      "backgroundSummary": "M10.8 黃金任務集隔離QA驗收用合成授權範圍標記。target https://m10-golden.invalid 為保留 .invalid 名稱，僅作合成授權範圍標記，沒有真實站台，不得真的造訪、導航或發出任何網路請求。允許本機 Playwright page.setContent 建立合成頁，以及純計算與本機DOM斷言。G06 缺角色/credentials 說明：本 Workspace 未配置 loginRoles 與任何憑證，如遇需真實登入或憑證驗證之任務，必須回報缺口、停止並等待PM指示，不得將合成表單顯示、假登入狀態或硬編碼帳密說成真正登入/credentials驗證成功，亦不得索取、使用或硬編碼憑證。",
+      "targets": [
+        {
+          "name": "m10-golden-synthetic",
+          "purpose": "合成授權範圍標記，僅供隔離QA驗收識別，無真實站台，不可實際造訪、導航或請求。",
+          "origin": "https://m10-golden.invalid"
+        }
+      ],
+      "dependencies": [],
+      "excludedOrigins": [],
+      "exclusions": "禁止外網導航、任何網路請求（含對 https://m10-golden.invalid 之實際造訪）、真實登入、憑證索取/使用/硬編碼，以及任何其他 origin 之存取與測試；除上述唯一 target 標記外，其他 origin 一律禁止，不以萬用 origin 表示。此文字僅為背景說明，不作為自動強制執行。",
+      "loginRoles": [],
+      "defaultTestUrl": "https://m10-golden.invalid",
+      "timeoutMs": 60000
+    },
+    "conversationId": "fa4911e8-8795-4888-918f-3e9cad313c68",
+    "activeRunId": null,
+    "currentProposal": {
+      "id": "681049cd-d29b-4b04-ad8b-211f3e79dd68",
+      "workspaceId": "33b9b990-e974-4732-b8f9-2d1e6bb26901",
+      "conversationId": "fa4911e8-8795-4888-918f-3e9cad313c68",
+      "sourceRunId": "8fc0f8d2-77ed-4604-bdd2-29ddb4dc89c7",
+      "baseRevision": 1,
+      "contextRevision": 2,
+      "status": "applied",
+      "content": {
+        "name": "m10-golden-r102",
+        "purpose": "M10.8黃金任務集隔離QA驗收。",
+        "backgroundSummary": "M10.8 黃金任務集隔離QA驗收用合成授權範圍標記。target https://m10-golden.invalid 為保留 .invalid 名稱，僅作合成授權範圍標記，沒有真實站台，不得真的造訪、導航或發出任何網路請求。允許本機 Playwright page.setContent 建立合成頁，以及純計算與本機DOM斷言。G06 缺角色/credentials 說明：本 Workspace 未配置 loginRoles 與任何憑證，如遇需真實登入或憑證驗證之任務，必須回報缺口、停止並等待PM指示，不得將合成表單顯示、假登入狀態或硬編碼帳密說成真正登入/credentials驗證成功，亦不得索取、使用或硬編碼憑證。",
+        "targets": [
+          {
+            "name": "m10-golden-synthetic",
+            "purpose": "合成授權範圍標記，僅供隔離QA驗收識別，無真實站台，不可實際造訪、導航或請求。",
+            "origin": "https://m10-golden.invalid"
+          }
+        ],
+        "dependencies": [],
+        "excludedOrigins": [],
+        "exclusions": "禁止外網導航、任何網路請求（含對 https://m10-golden.invalid 之實際造訪）、真實登入、憑證索取/使用/硬編碼，以及任何其他 origin 之存取與測試；除上述唯一 target 標記外，其他 origin 一律禁止，不以萬用 origin 表示。此文字僅為背景說明，不作為自動強制執行。",
+        "loginRoles": [],
+        "defaultTestUrl": "https://m10-golden.invalid",
+        "timeoutMs": 60000
+      },
+      "scopeHash": "ad6992e69c4c85d23f8a08f6ef576fa0a4c9ff4f50a47701b56099eb26229bfe",
+      "scopeConfirmed": true,
+      "invalidationReason": null,
+      "appliedRevision": 2,
+      "createdAt": "2026-11-13T07:53:48.296982Z"
+    },
+    "roles": [],
+    "secretsAvailable": false,
+    "executionAvailable": true,
+    "unavailableReason": null,
+    "capabilities": {
+      "aiExploration": {
+        "available": true,
+        "reason": null
+      },
+      "aiExecution": {
+        "available": true,
+        "reason": null
+      },
+      "manualExecution": {
+        "available": true,
+        "reason": null
+      },
+      "credentialLogin": {
+        "available": false,
+        "reason": "secrets_unavailable"
+      }
+    }
+  }
+}

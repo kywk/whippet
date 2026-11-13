@@ -1,0 +1,29 @@
+{
+  "observedAt": "2026-11-14T01:04:14.001486+08:00",
+  "safeDatabaseProjection": [
+    {
+      "active": 0,
+      "unreclaimed": 0
+    },
+    {
+      "id": "d97e63a7-57f4-4546-93d1-a22d7a241570",
+      "status": "succeeded",
+      "slotReleased": true,
+      "cancelRequested": false,
+      "attemptId": "efb4d1f1-1ab7-4998-ab4b-e699eaf7f752"
+    }
+  ],
+  "planSha256": "30fee7d017d3ec23641793081750d32e7f2addaf424be9c6a8935e07823f414e",
+  "checks": {
+    "fourStages": true,
+    "fixedSeed": true,
+    "threeModuleSlugs": true,
+    "forwardBindings": true,
+    "independentLoginPreludePresent": true
+  },
+  "reviewItems": [
+    "order description says independently search but omits input[name=q], Search button, product article/data-product-id, unit-price and q=Whippet details; PM must decide whether to amend before confirm",
+    "verify harness search describes selectors but does not explicitly repeat q=Whippet; inspect complete standalone bootstrap",
+    "No module implementation, validation, batch summary or publish executed; planner success is not end-to-end acceptance"
+  ]
+}
