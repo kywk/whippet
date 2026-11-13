@@ -54,6 +54,15 @@ python3 scripts/test/m9-history-pm-verify.py --evidence-dir /private/tmp/whippet
 - 官方skill quick_validate缺PyYAML未跑，實際loader/schema/build已驗；不為此安裝。
 - 下一步以以上實際缺口為準，不自行加SSO/RBAC、多Manager、排程、Kubernetes或本機瀏覽器執行。
 
+## M10–M12 新階段啟動（2026-11-13）
+
+使用者已確認進入 [Use Case 與 Agent 平台化規格](../../requirements/usecase-agent-platform.md) 三階段（commit `45cb440`）：
+- **M10（`main`）**：自研引擎 G1–G6、Module 庫、Catalog、Plan → Stage → Compose；零新外部依賴，沿用既有 COPY-only 映像建置模式。收尾通過 `M10.Z` 後標記 `phase1-verified`。
+- **M11（`feat/mcp`，自 `phase1-verified` 分出）**：MCP Streamable HTTP、Agent Token、session 模式與接單模式；收尾通過 `M11.Z` 後 merge 回 `main` 並標記 `phase2-verified`。
+- **M12（`feat/agent-adapter`，自 `phase2-verified` 分出）**：2 天 spike（pi-agent-core＋pi-ai vs Vercel AI SDK）→ adapter 實作 → 參考外部 Worker `runtimes/agent-bridge/`；收尾通過 `M12.Z` 後 merge 回 `main` 並標記 `phase3-verified`。
+- 依賴授權：使用者於 2026-11-13 授權階段性安裝契約明列之專案依賴（覆蓋 M9 期間的臨時禁令），M10 維持零新依賴，M11／M12 僅安裝 `v11`／`v12` 契約核准項目。
+- 任務清單、最小驗證與 Z 項完整驗證以 [implementation.md](../implementation.md) 文末「M10–M12」章節為唯一來源；分工與首波派工見 [delegation.md](../delegation.md) 文末。
+
 ## 提交與環境整理（使用者最新指示）
 
 M9提交d2ba719，未push。停止16個舊Whippet服務／QA容器，保留所有volume、資料庫與報告；最新Web18087/TLS18089及測試依賴18187維持。Git僅main及origin/main、一個主worktree，prune dry-run無失效記錄，沒有可刪的多餘branch/worktree；未強刪任何未合併資料。

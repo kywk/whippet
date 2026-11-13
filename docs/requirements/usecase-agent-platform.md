@@ -72,7 +72,7 @@
 
 - Server 提供 MCP Streamable HTTP 端點。每個 Agent Token 只屬於一個 Workspace，由 Superadmin 在 UI 建立與撤銷；明文只顯示一次，撤銷立即生效，並有速率限制。
 - MCP 工具由 G4 註冊表產生，與內建引擎是同一份定義；skill 以 MCP prompts 或 resources 提供。
-- **互動模式**：開發者用自己的 Agent 連線，搜尋 Catalog、建立 Module 與 Use Case 草稿、提出 Plan、要求驗證、讀取報告、租用瀏覽器 session 探索。寫入一律成為草稿，來源記為 `agent:<token 名稱>`，並套用 AI 來源的網站範圍規則；發佈只能由人在 UI 確認。
+- **互動模式**：開發者用自己的 Agent 連線，搜尋 Catalog、建立 Module 與 Use Case 草稿、提出 Plan、要求驗證、讀取報告、租用瀏覽器 session 探索。寫入一律成為草稿，`scriptOrigin` 設為 `"ai"`（套用 AI 來源的網站範圍規則），Token 識別另記於稽核欄位；發佈只能由人在 UI 確認。
 - **接單模式**：Workspace 設定 `authorEngine = builtin | external`。設為 external 時，UI 對話產生的 author 任務由外部 Agent 以 `task_claim` 領取。領取時拿到與內建引擎相同的 context bundle（skill、背景、允許工具、預算）；工具呼叫綁定這次 attempt；最後以 `task_submit` 交回結果，交回內容用同一套 parser 驗證。租約要有心跳；逾時、取消或交回失效都要正確收斂，不重複寫入。
 - **瀏覽器租用 session**：Worker 以 `session` 模式啟動，佔用既有容量名額，閒置 10 分鐘或總時長 30 分鐘回收，回收完成才釋放名額。沿用範圍守衛、登入工具（只傳 roleId）與 LiveView。
 - **安全邊界**：Whippet 無法控制外部 Agent 本機上的環境，因此只保證 Whippet 這一側：外部 Agent 拿不到模型金鑰、憑證明文、Manager token 或其他 Workspace 的資源；所有寫入都要經過驗證與人工發佈；每次工具呼叫都寫入稽核紀錄。
