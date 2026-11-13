@@ -64,6 +64,13 @@ func editingAuthorInput(s EditingSession, d draftState, skill string, messages [
 }
 
 func enqueueAuthor(ctx context.Context, tx *sql.Tx, d draftState, input AuthorInput, bindings ...Run) (Run, error) {
+	if err := snapshotAuthor(&input); err != nil {
+		return Run{}, err
+	}
+	return enqueueAuthorSnapshot(ctx, tx, d, input, bindings...)
+}
+
+func enqueueAuthorSnapshot(ctx context.Context, tx *sql.Tx, d draftState, input AuthorInput, bindings ...Run) (Run, error) {
 	payload, err := json.Marshal(input)
 	if err != nil {
 		return Run{}, err
@@ -74,7 +81,7 @@ func enqueueAuthor(ctx context.Context, tx *sql.Tx, d draftState, input AuthorIn
 		binding = bindings[0]
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO runs(id,test_id,kind,draft_revision,script_snapshot,script_hash,timeout_ms,author_payload,workspace_settings,editing_session_id,workspace_id,workspace_context,script_origin,authorization_revision,scope_proposal_id)
- SELECT $1,$2,'author',$3,$4,$5,$6,$7,$8,$9,workspace_id,$10,$11,$12,$13 FROM tests WHERE id=$2`, id, d.TestID, d.Revision, d.Script, d.hash, authorTimeoutMS, string(payload), settingsJSON(d.WorkspaceSettings), d.EditingSessionID, jsonText(d.WorkspaceContext), d.ScriptOrigin, binding.authorizationRevision, binding.scopeProposalID); err != nil {
+ SELECT $1,$2,'author',$3,$4,$5,$6,$7,$8,$9,workspace_id,$10,$11,$12,$13 FROM tests WHERE id=$2`, id, d.TestID, d.Revision, d.Script, d.hash, input.Budget.MaxDurationMS, string(payload), settingsJSON(d.WorkspaceSettings), d.EditingSessionID, jsonText(d.WorkspaceContext), d.ScriptOrigin, binding.authorizationRevision, binding.scopeProposalID); err != nil {
 		return Run{}, err
 	}
 	return scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs r WHERE r.id=$1`, id))
@@ -92,11 +99,20 @@ func (p *Postgres) validationProof(ctx context.Context, tx *sql.Tx, d draftState
 	}
 	var key sql.NullString
 	var size sql.NullInt64
-	var settings, context []byte
+	var settings, context, files, metadata []byte
+	var bundleHash *string
 	err := tx.QueryRowContext(ctx, `SELECT r.id,r.test_id,r.kind,r.draft_revision,r.script_snapshot,COALESCE(r.script_hash,''),r.timeout_ms,r.status,
- a.storage_key,a.size_bytes,r.workspace_settings,r.editing_session_id,COALESCE(r.attempt_id::text,''),r.workspace_context,r.script_origin FROM runs r
+ a.storage_key,a.size_bytes,r.workspace_settings,r.editing_session_id,COALESCE(r.attempt_id::text,''),r.workspace_context,r.script_origin,r.files_snapshot,r.bundle_hash,r.bundle_metadata FROM runs r
  LEFT JOIN artifacts a ON a.run_id=r.id AND a.attempt_id=r.attempt_id AND a.name='report.html' WHERE r.id=$1 FOR UPDATE OF r`, *d.ValidationRunID).
-		Scan(&v.id, &v.testID, &v.kind, &v.revision, &v.script, &v.hash, &v.timeoutMS, &v.status, &key, &size, &settings, &v.sessionID, &v.attemptID, &context, &v.scriptOrigin)
+		Scan(&v.id, &v.testID, &v.kind, &v.revision, &v.script, &v.hash, &v.timeoutMS, &v.status, &key, &size, &settings, &v.sessionID, &v.attemptID, &context, &v.scriptOrigin, &files, &bundleHash, &metadata)
+	if err != nil {
+		return v, err
+	}
+	v.bundle, err = decodeRunBundle(files, metadata, bundleHash, v.script, v.scriptOrigin)
+	if err != nil {
+		return v, err
+	}
+	v.expectedBundle, err = bundleForDraft(ctx, tx, d)
 	if err != nil {
 		return v, err
 	}
@@ -138,13 +154,17 @@ func summaryBindingMatches(s EditingSession, d draftState, input AuthorInput, sc
 	if len(contexts) > 0 {
 		snapshot = contexts[0]
 	}
-	if !sameWorkspaceContext(d.WorkspaceContext, snapshot) {
+	if !sameWorkspaceContext(d.WorkspaceContext, snapshot) || !moduleSummaryMatches(d, input) {
 		return false
+	}
+	expectedHash := d.hash
+	if input.ModuleSummary != nil {
+		expectedHash = input.ModuleSummary.HarnessHash
 	}
 	return s.Status == "active" && s.ID == d.EditingSessionID && input.SkillID == "acceptance-summary" && input.SkillVersion == "1" && len(input.AllowedTools) == 0 &&
 		input.EditingSessionID == s.ID && input.ConversationID == s.ConversationID && input.ContextRevision == s.ContextRevision && input.BaseRevision == d.Revision &&
 		script == d.Script && sameWorkspaceSettings(settings, d.WorkspaceSettings) && e != nil && d.ValidationRunID != nil && e.RunID == *d.ValidationRunID &&
-		ValidID(e.AttemptID) && e.DraftRevision == d.Revision && e.ScriptHash == d.hash && e.TimeoutMS == d.timeoutMS && e.Status == "succeeded" && e.ReportsReady
+		ValidID(e.AttemptID) && e.DraftRevision == d.Revision && e.ScriptHash == expectedHash && e.TimeoutMS == d.timeoutMS && e.Status == "succeeded" && e.ReportsReady
 }
 
 func readSummaryRun(ctx context.Context, q queryDB, id string, lock bool) (Run, AuthorInput, string, *WorkspaceSettings, error) {
@@ -212,6 +232,10 @@ func (p *Postgres) CreateSummary(ctx context.Context, testID, sessionID string, 
 	if err != nil {
 		return Run{}, err
 	}
+	kind, err := summaryTargetKind(ctx, tx, testID)
+	if err != nil {
+		return Run{}, err
+	}
 	if err = checkRevision(revision, d.Revision); err != nil {
 		return Run{}, err
 	}
@@ -224,6 +248,9 @@ func (p *Postgres) CreateSummary(ctx context.Context, testID, sessionID string, 
 	}
 	if err = checkPublication(revision, true, d, proof); err != nil {
 		return Run{}, err
+	}
+	if kind == "module" && !runReclaimed(ctx, tx, proof.id) {
+		return Run{}, ErrConflict
 	}
 	if d.summaryRunID != nil {
 		r, input, script, settings, err := readSummaryRun(ctx, tx, *d.summaryRunID, true)
@@ -272,6 +299,17 @@ func (p *Postgres) CreateSummary(ctx context.Context, testID, sessionID string, 
 	}
 	input := editingAuthorInput(s, d, "acceptance-summary", authorContext(newest))
 	input.ValidationEvidence = &ValidationEvidence{RunID: proof.id, AttemptID: proof.attemptID, DraftRevision: d.Revision, ScriptHash: d.hash, TimeoutMS: d.timeoutMS, Status: "succeeded", ReportsReady: true, Stats: *report.Stats}
+	if kind == "module" {
+		input.ModuleSummary, err = moduleSummarySnapshot(d)
+		if err != nil {
+			return Run{}, err
+		}
+		evidence, bundleHash, err := p.batchEvidence(ctx, tx, d)
+		if err != nil || bundleHash != input.ModuleSummary.BundleHash {
+			return Run{}, ErrConflict
+		}
+		input.ValidationEvidence = &evidence
+	}
 	run, err := enqueueAuthor(ctx, tx, d, input)
 	if err != nil {
 		return Run{}, err

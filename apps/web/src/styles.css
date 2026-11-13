@@ -723,3 +723,20 @@ td time { white-space: nowrap; font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+.partial-card { margin: 16px 0; padding: 18px; display: grid; gap: 12px; border: 1px solid #dfbd69; background: #fffaf0; border-radius: var(--radius); }
+
+/* Closed mobile drawers must not expose off-screen focus targets. */
+@media (max-width: 1220px) {
+  .studio.side-closed .studio-side { visibility: hidden; pointer-events: none; }
+  .studio.side-open .studio-side { visibility: visible; pointer-events: auto; }
+}
+@media (max-width: 960px) {
+  .app-shell:not(.rail-open) .rail { visibility: hidden; pointer-events: none; }
+  .app-shell.rail-open .rail { visibility: visible; pointer-events: auto; }
+}
+@media (max-width: 480px) {
+  .side-tabs { padding: 0 6px; gap: 2px; }
+  .side-tabs button:not(.side-icon-btn) { padding: 0 6px; font-size: .75rem; }
+  .side-tab-actions .side-icon-btn:not(.side-close) { display: none; }
+}

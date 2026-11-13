@@ -204,6 +204,8 @@ func (p *Postgres) ResourceWorkspace(ctx context.Context, kind, id string) (stri
 		query = `SELECT id FROM workspaces WHERE id=$1`
 	case "tests":
 		query = `SELECT workspace_id FROM tests WHERE id=$1`
+	case "plans":
+		query = `SELECT t.workspace_id FROM plans p JOIN tests t ON t.id=p.test_id WHERE p.id=$1`
 	case "runs":
 		query = `SELECT workspace_id FROM runs WHERE id=$1`
 	default:
@@ -218,7 +220,7 @@ func (p *Postgres) ResourceWorkspace(ctx context.Context, kind, id string) (stri
 }
 func (a *API) authorizeResource(w http.ResponseWriter, r *http.Request) bool {
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if len(parts) < 3 || parts[0] != "api" || (parts[1] != "tests" && parts[1] != "runs" && parts[1] != "workspaces") || !ValidID(parts[2]) {
+	if len(parts) < 3 || parts[0] != "api" || (parts[1] != "tests" && parts[1] != "runs" && parts[1] != "workspaces" && parts[1] != "plans") || !ValidID(parts[2]) {
 		return true
 	}
 	authorizer, ok := a.store.(interface {

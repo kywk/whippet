@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -171,6 +172,10 @@ func (a *API) conversationHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Postgres) ConversationHistory(ctx context.Context, manager, run, attempt string, cursor *string) (HistoryPage, error) {
+	return p.conversationHistory(ctx, manager, run, attempt, cursor, nil, nil)
+}
+
+func (p *Postgres) conversationHistory(ctx context.Context, manager, run, attempt string, cursor *string, request *HarnessToolRequest, registry *ToolRegistry) (HistoryPage, error) {
 	page := HistoryPage{RunID: run, AttemptID: attempt, Items: []HistoryItem{}}
 	tx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -185,9 +190,17 @@ func (p *Postgres) ConversationHistory(ctx context.Context, manager, run, attemp
 		return page, dbError(err)
 	}
 	var input AuthorInput
-	if kind != "author" || json.Unmarshal(raw, &input) != nil || input.SkillVersion != "1" || input.History == nil ||
+	if kind != "author" || json.Unmarshal(raw, &input) != nil || (request == nil && input.SkillVersion != "1") || input.History == nil ||
 		!ValidID(input.ConversationID) || !containsHistoryTool(input.AllowedTools) {
 		return page, ErrHistoryUnavailable
+	}
+	if request == nil && hasToolSnapshot(input) {
+		return page, ErrHistoryUnavailable
+	}
+	if request != nil {
+		if err := validateToolSnapshot(input, registry, request.Name); err != nil {
+			return page, err
+		}
 	}
 	max, err := historySequence(input.History.MaxSequence)
 	if err != nil {
@@ -200,7 +213,14 @@ func (p *Postgres) ConversationHistory(ctx context.Context, manager, run, attemp
 	page.ConversationID, page.MaxSequence = input.ConversationID, input.History.MaxSequence
 	// Preserve the existing Workspace -> Test/Conversation -> Draft -> Run lock
 	// order. Cancellation cannot change the checked Run while this page is read.
-	switch input.SkillID {
+	scopeSkill := input.SkillID
+	if request != nil {
+		scopeSkill = "test-author"
+		if page.TestID == nil {
+			scopeSkill = "workspace-author"
+		}
+	}
+	switch scopeSkill {
 	case "test-author":
 		if page.TestID == nil || page.EditingSessionID == nil || input.EditingSessionID != *page.EditingSessionID {
 			return page, ErrHistoryUnavailable
@@ -251,12 +271,36 @@ func (p *Postgres) ConversationHistory(ctx context.Context, manager, run, attemp
 	var assigned, currentAttempt *string
 	var status string
 	var released bool
-	if err = tx.QueryRowContext(ctx, `SELECT manager_id,attempt_id,status,slot_released FROM runs WHERE id=$1 FOR SHARE`, run).
+	if err = tx.QueryRowContext(ctx, `SELECT manager_id,attempt_id,status,slot_released FROM runs WHERE id=$1 FOR UPDATE`, run).
 		Scan(&assigned, &currentAttempt, &status, &released); err != nil {
 		return page, dbError(err)
 	}
 	if assigned == nil || *assigned != manager || currentAttempt == nil || *currentAttempt != attempt || released || (status != "dispatched" && status != "running") {
 		return page, ErrHistoryUnavailable
+	}
+	if request != nil {
+		var priorHash string
+		var priorResult []byte
+		err = tx.QueryRowContext(ctx, `SELECT request_hash,result FROM harness_history_calls WHERE run_id=$1 AND attempt_id=$2 AND call_id=$3`, run, attempt, request.CallID).Scan(&priorHash, &priorResult)
+		if err == nil {
+			if priorHash != scriptHash(string(request.Arguments)) {
+				return page, ErrConflict
+			}
+			if err = json.Unmarshal(priorResult, &page); err != nil {
+				return page, err
+			}
+			return page, tx.Commit()
+		}
+		if err != sql.ErrNoRows {
+			return page, err
+		}
+		var count, other int
+		if err = tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM harness_history_calls WHERE run_id=$1 AND attempt_id=$2),(SELECT count(*) FROM platform_tool_calls WHERE run_id=$1 AND attempt_id=$2)`, run, attempt).Scan(&count, &other); err != nil {
+			return page, err
+		}
+		if count >= 4 || count+other >= input.Budget.MaxToolCalls {
+			return page, ErrHistoryUnavailable
+		}
 	}
 	// Bound database reads as well as response size. Clamp only the extraction
 	// position; historyFragments still rejects an offset beyond the real length.
@@ -284,6 +328,19 @@ func (p *Postgres) ConversationHistory(ctx context.Context, manager, run, attemp
 	page.Items, page.NextCursor, err = historyFragments(values, sequence, offset)
 	if err != nil {
 		return page, err
+	}
+	if request != nil {
+		raw, marshalErr := json.Marshal(page)
+		if marshalErr != nil {
+			return page, marshalErr
+		}
+		tool, ok := registry.tool(request.Name)
+		if !ok || len(raw) > tool.Limits.MaxOutputBytes {
+			return page, ErrHistoryUnavailable
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO harness_history_calls(run_id,attempt_id,call_id,request_hash,result) VALUES($1,$2,$3,$4,$5)`, run, attempt, request.CallID, scriptHash(string(request.Arguments)), string(raw)); err != nil {
+			return page, err
+		}
 	}
 	if err = tx.Commit(); err != nil {
 		return page, err

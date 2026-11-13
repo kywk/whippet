@@ -83,7 +83,7 @@ func parseHistoryCursor(cursor *string, maximum string) (int64, int64, bool) {
 	return seq, offset, ok && valid && seq <= max && offset <= 9007199254740991
 }
 func historyAuthor(a *AuthorTask) bool {
-	if a == nil || a.History == nil || a.SkillID == nil || a.AllowedTools == nil || (*a.SkillID != "test-author" && *a.SkillID != "workspace-author") {
+	if a == nil || a.History == nil || a.SkillID == nil || a.AllowedTools == nil || (*a.SkillID != "test-author" && *a.SkillID != "workspace-author" && !moduleAuthor(a) && !plannerAuthor(a)) {
 		return false
 	}
 	for _, tool := range *a.AllowedTools {
@@ -223,6 +223,10 @@ func (c *historyChannel) handle(line string) bool {
 	}
 	if json.Unmarshal([]byte(line), &kind) != nil || kind.Kind != "history_request" {
 		return false
+	}
+	// The legacy endpoint is only for wholly legacy snapshots, never fallback.
+	if c.r.Author != nil && (len(c.r.Author.Skills) > 0 || len(c.r.Author.Budget) > 0 || len(c.r.Author.Model) > 0 || c.r.Author.ToolRegistryVersion != nil || c.r.Author.ToolRegistrySHA256 != nil) {
+		return true
 	}
 	var q historyRequest
 	d := json.NewDecoder(strings.NewReader(line))

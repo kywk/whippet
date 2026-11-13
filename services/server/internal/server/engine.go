@@ -308,10 +308,11 @@ func (e *Engine) send(s *Session, a Assignment, kind string) error {
 			WorkspaceContext  *WorkspaceContext  `json:"workspaceContext,omitempty"`
 			Kind              string             `json:"kind"`
 			Script            string             `json:"script"`
+			Files             []RunFile          `json:"files,omitempty"`
 			TimeoutMS         int                `json:"timeoutMs"`
 			Author            *AuthorInput       `json:"author,omitempty"`
 			WorkspaceSettings *WorkspaceSettings `json:"workspaceSettings,omitempty"`
-		}{effectiveScriptOrigin(a.ScriptOrigin), a.WorkspaceID, a.TestID, a.WorkspaceContext, taskKind, a.Script, a.TimeoutMS, a.Author, a.WorkspaceSettings}
+		}{effectiveScriptOrigin(a.ScriptOrigin), a.WorkspaceID, a.TestID, a.WorkspaceContext, taskKind, a.Script, a.Files, a.TimeoutMS, a.Author, a.WorkspaceSettings}
 	}
 	if err := s.peer.Send(NewEnvelope(kind, s.managerID, a.ID, a.AttemptID, payload)); err != nil {
 		// The committed attempt is preserved, including when the write outcome is unknown.

@@ -65,7 +65,7 @@ npm test
 
 ### 實際載入的 Playwright authoring skill
 
-legacy 技能來源為 [skills/playwright-authoring/SKILL.md](skills/playwright-authoring/SKILL.md)，共用 [recipe.md](skills/playwright-authoring/recipe.md)；M7 新任務的固定映射見下節。常駐內容包含：
+legacy 技能來源為 [skills/playwright-authoring/SKILL.md](skills/playwright-authoring/SKILL.md)，共用 [recipe.md](skills/playwright-authoring/references/recipe.md)；M7 新任務的固定映射見下節。常駐內容包含：
 
 - 先用 browser 工具的 selectorHints 探索；探索參數用 literal CSS／text=，生成的 spec 優先用穩定的 getByRole／getByLabel。
 - listitem 文字通常不是 accessible name；提供 `getByRole('listitem').toHaveText(['alpha'])` 與 `filter({ hasText: 'alpha' })` recipe，依實際預期清單調整斷言。
@@ -174,3 +174,17 @@ ZIP 每檔 64 MiB，MD 1 MiB，兩者最多 32 檔／128 MiB，與 PNG 配額獨
 Manager 先上傳證據／報告才送 result，沿 journal 冪等補送；明確的 ZIP／MD HTTP413 可略過並持久化，其餘必要報告／PNG／認證／attempt 衝突／網路錯誤仍沿原規則。平台下載入口由 Server／Web 提供；trace 下載後以本機 Playwright show-trace 開啟，沒有內嵌 trace viewer，不放寬 HTML CSP。
 
 最小 unit、固定真失敗 `examples/fail.spec.ts`／成功 `examples/pass.spec.ts` 與 PM 隔離容器精確命令見 [DELIVERY](../../services/manager/DELIVERY.md)。硬殺前未 flush 的證據無法保證保留；缺少可選附件不等於測試成功，必要報告門檻維持。
+
+## M10 bundle 與本機驗證
+
+Runner 可接收 `files:[{path,content,origin}]`：恰一個 `tests/test.spec.ts`，其餘為 `lib/<slug>.ts`；`@lib/*` 對應 `lib/*`。最多 64 檔、單檔 2 MiB、內容合計 8 MiB，input JSON 上限 64 MiB。與 `script` 同時提供時必須等於入口內容；無 files 時保留舊版 script 行為。
+
+任一檔案 origin=ai 時，整個 bundle 以 AI 來源執行並要求已確認的 Workspace scope；頂層 scriptOrigin=manual 不能覆寫這項判定。路徑逃逸、重複檔案、symlink 寫入均拒絕。Server 固定版本及發佈資格，Worker 不重新計算 bundle 發佈 hash。
+
+原生 HTML／JSON 報告保留 `test.step`；自訂 log 會標示失敗的 Stage。M10 bundle smoke 使用合成頁面，成功／刻意失敗各一次：
+
+```sh
+WHIPPET_M10_BROWSER_TEST=1 node --test --test-name-pattern='M10 real' dist/bundle.test.js
+```
+
+若只使用本機已安裝瀏覽器，可設定 `WHIPPET_M10_BROWSER_EXECUTABLE_PATH` 為其絕對執行檔路徑；測試透過後端 `WHIPPET_BROWSER_EXECUTABLE_PATH` 傳入獨立 Playwright 啟動設定，不使用個人 profile。部署映像預設仍使用其內建 Chromium。

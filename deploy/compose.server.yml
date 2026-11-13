@@ -22,7 +22,8 @@ services:
   server:
     image: whippet-server:m1
     build:
-      context: ../services/server
+      context: ..
+      dockerfile: services/server/Dockerfile
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-whippet}:${POSTGRES_PASSWORD:?Run sh deploy/init-local.sh first}@postgres:5432/${POSTGRES_DB:-whippet}?sslmode=disable

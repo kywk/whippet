@@ -1,0 +1,28 @@
+{
+  "id": "test-author",
+  "version": "1",
+  "defaultTools": [
+    "read_conversation_history",
+    "read_draft",
+    "read_validation_report",
+    "update_draft",
+    "browser_navigate",
+    "browser_snapshot",
+    "browser_click",
+    "browser_fill",
+    "browser_login",
+    "request_validation",
+    "read_skill_reference"
+  ],
+  "budget": {
+    "maxModelRequests": 8,
+    "maxToolCalls": 12,
+    "maxDurationMs": 180000
+  },
+  "model": {
+    "provider": "opencode",
+    "model": "muse-spark-1.3-contributor",
+    "reasoningEffort": "xhigh"
+  },
+  "references": []
+}

@@ -94,7 +94,7 @@ func (p *Postgres) Workspaces(ctx context.Context) ([]Workspace, error) {
 	return items, nil
 }
 
-const testColumns = `id,workspace_id,name,description,published_version_id,
+const testColumns = `id,workspace_id,name,description,published_version_id,kind,slug,
  (SELECT json_build_object('id',e.id,'status',e.status,'draftRevision',d.current_revision,'updatedAt',d.updated_at)
   FROM editing_sessions e JOIN drafts d ON d.editing_session_id=e.id
   WHERE e.test_id=tests.id AND e.status IN ('active','discarding'))`
@@ -104,7 +104,7 @@ type scanner interface{ Scan(...any) error }
 func scanTest(row scanner) (Test, error) {
 	var t Test
 	var active []byte
-	err := row.Scan(&t.ID, &t.WorkspaceID, &t.Name, &t.Description, &t.PublishedVersionID, &active)
+	err := row.Scan(&t.ID, &t.WorkspaceID, &t.Name, &t.Description, &t.PublishedVersionID, &t.Kind, &t.Slug, &active)
 	if err == nil && len(active) > 0 {
 		err = json.Unmarshal(active, &t.ActiveEditingSession)
 	}
@@ -144,12 +144,12 @@ const runColumns = `r.id,r.test_id,r.status,r.created_at,r.started_at,r.finished
     THEN '/api/runs/' || r.id::text || '/artifacts/report.html' ELSE '' END,
     r.kind,r.draft_revision,r.version_id,r.workspace_settings,r.editing_session_id,r.workspace_id,r.workspace_context,
     CASE WHEN r.kind='author' THEN CASE WHEN r.author_payload->>'skillId'='acceptance-summary' THEN 'summary' WHEN r.author_payload->>'skillId'='workspace-author' THEN 'workspace' ELSE 'edit' END ELSE '' END,r.script_origin,r.authorization_revision,r.scope_proposal_id,
-    CASE WHEN r.kind='author' AND r.attempt_id IS NOT NULL THEN COALESCE((SELECT jsonb_agg(e.message ORDER BY e.created_at) FROM run_events e WHERE e.run_id=r.id AND e.attempt_id=r.attempt_id AND e.kind='log'),'[]'::jsonb) ELSE '[]'::jsonb END`
+    CASE WHEN r.kind='author' AND r.attempt_id IS NOT NULL THEN COALESCE((SELECT jsonb_agg(e.message ORDER BY e.created_at) FROM run_events e WHERE e.run_id=r.id AND e.attempt_id=r.attempt_id AND e.kind='log'),'[]'::jsonb) ELSE '[]'::jsonb END,COALESCE(r.author_partial,'null'::jsonb)`
 
 func scanRun(row scanner) (Run, error) {
 	var r Run
-	var settings, workspaceContext, progressEvents []byte
-	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL, &r.Kind, &r.DraftRevision, &r.VersionID, &settings, &r.EditingSessionID, &r.WorkspaceID, &workspaceContext, &r.AuthorMode, &r.ScriptOrigin, &r.authorizationRevision, &r.scopeProposalID, &progressEvents)
+	var settings, workspaceContext, progressEvents, partial []byte
+	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL, &r.Kind, &r.DraftRevision, &r.VersionID, &settings, &r.EditingSessionID, &r.WorkspaceID, &workspaceContext, &r.AuthorMode, &r.ScriptOrigin, &r.authorizationRevision, &r.scopeProposalID, &progressEvents, &partial)
 	if err == nil {
 		r.WorkspaceSettings, err = decodeSettings(settings)
 		if err == nil {
@@ -158,6 +158,9 @@ func scanRun(row scanner) (Run, error) {
 		if err == nil && len(progressEvents) > 0 {
 			_ = json.Unmarshal(progressEvents, &r.ProgressEvents)
 		}
+	}
+	if err == nil {
+		err = json.Unmarshal(partial, &r.AuthorPartial)
 	}
 	r.CreatedAt = r.CreatedAt.UTC()
 	return r, dbError(err)
@@ -179,6 +182,30 @@ func (p *Postgres) CreateRun(ctx context.Context, testID string) (Run, error) {
 		}
 		return Run{}, err
 	}
+	d := draftState{Draft: Draft{TestID: v.TestID, Revision: v.Revision, Script: v.Script, EditingSessionID: stringValue(v.EditingSessionID), ValidationRunID: v.ValidationRunID, Module: v.Module, Stages: v.Stages, WorkspaceSettings: v.WorkspaceSettings, WorkspaceContext: v.WorkspaceContext, ScriptOrigin: v.ScriptOrigin}, hash: scriptHash(v.Script), timeoutMS: v.WorkspaceSettings.TimeoutMS}
+	bundle, err := bundleForDraft(ctx, tx, d)
+	if err != nil {
+		return Run{}, err
+	}
+	script, origin := v.Script, v.ScriptOrigin
+	var files, metadata any
+	var bundleHash *string
+	if bundle != nil {
+		digest, e := bundle.hash()
+		if e != nil {
+			return Run{}, e
+		}
+		var publishedHash *string
+		if e = tx.QueryRowContext(ctx, `SELECT bundle_hash FROM test_versions WHERE id=$1`, v.ID).Scan(&publishedHash); e != nil {
+			return Run{}, e
+		}
+		if publishedHash == nil || *publishedHash != digest {
+			return Run{}, ErrConflict
+		}
+		script, origin = bundle.entry(), bundle.origin()
+		files, metadata = jsonText(bundle.Files), bundle.metadata()
+		bundleHash = &digest
+	}
 	w, err := workspaceForTest(ctx, tx, testID)
 	if err != nil {
 		return Run{}, err
@@ -187,13 +214,13 @@ func (p *Postgres) CreateRun(ctx context.Context, testID string) (Run, error) {
 	if v.ScriptOrigin == "legacy" && (snapshot == nil || snapshot.Config == nil) {
 		snapshot, _ = selectedContext(w, false)
 	}
-	auth, proposal, err := executionBinding(w, v.ScriptOrigin, snapshot)
+	auth, proposal, err := executionBinding(w, origin, snapshot)
 	if err != nil {
 		return Run{}, err
 	}
 	id := NewID()
-	if _, err = tx.ExecContext(ctx, `INSERT INTO runs(id,test_id,workspace_id,version_id,script_snapshot,script_hash,timeout_ms,workspace_settings,workspace_context,script_origin,authorization_revision,scope_proposal_id)
- VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, id, testID, w.ID, v.ID, v.Script, scriptHash(v.Script), v.WorkspaceSettings.TimeoutMS, settingsJSON(v.WorkspaceSettings), jsonText(snapshot), v.ScriptOrigin, auth, proposal); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO runs(id,test_id,workspace_id,version_id,script_snapshot,script_hash,timeout_ms,workspace_settings,workspace_context,script_origin,authorization_revision,scope_proposal_id,files_snapshot,bundle_hash,bundle_metadata)
+ VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`, id, testID, w.ID, v.ID, script, scriptHash(script), v.WorkspaceSettings.TimeoutMS, settingsJSON(v.WorkspaceSettings), jsonText(snapshot), origin, auth, proposal, files, bundleHash, metadata); err != nil {
 		return Run{}, err
 	}
 	run, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs r WHERE r.id=$1`, id))
@@ -252,7 +279,7 @@ func (p *Postgres) Assignments(ctx context.Context, managerID string) ([]Assignm
 	if err := p.rejectUnsafeWork(ctx); err != nil {
 		return nil, err
 	}
-	rows, err := p.DB.QueryContext(ctx, `SELECT r.id,r.status,r.attempt_id,r.script_snapshot,r.timeout_ms,r.acknowledged_at IS NOT NULL,r.kind,COALESCE(r.author_payload::text,''),r.workspace_settings,r.workspace_id,r.test_id,r.workspace_context,r.script_origin,r.authorization_revision,r.scope_proposal_id
+	rows, err := p.DB.QueryContext(ctx, `SELECT r.id,r.status,r.attempt_id,r.script_snapshot,r.timeout_ms,r.acknowledged_at IS NOT NULL,r.kind,COALESCE(r.author_payload::text,''),r.workspace_settings,r.workspace_id,r.test_id,r.workspace_context,r.script_origin,r.authorization_revision,r.scope_proposal_id,r.files_snapshot,r.bundle_hash,r.bundle_metadata
         FROM runs r WHERE r.manager_id=$1 AND NOT r.slot_released ORDER BY r.queue_seq`, managerID)
 	if err != nil {
 		return nil, err
@@ -262,8 +289,9 @@ func (p *Postgres) Assignments(ctx context.Context, managerID string) ([]Assignm
 	for rows.Next() {
 		a := Assignment{ManagerID: managerID}
 		var authorPayload string
-		var settings, context []byte
-		if err := rows.Scan(&a.ID, &a.Status, &a.AttemptID, &a.Script, &a.TimeoutMS, &a.Acked, &a.Kind, &authorPayload, &settings, &a.WorkspaceID, &a.TestID, &context, &a.ScriptOrigin, &a.authorizationRevision, &a.scopeProposalID); err != nil {
+		var settings, context, files, metadata []byte
+		var bundleHash *string
+		if err := rows.Scan(&a.ID, &a.Status, &a.AttemptID, &a.Script, &a.TimeoutMS, &a.Acked, &a.Kind, &authorPayload, &settings, &a.WorkspaceID, &a.TestID, &context, &a.ScriptOrigin, &a.authorizationRevision, &a.scopeProposalID, &files, &bundleHash, &metadata); err != nil {
 			return nil, err
 		}
 		a.WorkspaceSettings, err = decodeSettings(settings)
@@ -272,6 +300,13 @@ func (p *Postgres) Assignments(ctx context.Context, managerID string) ([]Assignm
 		}
 		if err != nil {
 			return nil, err
+		}
+		bundle, err := decodeRunBundle(files, metadata, bundleHash, a.Script, a.ScriptOrigin)
+		if err != nil {
+			return nil, err
+		}
+		if bundle != nil {
+			a.Files = bundle.Files
 		}
 		if err := decodeAssignmentAuthor(&a, authorPayload); err != nil {
 			return nil, err
@@ -323,9 +358,10 @@ func (p *Postgres) Claim(ctx context.Context, managerID string, capacity int) (*
 	}
 	a := Assignment{ManagerID: managerID, AttemptID: NewID()}
 	var authorPayload string
-	var settings, context []byte
-	err = tx.QueryRowContext(ctx, `SELECT id,script_snapshot,timeout_ms,kind,COALESCE(author_payload::text,''),workspace_settings,workspace_id,test_id,workspace_context,script_origin,authorization_revision,scope_proposal_id FROM runs
-        WHERE status='queued' ORDER BY queue_seq FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&a.ID, &a.Script, &a.TimeoutMS, &a.Kind, &authorPayload, &settings, &a.WorkspaceID, &a.TestID, &context, &a.ScriptOrigin, &a.authorizationRevision, &a.scopeProposalID)
+	var settings, context, files, metadata []byte
+	var bundleHash *string
+	err = tx.QueryRowContext(ctx, `SELECT id,script_snapshot,timeout_ms,kind,COALESCE(author_payload::text,''),workspace_settings,workspace_id,test_id,workspace_context,script_origin,authorization_revision,scope_proposal_id,files_snapshot,bundle_hash,bundle_metadata FROM runs
+        WHERE status='queued' ORDER BY queue_seq FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&a.ID, &a.Script, &a.TimeoutMS, &a.Kind, &authorPayload, &settings, &a.WorkspaceID, &a.TestID, &context, &a.ScriptOrigin, &a.authorizationRevision, &a.scopeProposalID, &files, &bundleHash, &metadata)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -338,6 +374,13 @@ func (p *Postgres) Claim(ctx context.Context, managerID string, capacity int) (*
 	}
 	if err != nil {
 		return nil, err
+	}
+	bundle, err := decodeRunBundle(files, metadata, bundleHash, a.Script, a.ScriptOrigin)
+	if err != nil {
+		return nil, err
+	}
+	if bundle != nil {
+		a.Files = bundle.Files
 	}
 	if err := decodeAssignmentAuthor(&a, authorPayload); err != nil {
 		return nil, err
@@ -468,7 +511,13 @@ func (p *Postgres) Complete(ctx context.Context, managerID, runID, attemptID str
         acknowledged_at=COALESCE(acknowledged_at,now()) WHERE id=$1`, runID, result.Status, result.Error); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if testID != nil {
+		return refreshPlanOutcomes(ctx, p.DB, *testID)
+	}
+	return nil
 }
 
 func (p *Postgres) ReleaseSlots(ctx context.Context, managerID string, active []ActiveAttempt) error {
@@ -491,7 +540,13 @@ func (p *Postgres) ReleaseSlots(ctx context.Context, managerID string, active []
 	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	if err = p.scheduleReclaimedModuleValidations(ctx); err != nil {
+		return err
+	}
+	return p.progressRunningPlans(ctx)
 }
 
 func (p *Postgres) UploadAllowed(ctx context.Context, runID, attemptID, name string) error {
@@ -518,8 +573,8 @@ func (p *Postgres) SaveArtifact(ctx context.Context, a Artifact) error {
 		return err
 	}
 	defer tx.Rollback()
-	var status, kind string
-	if err := tx.QueryRowContext(ctx, `SELECT status,kind FROM runs WHERE id=$1 AND attempt_id=$2 FOR UPDATE`, a.RunID, a.AttemptID).Scan(&status, &kind); err != nil {
+	var status, kind, primary string
+	if err := tx.QueryRowContext(ctx, `SELECT status,kind,COALESCE(author_payload->>'skillId','') FROM runs WHERE id=$1 AND attempt_id=$2 FOR UPDATE`, a.RunID, a.AttemptID).Scan(&status, &kind, &primary); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrConflict
 		}
@@ -528,7 +583,7 @@ func (p *Postgres) SaveArtifact(ctx context.Context, a Artifact) error {
 	if Terminal(status) {
 		return ErrConflict
 	}
-	if !artifactAllowed(kind, a.Name) || a.Size < 0 || a.Size > artifactLimit(a.Name) {
+	if !artifactAllowed(kind, a.Name) || a.Size < 0 || a.Size > runArtifactLimit(a.Name, kind, primary) {
 		return fmt.Errorf("%w: invalid artifact for run kind", ErrInvalid)
 	}
 	if isScreenshotArtifact(a.Name) {

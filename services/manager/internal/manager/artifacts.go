@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,7 +14,7 @@ import (
 	"time"
 )
 
-func openArtifact(taskDir, name string) (*os.File, error) {
+func openArtifact(taskDir, name string, authors ...*AuthorTask) (*os.File, error) {
 	shot := screenshotPattern.MatchString(name)
 	evidence := evidencePattern.MatchString(name)
 	if name != "report.html" && name != "results.json" && name != "result.json" && name != "author.json" && !shot && !evidence {
@@ -50,7 +51,10 @@ func openArtifact(taskDir, name string) (*os.File, error) {
 	info, err := f.Stat()
 	limit := int64(maxArtifactBytes)
 	if name == "author.json" {
-		limit = 2 << 20
+		limit = maxAuthorArtifactBytes
+		if len(authors) == 1 {
+			limit = authorArtifactLimit(authors[0])
+		}
 	}
 	if shot {
 		limit = maxScreenshotBytes
@@ -77,13 +81,27 @@ func openArtifact(taskDir, name string) (*os.File, error) {
 	return f, nil
 }
 
-func readOutput(taskDir, name string, value any) error {
-	f, err := openArtifact(taskDir, name)
+func readOutput(taskDir, name string, value any, authors ...*AuthorTask) error {
+	f, err := openArtifact(taskDir, name, authors...)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	decoder := json.NewDecoder(io.LimitReader(f, maxArtifactBytes+1))
+	limit := int64(maxArtifactBytes)
+	if name == "author.json" {
+		limit = maxAuthorArtifactBytes
+		if len(authors) == 1 {
+			limit = authorArtifactLimit(authors[0])
+		}
+	}
+	raw, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil {
+		return err
+	}
+	if int64(len(raw)) > limit {
+		return errors.New("output exceeds artifact limit")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
 	if err := decoder.Decode(value); err != nil {
 		return err
 	}
@@ -147,7 +165,7 @@ func (m *Manager) upload(ctx context.Context, r record, name string) error {
 	if !artifactAllowed(r, name) {
 		return errors.New("artifact is not allowed for this task kind")
 	}
-	f, err := openArtifact(m.taskDir(r), name)
+	f, err := openArtifact(m.taskDir(r), name, r.Author)
 	if err != nil {
 		return err
 	}

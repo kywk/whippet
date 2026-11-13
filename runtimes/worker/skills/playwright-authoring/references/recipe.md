@@ -28,3 +28,17 @@ await testInfo.attach('after-submit', {
 ```
 
 Keep every intended assertion. No skip/only, assertion weakening, arbitrary shell/eval, or secret access. PNG limits: 10 MiB each, 32 files/64 MiB per run. Failed runs automatically retain trace ZIP/error-context Markdown for download; open traces locally, with no embedded viewer. Video attachments remain unsupported.
+
+## Stage evidence and locator ambiguity
+
+Name each awaited test.step for its observable phase. Keep the action and its assertion in the same step; a failed assertion then identifies the Stage in native HTML/JSON reports. Server-generated Use Case stages already supply these boundaries. Ordinary specs can use:
+
+```ts
+await test.step('Search: matching item is visible', async () => {
+  await page.getByRole('searchbox', { name: 'Search', exact: true }).fill('alpha');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.getByRole('listitem').filter({ hasText: 'alpha' })).toHaveCount(1);
+});
+```
+
+If a locator matches multiple elements, inspect the observed container and role/name rather than adding first() to silence ambiguity. Use getByTestId only for an observed test-id contract. A collection assertion may legitimately target several elements; single-element actions need a unique intended target. Tool calls still use literal CSS/text selectors from selectorHints, not generated Playwright expressions.

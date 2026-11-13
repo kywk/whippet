@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"unicode/utf8"
 )
 
 const maxScriptBytes = 2 << 20
@@ -24,6 +25,7 @@ type Envelope struct {
 }
 
 type Dispatch struct {
+	Files             []RunFile       `json:"files,omitempty"`
 	ScriptOrigin      string          `json:"scriptOrigin,omitempty"`
 	Kind              string          `json:"kind"`
 	Script            string          `json:"script"`
@@ -39,7 +41,36 @@ func (d *Dispatch) UnmarshalJSON(data []byte) error {
 	type fields Dispatch
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
-	return decoder.Decode((*fields)(d))
+	if len(data) > maxWorkerInputBytes || !utf8.Valid(data) {
+		return errBundle
+	}
+	if err := decoder.Decode((*fields)(d)); err != nil {
+		return err
+	}
+	var keys map[string]json.RawMessage
+	if json.Unmarshal(data, &keys) != nil {
+		return errBundle
+	}
+	if raw, ok := keys["files"]; ok {
+		if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+			return errBundle
+		}
+		if _, hasScript := keys["script"]; hasScript {
+			found := false
+			for _, file := range d.Files {
+				if file.Path == "tests/test.spec.ts" {
+					found = true
+					if d.Script != file.Content {
+						return errBundle
+					}
+				}
+			}
+			if !found {
+				return errBundle
+			}
+		}
+	}
+	return normalizeBundle(d)
 }
 
 type AuthorMessage struct {
@@ -66,6 +97,14 @@ func (m *AuthorMessage) UnmarshalJSON(data []byte) error {
 }
 
 type AuthorTask struct {
+	ModuleSummary       json.RawMessage           `json:"moduleSummary,omitempty"`
+	Batch               json.RawMessage           `json:"batch,omitempty"`
+	Platform            json.RawMessage           `json:"platform,omitempty"`
+	Skills              json.RawMessage           `json:"skills,omitempty"`
+	Budget              json.RawMessage           `json:"budget,omitempty"`
+	Model               json.RawMessage           `json:"model,omitempty"`
+	ToolRegistryVersion *string                   `json:"toolRegistryVersion,omitempty"`
+	ToolRegistrySHA256  *string                   `json:"toolRegistrySha256,omitempty"`
 	ConversationID      string                    `json:"conversationId"`
 	BaseRevision        int64                     `json:"baseRevision"`
 	Messages            []AuthorMessage           `json:"messages"`
@@ -91,6 +130,18 @@ func (a *AuthorTask) UnmarshalJSON(data []byte) error {
 	var keys map[string]json.RawMessage
 	if err := json.Unmarshal(data, &keys); err != nil {
 		return err
+	}
+	count := 0
+	for _, name := range []string{"skills", "budget", "model", "toolRegistryVersion", "toolRegistrySha256"} {
+		if value, exists := keys[name]; exists {
+			count++
+			if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+				return fmt.Errorf("null capability snapshot")
+			}
+		}
+	}
+	if count != 0 && count != 5 {
+		return fmt.Errorf("incomplete capability snapshot")
 	}
 	for _, name := range []string{"skillId", "skillVersion", "allowedTools", "editingSessionId", "contextRevision", "sourceVersion", "conversationSummary", "validationEvidence", "history"} {
 		if _, exists := keys[name]; exists && (a.SkillID == nil || a.SkillVersion == nil) {
@@ -163,6 +214,7 @@ type AuthorValidation struct {
 }
 
 type WorkerInput struct {
+	Files             []RunFile       `json:"files,omitempty"`
 	ScriptOrigin      string          `json:"scriptOrigin,omitempty"`
 	RunID             string          `json:"runId"`
 	AttemptID         string          `json:"attemptId"`

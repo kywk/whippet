@@ -229,7 +229,7 @@ func hasBrowserTools(input *AuthorInput) bool {
 					return true
 				}
 			}
-			if t == "browser_login" {
+			if t == "browser_login" || t == "update_module_candidate" {
 				return true
 			}
 		}
@@ -237,7 +237,7 @@ func hasBrowserTools(input *AuthorInput) bool {
 	return false
 }
 func (p *Postgres) prepareAuthor(ctx context.Context, q queryDB, d draftState, input *AuthorInput) (*int64, *string, error) {
-	if input.SkillID == "acceptance-summary" {
+	if input.SkillID == "acceptance-summary" || input.SkillID == "usecase-planner" {
 		return nil, nil, nil
 	}
 	w, err := workspaceForTest(ctx, q, d.TestID)
@@ -245,6 +245,9 @@ func (p *Postgres) prepareAuthor(ctx context.Context, q queryDB, d draftState, i
 		return nil, nil, err
 	}
 	rev, pid, scopeErr := scopeBinding(w, d.WorkspaceContext, nil)
+	if input.SkillID == "module-authoring" && scopeErr != nil {
+		return nil, nil, ErrScopeConfirmation
+	}
 	if scopeErr == nil {
 		input.AllowedTools = append(input.AllowedTools, browserTools...)
 		if p.CredentialTLS && p.Secrets != nil {
@@ -292,7 +295,7 @@ func offlineAuthorAllowed(a Assignment) bool {
 		return false
 	}
 	for _, tool := range a.Author.AllowedTools {
-		if tool != "read_draft" && tool != "read_validation_report" && tool != "update_draft" && tool != "read_conversation_history" {
+		if tool != "read_draft" && tool != "read_validation_report" && tool != "update_draft" && tool != "read_conversation_history" && tool != "read_skill_reference" && !platformServerTool(tool) {
 			return false
 		}
 	}

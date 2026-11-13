@@ -1,3 +1,5 @@
+import { HarnessClient } from "./harness.js";
+import { capabilitySnapshot } from "./manifest.js";
 import { randomUUID } from "node:crypto";
 import type { Readable, Writable } from "node:stream";
 import { attemptIO } from "../attempt-io.js";
@@ -25,7 +27,7 @@ function exact(value: unknown, fields: string[]): value is Record<string, unknow
   return !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === fields.length && fields.every((field) => Object.hasOwn(value, field));
 }
 export function hasHistory(input: AuthorInput): boolean {
-  return !!input.author.history && ["test-author", "workspace-author"].includes(input.author.skillId ?? "") && input.author.allowedTools?.includes("read_conversation_history") === true;
+  return !!input.author.history && ["test-author", "workspace-author", "module-authoring", "usecase-planner"].includes(input.author.skillId ?? "") && input.author.allowedTools?.includes("read_conversation_history") === true;
 }
 
 // Scope and pagination are checked before anything can become model data.
@@ -59,14 +61,20 @@ export function validateHistoryPage(value: unknown, input: AuthorInput, cursor: 
 }
 
 export class HistoryClient {
-  private readonly transport: ReturnType<typeof attemptIO>;
+  private readonly transport?: ReturnType<typeof attemptIO>;
+  private readonly harness?: HarnessClient;
   private readonly unsubscribe: () => void;
   private closed = false;
   private count = 0;
   private pending?: { id: string; cursor: string | null; resolve: (value: HistoryPage) => void; reject: () => void; cleanup: () => void };
   constructor(private readonly input: AuthorInput, io?: { read: Readable; write: Writable }) {
-    this.transport = attemptIO(io);
-    this.unsubscribe = this.transport.subscribe("history_response", this.onFrame, this.fail);
+    if (capabilitySnapshot(input.author)) {
+      this.harness = new HarnessClient(input, io);
+      this.unsubscribe = () => this.harness!.close();
+    } else {
+      this.transport = attemptIO(io);
+      this.unsubscribe = this.transport.subscribe("history_response", this.onFrame, this.fail);
+    }
   }
   private fail = (): void => { const p = this.pending; this.pending = undefined; if (p) { p.cleanup(); p.reject(); } };
   private onFrame = (frame: Record<string, unknown>): void => {
@@ -78,15 +86,19 @@ export class HistoryClient {
       this.pending = undefined; p.cleanup(); p.resolve(page);
     } catch { this.fail(); }
   };
-  read(cursor: string | null, signal?: AbortSignal): Promise<HistoryPage> {
+  read(cursor: string | null, signal?: AbortSignal, providerCallId?: string): Promise<HistoryPage> {
     if (this.closed || this.pending || ++this.count > 4 || !hasHistory(this.input) || signal?.aborted ||
       cursor !== null && (!historyCursor(cursor) || historyCursor(cursor)!.sequence > BigInt(this.input.author.history!.maxSequence))) return Promise.reject(new HistoryError());
+    if (this.harness) {
+      return this.harness.call("read_conversation_history", { cursor }, providerCallId ?? randomUUID(), signal)
+        .then(value => validateHistoryPage(value, this.input, cursor)).catch(() => { throw new HistoryError(); });
+    }
     return new Promise((resolve, reject) => {
       const timer = setTimeout(this.fail, 15000);
       const id = randomUUID();
       this.pending = { id, cursor, resolve, reject: () => reject(new HistoryError()), cleanup: () => { clearTimeout(timer); signal?.removeEventListener("abort", this.fail); } };
       signal?.addEventListener("abort", this.fail, { once: true });
-      this.transport.send({ kind: "history_request", requestId: id, attemptId: this.input.attemptId, cursor }, this.fail);
+      this.transport!.send({ kind: "history_request", requestId: id, attemptId: this.input.attemptId, cursor }, this.fail);
     });
   }
   close(): void { this.closed = true; this.fail(); this.unsubscribe(); }

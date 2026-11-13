@@ -35,6 +35,7 @@ interface Props {
   onToggleSide?: () => void;
   testName?: string;
   publishReady: boolean;
+  planMode?: boolean;
 }
 
 const STARTERS = [
@@ -43,7 +44,7 @@ const STARTERS = [
   '搜尋關鍵字，確認結果清單依相關度排序',
 ];
 
-export function ConversationPanel({ api, apiBase, testId, editingSessionId, draft, draftDirty, draftBusy, runs, onRun, onRefreshRuns, onSynchronized, onUseCandidate, onOpenManual, onGuardChange, onConversationChanged, onRefreshSession, onShowTab, sideOpen, onToggleSide, aiExploration, publishReady }: Props) {
+export function ConversationPanel({ api, apiBase, testId, editingSessionId, draft, draftDirty, draftBusy, runs, onRun, onRefreshRuns, onSynchronized, onUseCandidate, onOpenManual, onGuardChange, onConversationChanged, onRefreshSession, onShowTab, sideOpen, onToggleSide, aiExploration, publishReady, planMode = false }: Props) {
   const [conversation, setConversation] = useState<Conversation>();
   const [content, setContent] = useStoredText(editingSessionId);
   const [loading, setLoading] = useState(true);
@@ -55,6 +56,9 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
   const [syncError, setSyncError] = useState<string>();
   const [note, setNote] = useState<string>();
   const [refreshRevision, setRefreshRevision] = useState(0);
+  const [continueConflict, setContinueConflict] = useState<string>();
+  const [continueChecked, setContinueChecked] = useState<string>();
+  const [continuedSources, setContinuedSources] = useState<string[]>([]);
   const [sentRunId, setSentRunId] = useState<string>();
   const [scripts, setScripts] = useState<Record<number, string>>({ [draft.revision]: draft.script });
   const runsRef = useRef(runs);
@@ -168,6 +172,61 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
     } finally { if (!controller.signal.aborted) setSubmitting(false); submitLock.current = false; }
   }
 
+  const partialRun = lastAuthor?.authorPartial ? lastAuthor : undefined;
+  // Both fields belong to the immutable source Run, never the current Draft.
+  const expectedRevision = partialRun?.authorPartial?.appliedRevision ?? partialRun?.draftRevision;
+  const partialMatches = Boolean(partialRun && partialRun.status === 'succeeded' &&
+    (partialRun.authorMode === 'edit' || partialRun.authorMode === undefined) &&
+    partialRun.testId === testId && partialRun.editingSessionId === editingSessionId &&
+    expectedRevision !== undefined && expectedRevision === draft.revision);
+  const canContinue = partialMatches && Boolean(api.continueAuthor) && !blocked &&
+    !runs.some(isActiveRun) && !continuedSources.includes(partialRun!.id) && continueConflict !== partialRun!.id;
+
+  async function continuePartial() {
+    if (submitLock.current || !canContinue || !partialRun || expectedRevision === undefined || !api.continueAuthor) return;
+    submitLock.current = true; setSubmitting(true); setSubmitError(undefined); setNote(undefined);
+    const controller = new AbortController(); submitController.current = controller;
+    try {
+      const result = await api.continueAuthor(partialRun.id, editingSessionId, expectedRevision, controller.signal);
+      if (controller.signal.aborted) return;
+      if (result.run.testId !== testId || result.run.editingSessionId !== editingSessionId || result.conversationId !== conversation?.id) {
+        throw new ApiError('繼續回應的測試、週期或對話不符，請重新載入確認。', 'INVALID_RESPONSE');
+      }
+      setContinuedSources((current) => [...current, partialRun.id]);
+      onRun(result.run); setSentRunId(result.run.id); onConversationChanged();
+      setNote('Server 已接受繼續請求；後續進度以 Run 狀態為準，尚未完成驗證或發佈。');
+      setRefreshRevision((value) => value + 1);
+    } catch (cause) {
+      if (controller.signal.aborted) return;
+      // Lock all uncertain outcomes until an explicit read/confirmation. No POST retries.
+      setContinueConflict(partialRun.id); setContinueChecked(undefined);
+      setSubmitError(cause instanceof ApiError && cause.status === 409
+        ? '繼續條件已變更或 Worker 尚未回收。請重新載入並確認草稿；不會自動改用新 revision 重送。'
+        : `${errorMessage(cause)} 繼續尚未確認成功；端點可能未就緒或結果不明，請重新載入對話與草稿確認。`);
+      onRefreshRuns();
+    } finally { if (!controller.signal.aborted) setSubmitting(false); submitLock.current = false; }
+  }
+
+  async function reloadPartial() {
+    if (submitLock.current || !partialRun) return;
+    submitLock.current = true; setSubmitting(true); setContinueChecked(undefined);
+    const controller = new AbortController(); submitController.current = controller;
+    try {
+      const [nextDraft, nextConversation] = await Promise.all([
+        api.getDraft(testId, editingSessionId, controller.signal), fetchConversation(controller.signal), onRefreshSession(),
+      ]);
+      if (controller.signal.aborted || !nextConversation) return;
+      onSynchronized(nextDraft); onRefreshRuns();
+      if (nextDraft.revision === expectedRevision) {
+        setContinueChecked(partialRun.id);
+        setSubmitError('已重新讀取草稿；請檢視內容後明確確認。Worker 回收與 context 仍由 Server 在送出時核對。');
+      } else {
+        setSubmitError(`目前草稿 r${nextDraft.revision} 與來源預期 r${expectedRevision ?? '未知'} 不符；不能以新版自動繼續，請重新討論需求。`);
+      }
+    } catch (cause) { if (!controller.signal.aborted) setSubmitError(errorMessage(cause)); }
+    finally { if (!controller.signal.aborted) setSubmitting(false); submitLock.current = false; }
+  }
+
   const messages = conversation?.messages ?? [];
   const lastMessage = messages[messages.length - 1];
   const pendingTurn = authorActive && (!lastMessage || lastMessage.role === 'user');
@@ -182,7 +241,7 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
     [runs, editingSessionId, draft.revision, lastTurnChangedDraft],
   );
   // 僅在任務失敗、本輪有腳本/驗證進展、或尚未有對話但已有執行紀錄時顯示四站進度卡；AI 執行中已由對話氣泡即時顯示步驟，純對話與環境問題回報保持自然對話呈現。
-  const showTrail = (trail.running && !pendingTurn) || (!authorActive && (trail.failed || lastTurnTouchedPipeline)) || (messages.length === 0 && runs.length > 0 && !pendingTurn);
+  const showTrail = !planMode && ((trail.running && !pendingTurn) || (!authorActive && (trail.failed || lastTurnTouchedPipeline)) || (messages.length === 0 && runs.length > 0 && !pendingTurn));
   const activeRun = runs.find(isActiveRun);
   const scrollWatch = `${messages.length}:${pendingTurn}:${trackedRun?.progressEvents?.length ?? 0}:${trail.step}:${trail.running}:${loading}`;
   const repairPrompt = '請根據最新驗證失敗原因排查問題，先在瀏覽器試跑確認修正後再更新草稿；若是目標環境連線問題請直接回報。';
@@ -212,7 +271,7 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
       {syncError ? <Notice message={syncError} /> : null}
       {conversation && messages.length === 0 && !pendingTurn ? <div className="chat-empty">
         <h2>要驗證什麼流程？</h2>
-        <p>用一般的話描述步驟與預期結果。AI 會先與你確認需求、在瀏覽器自我試跑並排除問題後才更新草稿；你看過報告後才會發佈。</p>
+        <p>{planMode ? '描述 Use Case 的步驟與預期結果。AI 提出 Plan 後，由你在「驗證與發佈」確認，再逐階段產稿、驗證與檢視整批摘要。' : '用一般的話描述步驟與預期結果。AI 會先與你確認需求、在瀏覽器自我試跑並排除問題後才更新草稿；你看過報告後才會發佈。'}</p>
         {aiExploration?.available !== true ? <p className="inline-hint">AI 探索尚未確認可用，仍可送出離線訪談與改稿需求；不代表已造訪網站。</p> : null}
         <ul className="starters" aria-label="可用的開場">{STARTERS.map((text) => <li key={text}><button className="starter" onClick={() => setContent(text)}>{text}</button></li>)}</ul>
       </div> : null}
@@ -228,7 +287,21 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
           </div>
         </AssistantTurn> : null}
       </ol>
-      {showTrail ? <div className="trail-slot" aria-live="polite">
+      {partialRun ? <section className="artifact partial-card" aria-label="部分完成與繼續">
+        <h3>部分完成 · 預算耗盡</h3>
+        <p>Run <span className="identifier">{partialRun.id}</span> · 預期草稿 revision {expectedRevision ?? '未知'}</p>
+        <p className="summary-content">下一步：{partialRun.authorPartial!.nextStep}</p>
+        <p>{partialRun.authorPartial!.checkpoint ? '保留最後自我試跑通過的候選結果；不等於正式驗證通過。' : '沒有自我試跑通過的 checkpoint；此輪不套用新腳本。'}</p>
+        <p className="inline-hint">繼續前仍由 Server 核對週期、背景與 Worker 回收狀態。此結果不可直接發佈。</p>
+        {!partialMatches ? <p className="blocked-hint">來源 Run 與目前草稿／週期不符，或缺少來源 revision，無法繼續。</p> : null}
+        {!api.continueAuthor ? <p className="blocked-hint">此連線尚未提供繼續功能。</p> : null}
+        {partialMatches && api.continueAuthor ? <button className="button primary" disabled={!canContinue} onClick={() => { void continuePartial(); }}>{submitting ? '處理中…' : '繼續'}</button> : null}
+        {continueConflict === partialRun.id ? <div className="action-row">
+          <button className="button secondary" disabled={submitting || draftDirty || draftBusy} onClick={() => { void reloadPartial(); }}>重新載入草稿與對話</button>
+          {continueChecked === partialRun.id && partialMatches ? <button className="button secondary" disabled={blocked} onClick={() => { setContinueConflict(undefined); setContinueChecked(undefined); setSubmitError(undefined); }}>已檢視草稿，允許再次嘗試</button> : null}
+        </div> : null}
+      </section> : null}
+      {showTrail && !partialRun ? <div className="trail-slot" aria-live="polite">
         <TrailCard trail={trail} title="目前進度" footer={trailFooter} />
         {trackedRun?.error ? <pre className="run-error">{trackedRun.error}</pre> : null}
         {synchronizing ? <p className="inline-hint" role="status">正在同步對話、草稿與驗證紀錄…</p> : null}

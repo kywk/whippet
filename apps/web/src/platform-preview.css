@@ -1,0 +1,29 @@
+.platform-preview { max-width: 1180px; margin: 0 auto; padding: 32px; display: grid; gap: 20px; }
+.platform-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+.platform-warning { padding: 18px 22px; background: var(--run-bg); border: 1px solid #dfbd69; border-radius: var(--radius-lg); }
+.platform-catalog { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr); gap: 20px; }
+.platform-card { padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); min-width: 0; display: grid; gap: 14px; align-content: start; }
+.platform-field { display: grid; gap: 6px; font-weight: 600; }
+.platform-field input, .platform-heading select { min-width: 0; width: 100%; padding: 9px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.platform-modules { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.platform-modules button { width: 100%; text-align: left; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); display: grid; gap: 3px; }
+.platform-modules button[aria-pressed=true] { border-color: var(--blue); background: var(--subtle); }
+.platform-modules span, .platform-modules code { color: var(--muted); }
+.platform-signature { display: block; padding: 14px; background: var(--subtle); border-radius: var(--radius); }
+.platform-preview code { overflow-wrap: anywhere; font-family: var(--font-mono); }
+.platform-facts { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 8px; margin: 0; }
+.platform-facts dt { color: var(--muted); }
+.platform-facts dd { margin: 0; }
+.platform-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.platform-status { color: var(--blue); }
+.platform-stages { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.platform-stages li { padding: 16px; border: 1px solid var(--line); border-left: 3px solid var(--blue); border-radius: var(--radius); display: grid; gap: 8px; }
+.platform-chip { display: inline-block; padding: 2px 8px; background: var(--subtle); border-radius: 5px; font-size: 12px; }
+.platform-partial { border-color: #dfbd69; background: #fffaf0; }
+@media (max-width: 700px) { .platform-preview { padding: 16px; } .platform-catalog { grid-template-columns: 1fr; } .platform-card { padding: 16px; } }
+.plan-panel { display: grid; gap: 18px; }
+.plan-panel .platform-card { padding: 16px; }
+.plan-panel .platform-stages { margin-top: 4px; }
+.plan-json { white-space: pre-wrap; overflow-wrap: anywhere; }
+.plan-editor { display: grid; gap: 12px; }
+.plan-editor textarea { width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius); font-family: var(--font-mono); }

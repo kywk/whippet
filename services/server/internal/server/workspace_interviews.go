@@ -123,9 +123,12 @@ func (p *Postgres) CreateWorkspaceAuthor(ctx context.Context, id, content string
 			input.AllowedTools = append(input.AllowedTools, "browser_login")
 		}
 	}
+	if err = snapshotAuthor(&input); err != nil {
+		return AuthorSubmission{}, err
+	}
 	runID := NewID()
 	if _, err = tx.ExecContext(ctx, `INSERT INTO runs(id,workspace_id,test_id,kind,script_snapshot,script_hash,timeout_ms,author_payload,workspace_settings,workspace_context,script_origin,authorization_revision,scope_proposal_id)
- VALUES($1,$2,NULL,'author','',$3,$4,$5,$6,$7,'legacy',$8,$9)`, runID, id, scriptHash(""), authorTimeoutMS, jsonText(input), settingsJSON(&w.WorkspaceSettings), jsonText(snapshot), authorization, scopeProposal); err != nil {
+ VALUES($1,$2,NULL,'author','',$3,$4,$5,$6,$7,'legacy',$8,$9)`, runID, id, scriptHash(""), input.Budget.MaxDurationMS, jsonText(input), settingsJSON(&w.WorkspaceSettings), jsonText(snapshot), authorization, scopeProposal); err != nil {
 		return AuthorSubmission{}, err
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO messages(id,conversation_id,role,content,run_id) VALUES($1,$2,'user',$3,$4)`, NewID(), c.ID, content, runID); err != nil {
@@ -397,8 +400,8 @@ func refreshWorkspaceDrafts(ctx context.Context, tx *sql.Tx, id string, secrets 
 	if err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO draft_revisions(test_id,revision,script,script_hash,timeout_ms,workspace_settings,workspace_context,script_origin)
- SELECT dr.test_id,dr.revision+1,dr.script,dr.script_hash,$2,$3,$4,dr.script_origin FROM drafts d JOIN tests t ON t.id=d.test_id
+	if _, err = tx.ExecContext(ctx, `INSERT INTO draft_revisions(test_id,revision,script,script_hash,timeout_ms,workspace_settings,workspace_context,script_origin,module,stages)
+ SELECT dr.test_id,dr.revision+1,dr.script,dr.script_hash,$2,$3,$4,dr.script_origin,dr.module,dr.stages FROM drafts d JOIN tests t ON t.id=d.test_id
  JOIN draft_revisions dr ON dr.test_id=d.test_id AND dr.revision=d.current_revision JOIN editing_sessions e ON e.id=d.editing_session_id
  WHERE t.workspace_id=$1 AND e.status='active'`, id, w.TimeoutMS, settingsJSON(&w.WorkspaceSettings), jsonText(workspaceContext(w))); err != nil {
 		return err

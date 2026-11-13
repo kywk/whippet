@@ -174,6 +174,15 @@ export function trailFromRuns(runs: Run[], session: { id?: string; draftRevision
   const author = own.find((run) => run.kind === 'author' && run.authorMode !== 'summary');
   const validation = own.find((run) => run.kind === 'validation' && (session.draftRevision == null || run.draftRevision === session.draftRevision));
   const summary = own.find((run) => run.kind === 'author' && run.authorMode === 'summary' && (!validation || Date.parse(run.createdAt) >= Date.parse(validation.createdAt)));
+  if (author?.authorPartial && (!validation || Date.parse(validation.createdAt) <= Date.parse(author.createdAt))) {
+    const stages: Stage[] = [
+      { key: 'author', label: '改稿', state: 'todo', detail: '預算耗盡，保留部分結果；請檢視下一步', runId: author.id, at: stamp(author) },
+      { key: 'validate', label: '驗證', state: 'todo', detail: '自我試跑不等於正式驗證' },
+      { key: 'summary', label: '摘要', state: 'todo', detail: '等待正式驗證' },
+      { key: 'publish', label: '發佈', state: 'todo', detail: 'partial 不可直接發佈' },
+    ];
+    return { stages, headline: '部分完成，等待繼續', step: 1, running: false, failed: false, awaitingPublish: false };
+  }
   const aState = stateOf(author);
   const vState = validation ? stateOf(validation) : 'todo';
   const sState = validation?.status === 'succeeded' ? stateOf(summary) : 'todo';

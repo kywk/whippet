@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -75,14 +76,24 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	mux.HandleFunc("POST /api/tests/{id}/publish", a.publish)
 	mux.HandleFunc("GET /api/tests/{id}/versions", a.versions)
 	mux.HandleFunc("GET /api/tests/{id}/conversation", a.conversation)
+	mux.HandleFunc("GET /api/workspaces/{id}/catalog", a.catalog)
+	mux.HandleFunc("GET /api/tests/{id}/plan", a.getPlan)
+	mux.HandleFunc("PUT /api/tests/{id}/plan", a.putPlan)
+	mux.HandleFunc("POST /api/plans/{id}/confirm", a.confirmPlan)
+	mux.HandleFunc("POST /api/plans/{id}/cancel", a.cancelPlan)
+	mux.HandleFunc("POST /api/plans/{id}/publish", a.publishPlan)
+	mux.HandleFunc("POST /api/plans/{id}/summary", a.createPlanSummary)
+	mux.HandleFunc("GET /api/plans/{id}/summary", a.getPlanSummary)
 	mux.HandleFunc("POST /api/tests/{id}/messages", a.createAuthor)
 	mux.HandleFunc("POST /api/tests/{id}/runs", a.createRun)
 	mux.HandleFunc("GET /api/tests/{id}/runs", a.runs)
 	mux.HandleFunc("GET /api/runs/{id}", a.run)
 	mux.HandleFunc("GET /api/runs/{id}/artifacts", a.listArtifacts)
 	mux.HandleFunc("POST /api/runs/{id}/cancel", a.cancel)
+	mux.HandleFunc("POST /api/runs/{id}/continue", a.continueAuthor)
 	mux.HandleFunc("POST /api/manager/runs/{id}/artifacts/{name...}", a.upload)
 	mux.Handle("POST /api/manager/runs/{id}/attempts/{attemptId}/credentials/resolve", a.ManagerAuth(http.HandlerFunc(a.resolveCredentials)))
+	mux.Handle("POST /api/manager/runs/{id}/attempts/{attemptId}/tools", a.ManagerAuth(http.HandlerFunc(a.harnessTool)))
 	mux.Handle("POST /api/manager/runs/{id}/attempts/{attemptId}/history", a.ManagerAuth(http.HandlerFunc(a.conversationHistory)))
 	mux.HandleFunc("GET /api/runs/{id}/artifacts/{name...}", a.artifact)
 	if managerConnect != nil {
@@ -243,6 +254,18 @@ func (a *API) uploadAuthorized(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limit := artifactLimit(name)
+	if name == "author.json" {
+		if resolver, ok := a.store.(interface {
+			AuthorArtifactLimit(context.Context, string, string) (int64, error)
+		}); ok {
+			var err error
+			limit, err = resolver.AuthorArtifactLimit(r.Context(), id, attemptID)
+			if err != nil {
+				a.fail(w, err)
+				return
+			}
+		}
+	}
 	if r.ContentLength > limit {
 		writeError(w, 413, "artifact_too_large", fmt.Sprintf("artifact exceeds %d MiB", limit>>20))
 		return
@@ -252,7 +275,15 @@ func (a *API) uploadAuthorized(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, limit)
-	item, err := a.artifacts.Save(id, attemptID, name, r.Body)
+	var item Artifact
+	var err error
+	if storage, ok := a.artifacts.(interface {
+		saveWithLimit(string, string, string, io.Reader, int64) (Artifact, error)
+	}); ok {
+		item, err = storage.saveWithLimit(id, attemptID, name, r.Body, limit)
+	} else {
+		item, err = a.artifacts.Save(id, attemptID, name, r.Body)
+	}
 	if err != nil {
 		var maxErr *http.MaxBytesError
 		if errors.As(err, &maxErr) {
@@ -346,6 +377,8 @@ func (a *API) artifact(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) fail(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ErrSkillUnavailable):
+		writeError(w, 503, "skill_unavailable", "The configured skill package is unavailable or incompatible")
 	case errors.Is(err, ErrHistoryUnavailable):
 		writeError(w, 409, "history_unavailable", "Conversation history is unavailable for this attempt")
 	case errors.Is(err, ErrScopeConfirmation):

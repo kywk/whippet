@@ -1,5 +1,6 @@
+import { editableStage } from './plan';
 import { RUN_STATUSES } from './types';
-import type { AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
+import type { Plan, PlanStage, PlanSummary, StageArgument, JsonValue, AuthorPartial, CatalogItem, AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
 
 export class ApiError extends Error {
   readonly code: string;
@@ -153,9 +154,82 @@ function parseTest(value: unknown): Test {
   const data = record(value);
   return {
     id: string(data.id), workspaceId: string(data.workspaceId), name: string(data.name),
+    kind: data.kind == null ? 'test' : choice(data.kind, ['test', 'module', 'usecase'] as const),
     description: optionalString(data.description) ?? '',
     publishedVersionId: optionalString(data.publishedVersionId) || null,
     activeEditingSession: data.activeEditingSession === undefined ? undefined : data.activeEditingSession === null ? null : parseActiveSession(data.activeEditingSession),
+  };
+}
+
+function parsePlanStage(value: unknown): PlanStage {
+  const data = record(value);
+  const module = data.module == null ? undefined : record(data.module);
+  const args = Object.fromEntries(Object.entries(record(data.args)).map(([key, value]) => {
+    const arg = record(value);
+    const kind = choice(arg.kind, ['literal', 'binding'] as const);
+    if (kind === 'literal' && !Object.hasOwn(arg, 'value')) throw new ApiError('Stage literal 缺少 value。', 'INVALID_RESPONSE');
+    const parsed: StageArgument = kind === 'literal' ? { kind, value: arg.value as JsonValue } : { kind, stageId: string(arg.stageId), path: array(arg.path, string) };
+    return [key, parsed];
+  }));
+  return { id: string(data.id), title: string(data.title), action: choice(data.action, ['reuse', 'modify', 'create'] as const),
+    status: choice(data.status, ['pending', 'authoring', 'validating', 'ready', 'failed'] as const),
+    moduleTestId: optionalString(data.moduleTestId), moduleVersionId: optionalString(data.moduleVersionId),
+    module: module ? { slug: string(module.slug), moduleKind: choice(module.moduleKind, ['setup', 'step', 'page'] as const), description: string(module.description) } : undefined,
+    args, bind: optionalString(data.bind), draftRevision: data.draftRevision == null ? undefined : revision(data.draftRevision),
+    candidateVersionId: optionalString(data.candidateVersionId), authorRunId: optionalString(data.authorRunId), validationRunId: optionalString(data.validationRunId), error: optionalString(data.error) };
+}
+function parsePlan(value: unknown): Plan {
+  const data = record(value);
+  const stages = array(data.stages, parsePlanStage);
+  if (!stages.length || stages.length > 32 || new Set(stages.map((stage) => stage.id)).size !== stages.length) throw new ApiError('Plan Stage 清單格式不符。', 'INVALID_RESPONSE');
+  return { id: string(data.id), testId: string(data.testId), editingSessionId: string(data.editingSessionId),
+    revision: revision(data.revision), baseRevision: revision(data.baseRevision), contextRevision: revision(data.contextRevision),
+    status: choice(data.status, ['draft', 'confirmed', 'running', 'composed', 'done', 'stopped'] as const), stages,
+    validationRunId: optionalString(data.validationRunId), error: optionalString(data.error) };
+}
+function hash(value: unknown): string {
+  const result = string(value);
+  if (!/^[a-f0-9]{64}$/.test(result)) throw new ApiError('批次摘要 hash 格式不符。', 'INVALID_RESPONSE');
+  return result;
+}
+function parsePlanSummary(value: unknown): PlanSummary {
+  const data = record(value);
+  const candidates = array(data.candidates, (value) => {
+    const item = record(value);
+    return { testId: string(item.testId), versionId: string(item.versionId), name: string(item.name), slug: string(item.slug),
+      moduleKind: choice(item.moduleKind, ['setup', 'step', 'page'] as const), revision: revision(item.revision), bundleHash: hash(item.bundleHash) };
+  });
+  if (candidates.length > 32) throw new ApiError('批次候選清單超過上限。', 'INVALID_RESPONSE');
+  return { runId: string(data.runId), planId: string(data.planId), planRevision: revision(data.planRevision), batchHash: hash(data.batchHash),
+    status: parseStatus(data.status), stale: bool(data.stale), publishReady: bool(data.publishReady),
+    message: nullableString(data.message), description: nullableString(data.description), backgroundSummary: nullableString(data.backgroundSummary), name: nullableString(data.name), candidates };
+}
+
+function parseAuthorPartial(value: unknown): AuthorPartial {
+  const data = record(value);
+  const nextStep = string(data.nextStep);
+  if (!nextStep.trim() || new TextEncoder().encode(nextStep).length > 8192) throw new ApiError('partial 下一步格式不符。', 'INVALID_RESPONSE');
+  let checkpoint: AuthorPartial['checkpoint'];
+  if (data.checkpoint != null) {
+    const item = record(data.checkpoint);
+    const scriptHash = string(item.scriptHash);
+    if (!/^[a-f0-9]{64}$/.test(scriptHash) || item.selfTestPassed !== true) throw new ApiError('partial checkpoint 格式不符。', 'INVALID_RESPONSE');
+    checkpoint = { scriptHash, selfTestPassed: true };
+  }
+  return { reason: choice(data.reason, ['budget_exhausted'] as const), nextStep, checkpoint,
+    appliedRevision: data.appliedRevision == null ? undefined : revision(data.appliedRevision) };
+}
+
+function parseCatalogItem(value: unknown): CatalogItem {
+  const data = record(value);
+  const module = record(data.module);
+  return {
+    testId: string(data.testId), versionId: string(data.versionId), name: string(data.name), description: string(data.description),
+    module: { slug: string(module.slug), moduleKind: choice(module.moduleKind, ['setup', 'step', 'page'] as const),
+      exportName: string(module.exportName), signature: string(module.signature), inputs: string(module.inputs), returns: string(module.returns),
+      preconditions: string(module.preconditions), postconditions: string(module.postconditions), harness: string(module.harness) },
+    validationRunId: nullableString(data.validationRunId), validationStatus: data.validationStatus === '' || data.validationStatus == null ? undefined : parseStatus(data.validationStatus),
+    referencedBy: array(data.referencedBy, (value) => { const item = record(value); return { testId: string(item.testId), versionId: string(item.versionId) }; }),
   };
 }
 
@@ -177,6 +251,7 @@ function parseRun(value: unknown): Run {
     editingSessionId: optionalString(data.editingSessionId) ?? null,
     authorMode: data.authorMode as Run['authorMode'],
     scriptOrigin: data.scriptOrigin == null ? undefined : choice(data.scriptOrigin, ['ai', 'manual', 'legacy'] as const),
+    authorPartial: data.authorPartial == null ? undefined : parseAuthorPartial(data.authorPartial),
     progressEvents: data.progressEvents == null ? undefined : array(data.progressEvents, string),
   };
 }
@@ -276,7 +351,7 @@ function items<T>(value: unknown, parse: (item: unknown) => T): T[] {
 export function createHttpApi(apiBase = '/api'): WhippetApi {
   const base = apiBase.replace(/\/+$/, '');
 
-  async function request(path: string, method = 'GET', signal?: AbortSignal, body?: unknown, sensitive = false): Promise<unknown> {
+  async function request(path: string, method = 'GET', signal?: AbortSignal, body?: unknown, sensitive = false, expectedStatus?: number | number[]): Promise<unknown> {
     const controller = new AbortController();
     const abort = () => controller.abort();
     signal?.addEventListener('abort', abort, { once: true });
@@ -309,6 +384,7 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
           response.status,
         );
       }
+      if (expectedStatus !== undefined && !(Array.isArray(expectedStatus) ? expectedStatus : [expectedStatus]).includes(response.status)) throw new ApiError('API 未依契約接受請求，請重新載入確認。', 'INVALID_RESPONSE', response.status);
       if (data === null) throw new ApiError('API 未回傳 JSON，請確認 /api 代理設定。', 'INVALID_RESPONSE');
       return data;
     } catch (error) {
@@ -334,6 +410,53 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
       const data = record(await request('/dev-login', 'POST', signal));
       const user = record(data.user);
       return { id: string(user.id), role: string(user.role) } satisfies DevUser;
+    },
+    async getPlan(testId, editingSessionId, signal) {
+      const data = record(await request(`/tests/${id(testId)}/plan?editingSessionId=${id(editingSessionId)}`, 'GET', signal, undefined, false, 200));
+      if (data.plan === null) return null;
+      const plan = parsePlan(data.plan);
+      if (plan.testId !== testId || plan.editingSessionId !== editingSessionId) throw new ApiError('Plan 所屬測試或週期不符。', 'INVALID_RESPONSE');
+      return plan;
+    },
+    async savePlan(testId, input, signal) {
+      const data = record(await request(`/tests/${id(testId)}/plan`, 'PUT', signal, { editingSessionId: input.editingSessionId, revision: input.revision, planRevision: input.planRevision, stages: input.stages.map(editableStage) }, false, 200));
+      const plan = parsePlan(data.plan);
+      if (plan.testId !== testId || plan.editingSessionId !== input.editingSessionId) throw new ApiError('Plan 所屬測試或週期不符。', 'INVALID_RESPONSE');
+      return plan;
+    },
+    async confirmPlan(planId, planRevision, signal) {
+      const data = record(await request(`/plans/${id(planId)}/confirm`, 'POST', signal, { planRevision, confirmed: true }, false, 200));
+      const plan = parsePlan(data.plan);
+      if (plan.id !== planId) throw new ApiError('Plan 回應不符。', 'INVALID_RESPONSE');
+      return plan;
+    },
+    async cancelPlan(planId, planRevision, signal) {
+      const data = record(await request(`/plans/${id(planId)}/cancel`, 'POST', signal, { planRevision }, false, 200));
+      const plan = parsePlan(data.plan);
+      if (plan.id !== planId) throw new ApiError('Plan 回應不符。', 'INVALID_RESPONSE');
+      return plan;
+    },
+    async getPlanSummary(planId, signal) {
+      const data = record(await request(`/plans/${id(planId)}/summary`, 'GET', signal, undefined, false, 200));
+      if (data.summary === null) return null;
+      const summary = parsePlanSummary(data.summary);
+      if (summary.planId !== planId) throw new ApiError('批次摘要所屬 Plan 不符。', 'INVALID_RESPONSE');
+      return summary;
+    },
+    async requestPlanSummary(planId, planRevision, validationRunId, signal) {
+      const data = record(await request(`/plans/${id(planId)}/summary`, 'POST', signal, { planRevision, validationRunId }, false, [200, 202]));
+      return parseRun(data.run);
+    },
+    async publishPlan(planId, planRevision, summaryRunId, signal) {
+      const data = record(await request(`/plans/${id(planId)}/publish`, 'POST', signal, { planRevision, confirmed: true, summaryRunId }, false, 200));
+      return { usecaseVersion: parseVersion(data.usecaseVersion), moduleVersions: array(data.moduleVersions, parseVersion) };
+    },
+    async listCatalog(workspaceId, signal) {
+      return items(await request(`/workspaces/${id(workspaceId)}/catalog`, 'GET', signal), parseCatalogItem);
+    },
+    async continueAuthor(runId, editingSessionId, revision, signal) {
+      const data = record(await request(`/runs/${id(runId)}/continue`, 'POST', signal, { editingSessionId, revision }, false, 202));
+      return { run: parseRun(data.run), conversationId: string(data.conversationId) };
     },
     async listWorkspaces(signal) {
       return items(await request('/workspaces', 'GET', signal), parseWorkspaceDetail);

@@ -159,7 +159,7 @@ func scrubCredentialBytes(data []byte, replacer *strings.Replacer, depth int) ([
 	return []byte(replacer.Replace(string(data))), nil
 }
 
-func sanitizeCredentialOutputs(taskDir string, values []string) error {
+func sanitizeCredentialOutputs(taskDir string, values []string, authors ...*AuthorTask) error {
 	if len(values) == 0 {
 		return errors.New("credential evidence cannot be certified after restart")
 	}
@@ -213,7 +213,7 @@ func sanitizeCredentialOutputs(taskDir string, values []string) error {
 		replacer = strings.NewReplacer(pairs...)
 	}
 	for _, name := range []string{"report.html", "results.json", "author.json", "result.json"} {
-		file, err := openArtifact(taskDir, name)
+		file, err := openArtifact(taskDir, name, authors...)
 		if os.IsNotExist(err) {
 			continue
 		}
@@ -228,6 +228,9 @@ func sanitizeCredentialOutputs(taskDir string, values []string) error {
 		clean, err := scrubCredentialBytes(data, replacer, 0)
 		if err != nil {
 			return err
+		}
+		if name == "author.json" && len(authors) == 1 && moduleAuthor(authors[0]) && !bytes.Equal(data, clean) {
+			return errors.New("module candidate changed during redaction")
 		}
 		if err := root.WriteFile(name, clean, 0600); err != nil {
 			return err

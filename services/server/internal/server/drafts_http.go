@@ -27,14 +27,28 @@ func (a *API) createTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
+		Kind        string  `json:"kind"`
+		Slug        *string `json:"slug"`
+		Name        string  `json:"name"`
+		Description string  `json:"description"`
 	}
 	if err := decodeBody(w, r, &body); err != nil {
 		a.fail(w, err)
 		return
 	}
-	item, err := a.store.CreateTest(r.Context(), id, body.Name, body.Description)
+	var item Test
+	var err error
+	if body.Kind == "" || body.Kind == "test" {
+		if body.Slug != nil {
+			a.fail(w, ErrInvalid)
+			return
+		}
+		item, err = a.store.CreateTest(r.Context(), id, body.Name, body.Description)
+	} else if store, ok := a.store.(platformStore); ok {
+		item, err = store.CreatePlatformTest(r.Context(), id, body.Name, body.Description, body.Kind, body.Slug)
+	} else {
+		err = ErrInvalid
+	}
 	if err != nil {
 		a.fail(w, err)
 		return
@@ -64,6 +78,8 @@ func (a *API) saveDraft(w http.ResponseWriter, r *http.Request) {
 		EditingSessionID string  `json:"editingSessionId"`
 		Revision         int     `json:"revision"`
 		Script           *string `json:"script"`
+		Module           *Module `json:"module"`
+		Stages           []Stage `json:"stages"`
 	}
 	if err := decodeBody(w, r, &body); err != nil {
 		a.fail(w, err)
@@ -73,7 +89,17 @@ func (a *API) saveDraft(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "positive revision and script are required")
 		return
 	}
-	item, err := a.store.SaveDraft(r.Context(), id, body.EditingSessionID, body.Revision, *body.Script)
+	var item Draft
+	var err error
+	if body.Module != nil || body.Stages != nil {
+		if store, ok := a.store.(platformStore); ok {
+			item, err = store.SavePlatformDraft(r.Context(), id, body.EditingSessionID, body.Revision, *body.Script, body.Module, body.Stages)
+		} else {
+			err = ErrInvalid
+		}
+	} else {
+		item, err = a.store.SaveDraft(r.Context(), id, body.EditingSessionID, body.Revision, *body.Script)
+	}
 	if err != nil {
 		a.fail(w, err)
 		return

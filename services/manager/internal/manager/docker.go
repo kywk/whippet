@@ -117,7 +117,8 @@ func (d dockerCLI) attach(ctx context.Context, r record, emit func(string, strin
 		return nil
 	}}
 	history := &historyChannel{ctx: runCtx, cfg: d.cfg, r: r, input: input, client: newHTTPClient()}
-	cmd.Stdout = &lineWriter{emit: touchActivity, intercept: func(line string) bool { return channel.handle(line) || history.handle(line) }}
+	tools := &toolChannel{ctx: runCtx, cfg: d.cfg, r: r, input: input, client: newHTTPClient()}
+	cmd.Stdout = &lineWriter{emit: touchActivity, toolFrames: r.Author != nil && len(r.Author.Skills) > 0, intercept: func(line string) bool { return channel.handle(line) || history.handle(line) || tools.handle(line) }}
 	cmd.Stderr = &lineWriter{emit: touchActivity, stderr: true}
 	if err := cmd.Start(); err != nil {
 		return execution{ExitCode: -1, Error: "docker start: " + err.Error()}
@@ -169,31 +170,45 @@ func (d dockerCLI) Remove(ctx context.Context, r record) error {
 
 // CLI output is bounded and normalized into the contract's NDJSON log events.
 type lineWriter struct {
-	mu        sync.Mutex
-	buf       []byte
-	emit      func(string, string)
-	stderr    bool
-	intercept func(string) bool
+	mu         sync.Mutex
+	buf        []byte
+	emit       func(string, string)
+	stderr     bool
+	toolFrames bool
+	intercept  func(string) bool
 }
 
 func (w *lineWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	n := len(p)
+	limit := credentialFrameLimit
+	if w.toolFrames && !w.stderr {
+		limit = moduleToolFrameLimit
+	}
 	for len(p) > 0 {
 		i := bytes.IndexByte(p, '\n')
 		if i < 0 {
-			w.buf = append(w.buf, p[:min(len(p), max(0, credentialFrameLimit+1-len(w.buf)))]...)
+			w.buf = append(w.buf, p[:min(len(p), max(0, limit+1-len(w.buf)))]...)
 			break
 		}
-		w.buf = append(w.buf, p[:min(i, max(0, credentialFrameLimit+1-len(w.buf)))]...)
+		w.buf = append(w.buf, p[:min(i, max(0, limit+1-len(w.buf)))]...)
+		rawSize := len(w.buf) + 1
 		line := strings.TrimSpace(string(w.buf))
 		w.buf = w.buf[:0]
 		p = p[i+1:]
 		if line == "" {
 			continue
 		}
-		if len(line) > credentialFrameLimit {
+		if rawSize > limit {
+			continue
+		}
+		var frame struct {
+			Kind string `json:"kind"`
+			Name string `json:"name"`
+		}
+		_ = json.Unmarshal([]byte(line), &frame)
+		if frame.Kind == "tool_request" && rawSize > harnessFrameLimit(frame.Name) || frame.Kind != "tool_request" && rawSize > credentialFrameLimit {
 			continue
 		}
 		if !w.stderr && w.intercept != nil && w.intercept(line) {

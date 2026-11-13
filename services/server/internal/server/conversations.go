@@ -110,6 +110,18 @@ func (p *Postgres) CreateAuthor(ctx context.Context, testID, sessionID, content 
 	if err := checkRevision(revision, d.Revision); err != nil {
 		return AuthorSubmission{}, err
 	}
+	submission, err := p.createAuthorInTx(ctx, tx, d, session, content)
+	if err != nil {
+		return AuthorSubmission{}, err
+	}
+	if err = tx.Commit(); err != nil {
+		return AuthorSubmission{}, err
+	}
+	return submission, nil
+}
+
+func (p *Postgres) createAuthorInTx(ctx context.Context, tx *sql.Tx, d draftState, session EditingSession, content string, toolCeiling ...[]string) (AuthorSubmission, error) {
+	testID, sessionID, revision := d.TestID, session.ID, d.Revision
 	var active bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM runs WHERE test_id=$1 AND kind='author'
         AND status IN ('queued','dispatched','running','collecting','cancelling'))`, testID).Scan(&active); err != nil {
@@ -117,6 +129,11 @@ func (p *Postgres) CreateAuthor(ctx context.Context, testID, sessionID, content 
 	}
 	if active {
 		return AuthorSubmission{}, fmt.Errorf("%w: an author run is already active", ErrConflict)
+	}
+	var testKind string
+	var slug *string
+	if err := tx.QueryRowContext(ctx, `SELECT kind,slug FROM tests WHERE id=$1`, testID).Scan(&testKind, &slug); err != nil {
+		return AuthorSubmission{}, err
 	}
 	conversationID := session.ConversationID
 	newest := []ChatMessage{{Role: "user", Content: content}}
@@ -139,6 +156,33 @@ func (p *Postgres) CreateAuthor(ctx context.Context, testID, sessionID, content 
 	}
 	session.ContextRevision++
 	input := editingAuthorInput(session, d, "test-author", authorContext(newest))
+	switch testKind {
+	case "module":
+		input.SkillID = "module-authoring"
+		module := d.Module
+		if module == nil {
+			module = &Module{Slug: stringValue(slug), ModuleKind: "step", ExportName: "run"}
+		}
+		input.Platform = &AuthorPlatform{Module: module}
+		input.AllowedTools = []string{"read_module_draft", "read_validation_report", "update_module_candidate", "request_module_validation"}
+	case "usecase":
+		input.SkillID = "usecase-planner"
+		input.Platform = &AuthorPlatform{}
+		current, planErr := scanPlan(tx.QueryRowContext(ctx, `SELECT `+planColumns+` FROM plans WHERE editing_session_id=$1`, sessionID))
+		if planErr == nil {
+			if current.Status != "draft" && current.Status != "stopped" {
+				return AuthorSubmission{}, ErrConflict
+			}
+			input.Platform.PlanID = &current.ID
+		} else if !errors.Is(planErr, ErrNotFound) {
+			return AuthorSubmission{}, planErr
+		}
+		input.AllowedTools = []string{"catalog_search", "catalog_get", "read_usecase_draft", "read_plan", "propose_plan"}
+	}
+	if err = validateAuthorPlatform(input, testKind); err != nil {
+		return AuthorSubmission{}, err
+	}
+
 	input.History, err = conversationHistorySnapshot(ctx, tx, conversationID)
 	if err != nil {
 		return AuthorSubmission{}, err
@@ -157,7 +201,23 @@ func (p *Postgres) CreateAuthor(ctx context.Context, testID, sessionID, content 
 	if err != nil {
 		return AuthorSubmission{}, err
 	}
-	run, err := enqueueAuthor(ctx, tx, d, input, Run{authorizationRevision: auth, scopeProposalID: proposal})
+	if err := snapshotAuthor(&input); err != nil {
+		return AuthorSubmission{}, err
+	}
+	if len(toolCeiling) > 0 {
+		allowed := map[string]bool{}
+		for _, name := range toolCeiling[0] {
+			allowed[name] = true
+		}
+		restricted := []string{}
+		for _, name := range input.AllowedTools {
+			if allowed[name] {
+				restricted = append(restricted, name)
+			}
+		}
+		input.AllowedTools = restricted
+	}
+	run, err := enqueueAuthorSnapshot(ctx, tx, d, input, Run{authorizationRevision: auth, scopeProposalID: proposal})
 	if err != nil {
 		return AuthorSubmission{}, err
 	}
@@ -170,9 +230,6 @@ func (p *Postgres) CreateAuthor(ctx context.Context, testID, sessionID, content 
 		return AuthorSubmission{}, err
 	}
 	if err := clearDraftSummary(ctx, tx, testID); err != nil {
-		return AuthorSubmission{}, err
-	}
-	if err := tx.Commit(); err != nil {
 		return AuthorSubmission{}, err
 	}
 	return AuthorSubmission{Run: run, ConversationID: conversationID}, nil

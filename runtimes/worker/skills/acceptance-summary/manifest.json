@@ -1,0 +1,16 @@
+{
+  "id": "acceptance-summary",
+  "version": "1",
+  "defaultTools": [],
+  "budget": {
+    "maxModelRequests": 1,
+    "maxToolCalls": 0,
+    "maxDurationMs": 180000
+  },
+  "model": {
+    "provider": "opencode",
+    "model": "muse-spark-1.3-contributor",
+    "reasoningEffort": "xhigh"
+  },
+  "references": []
+}

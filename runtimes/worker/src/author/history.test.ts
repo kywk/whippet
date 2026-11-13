@@ -157,3 +157,94 @@ test("M9 model cursor accepts JSON null and exact literal null while rejecting e
   assert.equal(strictPipes.frames.length,0,"literal null remains invalid at the strict client seam");
   strictClient.close();strictPipes.read.destroy();strictPipes.write.destroy();
 });
+
+import { readFileSync } from "node:fs";
+import { loadToolRegistry, sha256 } from "./registry.js";
+import { HarnessClient } from "./harness.js";
+import { MAX_ATTEMPT_FRAME, MAX_TOOL_FRAME, MAX_MODULE_TOOL_FRAME } from "../attempt-io.js";
+
+function v10Task(): AuthorInput {
+  const input = task();
+  const registry = loadToolRegistry();
+  const root = new URL("../../skills/test-author/", import.meta.url);
+  const raw = readFileSync(new URL("manifest.json", root));
+  const manifest = JSON.parse(raw.toString());
+  Object.assign(input.author, { skills: [{ id: "test-author", version: "1", sha256: sha256(readFileSync(new URL("SKILL.md", root))), manifestSha256: sha256(raw), referenceHashes: {} }], budget: manifest.budget, model: manifest.model, toolRegistryVersion: registry.version, toolRegistrySha256: registry.sha256 });
+  return input;
+}
+function toolReply(stream: PassThrough, request: any, result: unknown, attemptId = id) {
+  stream.write(JSON.stringify({ kind: "tool_response", requestId: request.requestId, attemptId, result }) + "\n");
+}
+
+test("M10 v10 history uses generic IPC and stable transport UUID independent of provider opaque ID", async () => {
+  const input = v10Task(), pipes = io(), client = new HarnessClient(input, pipes);
+  try {
+    for (let n = 0; n < 2; n++) {
+      const pending = client.call("read_conversation_history", { cursor: null }, "provider:opaque/not-a-uuid");
+      const frame = pipes.frames[n];
+      assert.equal(frame.kind, "tool_request"); assert.equal(frame.name, "read_conversation_history");
+      assert.match(frame.requestId, /^[a-f0-9-]{36}$/); assert.notEqual(frame.requestId, "provider:opaque/not-a-uuid");
+      assert.deepEqual(frame.arguments, { cursor: null });
+      toolReply(pipes.read, frame, page(input)); await pending;
+    }
+    assert.equal(pipes.frames[0].requestId, pipes.frames[1].requestId);
+    await assert.rejects(client.call("read_conversation_history", { cursor: "1:0" }, "provider:opaque/not-a-uuid"));
+    await assert.rejects(client.call("read_draft", {}, "other"));
+  } finally { client.close(); pipes.read.destroy(); pipes.write.destroy(); }
+});
+
+test("M10 v10 history rejects foreign scope, ignores late replies and cancels attempt-local pending calls", async () => {
+  const input = v10Task(), pipes = io(), history = new HistoryClient(input, pipes);
+  try {
+    const wrongScope = history.read(null, undefined, "scope"); const rejectedScope = assert.rejects(wrongScope, HistoryError);
+    toolReply(pipes.read, pipes.frames[0], { ...page(input), workspaceId: foreign }); await rejectedScope;
+    const abort = new AbortController(); const cancelled = history.read(null, abort.signal, "cancelled"); const rejected = assert.rejects(cancelled, HistoryError);
+    toolReply(pipes.read, pipes.frames[1], page(input), foreign); abort.abort(); await rejected;
+    const pending = history.read(null, undefined, "next");
+    toolReply(pipes.read, pipes.frames[1], page(input));
+    toolReply(pipes.read, pipes.frames[2], page(input)); assert.deepEqual(await pending, page(input));
+    const closed = history.read(null, undefined, "closed"); const closedRejected = assert.rejects(closed, HistoryError); history.close(); await closedRejected;
+    toolReply(pipes.read, pipes.frames[3], page(input));
+    assert.equal(pipes.frames.every(frame => frame.kind === "tool_request"), true);
+  } finally { history.close(); pipes.read.destroy(); pipes.write.destroy(); }
+});
+
+test("M10 demux retains separate 64KiB history/credential and 14MiB tool frame limits", () => {
+  const pipes = io(), transport = attemptIO(pipes); let tools = 0, history = 0, failures = 0;
+  transport.subscribe("tool_response", () => { tools++; }, () => { failures++; });
+  transport.subscribe("history_response", () => { history++; }, () => { failures++; });
+  transport.expectTool("pending", "read_plan");
+  pipes.read.write(JSON.stringify({ kind: "tool_response", requestId:"pending", result: "x".repeat(MAX_ATTEMPT_FRAME) }) + "\n");
+  assert.equal(tools, 1); assert.equal(history, 0);
+  let rejected = false;
+  transport.send({ kind: "credential_request", data: "x".repeat(MAX_ATTEMPT_FRAME) }, () => { rejected = true; });
+  assert.equal(rejected, true); assert.equal(pipes.frames.length, 0);
+  pipes.read.write(JSON.stringify({ kind: "history_response", history: "x".repeat(MAX_ATTEMPT_FRAME) }) + "\n");
+  assert.equal(history, 0); assert.equal(failures, 2);
+  pipes.read.destroy(); pipes.write.destroy();
+  const large = io(), separate = attemptIO(large); let largeFailure = 0;
+  separate.subscribe("tool_response", () => assert.fail("oversized tool frame delivered"), () => { largeFailure++; });
+  large.read.write(Buffer.alloc(MAX_MODULE_TOOL_FRAME + 1, 120)); assert.equal(largeFailure, 1);
+  large.read.destroy(); large.write.destroy();
+});
+
+test("M10 actual author loop maps generic history back to original model call ID", async () => {
+  const input = v10Task(), pipes = io(), history = new HistoryClient(input, pipes);
+  let requests = 0;
+  pipes.write.on("data", bytes => {
+    const frame = JSON.parse(bytes.toString());
+    assert.equal(frame.kind, "tool_request"); assert.notEqual(frame.requestId, "opaque-provider-call");
+    queueMicrotask(() => toolReply(pipes.read, frame, page(input)));
+  });
+  try {
+    const result = await runAuthor(input, readAIConfig({ WHIPPET_AI_ENABLED: "true", OPENCODE_API_KEY: "synthetic-v10" }), undefined, {
+      history, fetcher: async (_url, init) => {
+        if (++requests === 1) return Response.json({ status: "completed", output: [{ type: "function_call", call_id: "opaque-provider-call", name: "read_conversation_history", arguments: '{"cursor":null}' }] });
+        const body = JSON.parse(init!.body as string); const output = body.input.find((item: any) => item.type === "function_call_output");
+        assert.equal(output.call_id, "opaque-provider-call"); assert.equal(JSON.parse(output.output).items.length, 1);
+        return Response.json({ status: "completed", output: [], output_text: '{"message":"generic history verified"}' });
+      },
+    });
+    assert.equal(result.message, "generic history verified");
+  } finally { history.close(); pipes.read.destroy(); pipes.write.destroy(); }
+});

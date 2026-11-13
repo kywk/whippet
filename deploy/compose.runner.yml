@@ -4,7 +4,8 @@ services:
   manager:
     image: whippet-manager:m1
     build:
-      context: ../services/manager
+      context: ..
+      dockerfile: services/manager/Dockerfile
     init: true
     restart: unless-stopped
     stop_grace_period: 45s
@@ -32,5 +33,6 @@ services:
   worker:
     image: ${WORKER_IMAGE:-whippet-worker:m1}
     build:
-      context: ../runtimes/worker
+      context: ..
+      dockerfile: runtimes/worker/Dockerfile
     profiles: [build]

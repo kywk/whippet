@@ -280,6 +280,9 @@ func validScriptOrigin(value string) bool {
 	return value == "" || value == "ai" || value == "manual" || value == "legacy"
 }
 func authorWantsBrowser(a *AuthorTask) bool {
+	if moduleAuthor(a) {
+		return true
+	}
 	if a == nil || summaryAuthor(a) {
 		return false
 	}

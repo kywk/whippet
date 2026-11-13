@@ -115,7 +115,7 @@ func (m *Manager) session(ctx context.Context) error {
 		return err
 	}
 	// JSON escapes can expand each script byte to six bytes.
-	conn.MaxPayloadBytes = 6*maxScriptBytes + 512*1024
+	conn.MaxPayloadBytes = maxWorkerInputBytes
 	// Publish the connection only after hello, so a concurrent completion cannot
 	// send a terminal result before the Server has registered this Manager.
 	if err := conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
@@ -349,7 +349,7 @@ func (m *Manager) runAttempt(ctx, executionCtx context.Context, r record, dispat
 	values := append([]string{}, m.secrets[r.AttemptID]...)
 	m.mu.Unlock()
 	if r.CredentialsUsed && !r.CredentialsSanitized {
-		if err := sanitizeCredentialOutputs(m.taskDir(r), values); err != nil {
+		if err := sanitizeCredentialOutputs(m.taskDir(r), values, r.Author); err != nil {
 			r.Result = &Result{Status: "failed", Error: "Credential evidence could not be safely retained"}
 			r.Artifacts = nil
 			dispatch = nil
@@ -423,18 +423,27 @@ func (m *Manager) runAttempt(ctx, executionCtx context.Context, r record, dispat
 }
 
 func (m *Manager) prepare(r record, dispatch Dispatch) error {
+	if err := normalizeBundle(&dispatch); err != nil {
+		return err
+	}
 	if err := os.Mkdir(m.taskDir(r), 0700); err != nil {
 		return err
 	}
 	if err := os.Mkdir(filepath.Join(m.taskDir(r), "live"), 0700); err != nil {
 		return err
 	}
-	return atomicJSON(filepath.Join(m.taskDir(r), "input.json"), WorkerInput{
+	input := WorkerInput{
+		Files: dispatch.Files,
 		RunID: r.RunID, AttemptID: r.AttemptID, Script: dispatch.Script, TimeoutMS: dispatch.TimeoutMS,
 		Kind: dispatch.Kind, Author: dispatch.Author, ScriptOrigin: normalizedScriptOrigin(dispatch.ScriptOrigin),
 		WorkspaceSettings: dispatch.WorkspaceSettings,
 		WorkspaceID:       dispatch.WorkspaceID, TestID: dispatch.TestID, WorkspaceContext: dispatch.WorkspaceContext,
-	})
+	}
+	raw, err := json.Marshal(input)
+	if err != nil || len(raw) > maxWorkerInputBytes {
+		return errBundle
+	}
+	return atomicJSON(filepath.Join(m.taskDir(r), "input.json"), input)
 }
 
 func (m *Manager) emit(r record, kind, text string) {

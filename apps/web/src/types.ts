@@ -104,6 +104,7 @@ export interface WorkspaceSettingsPatch {
 }
 
 export interface Test {
+  kind?: 'test' | 'module' | 'usecase';
   id: string;
   workspaceId: string;
   name: string;
@@ -126,6 +127,83 @@ export const RUN_STATUSES = [
 
 export type RunStatus = typeof RUN_STATUSES[number];
 
+export interface ModuleMetadata {
+  slug: string;
+  moduleKind: 'setup' | 'step' | 'page';
+  exportName: string;
+  signature: string;
+  inputs: string;
+  returns: string;
+  preconditions: string;
+  postconditions: string;
+  harness: string;
+}
+
+export interface CatalogItem {
+  testId: string;
+  versionId: string;
+  name: string;
+  description: string;
+  module: ModuleMetadata;
+  validationRunId: string | null;
+  validationStatus?: RunStatus;
+  referencedBy: { testId: string; versionId: string }[];
+}
+
+export interface AuthorPartial {
+  reason: 'budget_exhausted';
+  nextStep: string;
+  checkpoint?: { scriptHash: string; selfTestPassed: true };
+  appliedRevision?: number;
+}
+
+export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+export type StageArgument = { kind: 'literal'; value: JsonValue } | { kind: 'binding'; stageId: string; path: string[] };
+export interface PlanStageInput {
+  id: string;
+  title: string;
+  action: 'reuse' | 'modify' | 'create';
+  moduleTestId?: string;
+  moduleVersionId?: string;
+  module?: { slug: string; moduleKind: 'setup' | 'step' | 'page'; description: string };
+  args: Record<string, StageArgument>;
+  bind?: string;
+}
+export interface PlanStage extends PlanStageInput {
+  status: 'pending' | 'authoring' | 'validating' | 'ready' | 'failed';
+  draftRevision?: number;
+  candidateVersionId?: string;
+  authorRunId?: string;
+  validationRunId?: string;
+  error?: string;
+}
+export interface Plan {
+  id: string;
+  testId: string;
+  editingSessionId: string;
+  revision: number;
+  baseRevision: number;
+  contextRevision: number;
+  status: 'draft' | 'confirmed' | 'running' | 'composed' | 'done' | 'stopped';
+  stages: PlanStage[];
+  validationRunId?: string;
+  error?: string;
+}
+export interface PlanSummary {
+  runId: string;
+  planId: string;
+  planRevision: number;
+  batchHash: string;
+  status: RunStatus;
+  stale: boolean;
+  publishReady: boolean;
+  message: string | null;
+  description: string | null;
+  backgroundSummary: string | null;
+  name: string | null;
+  candidates: { testId: string; versionId: string; name: string; slug: string; moduleKind: 'setup' | 'step' | 'page'; revision: number; bundleHash: string }[];
+}
+
 export interface Run {
   id: string;
   testId: string | null;
@@ -144,6 +222,7 @@ export interface Run {
   authorMode?: 'edit' | 'summary' | 'workspace';
   scriptOrigin?: ScriptOrigin;
   progressEvents?: string[];
+  authorPartial?: AuthorPartial;
 }
 
 export interface Draft {
@@ -250,6 +329,17 @@ export function isActiveRun(run: Run): boolean {
 }
 
 export interface WhippetApi {
+  getPlan?: (testId: string, editingSessionId: string, signal?: AbortSignal) => Promise<Plan | null>;
+  savePlan?: (testId: string, input: { editingSessionId: string; revision: number; planRevision: number; stages: PlanStageInput[] }, signal?: AbortSignal) => Promise<Plan>;
+  confirmPlan?: (planId: string, planRevision: number, signal?: AbortSignal) => Promise<Plan>;
+  cancelPlan?: (planId: string, planRevision: number, signal?: AbortSignal) => Promise<Plan>;
+  getPlanSummary?: (planId: string, signal?: AbortSignal) => Promise<PlanSummary | null>;
+  requestPlanSummary?: (planId: string, planRevision: number, validationRunId: string, signal?: AbortSignal) => Promise<Run>;
+  publishPlan?: (planId: string, planRevision: number, summaryRunId: string, signal?: AbortSignal) => Promise<{ usecaseVersion: Version; moduleVersions: Version[] }>;
+
+  // Optional: older/mock adapters must report unavailable, never fabricate results.
+  listCatalog?: (workspaceId: string, signal?: AbortSignal) => Promise<CatalogItem[]>;
+  continueAuthor?: (runId: string, editingSessionId: string, revision: number, signal?: AbortSignal) => Promise<{ run: Run; conversationId: string }>;
   login(signal?: AbortSignal): Promise<DevUser>;
   listWorkspaces(signal?: AbortSignal): Promise<WorkspaceDetail[]>;
   listTests(workspaceId: string, signal?: AbortSignal): Promise<Test[]>;
@@ -257,7 +347,7 @@ export interface WhippetApi {
   createRun(testId: string, signal?: AbortSignal): Promise<Run>;
   listRuns(testId: string, signal?: AbortSignal): Promise<Run[]>;
   getRun(runId: string, signal?: AbortSignal): Promise<Run>;
-  createTest(workspaceId: string, input: { name?: string; description?: string }, signal?: AbortSignal): Promise<Test>;
+  createTest(workspaceId: string, input: { name?: string; description?: string; kind?: 'test' | 'usecase' }, signal?: AbortSignal): Promise<Test>;
   getDraft(testId: string, editingSessionId: string, signal?: AbortSignal): Promise<Draft>;
   saveDraft(testId: string, editingSessionId: string, revision: number, script: string, signal?: AbortSignal): Promise<Draft>;
   validateDraft(testId: string, editingSessionId: string, revision: number, signal?: AbortSignal): Promise<Run>;

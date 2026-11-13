@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
@@ -89,7 +90,14 @@ func NewLocalArtifacts(root string) (*LocalArtifacts, error) {
 }
 
 func (s *LocalArtifacts) Save(runID, attemptID, name string, body io.Reader) (Artifact, error) {
+	return s.saveWithLimit(runID, attemptID, name, body, artifactLimit(name))
+}
+
+func (s *LocalArtifacts) saveWithLimit(runID, attemptID, name string, body io.Reader, limit int64) (Artifact, error) {
 	a := Artifact{RunID: runID, AttemptID: attemptID, Name: name}
+	if limit != artifactLimit(name) && (name != "author.json" || limit != MaxModuleAuthorArtifactBytes) {
+		return a, ErrInvalid
+	}
 	if !ValidID(runID) || !ValidID(attemptID) || !validArtifact(name) {
 		return a, ErrInvalid
 	}
@@ -105,7 +113,6 @@ func (s *LocalArtifacts) Save(runID, attemptID, name string, body io.Reader) (Ar
 	if isEvidenceArtifact(name) {
 		writers = append(writers, nameHash)
 	}
-	limit := artifactLimit(name)
 	a.Size, err = io.Copy(io.MultiWriter(writers...), io.LimitReader(body, limit+1))
 	if err != nil {
 		return a, err
@@ -206,4 +213,22 @@ func (s *LocalArtifacts) resolve(key string, create bool) (string, error) {
 		}
 	}
 	return filepath.Join(path, parts[len(parts)-1]), nil
+}
+
+// The stored Run, never artifact contents or HTTP headers, selects the exception.
+const MaxModuleAuthorArtifactBytes int64 = 25 << 20
+
+func runArtifactLimit(name, kind, primary string) int64 {
+	if name == "author.json" && kind == "author" && primary == "module-authoring" {
+		return MaxModuleAuthorArtifactBytes
+	}
+	return artifactLimit(name)
+}
+func (p *Postgres) AuthorArtifactLimit(ctx context.Context, runID, attemptID string) (int64, error) {
+	var kind, primary string
+	err := p.DB.QueryRowContext(ctx, `SELECT kind,COALESCE(author_payload->>'skillId','') FROM runs WHERE id=$1 AND attempt_id=$2`, runID, attemptID).Scan(&kind, &primary)
+	if err != nil {
+		return 0, err
+	}
+	return runArtifactLimit("author.json", kind, primary), nil
 }

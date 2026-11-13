@@ -36,6 +36,8 @@ type Workspace struct {
 }
 
 type Test struct {
+	Kind                 string                `json:"kind"`
+	Slug                 *string               `json:"slug,omitempty"`
 	ID                   string                `json:"id"`
 	WorkspaceID          string                `json:"workspaceId"`
 	Name                 string                `json:"name"`
@@ -45,7 +47,8 @@ type Test struct {
 }
 
 type Run struct {
-	ScriptOrigin          string `json:"scriptOrigin"`
+	AuthorPartial         *AuthorPartial `json:"authorPartial,omitempty"`
+	ScriptOrigin          string         `json:"scriptOrigin"`
 	authorizationRevision *int64
 	scopeProposalID       *string
 	WorkspaceID           string             `json:"workspaceId"`
@@ -68,6 +71,8 @@ type Run struct {
 }
 
 type Draft struct {
+	Module            *Module            `json:"module,omitempty"`
+	Stages            []Stage            `json:"stages,omitempty"`
 	ScriptOrigin      string             `json:"scriptOrigin"`
 	WorkspaceContext  *WorkspaceContext  `json:"workspaceContext,omitempty"`
 	EditingSessionID  string             `json:"editingSessionId"`
@@ -82,6 +87,8 @@ type Draft struct {
 }
 
 type Version struct {
+	Module            *Module            `json:"module,omitempty"`
+	Stages            []Stage            `json:"stages,omitempty"`
 	ScriptOrigin      string             `json:"scriptOrigin"`
 	WorkspaceContext  *WorkspaceContext  `json:"workspaceContext,omitempty"`
 	Description       *string            `json:"description"`
@@ -124,19 +131,27 @@ type ChatMessage struct {
 }
 
 type AuthorInput struct {
-	SkillID             string              `json:"skillId,omitempty"`
-	SkillVersion        string              `json:"skillVersion,omitempty"`
-	AllowedTools        []string            `json:"allowedTools"`
-	EditingSessionID    string              `json:"editingSessionId,omitempty"`
-	ContextRevision     int64               `json:"contextRevision"`
-	SourceVersion       *SourceVersion      `json:"sourceVersion"`
-	ConversationSummary *string             `json:"conversationSummary"`
-	ValidationEvidence  *ValidationEvidence `json:"validationEvidence,omitempty"`
-	ConversationID      string              `json:"conversationId"`
-	BaseRevision        int                 `json:"baseRevision"`
-	Messages            []ChatMessage       `json:"messages"`
-	Validation          *AuthorValidation   `json:"validation,omitempty"`
-	History             *AuthorHistory      `json:"history,omitempty"`
+	ModuleSummary       *ModuleSummarySnapshot `json:"moduleSummary,omitempty"`
+	Batch               *AuthorBatch           `json:"batch,omitempty"`
+	Platform            *AuthorPlatform        `json:"platform,omitempty"`
+	Skills              []SkillSnapshot        `json:"skills,omitempty"`
+	Budget              *AuthorBudget          `json:"budget,omitempty"`
+	Model               *AuthorModel           `json:"model,omitempty"`
+	ToolRegistryVersion string                 `json:"toolRegistryVersion,omitempty"`
+	ToolRegistrySHA256  string                 `json:"toolRegistrySha256,omitempty"`
+	SkillID             string                 `json:"skillId,omitempty"`
+	SkillVersion        string                 `json:"skillVersion,omitempty"`
+	AllowedTools        []string               `json:"allowedTools"`
+	EditingSessionID    string                 `json:"editingSessionId,omitempty"`
+	ContextRevision     int64                  `json:"contextRevision"`
+	SourceVersion       *SourceVersion         `json:"sourceVersion"`
+	ConversationSummary *string                `json:"conversationSummary"`
+	ValidationEvidence  *ValidationEvidence    `json:"validationEvidence,omitempty"`
+	ConversationID      string                 `json:"conversationId"`
+	BaseRevision        int                    `json:"baseRevision"`
+	Messages            []ChatMessage          `json:"messages"`
+	Validation          *AuthorValidation      `json:"validation,omitempty"`
+	History             *AuthorHistory         `json:"history,omitempty"`
 }
 
 type AuthorValidation struct {
@@ -159,6 +174,7 @@ func Terminal(status string) bool {
 }
 
 type Assignment struct {
+	Files []RunFile
 	Run
 	ManagerID string
 	AttemptID string

@@ -1,5 +1,5 @@
 import { writeFile } from "node:fs/promises";
-import type { FullConfig, FullResult, Reporter, Suite, TestCase, TestError, TestResult } from "@playwright/test/reporter";
+import type { FullConfig, FullResult, Reporter, Suite, TestCase, TestError, TestResult, TestStep } from "@playwright/test/reporter";
 import type { RuntimeSummary } from "./result.js";
 
 function log(message: string): void {
@@ -34,6 +34,10 @@ export default class NDJSONReporter implements Reporter {
     if (result.status === "interrupted") this.summary.interrupted += 1;
     for (const error of result.errors) this.addError(error);
     log(`${result.status}: ${test.titlePath().join(" > ")} (${result.duration}ms)`);
+  }
+
+  onStepEnd(_test: TestCase, _result: TestResult, step: TestStep): void {
+    if (step.category === "test.step" && step.error) log(`Stage failed: ${step.title}`);
   }
 
   onError(error: TestError): void { this.addError(error); }

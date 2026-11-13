@@ -1,0 +1,26 @@
+{
+  "id": "usecase-healer",
+  "version": "1",
+  "defaultTools": [
+    "read_skill_reference",
+    "read_draft",
+    "read_validation_report"
+  ],
+  "budget": {
+    "maxModelRequests": 8,
+    "maxToolCalls": 12,
+    "maxDurationMs": 180000
+  },
+  "model": {
+    "provider": "opencode",
+    "model": "muse-spark-1.3-contributor",
+    "reasoningEffort": "xhigh"
+  },
+  "references": [
+    {
+      "id": "diagnosis",
+      "path": "references/diagnosis.md",
+      "sha256": "20ac3f7a08f4e70a1f76b85f8d323210f7aa3d09ced6c4539fc6150e5baf708c"
+    }
+  ]
+}

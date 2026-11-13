@@ -115,7 +115,7 @@ export function useActivity(api: WhippetApi, tests: Test[], selectedId: string |
         if (before && ['queued', 'dispatched', 'running', 'collecting', 'cancelling'].includes(before) && !isActiveRun(run)
           && permission === 'granted' && (document.hidden || selectedRef.current !== test.id)) {
           const label = run.kind === 'author' ? (run.authorMode === 'summary' ? '驗收摘要' : 'AI 撰寫') : run.kind === 'validation' ? '草稿驗證' : '正式執行';
-          try { new Notification(`${test.name}`, { body: `${label}${run.status === 'succeeded' ? '已完成' : '未成功'}`, tag: run.id }); } catch { /* 通知失敗不影響任務。 */ }
+          try { new Notification(`${test.name}`, { body: `${label}${run.authorPartial ? '部分完成，等待繼續' : run.status === 'succeeded' ? '已完成' : '未成功'}`, tag: run.id }); } catch { /* 通知失敗不影響任務。 */ }
         }
       }
     }
@@ -131,6 +131,13 @@ export function useActivity(api: WhippetApi, tests: Test[], selectedId: string |
         const trail = trailFromRuns(runs, { id: session.id, draftRevision: session.draftRevision });
         stages = trail.stages; running = trail.running; bad = trail.failed;
         label = session.status === 'discarding' ? '正在放棄草稿' : `${trail.headline} · 第 ${trail.step}／4 站`;
+        if (test.kind === 'usecase' && session.status !== 'discarding') {
+          // Single-Test runs do not describe Plan Stage/batch-summary progress.
+          stages = [];
+          running = runs.some((run) => run.editingSessionId === session.id && isActiveRun(run));
+          bad = false;
+          label = running ? 'Use Case 任務進行中 · 詳見 Plan' : 'Use Case · 至編輯頁檢視 Plan';
+        }
       } else if (test.publishedVersionId) {
         stages = publishedTrail;
         const formal = runs.filter((run) => !run.kind || run.kind === 'run').sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];

@@ -25,6 +25,23 @@ func validAuthorMetadata(a *AuthorTask, script *string) error {
 	if a == nil {
 		return errors.New("missing author snapshot")
 	}
+	if !validModuleSummary(a, script) {
+		return errCapability
+	}
+	if !validAuthorBatch(a) {
+		return errCapability
+	}
+	platformScript := ""
+	if script != nil {
+		platformScript = *script
+	}
+	if !validPlatform(a.Platform, a, platformScript) {
+		return errCapability
+	}
+	registry, err := validCapabilitySnapshot(a)
+	if err != nil {
+		return err
+	}
 	modern := a.SkillID != nil || a.SkillVersion != nil || a.AllowedTools != nil || a.EditingSessionID != nil || a.ContextRevision != nil || len(a.SourceVersion) > 0 || len(a.ConversationSummary) > 0 || a.ValidationEvidence != nil
 	if !modern {
 		return nil
@@ -42,7 +59,7 @@ func validAuthorMetadata(a *AuthorTask, script *string) error {
 		}
 	}
 	invalid := errors.New("invalid M7 author snapshot")
-	if a.SkillID == nil || (*a.SkillID != "test-author" && *a.SkillID != "acceptance-summary" && !workspaceAuthor(a)) || a.SkillVersion == nil || *a.SkillVersion != "1" || a.AllowedTools == nil ||
+	if a.SkillID == nil || (*a.SkillID != "test-author" && *a.SkillID != "acceptance-summary" && !workspaceAuthor(a) && !moduleAuthor(a) && !plannerAuthor(a)) || a.SkillVersion == nil || *a.SkillVersion != "1" || a.AllowedTools == nil ||
 		(!workspaceAuthor(a) && (a.EditingSessionID == nil || !uuidPattern.MatchString(*a.EditingSessionID))) || a.ContextRevision == nil || *a.ContextRevision < 0 || *a.ContextRevision > 9007199254740991 || a.BaseRevision < 1 || len(a.SourceVersion) == 0 || len(a.ConversationSummary) == 0 {
 		return invalid
 	}
@@ -70,7 +87,7 @@ func validAuthorMetadata(a *AuthorTask, script *string) error {
 	}
 	if workspaceAuthor(a) {
 		for _, tool := range *a.AllowedTools {
-			if !strings.HasPrefix(tool, "browser_") && tool != "read_conversation_history" {
+			if !strings.HasPrefix(tool, "browser_") && tool != "read_conversation_history" && !(registry != nil && tool == "read_skill_reference") {
 				return invalid
 			}
 		}
@@ -85,7 +102,16 @@ func validAuthorMetadata(a *AuthorTask, script *string) error {
 		for _, allowed := range authorToolNames {
 			known = known || name == allowed
 		}
-		if !known || seen[name] {
+		if registry != nil {
+			// Only runtime-implemented capabilities can be advertised.
+			known = known || name == "read_skill_reference" || platformTool(name)
+			registered := false
+			for _, tool := range registry.Tools {
+				registered = registered || tool.Name == name
+			}
+			known = known && registered
+		}
+		if !known || seen[name] || !allowedPlatformTool(a, name) {
 			return invalid
 		}
 		seen[name] = true
@@ -97,7 +123,7 @@ func validAuthorMetadata(a *AuthorTask, script *string) error {
 			e.Stats.Expected < 1 || e.Stats.Unexpected != 0 || e.Stats.Flaky < 0 || e.Stats.Skipped < 0 || e.Stats.Duration < 0 || math.IsNaN(e.Stats.Duration) || math.IsInf(e.Stats.Duration, 0) {
 			return invalid
 		}
-		if script != nil && (strings.TrimSpace(*script) == "" || e.ScriptHash != fmt.Sprintf("%x", sha256.Sum256([]byte(*script)))) {
+		if script != nil && (strings.TrimSpace(*script) == "" || len(a.ModuleSummary) == 0 && e.ScriptHash != fmt.Sprintf("%x", sha256.Sum256([]byte(*script)))) {
 			return invalid
 		}
 	} else if a.ValidationEvidence != nil {
@@ -134,8 +160,14 @@ func hasAllowedTool(a *AuthorTask, name string) bool {
 
 func validAuthorArtifact(taskDir string, a *AuthorTask, context json.RawMessage) bool {
 	var raw json.RawMessage
-	if readOutput(taskDir, "author.json", &raw) != nil {
+	if readOutput(taskDir, "author.json", &raw, a) != nil {
 		return false
+	}
+	if !utf8.Valid(raw) {
+		return false
+	}
+	if moduleAuthor(a) || plannerAuthor(a) {
+		return validPlatformArtifact(raw, a)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
@@ -182,13 +214,17 @@ func validAuthorArtifact(taskDir string, a *AuthorTask, context json.RawMessage)
 			(out.Name == nil || boundedAuthorText(*out.Name, 200, true))
 	}
 	var out struct {
-		Message             *string `json:"message"`
-		Script              *string `json:"script,omitempty"`
-		RequestValidation   *bool   `json:"requestValidation"`
-		ConversationSummary *string `json:"conversationSummary,omitempty"`
+		Partial             json.RawMessage `json:"partial,omitempty"`
+		Message             *string         `json:"message"`
+		Script              *string         `json:"script,omitempty"`
+		RequestValidation   *bool           `json:"requestValidation"`
+		ConversationSummary *string         `json:"conversationSummary,omitempty"`
 	}
 	if decoder.Decode(&out) != nil || out.Message == nil || !boundedAuthorText(*out.Message, 128000, true) || utf8.RuneCountInString(*out.Message) > 32000 || out.RequestValidation == nil ||
 		(out.Script != nil && !boundedAuthorText(*out.Script, maxScriptBytes, false)) || (out.ConversationSummary != nil && !boundedAuthorText(*out.ConversationSummary, 8192, false)) {
+		return false
+	}
+	if len(out.Partial) > 0 && !validPartialArtifact(raw, out.Partial, a, out.Script, *out.RequestValidation) {
 		return false
 	}
 	if out.Script != nil && !hasAllowedTool(a, "update_draft") {

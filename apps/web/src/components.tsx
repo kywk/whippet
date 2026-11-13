@@ -18,6 +18,7 @@ export function StatusBadge({ status }: { status: RunStatus }) {
 }
 
 export function RunStatusBadge({ run }: { run: Run }) {
+  if (run.kind === 'author' && run.authorPartial) return <span className="status-badge active">部分完成 · 預算耗盡</span>;
   return run.kind === 'author' && run.status === 'succeeded'
     ? <span className="status-badge success"><span className="status-dot" aria-hidden="true" />{run.authorMode === 'workspace' ? '訪談完成' : run.authorMode === 'summary' ? '摘要完成' : '撰寫完成'}</span>
     : <StatusBadge status={run.status} />;

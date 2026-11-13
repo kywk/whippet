@@ -23,13 +23,13 @@ function read(path: string, heading: string): string {
 }
 
 export function loadPlaywrightAuthoringSkill(): string {
-  return `${read("playwright-authoring/SKILL.md","# Playwright authoring")}\n\n${read("playwright-authoring/recipe.md","# Playwright recipe")}`;
+  return `${read("playwright-authoring/SKILL.md","# Playwright authoring")}\n\n${read("playwright-authoring/references/recipe.md","# Playwright recipe")}`;
 }
 
 export function loadAuthorSkill(author: AuthorInput["author"]): string {
   if (author.skillId === undefined) return loadPlaywrightAuthoringSkill();
   if (author.skillVersion !== "1" || !Object.hasOwn(skills,author.skillId)) throw new AuthorError("skill_unavailable");
-  const skill=skills[author.skillId];
+  const skill=skills[author.skillId as keyof typeof skills];
   if(author.skillId==="workspace-author")return read(skill.path,skill.heading);
-  return `${read(skill.path,skill.heading)}\n\n${read("playwright-authoring/recipe.md","# Playwright recipe")}`;
+  return `${read(skill.path,skill.heading)}\n\n${read("playwright-authoring/references/recipe.md","# Playwright recipe")}`;
 }

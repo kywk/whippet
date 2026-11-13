@@ -329,19 +329,23 @@ M9歷史失敗已定位（81352430診斷回合）：模型將首次cursor輸出�
 
 ### M10 階段一：自研引擎與 Use Case（`main`）
 
-狀態：待辦。依賴：M9 已完成。
+狀態：進行中。依賴：M9 已完成。
+
+2026-11-13 首波：PM `t3d`；新對話 Server `t4b`、Runtime `t4c`、Web `t4d`、QA `t4f`，同 space/tab、parent=t3d、crew=1。使用者改指定開發 GPT-6 Astra light（CLI low）；QA 維持 Muse Spark Contributor xhigh。M10.0 待雙方盤點後固定契約；此紀錄不代表驗證通過。
+
+首波交付：Server/Runtime 已回覆 M10.0 差異；PM 已建立 v10 與 registry 契約候選，待雙方確認，尚未固定。Runtime M10.1 內部切片 build 與 author 34/34 通過（owner 回報），尚缺共同 registry/production partial 接線，維持進行中。Web M10.7 合成預覽 build/tsc/diff-check 通過（owner 回報），目視受 browser host 阻擋，真 API 未接。QA t4f 已啟動但 Herdr status=null、畫面空白，基準尚未取得，不列通過。
 
 | 項目 | Owner | 內容 | 最小驗證 | 狀態 |
 | --- | --- | --- | --- | --- |
-| M10.0 | PM | 先收 t31／t32 的最小差異，再固定 v10 契約：工具註冊表 schema、harness tool IPC、Test.kind／Module／stages／依賴、runner `files[]`、author `partial` 輸出、skill manifest | owner 確認無衝突 | 待辦 |
-| M10.1 | t32 | 抽出 `AgentEngine` 並把現有迴圈包成 builtin；工具註冊表分派（G4）；checkpoint 與 `partial`（G1）；snapshot 修剪（G5） | 既有 author 測試全部通過；新增預算耗盡回傳 partial 的單元測試 | 待辦 |
-| M10.2 | t32 | skill manifest 與 `read_skill_reference`、依 skill 設定預算（G3／G6）；四個新 skill 與 playwright-authoring 補強 | skill 載入與大小上限測試 | 待辦 |
-| M10.3 | t31 | Test.kind、Module 欄位與 slug、版本依賴、Catalog 查詢、harness tool IPC 端點（由 history IPC 泛化） | Go 測試：依賴固定版本、跨 Workspace 拒絕、IPC attempt 核對 | 待辦 |
-| M10.4 | t32 | Runner `files[]`、`@lib` 對應、依來源套用範圍；Manager 傳遞 | 人工 Module＋Use Case 成功與失敗各一，報告看得出失敗的 Stage | 待辦 |
-| M10.5 | t31 | Plan 狀態機、Stage 依序排入、Use Case spec 模板產生、原子發佈 | 單元測試：Stage 失敗即停止、取消、批次發佈回滾 | 待辦 |
-| M10.6 | t32 | catalog／module／usecase／plan 工具接上註冊表與 IPC | 單元測試加一次真模型「搜尋並複用」 | 待辦 |
-| M10.7 | t30 | Module 列表與詳情（簽章、引用者）、Use Case Stage 檢視、Plan 確認卡、Stage 進度、partial「繼續」卡 | build 加目視 | 待辦 |
-| M10.8 | t33 | 黃金任務集 v1（10–15 題，含新建、修復、複用、拆解、越界、注入頁、預算耗盡），放在 `scripts/test/golden/` | 用 builtin 跑一次並記錄基準 | 待辦 |
+| M10.0 | PM | 先收 t31／t32 的最小差異，再固定 v10 契約：工具註冊表 schema、harness tool IPC、Test.kind／Module／stages／依賴、runner `files[]`、author `partial` 輸出、skill manifest | owner 確認無衝突 | 完成（t4b/t4c 確認 v10 裁定無衝突；registry JSON 靜態檢查通過） |
+| M10.1 | t4c＋t4b | 抽出 `AgentEngine` 並把現有迴圈包成 builtin；工具註冊表分派（G4）；checkpoint 與 `partial`（G1）；snapshot 修剪（G5） | 既有 author 測試全部通過；新增預算耗盡回傳 partial 的單元測試 | 完成（author/guard/Manager測試與真三端PartialServerBridge非SKIP通過；模型為合成，真模型留M10.Z） |
+| M10.2 | t4c＋t4b | skill manifest 與 `read_skill_reference`、依 skill 設定預算（G3／G6）；四個新 skill 與 playwright-authoring 補強 | skill 載入與大小上限測試 | 完成（Runtime build/author44項、Server新增4項含真PG通過；四新skill以輔助形式載入，平台工具待M10.6） |
+| M10.3 | t4b | Test.kind、Module 欄位與 slug、版本依賴、Catalog 查詢、harness tool IPC 端點（由 history IPC 泛化） | Go 測試：依賴固定版本、跨 Workspace 拒絕、IPC attempt 核對 | 完成（Server build、TestM10 6/6，含隔離 PostgreSQL 2 項無 SKIP；bundle 接線仍屬 M10.4/5） |
+| M10.4 | t4c＋t4b | Runner `files[]`、`@lib` 對應、依來源套用範圍；Manager 傳遞 | 人工 Module＋Use Case 成功與失敗各一，報告看得出失敗的 Stage | 完成（Runtime成功/刻意失敗Stage實跑；Server新增4項含2真PG，bundle快照/來源/assignment通過） |
+| M10.5 | t4b | Plan 狀態機、Stage 依序排入、Use Case spec 模板產生、原子發佈 | 單元測試：Stage 失敗即停止、取消、批次發佈回滾 | 完成（Plan失敗/取消/遲到/候選過期/原子回滾PG測試；真三端batch摘要及回收後原子publish通過，模型為合成） |
+| M10.6 | t4c＋t4b | catalog／module／usecase／plan 工具接上註冊表與 IPC | 單元測試加一次真模型「搜尋並複用」 | 進行中（registry10.1八工具及新primary契約已固定，待接線與真模型複用） |
+| M10.7 | t4d | Module 列表與詳情（簽章、引用者）、Use Case Stage 檢視、Plan 確認卡、Stage 進度、partial「繼續」卡 | build 加目視 | 進行中 |
+| M10.8 | t4f | 黃金任務集 v1（10–15 題，含新建、修復、複用、拆解、越界、注入頁、預算耗盡），放在 `scripts/test/golden/` | 用 builtin 跑一次並記錄基準 | 進行中 |
 | M10.9 | PM | 整合 smoke：用真模型把「登入 → 搜尋 → 下單 → 驗證」拆成 4 段並發佈 | 一條主流程 | 待辦 |
 | **M10.Z** | PM＋t33 | **階段一完整驗證**（見下方） | 全部通過後標記 `phase1-verified` | 待辦 |
 
@@ -395,3 +399,50 @@ M12.Z 清單：
 3. 新引擎跑一次 Use Case 全流程（M10.Z 第 3 項）。
 4. 至少兩個 provider 各跑一次（金鑰不可用時註明未驗證）。
 5. agent-bridge 經 MCP 完成一筆接單任務。
+
+
+M10.3 隔離驗證環境（2026-11-13）：PM 建立專用 `whippet-m10-test-postgres`，使用既有 postgres:16.11-bookworm、loopback 15439、tmpfs；pg_isready 通過。`/private/tmp/whippet-m10-test-db.py` 僅在記憶體注入專用 TEST_DATABASE_URL，供 t4b 跑 M10 定向 integration tests；測試結果待回報，未動應用 DB。
+
+M10 首波驗證更新：t4b 回報 Server build 與 TestM10 6/6 通過，PM 已核對測試檔/交付範圍及 diff-check；M10.3 完成，但 module/usecase 執行/發佈仍 fail closed，等待 bundle。t4c 回報 Worker author 43/43、Manager 定向 6 項通過，M10.1 仍缺 production partial、M10.2 仍缺新 skills 與 Server enqueue 快照。下一切片：t4b 接 manifest 快照產生→partial 接收與 CAS；t4c 補四個新 skill→M10.4。未跑全套 E2E、未建立階段 tag。
+
+M10 partial 啟用門檻：Server t4b 回報 build 與 14 項 M10 測試（含真 PG、無 SKIP）通過，涵蓋 checkpoint/hash/過期/取消/回收/CAS/並發重送。Web 真 Catalog/partial/continue 接線與 build/API 合成邊界檢查通過，目視及真整合未驗，Plan/Stage 仍合成。已確認 Worker history.ts 仍走 history_request，而 Server v10 需 /tools；Runtime 優先補 v9/v10 分流及 generic IPC 定向測試，完成前禁止開 production partial，M10.1/M10.7 維持進行中。
+
+M10.4 Runtime 切片：t4c 回報 bundle/@lib/混合來源 scope/Manager 傳遞已完成，Worker build與定向14項、Manager bundle2項通過；真Chrome合成 Module+UseCase 成功/刻意失敗各一通過，HTML/JSON辨識Stage2失敗。證據見 runtimes/worker/DELIVERY-M10.md。整體待Server bundle接線，維持進行中；Runtime優先補v10 history generic IPC，production partial未開。Web確認所有檔案位於apps/web範圍。QA已建立黃金集，基準尚未驗收；已提醒區分既有builtin與未部署M10能力及僅操作本輪自建資料。
+
+Server接收端正式交付：14項M10頂層測試全部通過，其中真PG6項（partial3、platform2、normalSnapshot1），無SKIP；build/diff-check通過，尚未部署。正常enqueue已產完整v10快照；production啟用仍依generic IPC門檻。t4b接續M10.4 bundle快照/來源/派送，並提出M10.5/6 Plan與工具介面供PM固定；未定介面不先實作。
+
+M10.1 generic IPC門檻：Runtime v9/v10分流10/10、真Node→Manager→TLS fixture（2模型/1genericIPC/1成功）通過；真Server handler＋PG bridge由t4b接續驗證，尚未列通過。PM另要求核對Manager author artifact partial接收，不以input snapshot相容代替output parser相容；production partial仍關閉。M10.4完成不代表Compose/Module摘要/原子發佈已開放，後三者仍屬M10.5。
+
+M10.1 bridge已驗證：t4b執行 TestM10HarnessServerBridge（integration,m10bridge）非SKIP通過，真Node author→Manager toolChannel→隔離TLS Server ManagerAuth/harness→PG，memo1、genericIPC1/success1/failure0，opaque provider ID保留；模型端為合成Responses2請求，不能當真模型驗收。初輪fixture缺user messages已修正，最後鏈路通過。尚待三端author.json 13MiB/partial接收與Worker守衛測試，production partial仍關閉。
+
+Server author artifact上限更新：13MiB總JSON、script raw2MiB；新增2項通過，含真PG讀取/套用約12MiB escaping候選及超限拒絕，partial主skill/update_draft授權補強。Manager/Worker對應接收與守衛測試待回報，不部署、不提前啟用。
+
+M10.8 QA交付審查：t4f已exit0，14題定義通過但基準全部UNVERIFIED。PM讀腳本確認 --run-live 未實作任務執行，probe以猜測路徑404判builtin不可用不成立；不能當可重跑基準。已開全新Herdr QA修正任務（同PM/space/tab、Muse xhigh），要求正確契約、真執行/逐題斷言、只操作本輪自建資料，本輪先離線修正。前任對既有樣式ID的session探測/discard之所有權待證據釐清，未再做mutation。M10.8維持進行中。
+
+M10.1 最後接線授權：Manager partial schema/權限/hash拒絕矩陣及13MiB read/open/upload/parser測試通過（含約12MiB escaping、恰上限、+1拒絕）；Worker build/author51項及guard8項通過，候選由守衛閉包持有，不採信引擎或模型注入。真Server bridge與Server13MiB門檻均已通過。PM授權t4c接正式v10 partial輸出並與t4b做隔離三端持久化→回收→continue唯一排程測試，未授權部署共享服務。M10.1待最後接線結果，未標完成；仍非真模型驗收。
+
+M10.1 最後門檻：TestM10PartialServerBridge非SKIP通過，真Node預算1→Manager parser/HTTPS上傳→Server保存無checkpoint partial→未回收409→heartbeat回收→continue同body同Run，DB source關聯1；合成模型/隔離PG，非真模型。M10.5 Plan2項PG測試通過（CAS/取消/遲到/reuse Compose/失敗停止），create/modify/批次摘要/發佈尚未完成。registry10.1新增八工具與必要JSON schema、Module25MiB artifact及planner candidateRef/平台context，已交兩端接續M10.5/6。
+
+M10.6 平台bridge：t4b回報非SKIP通過，真Node→Manager→隔離TLS Server/tools→專用PG，合成model4請求/3genericIPC/3success/0failure，catalog_search/catalog_get/propose_plan及canonical candidateRef收尾CAS保存draft Plan。非真模型，正常新primary enqueue/Module Stage/批次發佈尚待接線。批次summary契約與GET Plan summary唯讀接縫已固定，三端與Web接續。QA修正owner t4g已開始，Herdr live但status=null未回報；只離線修正，不跑live。
+
+M10.5/6 batch接線：Runtime回報author.batch nested驗型/完整轉送、4MiB/32項去重排序、mode/null規則、evidence與主Run一致及summary零工具已完成，Worker新增2項/Manager1項通過。acceptance-summary主檔更新，已通知Server取最新raw hash；Module三端bridge與真模型搜尋複用仍待驗。
+
+真模型入口準備：Server新增TestM106LiveModelServerBridge，初次僅編譯no tests to run，不計驗收。PM已讀入口，僅檢查目前程序WHIPPET_AI_ENABLED/BASE_URL/MODEL/OPENCODE_API_KEY存在性，四項皆未設定；未讀任何憑證值，尚未發出真模型請求。要求owner核對live fixture budget/model與manifest一致，其他M10.5工作持續。
+
+M10.8 第二次PM審查仍未接受：修正版live已有HTTP流程，但終態值、continue原Run revision、HTTP錯誤分類、null Plan/reuse/G12無證據判PASS、tools指標來源仍有誤判風險。已派新Herdr QA僅離線修正與HTTP回放驗證，不跑live。t4g離線syntax/check-only成功不等於基準完成。M10.6真模型入口已由Runtime交付M106-LIVE-MODEL.md及離線2項PASS，live缺env SKIP，仍待實際環境注入。
+
+M10.5最小驗證完成：t4b控制面9頂層（7真PG）通過；PM核對Plan取消/遲到與create/modify/active_session/create_stale/create_atomic_rollback測試及diff-check。TestM105BatchSummaryServerBridge非SKIP，真Node完整batch prompt→Manager→TLS Server/PG→batchHash CAS/回收/原子publish通過；模型為合成。Module bridge另補真dist/runner.js雙檔純計算assert與真HTML/JSON上傳，PG validation succeeded/reclaimed。仍無真網站UI/真模型整批驗收，M10.6/7/8/9/Z尚未完成。
+
+Server最終交付補充：定向10頂層（8真PG）通過，公開Confirm去重/取消遲到及插入後故障回滾已涵蓋。尚有獨立Module summary/publish未開放之功能缺口，PM已派t4b補齊harness+body驗證/摘要/人工發布與舊證據拒絕測試；不影響已通過Plan批次M10.5判定，但M10.Z前必須關閉此缺口。
+
+獨立Module summary/publish缺口已關閉（原始碼/隔離驗證）：t4b新增migration018及module_summary接線，5個PG情境PASS（publish、metadata/harness/body過期、摘要中metadata變更），含未驗證/validation未回收/summary未回收拒絕、immutable版本及重送；ModuleSummary與受影響BatchSummary三端bridge均非SKIP PASS，build/diff-check PASS。Runtime無剩餘介面阻礙。模型與validation reports仍為合成fixture，尚未部署或真模型/真網站驗收。
+
+M10.8 QA第三輪：14題定義PASS、離線回放19/19 PASS（終態、source Run revision、HTTP錯誤分類、缺Plan/reuse/G12證據不PASS、工具指標與assistant Run綁定）；PM核對腳本與offline-replay.json及diff-check。僅接受離線判分修正證據，不等於完整live基準就緒：仍需本輪自有已發布Module fixture、固定版實際引用/續跑完成與資料清理實跑核對。builtin維持UNVERIFIED，M10.8進行中。
+
+整合派工已恢復：Herdr確認t4b/t4c/t4d working，分別製備固定Server包/隔離升級驗證、Runtime COPY-only包、現有headless Chrome UI截圖。PM唯讀核對現行容器掛載/端口（Web18087/API18089）及linux/arm64；發現m9-qa tags與執行中image ID不一致，已要求各release固定核實的完整ID不pull，禁止以可變tag混用。未讀容器Env、未更動共享服務。
+
+M9→M10升級代表驗證：t4b隔離schema非SKIP PASS，001–010基線→014故意撞名令011–013及migration ledger整批回滾、M9資料不變→移除測試衝突後011–018成功→舊單script Run可Claim→再次Migrate冪等。Server arm64/amd64離線binary完成。跨owner完整image ID不可見原因待釐清，PM要求比對Docker daemon/context（PM為orbstack，daemon ID 33ab83d5-9a2d-4921-8659-a59cdda95cf1），尚不能只定性為tag漂移；禁止fallback或pull，binary/shared包製備繼續。
+
+PM部署產物驗證：Runtime包153檔、Server包54檔SHA全數核對通過，shared一致。裸sha256作FROM被BuildKit當遠端名稱導致初次build失敗；改建專用SHA命名本機alias並立即核對ID後COPY-only成功（未pull映像，初次有失敗metadata查詢）。M10 arm64 image IDs：Server568538c4e44110d1ba842c8437c00cadb2abe86289030d92f9f2e6949a44e511、Managerf5365b170288ccb1589dee8924ef8ab91ecdab26c1a53a8675b93668babaf838、Worker3216e013d72434205fd234f4b7a8dd40e138f10cd9a75c337e93c908c3f9eaa7。未啟動服務。Web合成目視28截圖（桌面/390窄版）、零pageerror/未處理API/水平溢出，已修實際UI缺陷；archive SHA核對通過，Web映像建置中。真後端驗收仍待進行。
+
+Web COPY-only映像亦建置完成：linux/arm64，image ID 494d3b4c1fab485060cdc215b0ddb179d423e7cf89ef40d5334ef22b5d7a546c；四映像尚未切換共享服務。本次階段性提交保存實作與現有驗證，不代表M10.Z通過，無phase1 tag。

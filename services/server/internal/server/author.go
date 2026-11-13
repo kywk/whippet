@@ -12,26 +12,30 @@ import (
 	"unicode/utf8"
 )
 
-const MaxAuthorArtifactBytes int64 = 2 << 20
+const MaxAuthorArtifactBytes int64 = 13 << 20
 const authorFailureMessage = "AI authoring failed. The saved conversation and draft are preserved; you can retry."
 
 type authorOutput struct {
-	ConversationSummary *string `json:"conversationSummary,omitempty"`
-	Message             *string `json:"message"`
-	Script              *string `json:"script,omitempty"`
-	RequestValidation   *bool   `json:"requestValidation"`
+	Partial             *AuthorPartialOutput `json:"partial,omitempty"`
+	ConversationSummary *string              `json:"conversationSummary,omitempty"`
+	Message             *string              `json:"message"`
+	Script              *string              `json:"script,omitempty"`
+	RequestValidation   *bool                `json:"requestValidation"`
 }
 
 func decodeAuthorOutput(data []byte) (authorOutput, error) {
 	var result authorOutput
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
-	if int64(len(data)) > MaxAuthorArtifactBytes || decoder.Decode(&result) != nil ||
+	if !utf8.Valid(data) || int64(len(data)) > MaxAuthorArtifactBytes || decoder.Decode(&result) != nil ||
 		result.Message == nil || result.RequestValidation == nil || decoder.Decode(new(any)) != io.EOF {
 		return result, fmt.Errorf("invalid author output")
 	}
-	if validateUserMessage(*result.Message) != nil || (result.ConversationSummary != nil && (len(*result.ConversationSummary) > 8192 || !utf8.ValidString(*result.ConversationSummary) || strings.ContainsRune(*result.ConversationSummary, '\x00'))) || strings.ContainsRune(*result.Message, '\x00') || (result.Script != nil && (len(*result.Script) > MaxScriptBytes || strings.ContainsRune(*result.Script, '\x00'))) {
+	if validateUserMessage(*result.Message) != nil || (result.ConversationSummary != nil && (len(*result.ConversationSummary) > 8192 || !utf8.ValidString(*result.ConversationSummary) || strings.ContainsRune(*result.ConversationSummary, '\x00'))) || strings.ContainsRune(*result.Message, '\x00') || (result.Script != nil && (len(*result.Script) > MaxScriptBytes || !utf8.ValidString(*result.Script) || strings.ContainsRune(*result.Script, '\x00'))) {
 		return result, fmt.Errorf("author script exceeds limit")
+	}
+	if err := validateAuthorPartial(result, data); err != nil {
+		return result, err
 	}
 	return result, nil
 }
@@ -148,6 +152,39 @@ func (p *Postgres) completeAuthor(ctx context.Context, testID, managerID, runID,
 				}
 				if json.Unmarshal(rawInput, &input) != nil || settingsErr != nil || input.BaseRevision != baseRevision || input.ConversationID != session.ConversationID {
 					result = Result{Status: "failed", Error: authorFailureMessage}
+				} else if input.SkillID == "usecase-planner" || input.SkillID == "module-authoring" {
+					if effectiveScriptOrigin(origin) != effectiveScriptOrigin(d.ScriptOrigin) || script != d.Script || !sameWorkspaceSettings(settings, d.WorkspaceSettings) || !sameWorkspaceContext(runContext, d.WorkspaceContext) {
+						result = Result{Status: "failed", Error: authorFailureMessage}
+					} else {
+						if _, err = tx.ExecContext(ctx, "SAVEPOINT platform_completion"); err != nil {
+							return err
+						}
+						var completionErr error
+						if input.SkillID == "module-authoring" {
+							completionErr = p.completeModule(ctx, tx, runID, attemptID, input, d, session)
+						} else {
+							completionErr = p.completePlanner(ctx, tx, runID, attemptID, input, d, session)
+						}
+						if completionErr != nil {
+							if _, err = tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT platform_completion"); err != nil {
+								return err
+							}
+							result = Result{Status: "failed", Error: authorFailureMessage}
+						}
+						if _, err = tx.ExecContext(ctx, "RELEASE SAVEPOINT platform_completion"); err != nil {
+							return err
+						}
+					}
+				} else if input.SkillID == "acceptance-summary" && input.Batch != nil {
+					if _, err = tx.ExecContext(ctx, "SAVEPOINT batch_summary"); err != nil {
+						return err
+					}
+					if e := p.completePlanSummary(ctx, tx, runID, attemptID, input, d, session); e != nil {
+						if _, err = tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT batch_summary"); err != nil {
+							return err
+						}
+						result = Result{Status: "failed", Error: authorFailureMessage}
+					}
 				} else if input.SkillID == "acceptance-summary" {
 					data, outputErr := p.readArtifactBytes(ctx, tx, runID, attemptID, "author.json", MaxAuthorArtifactBytes)
 					var out summaryOutput
@@ -159,7 +196,7 @@ func (p *Postgres) completeAuthor(ctx context.Context, testID, managerID, runID,
 					} else {
 						proof, proofErr := p.validationProof(ctx, tx, d)
 						if effectiveScriptOrigin(origin) != effectiveScriptOrigin(d.ScriptOrigin) || proofErr != nil || checkPublication(d.Revision, true, d, proof) != nil || !summaryBindingMatches(session, d, input, script, settings, runContext) ||
-							input.ValidationEvidence.AttemptID != proof.attemptID || d.summaryRunID == nil || *d.summaryRunID != runID {
+							(input.ModuleSummary != nil && !runReclaimed(ctx, tx, proof.id)) || input.ValidationEvidence.AttemptID != proof.attemptID || d.summaryRunID == nil || *d.summaryRunID != runID {
 							result = Result{Status: "failed", Error: "Acceptance summary no longer matches the current editing session."}
 						} else if _, err = tx.ExecContext(ctx, `UPDATE drafts SET summary_description=$2,summary_background=$3,summary_name=$4 WHERE test_id=$1 AND summary_run_id=$5`, testID, out.Description, out.BackgroundSummary, out.Name, runID); err != nil {
 							return err
@@ -170,6 +207,9 @@ func (p *Postgres) completeAuthor(ctx context.Context, testID, managerID, runID,
 				} else {
 					output, outputErr := p.readAuthorOutput(ctx, tx, runID, attemptID)
 					var plan authorPlan
+					if outputErr == nil && output.Partial != nil && output.Partial.Checkpoint != nil && !authorCanUpdateDraft(input) {
+						outputErr = ErrInvalid
+					}
 					if outputErr == nil {
 						plan, outputErr = planAuthorResult(d.Draft, baseRevision, output)
 					}
@@ -193,6 +233,21 @@ func (p *Postgres) completeAuthor(ctx context.Context, testID, managerID, runID,
 							}
 							applied := d.Revision
 							appliedRevision = &applied
+						}
+						if output.Partial != nil {
+							partial := AuthorPartial{AuthorPartialOutput: *output.Partial}
+							var continuationContext *int64
+							if snapshotMatches {
+								nextContext := session.ContextRevision + 1
+								continuationContext = &nextContext
+								if output.Partial.Checkpoint != nil {
+									applied := d.Revision
+									partial.AppliedRevision = &applied
+								}
+							}
+							if _, err = tx.ExecContext(ctx, `UPDATE runs SET author_partial=$2,author_partial_context_revision=$3 WHERE id=$1`, runID, jsonText(partial), continuationContext); err != nil {
+								return err
+							}
 						}
 						var validationID *string
 						if plan.requestValidation {

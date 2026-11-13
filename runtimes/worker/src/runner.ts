@@ -1,3 +1,4 @@
+import { runBundle, writeRunFiles, MAX_INPUT_BYTES, type RunFile } from "./bundle.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createRequire } from "node:module";
 import { lstat, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
@@ -21,6 +22,7 @@ interface Input {
   runId: string;
   attemptId: string;
   script: string;
+  files?: RunFile[];
   timeoutMs: number;
   workspaceSettings?: WorkspaceSettings;
 }
@@ -59,17 +61,18 @@ function validateInput(value: unknown): Input {
   if (
     !input || typeof input.runId !== "string" || !uuid.test(input.runId) ||
     typeof input.attemptId !== "string" || !uuid.test(input.attemptId) ||
-    typeof input.script !== "string" || input.script.trim() === "" || Buffer.byteLength(input.script) > 2 * 1024 * 1024 ||
     typeof input.timeoutMs !== "number" || !Number.isInteger(input.timeoutMs) || input.timeoutMs < 1 || input.timeoutMs > 3600000
   ) throw new Error("input.json requires UUID runId/attemptId, a script <=2MiB and timeoutMs in 1..3600000");
+  const bundle = runBundle(input);
+  if (bundle.files && bundle.origin === "ai" && (!input.workspaceId || !input.workspaceContext?.config?.targets.length)) throw new Error("scope_confirmation_required");
   validateWorkspaceSettings(input.workspaceSettings);
   if(input.scriptOrigin!==undefined&&!['ai','manual','legacy'].includes(input.scriptOrigin))throw new Error('invalid_script_origin');
   if(input.workspaceId!==undefined){
     if(!uuid.test(input.workspaceId)||typeof input.testId!=='string'||!uuid.test(input.testId))throw new Error('invalid_workspace_owner');
     validateWorkspaceContext(input.workspaceContext,input.workspaceId);
-    if(input.scriptOrigin!=='manual'&&!input.workspaceContext?.config?.targets.length)throw new Error('scope_confirmation_required');
+    if(bundle.origin!=='manual'&&!input.workspaceContext?.config?.targets.length)throw new Error('scope_confirmation_required');
   }
-  return {...input,scriptOrigin:input.scriptOrigin??'legacy'} as Input;
+  return {...input,script:bundle.script,files:bundle.files,scriptOrigin:bundle.origin} as Input;
 }
 
 async function readJSON(path: string): Promise<unknown> {
@@ -102,19 +105,20 @@ async function execute(input: Input, taskDir: string): Promise<WorkerResult> {
   // resolvable. /work is a bind mount, outside the image's node_modules tree.
   await symlink(resolve(packageDir, "../.."), join(taskDir, "node_modules"), "dir");
   await writeFile(join(taskDir, "package.json"), '{"type":"commonjs"}\n', "utf8");
-  await writeFile(join(taskDir, "run.spec.ts"), input.script, "utf8");
+  if (input.files) await writeRunFiles(taskDir, input.files);
+  else await writeFile(join(taskDir, "run.spec.ts"), input.script, "utf8");
   const bridgePath = join(taskDir, "live-fixture.cjs");
   await writeFile(bridgePath, fixtureBridge(new URL("./live/observer.js", import.meta.url).href,{scopeURL:new URL('./author/scope.js',import.meta.url).href,scope:input.scriptOrigin!=='manual'?input.workspaceContext?.config??unconfirmedBrowserScope():null,privacyURL:new URL('./login/privacy.js',import.meta.url).href}), "utf8");
   const loginShim=join(taskDir,'login.cjs');await writeFile(loginShim,`exports.loginAs=async(...args)=>(await import(${JSON.stringify(new URL('./login/helper.js',import.meta.url).href)})).loginAs(...args);\n`,'utf8');
   const tsconfigPath = join(taskDir, "tsconfig.json");
-  await writeFile(tsconfigPath, JSON.stringify({ compilerOptions: { baseUrl: taskDir, paths: { "@playwright/test": [bridgePath],"whippet/login":[loginShim] } } }), "utf8");
+  await writeFile(tsconfigPath, JSON.stringify({ compilerOptions: { baseUrl: taskDir, paths: { "@playwright/test": [bridgePath],"whippet/login":[loginShim], ...(input.files ? { "@lib/*": ["lib/*"] } : {}) } } }), "utf8");
   const summaryPath = join(taskDir, "runtime-summary.json");
   const htmlDir = join(outputDir, "html");
   const reporterPath = fileURLToPath(new URL("./reporter.js", import.meta.url));
   const config = {
     tsconfig: tsconfigPath,
     testDir: taskDir,
-    testMatch: "run.spec.ts",
+    testMatch: input.files ? "tests/test.spec.ts" : "run.spec.ts",
     outputDir: join(outputDir, "test-results"),
     workers: 1,
     fullyParallel: false,
@@ -128,7 +132,9 @@ async function execute(input: Input, taskDir: string): Promise<WorkerResult> {
       ["json", { outputFile: join(outputDir, "results.json") }],
     ],
     projects: [{ name: "chromium", use: {
-      browserName: "chromium", headless: true, trace: "retain-on-failure", screenshot: "only-on-failure", video: "off",
+      browserName: "chromium", headless: true,
+      ...(process.env.WHIPPET_BROWSER_EXECUTABLE_PATH ? { launchOptions: { executablePath: process.env.WHIPPET_BROWSER_EXECUTABLE_PATH } } : {}),
+      trace: "retain-on-failure", screenshot: "only-on-failure", video: "off",
       ...(input.workspaceSettings?.defaultTestUrl ? { baseURL: input.workspaceSettings.defaultTestUrl } : {}),
     } }],
   };
@@ -187,7 +193,7 @@ async function main(): Promise<void> {
     // directory look successful. Manager supplies a fresh mount per attempt.
     await mkdir(outputDir);
     const info = await lstat(join(workDir, "input.json"));
-    if (!info.isFile() || info.size > 13 * 1024 * 1024) throw new Error("input.json is not a regular file <=13MiB");
+    if (!info.isFile() || info.size > MAX_INPUT_BYTES) throw new Error("input.json is not a regular file <=64MiB");
     const input = validateInput(await readJSON(join(workDir, "input.json")));
     if(input.workspaceId){credentials=new CredentialClient(input);broker=await loginBroker(credentials);}
     taskDir = await mkdtemp(join(tmpdir(), "whippet-playwright-"));

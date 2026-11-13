@@ -1,0 +1,30 @@
+{
+  "id": "usecase-planner",
+  "version": "1",
+  "defaultTools": [
+    "read_skill_reference",
+    "catalog_search",
+    "catalog_get",
+    "read_usecase_draft",
+    "read_plan",
+    "propose_plan",
+    "read_conversation_history"
+  ],
+  "budget": {
+    "maxModelRequests": 8,
+    "maxToolCalls": 12,
+    "maxDurationMs": 180000
+  },
+  "model": {
+    "provider": "opencode",
+    "model": "muse-spark-1.3-contributor",
+    "reasoningEffort": "xhigh"
+  },
+  "references": [
+    {
+      "id": "stages",
+      "path": "references/stages.md",
+      "sha256": "89ea485132367c2e53048bbc9c235753d97ad365d24fc225a8a6b24db779ea23"
+    }
+  ]
+}
