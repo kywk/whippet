@@ -177,6 +177,7 @@ function parseRun(value: unknown): Run {
     editingSessionId: optionalString(data.editingSessionId) ?? null,
     authorMode: data.authorMode as Run['authorMode'],
     scriptOrigin: data.scriptOrigin == null ? undefined : choice(data.scriptOrigin, ['ai', 'manual', 'legacy'] as const),
+    progressEvents: data.progressEvents == null ? undefined : array(data.progressEvents, string),
   };
 }
 

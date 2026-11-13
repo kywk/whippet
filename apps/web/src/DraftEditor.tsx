@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 import { ApiError, errorMessage, resolveReportUrl } from './api';
 import { executionCapabilityForScript, scriptOriginLabel } from './capabilities';
 import { formatDate, Loading, Notice, ReportLink, StatusBadge } from './components';
@@ -8,6 +8,7 @@ import { ConversationPanel } from './ConversationPanel';
 import { AcceptanceSummaryCard } from './AcceptanceSummary';
 import { CapabilityStatus } from './WorkspaceSettings';
 import { isActiveRun } from './types';
+import { CheckIcon, CloseIcon, CollapseIcon, ExpandIcon, RefreshIcon, TrashIcon } from './icons';
 import type { Draft, EditingSession, Run, Version, WhippetApi, WorkspaceCapabilities } from './types';
 
 interface Props {
@@ -26,7 +27,13 @@ interface Props {
   session: EditingSession;
   sessionRefreshing: boolean;
   onRefreshSession: () => Promise<EditingSession | undefined>;
+  onDiscard?: () => void;
+  discardBusy: boolean;
+  onReloadSession: () => void;
+  testName?: string;
 }
+
+type SideTab = 'script' | 'publish' | 'runs' | 'background';
 
 export function DraftEditor(props: Props) {
   const settingsSequence = useRef(props.settingsRefresh);
@@ -44,7 +51,7 @@ export function DraftEditor(props: Props) {
   </section>;
 }
 
-function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, onDirtyChange, onRefreshRuns, settingsRefresh, onDraftChange, children, initialSettingsSequence, session, sessionRefreshing, onRefreshSession, capabilities }: Props & { initial: Draft; initialSettingsSequence: number }) {
+function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, onDirtyChange, onRefreshRuns, settingsRefresh, onDraftChange, children, initialSettingsSequence, session, sessionRefreshing, onRefreshSession, capabilities, onDiscard, discardBusy, onReloadSession, testName }: Props & { initial: Draft; initialSettingsSequence: number }) {
   const [draft, setDraft] = useState(initial);
   const [script, setScript] = useState(initial.script);
   const [localAction, setLocalAction] = useState<'manual' | 'candidate'>();
@@ -66,6 +73,9 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
   const actionLock = useRef(false);
   const actionController = useRef<AbortController | null>(null);
   const [syncRevision, setSyncRevision] = useState(0);
+  const [tab, setTab] = useState<SideTab>('script');
+  const [sideOpen, setSideOpen] = useState(() => typeof window === 'undefined' ? true : window.innerWidth > 1220);
+  const [sideExpanded, setSideExpanded] = useState(false);
   const dirty = script !== draft.script;
   const readOnly = session.status !== 'active';
   const activeAuthor = runs.some((run) => run.kind === 'author' && isActiveRun(run));
@@ -125,8 +135,8 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
     setMessage('候選腳本已帶入編輯器，尚未儲存。請檢視、儲存並重新驗證。');
     return true;
   }, []);
-  // 請求中的變更也應受導覽保護，避免切頁後誤認 POST 未送出。
-  const guarded = dirty || Boolean(busy) || conversationGuarded || summaryRequestBusy || activeAuthor || session.status === 'discarding';
+  // 只保護會遺失的內容：未儲存腳本與尚未送達的請求。AI 任務、驗證與放棄回收都在 Server 背景進行，不綁住畫面。
+  const guarded = dirty || Boolean(busy) || conversationGuarded || summaryRequestBusy;
   useEffect(() => { onDraftChange(draft); }, [draft, onDraftChange]);
 
   useEffect(() => {
@@ -183,6 +193,7 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
   const report = resolveReportUrl(draft.reportUrl, apiBase, window.location.href);
   const validating = validation ? isActiveRun(validation) : Boolean(draft.validationStatus && ['queued', 'dispatched', 'running', 'collecting', 'cancelling'].includes(draft.validationStatus));
   const summary = session.summary;
+  const summaryRunning = Boolean(summary && ['queued', 'dispatched', 'running', 'collecting', 'cancelling'].includes(summary.status));
   const summaryValid = Boolean(summary && summary.status === 'succeeded' && summary.validForCurrentDraft && summary.revision === draft.revision && summary.validationRunId === draft.validationRunId && summary.runId !== invalidatedSummaryId && summary.description?.trim() && summary.backgroundSummary?.trim());
   const executionCapability = executionCapabilityForScript(capabilities, draft.scriptOrigin);
   const executionAvailable = executionCapability?.available === true;
@@ -190,10 +201,15 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
   useEffect(() => { setConfirmed(false); }, [summary?.runId, summaryValid, session.status, executionAvailable, draft.scriptOrigin]);
 
   function openManualEditor() {
-    if (readOnly || !manualPanel.current) return;
-    manualPanel.current.open = true;
-    scriptInput.current?.scrollIntoView({ block: 'center' });
-    scriptInput.current?.focus({ preventScroll: true });
+    if (readOnly) return;
+    setTab('script');
+    setSideOpen(true);
+    setTimeout(() => {
+      if (!manualPanel.current) return;
+      manualPanel.current.open = true;
+      scriptInput.current?.scrollIntoView({ block: 'center' });
+      scriptInput.current?.focus({ preventScroll: true });
+    }, 0);
   }
   function returnToAI() {
     const composer = document.getElementById('author-message');
@@ -256,48 +272,116 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
     }
   }
 
-  return <>
-    <ConversationPanel api={api} apiBase={apiBase} testId={testId} editingSessionId={session.id} aiExploration={capabilities?.aiExploration} draft={draft} draftDirty={dirty} draftBusy={readOnly || Boolean(busy) || syncing || settingsSyncing || settingsPending || conflict || summaryRequestBusy} runs={runs} onRun={onRun} onRefreshRuns={onRefreshRuns} onSynchronized={synchronizeDraft} onUseCandidate={useCandidate} onOpenManual={openManualEditor} onGuardChange={setConversationGuarded} onConversationChanged={() => { setInvalidatedSummaryId(session.summary?.runId); setConfirmed(false); void onRefreshSession().catch(() => undefined); }} onRefreshSession={onRefreshSession} />
-    <details className="session-background"><summary>本次編輯的版本背景</summary><p>來源版本：{session.sourceVersionId ?? '尚無正式版本'}</p><h4>來源版本說明</h4><p className="summary-content">{session.sourceVersion?.description ?? '來源版本尚無獨立說明（舊資料或新測試）。'}</p><h4>來源背景摘要</h4><p className="summary-content">{session.sourceVersion?.backgroundSummary ?? '尚未提供來源背景摘要。'}</p><h4>本次對話背景</h4><p className="summary-content">{session.conversationSummary ?? '此編輯週期尚無已保存的對話摘要。'}</p></details>
-    {children}
-    <section className="draft-tools" aria-labelledby="draft-tools-title"><h3 id="draft-tools-title">草稿與驗證</h3>
-    <div className="draft-meta"><span>revision {draft.revision}{dirty ? ' · 有未儲存變更' : ' · 已儲存'}</span><span>更新：{formatDate(draft.updatedAt)}</span></div>
-    {draft.workspaceSettings ? <p className="inline-hint">草稿設定版本 {draft.workspaceSettings.revision} · 執行逾時 {draft.workspaceSettings.timeoutMs.toLocaleString('zh-TW')} 毫秒</p> : null}
-    {settingsSyncing ? <p className="inline-hint" role="status">正在同步 Workspace 設定與草稿，暫時不可驗證或發佈。</p> : null}
-    <p className="inline-hint" role="status">已儲存腳本來源：{scriptOriginLabel(draft.scriptOrigin)}。{dirty ? ` 本機操作：${localAction === 'candidate' ? '帶入 AI 候選腳本' : '工程師手動修改'}，尚未儲存，尚未改變 Server 來源。` : ' 目前沒有本機未儲存修改。'}</p>
-    <CapabilityStatus label="此草稿對應執行能力" capability={executionCapability} />
-    <details ref={manualPanel} className="manual-script"><summary>工程師手動修改（進階）{dirty ? ' · 有未儲存變更' : ''}</summary>
-    <p id="manual-source-note" className="inline-hint">可編輯完整 Playwright／Node 腳本。Server 只在人工儲存實際改變腳本時記錄人工來源；開啟入口或原樣儲存不會改變來源。工程師腳本不套 AI 網站範圍限制，仍需真實驗證、報告與人工確認發佈。</p>
-    <label className="field-label" htmlFor="draft-script">Playwright TypeScript 腳本</label>
-    <textarea ref={scriptInput} id="draft-script" className="script-editor" rows={16} value={script} spellCheck={false} autoCapitalize="off" autoCorrect="off" disabled={readOnly || Boolean(busy)} onChange={(event) => { setScript(event.target.value); setLocalAction('manual'); setConfirmed(false); setMessage(undefined); }} aria-describedby="draft-help manual-source-note" />
-    <p id="draft-help" className="inline-hint">AI 續編只使用已儲存 revision。有未儲存內容時，先儲存草稿；切回對話不會自動儲存或放棄編輯。</p>
-    <div className="action-row"><button className="button secondary compact" onClick={returnToAI}>回到 AI 續編</button></div>
-    </details>
-    <div className="action-row">
-      <button className="button secondary" disabled={readOnly || Boolean(busy) || settingsSyncing || settingsPending || !dirty || conflict} onClick={() => perform('save')}>{busy === 'save' ? '儲存中…' : '儲存草稿'}</button>
-      <button className="button secondary" disabled={!executionAvailable || readOnly || Boolean(busy) || settingsSyncing || settingsPending || dirty || conflict || validating || !script.trim()} onClick={() => perform('validate')}>{busy === 'validate' ? '送出中…' : validating ? '驗證進行中' : '驗證此 revision'}</button>
-      <button className="button quiet" disabled={readOnly || Boolean(busy)} onClick={() => perform('reload')}>重新載入草稿</button>
-    </div>
-    {conflict ? <Notice message="目前草稿或驗證資格已變更，不會自動覆寫。本機編輯仍保留，可先複製需要的內容，再重新載入最新草稿。" /> : null}
-    {reloadWarning ? <div className="confirmation-panel"><p>重新載入會放棄目前未儲存內容，請先複製需要保留的腳本。</p><div className="action-row">
-      <button className="button secondary" disabled={Boolean(busy)} onClick={() => perform('reload', true)}>確定放棄並重新載入</button>
-      <button className="button quiet" disabled={Boolean(busy)} onClick={() => setReloadWarning(false)}>繼續編輯</button>
-    </div></div> : null}
-    {error ? <Notice message={error} /> : null}
-    {message ? <p className="action-message" role="status">{message}</p> : null}
-    <AcceptanceSummaryCard api={api} apiBase={apiBase} testId={testId} session={session} draft={draft} runs={runs} blocked={readOnly || dirty || Boolean(busy) || syncing || settingsSyncing || settingsPending || conflict || conversationGuarded || sessionRefreshing || activeAuthor} onRun={onRun} onRefresh={onRefreshSession} onBusyChange={setSummaryRequestBusy} />
-    <div className="publish-panel">
-      <div className="section-heading"><h4>驗證與發佈</h4><button className="button quiet compact" disabled={Boolean(busy) || syncing} onClick={() => setSyncRevision((value) => value + 1)}>{syncing ? '同步中…' : '重新整理驗證狀態'}</button></div>
-      {!executionAvailable ? <p className="blocked-hint">此草稿的來源或對應執行能力尚未確認可用，目前不能新增驗證或發佈。仍可離線對話與改稿；摘要完成不代表可發佈。</p> : null}
-      <div className="validation-summary">
-        {validation ? <StatusBadge status={validation.status} /> : draft.validationStatus ? <StatusBadge status={draft.validationStatus} /> : <span className="muted">尚未驗證目前 revision</span>}
-        <ReportLink reportUrl={draft.reportUrl} apiBase={apiBase} label="查看草稿驗證報告" />
-      </div>
-      {validation?.error ? <details className="error-details"><summary>查看驗證錯誤</summary><pre className="run-error">{validation.error}</pre></details> : null}
-      <p className="inline-hint">{dirty ? '目前有未儲存變更，上方驗證結果只對應已儲存腳本。' : eligible ? '目前 revision 的驗證、報告與驗收摘要皆已就緒，請檢視後明確確認發佈。' : '需目前 revision 驗證通過、報告與有效驗收摘要就緒，且沒有未儲存變更或未送出訊息，才可發佈。'}</p>
-      <label className="checkbox-label"><input type="checkbox" checked={confirmed} disabled={!eligible || Boolean(busy)} onChange={(event) => setConfirmed(event.target.checked)} />我已檢視驗證報告與驗收摘要，確認發佈 revision {draft.revision}</label>
-      <button className="button primary" disabled={!eligible || !confirmed || Boolean(busy)} onClick={() => perform('publish')}>{busy === 'publish' ? '發佈中…' : `確認發佈 revision ${draft.revision}`}</button>
-    </div>
+  const conditions = [
+    { label: '腳本已儲存', ok: !dirty },
+    { label: `revision ${draft.revision} 驗證通過`, ok: draft.validationStatus === 'succeeded' && qualificationFresh && !conflict },
+    { label: '報告已保存', ok: Boolean(report) && draft.validationStatus === 'succeeded' },
+    { label: '驗收摘要有效', ok: summaryValid },
+  ];
+  const sideBadge: Record<SideTab, ReactNode> = {
+    script: dirty ? <span className="tab-dot warm" role="img" aria-label="有未儲存變更" /> : null,
+    publish: eligible ? <span className="tab-dot ok" role="img" aria-label="可以發佈" /> : validating || summaryRunning ? <span className="tab-dot run" role="img" aria-label="進行中" /> : null,
+    runs: runs.some(isActiveRun) ? <span className="tab-dot run" role="img" aria-label="進行中" /> : null,
+    background: null,
+  };
+  const tabs: [SideTab, string][] = [['script', '腳本'], ['publish', '驗證與發佈'], ['runs', '紀錄與畫面'], ['background', '背景']];
+  const focusTab = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+    const index = tabs.findIndex(([id]) => id === tab);
+    const next = tabs[(index + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length][0];
+    setTab(next); document.getElementById(`side-tab-${next}`)?.focus();
+  };
+
+  const showSideTab = useCallback((next: SideTab) => {
+    setTab(next);
+    setSideOpen(true);
+  }, []);
+
+  return <div className={`studio${sideOpen ? ' side-open' : ' side-closed'}${sideExpanded ? ' side-expanded' : ''}`}>
+    {sideOpen ? <div className="side-backdrop" aria-hidden="true" onClick={() => setSideOpen(false)} /> : null}
+    <section className="studio-chat" aria-label="對話編輯工作區">
+      <ConversationPanel api={api} apiBase={apiBase} testId={testId} editingSessionId={session.id} aiExploration={capabilities?.aiExploration} draft={draft} draftDirty={dirty} draftBusy={readOnly || Boolean(busy) || syncing || settingsSyncing || settingsPending || conflict || summaryRequestBusy} runs={runs} onRun={onRun} onRefreshRuns={onRefreshRuns} onSynchronized={synchronizeDraft} onUseCandidate={useCandidate} onOpenManual={openManualEditor} onGuardChange={setConversationGuarded} onConversationChanged={() => { setInvalidatedSummaryId(session.summary?.runId); setConfirmed(false); void onRefreshSession().catch(() => undefined); }} onRefreshSession={onRefreshSession} onShowTab={showSideTab} sideOpen={sideOpen} onToggleSide={() => setSideOpen((open) => !open)} testName={testName} publishReady={eligible} />
     </section>
-  </>;
+    <aside className="studio-side" aria-label="腳本、驗證與發佈" hidden={!sideOpen}>
+      <div className="side-tabs" role="tablist" aria-label="產物面板">
+        {tabs.map(([id, label]) => <button key={id} id={`side-tab-${id}`} role="tab" aria-selected={tab === id} aria-controls={`side-panel-${id}`} tabIndex={tab === id ? 0 : -1} className={tab === id ? 'on' : ''} onClick={() => setTab(id)} onKeyDown={focusTab}>{label}{sideBadge[id]}</button>)}
+        <div className="side-tab-actions">
+          <button type="button" className="rail-icon-button light small side-icon-btn" aria-label={sideExpanded ? '恢復右側欄預設寬度' : '放大右側欄（方便檢視歷程）'} title={sideExpanded ? '恢復預設寬度' : '放大右側欄（方便檢視歷程）'} aria-pressed={sideExpanded} onClick={() => setSideExpanded((value) => !value)}>
+            {sideExpanded ? <CollapseIcon /> : <ExpandIcon />}
+          </button>
+          <button type="button" className="rail-icon-button light small side-icon-btn side-close" aria-label="收合右側面板" title="收合右側面板" onClick={() => setSideOpen(false)}>
+            <CloseIcon />
+          </button>
+        </div>
+      </div>
+
+      <div id="side-panel-script" role="tabpanel" aria-labelledby="side-tab-script" className="side-panel" hidden={tab !== 'script'}>
+        <dl className="meta-list">
+          <div><dt>revision</dt><dd><span className="mono">{draft.revision}</span> · {dirty ? '有未儲存變更' : '已儲存'}</dd></div>
+          <div><dt>更新</dt><dd>{formatDate(draft.updatedAt)}</dd></div>
+          <div><dt>來源</dt><dd>{scriptOriginLabel(draft.scriptOrigin)}</dd></div>
+          {draft.workspaceSettings ? <div><dt>設定</dt><dd>版本 {draft.workspaceSettings.revision} · 逾時 {draft.workspaceSettings.timeoutMs.toLocaleString('zh-TW')} 毫秒</dd></div> : null}
+        </dl>
+        {settingsSyncing ? <p className="inline-hint" role="status">正在同步 Workspace 設定與草稿，暫時不可驗證或發佈。</p> : null}
+        {dirty ? <p className="inline-hint" role="status">本機操作：{localAction === 'candidate' ? '帶入 AI 候選腳本' : '工程師手動修改'}，尚未儲存，尚未改變 Server 來源。</p> : null}
+        <CapabilityStatus label="此草稿對應執行能力" capability={executionCapability} />
+        <pre className="code-view" tabIndex={0} aria-label="目前草稿腳本">{script.split('\n').map((line, index) => <span key={index} className="code-line"><i>{index + 1}</i>{line || ' '}{'\n'}</span>)}</pre>
+        <details ref={manualPanel} className="manual-script"><summary>工程師手動修改（進階）{dirty ? ' · 有未儲存變更' : ''}</summary>
+          <p id="manual-source-note" className="inline-hint">可編輯完整 Playwright／Node 腳本。Server 只在人工儲存實際改變腳本時記錄人工來源；開啟入口或原樣儲存不會改變來源。工程師腳本不套 AI 網站範圍限制，仍需真實驗證、報告與人工確認發佈。</p>
+          <label className="field-label" htmlFor="draft-script">Playwright TypeScript 腳本</label>
+          <textarea ref={scriptInput} id="draft-script" className="script-editor" rows={16} value={script} spellCheck={false} autoCapitalize="off" autoCorrect="off" disabled={readOnly || Boolean(busy)} onChange={(event) => { setScript(event.target.value); setLocalAction('manual'); setConfirmed(false); setMessage(undefined); }} aria-describedby="draft-help manual-source-note" />
+          <p id="draft-help" className="inline-hint">AI 續編只使用已儲存 revision。有未儲存內容時，先儲存草稿；切回對話不會自動儲存或放棄編輯。</p>
+          <div className="action-row"><button className="button secondary compact" onClick={returnToAI}>回到 AI 續編</button></div>
+        </details>
+        <div className="action-row">
+          <button className="button secondary" disabled={readOnly || Boolean(busy) || settingsSyncing || settingsPending || !dirty || conflict} onClick={() => perform('save')}>{busy === 'save' ? '儲存中…' : '儲存草稿'}</button>
+          <button className="button quiet" disabled={readOnly || Boolean(busy)} onClick={() => perform('reload')}>重新載入草稿</button>
+        </div>
+        {conflict ? <Notice message="目前草稿或驗證資格已變更，不會自動覆寫。本機編輯仍保留，可先複製需要的內容，再重新載入最新草稿。" /> : null}
+        {reloadWarning ? <div className="confirmation-panel"><p>重新載入會放棄目前未儲存內容，請先複製需要保留的腳本。</p><div className="action-row">
+          <button className="button secondary" disabled={Boolean(busy)} onClick={() => perform('reload', true)}>確定放棄並重新載入</button>
+          <button className="button quiet" disabled={Boolean(busy)} onClick={() => setReloadWarning(false)}>繼續編輯</button>
+        </div></div> : null}
+        {error ? <Notice message={error} /> : null}
+        {message ? <p className="action-message" role="status">{message}</p> : null}
+      </div>
+
+      <div id="side-panel-publish" role="tabpanel" aria-labelledby="side-tab-publish" className="side-panel" hidden={tab !== 'publish'}>
+        <section className="validate-block" aria-labelledby="validate-title">
+          <div className="section-heading"><h3 id="validate-title">驗證</h3><button className="button quiet compact" disabled={Boolean(busy) || syncing} onClick={() => setSyncRevision((value) => value + 1)}>{syncing ? '同步中…' : '重新整理狀態'}</button></div>
+          <div className="validation-summary">
+            {validation ? <StatusBadge status={validation.status} /> : draft.validationStatus ? <StatusBadge status={draft.validationStatus} /> : <span className="muted">尚未驗證目前 revision</span>}
+            <ReportLink reportUrl={draft.reportUrl} apiBase={apiBase} label="查看草稿驗證報告" />
+          </div>
+          {validation?.error ? <details className="error-details"><summary>查看驗證錯誤</summary><pre className="run-error">{validation.error}</pre></details> : null}
+          {!executionAvailable ? <p className="blocked-hint">此草稿的來源或對應執行能力尚未確認可用，目前不能新增驗證或發佈。仍可離線對話與改稿；摘要完成不代表可發佈。</p> : null}
+          <div className="action-row"><button className="button secondary" disabled={!executionAvailable || readOnly || Boolean(busy) || settingsSyncing || settingsPending || dirty || conflict || validating || !script.trim()} onClick={() => perform('validate')}>{busy === 'validate' ? '送出中…' : validating ? '驗證進行中' : '驗證此 revision'}</button></div>
+          {dirty ? <p className="inline-hint">有未儲存變更，請先到「腳本」儲存；驗證只對應已儲存腳本。</p> : null}
+        </section>
+        <AcceptanceSummaryCard api={api} apiBase={apiBase} testId={testId} session={session} draft={draft} runs={runs} blocked={readOnly || dirty || Boolean(busy) || syncing || settingsSyncing || settingsPending || conflict || conversationGuarded || sessionRefreshing || activeAuthor} onRun={onRun} onRefresh={onRefreshSession} onBusyChange={setSummaryRequestBusy} />
+        <section className="publish-panel" aria-labelledby="publish-title">
+          <h3 id="publish-title">確認發佈</h3>
+          <ul className="conditions" aria-label="發佈條件">{conditions.map((item) => <li key={item.label} className={item.ok ? 'ok' : ''}><span className="node" aria-hidden="true">{item.ok ? <CheckIcon /> : null}</span>{item.label}<span className="sr-only">{item.ok ? '：已達成' : '：尚未達成'}</span></li>)}</ul>
+          <p className="inline-hint">{dirty ? '有未儲存變更，驗證結果只對應已儲存腳本。' : eligible ? '條件都已就緒。請檢視驗證報告與驗收摘要，由你明確確認。AI 不會自動發佈。' : '需目前 revision 驗證通過、報告與有效驗收摘要就緒，且沒有未儲存變更，才可發佈。'}</p>
+          <label className="checkbox-label"><input type="checkbox" checked={confirmed} disabled={!eligible || Boolean(busy)} onChange={(event) => setConfirmed(event.target.checked)} />我已檢視驗證報告與驗收摘要，確認發佈 revision {draft.revision}</label>
+          <button className="button primary" disabled={!eligible || !confirmed || Boolean(busy)} onClick={() => perform('publish')}>{busy === 'publish' ? '發佈中…' : `確認發佈 revision ${draft.revision}`}</button>
+        </section>
+      </div>
+
+      <div id="side-panel-runs" role="tabpanel" aria-labelledby="side-tab-runs" className="side-panel" hidden={tab !== 'runs'}>{children}</div>
+
+      <div id="side-panel-background" role="tabpanel" aria-labelledby="side-tab-background" className="side-panel" hidden={tab !== 'background'}>
+        <section className="session-background" aria-labelledby="background-title"><h3 id="background-title">本次編輯的版本背景</h3>
+          <p className="inline-hint">來源版本：{session.sourceVersionId ?? '尚無正式版本'}</p>
+          <h4>來源版本說明</h4><p className="summary-content">{session.sourceVersion?.description ?? '來源版本尚無獨立說明（舊資料或新測試）。'}</p>
+          <h4>來源背景摘要</h4><p className="summary-content">{session.sourceVersion?.backgroundSummary ?? '尚未提供來源背景摘要。'}</p>
+          <h4>本次對話背景</h4><p className="summary-content">{session.conversationSummary ?? '此編輯週期尚無已保存的對話摘要。'}</p>
+        </section>
+        <div className="side-actions"><button className="button quiet compact" disabled={sessionRefreshing} onClick={onReloadSession}><RefreshIcon />重新載入週期</button></div>
+        {onDiscard ? <section className="danger-zone" aria-labelledby="danger-title"><h3 id="danger-title">放棄這次修改</h3>
+          <p className="inline-hint">會放棄草稿與對話接續；正式版本、歷史執行與附件證據不受影響。進行中的任務會先取消。</p>
+          <button className="button danger-outline" disabled={discardBusy} onClick={onDiscard}><TrashIcon />刪除草稿…</button></section> : null}
+      </div>
+    </aside>
+  </div>;
 }

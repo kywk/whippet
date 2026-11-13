@@ -45,13 +45,17 @@ export function RunHistory({ api, apiBase, runs, group, loading, error, polling,
       {runs.length ? <div className="table-scroll"><table><caption className="sr-only">{historyTitle}，最新紀錄在前</caption>
         <thead><tr><th scope="col">狀態／Run</th>{formal ? null : <th scope="col">種類</th>}<th scope="col">建立時間</th><th scope="col">耗時</th><th scope="col">報告／操作</th></tr></thead>
         <tbody>{runs.map((run) => <tr key={run.id} data-run-id={run.id}>
-          <td><RunStatusBadge run={run} /><span className="table-run-id identifier" title={run.id}>{run.id.slice(0, 8)}</span><span className="run-origin">{scriptOriginLabel(run.scriptOrigin)}</span>{run.error ? <details className="error-details"><summary>查看錯誤</summary><pre className="run-error">{run.error}</pre></details> : null}</td>
-          {formal ? null : <td>{runKindLabel(run)}</td>}<td><time dateTime={run.createdAt}>{formatDate(run.createdAt)}</time></td><td>{duration(run)}</td>
-          <td><div className="run-actions">{run.kind === 'author' ? <span className="muted">{run.authorMode === 'summary' ? '結果見驗收摘要' : '撰寫結果見對話'}</span> : <><ReportLink reportUrl={run.reportUrl} apiBase={apiBase} /><RunArtifacts api={api} apiBase={apiBase} runId={run.id} /></>}{isActiveRun(run) ? <>{run.authorMode !== 'summary' ? <button className="button secondary compact" aria-label={`開始監看 Run ${run.id}`} onClick={() => onWatch(run)}>開始監看</button> : null}<CancelRunButton api={api} run={run} onUpdated={onRun} /></> : null}</div></td>
+          <td><RunStatusBadge run={run} /><span className="table-run-id identifier mono" title={run.id}>{shortRunId(run.id)}</span><span className="run-origin">{scriptOriginLabel(run.scriptOrigin)}</span>{run.error ? <details className="error-details"><summary>查看錯誤</summary><pre className="run-error">{run.error}</pre></details> : null}</td>
+          {formal ? null : <td className="col-nowrap">{runKindLabel(run)}</td>}<td><time dateTime={run.createdAt}>{formatDate(run.createdAt)}</time></td><td className="col-nowrap">{duration(run)}</td>
+          <td><div className="run-actions">{run.kind === 'author' ? <span className="muted col-nowrap">{run.authorMode === 'summary' ? '結果見驗收摘要' : '撰寫結果見對話'}</span> : <><ReportLink reportUrl={run.reportUrl} apiBase={apiBase} /><RunArtifacts api={api} apiBase={apiBase} runId={run.id} /></>}{isActiveRun(run) ? <>{run.authorMode !== 'summary' ? <button className="button secondary compact" aria-label={`開始監看 Run ${run.id}`} onClick={() => onWatch(run)}>開始監看</button> : null}<CancelRunButton api={api} run={run} onUpdated={onRun} /></> : null}</div></td>
         </tr>)}</tbody>
       </table></div> : !loading && !error ? <p className="muted">{formal ? '沒有正式執行紀錄。AI 撰寫與草稿驗證會顯示在編輯模式。' : '後續的撰寫與驗證結果會保留在這裡。'}</p> : null}
     </section>
   </>;
+}
+
+function shortRunId(id: string): string {
+  return id.length > 16 ? `${id.slice(0, 8)}…` : id;
 }
 
 function duration(run: Run): string {

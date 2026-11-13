@@ -55,7 +55,7 @@ export function AcceptanceSummaryCard({ api, apiBase, testId, session, draft, ru
 
   return <section className="acceptance-summary" aria-labelledby="acceptance-summary-title">
     <div className="section-heading"><h4 id="acceptance-summary-title">驗收摘要</h4>{run ? <RunStatusBadge run={run} /> : summary ? <StatusBadge status={summary.status} /> : <span className="muted">尚未產生</span>}</div>
-    <p className="inline-hint">目前 revision 驗證成功且報告就緒後，建立一次摘要任務。摘要失敗可獨立重試，不重跑成功驗證。</p>
+    {!valid ? <p className="inline-hint">目前 revision 驗證成功且報告就緒後，建立一次摘要任務。摘要失敗可獨立重試，不重跑成功驗證。</p> : null}
     {error ? <Notice message={error} /> : null}
     {run?.error ? <pre className="run-error">{run.error}</pre> : null}
     {summary?.status === 'succeeded' ? <>
@@ -65,7 +65,7 @@ export function AcceptanceSummaryCard({ api, apiBase, testId, session, draft, ru
       <details><summary>查看背景摘要</summary><p className="summary-content">{summary.backgroundSummary || '尚未提供背景摘要。'}</p></details>
     </> : null}
     {!ready ? <p className="muted">等待目前草稿驗證通過且報告就緒。</p> : null}
-    <div className="action-row"><button className="button secondary" disabled={!ready || blocked || pending || running || Boolean(valid)} onClick={() => { void request(); }}>{pending ? '摘要送出中…' : failed || error ? '重試驗收摘要' : running ? '摘要進行中' : '產生驗收摘要'}</button>
-      {run ? <CancelRunButton api={api} run={run} onUpdated={onRun} /> : null}</div>
+    {(!valid || (run && isActiveRun(run))) ? <div className="action-row">{!valid ? <button className="button secondary" disabled={!ready || blocked || pending || running} onClick={() => { void request(); }}>{pending ? '摘要送出中…' : failed || error ? '重試驗收摘要' : running ? '摘要進行中' : '產生驗收摘要'}</button> : null}
+      {run ? <CancelRunButton api={api} run={run} onUpdated={onRun} /> : null}</div> : null}
   </section>;
 }

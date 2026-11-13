@@ -6,6 +6,7 @@ import { DraftEditor } from './DraftEditor';
 import { LiveView } from './LiveView';
 import { RunHistory } from './RunHistory';
 import { DiscardSessionDialog } from './DiscardSessionDialog';
+import { CloseIcon, PlayIcon, PlusIcon, SidebarIcon } from './icons';
 import { VersionHistory } from './TestActions';
 import { CapabilityStatus } from './WorkspaceSettings';
 import { useResource, useRuns } from './hooks';
@@ -16,13 +17,22 @@ interface Props {
   api: WhippetApi;
   apiBase: string;
   initialEditing: boolean;
+  preferredMode?: 'general' | 'editing';
+  onModeChange?: (mode: 'general' | 'editing') => void;
+  railCollapsed?: boolean;
+  onExpandRail?: () => void;
+  unreadCount?: number;
+  tags: string[];
+  workspaceTags: string[];
+  onAddTag: (raw: string) => void;
+  onRemoveTag: (tag: string) => void;
   capabilities: WorkspaceCapabilities | undefined;
   settingsRefresh: number;
   onDirtyChange: (dirty: boolean) => void;
   onTestUpdated: (test: Test) => void;
 }
 
-export function TestWorkspace({ testId, api, apiBase, initialEditing, capabilities, settingsRefresh, onDirtyChange, onTestUpdated }: Props) {
+export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredMode, onModeChange, railCollapsed, onExpandRail, unreadCount, tags, workspaceTags, onAddTag, onRemoveTag, capabilities, settingsRefresh, onDirtyChange, onTestUpdated }: Props) {
   const loadTest = useCallback((signal: AbortSignal) => api.getTest(testId, signal), [api, testId]);
   const loadVersions = useCallback((signal: AbortSignal) => api.listVersions(testId, signal), [api, testId]);
   const test = useResource(loadTest);
@@ -50,6 +60,8 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, capabiliti
   const [submitError, setSubmitError] = useState<string>();
   const [liveSelection, setLiveSelection] = useState<Run>();
   const [liveRequest, setLiveRequest] = useState(0);
+  const [tagInput, setTagInput] = useState('');
+  const userChoseMode = useRef<'general' | 'editing' | undefined>(preferredMode);
   const submitLock = useRef(false);
   const submitController = useRef<AbortController | null>(null);
   useEffect(() => () => submitController.current?.abort(), []);
@@ -111,14 +123,35 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, capabiliti
   }, [api, testId, test.retry]);
   useEffect(() => {
     if (!initialEditing || initialStart.current) return;
-    const timer = setTimeout(() => { initialStart.current = true; void openEditor(); }, 0);
+    const timer = setTimeout(() => {
+      initialStart.current = true;
+      onModeChange?.('editing');
+      if (pointer?.id) {
+        setEditorMounted(true);
+        setMode('editing');
+        void readSession(pointer.id, true).catch(() => openEditor());
+      } else {
+        void openEditor();
+      }
+    }, 0);
     return () => clearTimeout(timer);
-  }, [initialEditing, openEditor]);
+  }, [initialEditing, pointer?.id, readSession, openEditor, onModeChange]);
 
+  // 若測試本身已有進行中的對話編輯週期（例如背景對話執行中或草稿進行中），且使用者未明確指定停留在「概覽」，自動載入並進入對話視窗。
   useEffect(() => {
-    if (pointer?.status !== 'discarding' || session?.id === pointer.id) return;
-    void readSession(pointer.id, true).catch((cause: unknown) => setSessionError(errorMessage(cause)));
-  }, [pointer?.id, pointer?.status, session?.id, readSession]);
+    if (!pointer || session?.id === pointer.id) return;
+    if (pointer.status === 'discarding') {
+      void readSession(pointer.id, true).catch((cause: unknown) => setSessionError(errorMessage(cause)));
+      return;
+    }
+    if (pointer.status === 'active' && userChoseMode.current !== 'general') {
+      initialStart.current = true;
+      setEditorMounted(true);
+      setMode('editing');
+      onModeChange?.('editing');
+      void readSession(pointer.id, true).catch((cause: unknown) => setSessionError(errorMessage(cause)));
+    }
+  }, [pointer?.id, pointer?.status, session?.id, readSession, onModeChange]);
   const activity = editingRuns.map((run) => `${run.id}:${run.status}`).join(',');
   useEffect(() => {
     if (!session || (!activity && session.status !== 'discarding') || !['active', 'discarding'].includes(session.status)) return;
@@ -139,11 +172,15 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, capabiliti
   }, [session?.status]);
   useEffect(() => {
     if (session?.status !== 'discarded' && session?.status !== 'published') return;
+    userChoseMode.current = 'general';
+    onModeChange?.('general');
     setEditorMounted(false); setKnownDraft(undefined); setMode('general'); setLiveSelection(undefined); test.retry(); versions.retry();
-  }, [session?.id, session?.status, test.retry, versions.retry]);
+  }, [session?.id, session?.status, test.retry, versions.retry, onModeChange]);
 
   async function edit() {
-    if (activeInfo?.status === 'discarding') {
+    userChoseMode.current = 'editing';
+    onModeChange?.('editing');
+    if (activeInfo?.status === 'discarding' || activeInfo?.status === 'active') {
       try { await readSession(activeInfo.id, true); setEditorMounted(true); setMode('editing'); setLiveSelection(undefined); }
       catch (cause) { setSessionError(errorMessage(cause)); }
     } else await openEditor();
@@ -170,6 +207,8 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, capabiliti
   }
 
   function changeMode(next: 'general' | 'editing') {
+    userChoseMode.current = next;
+    onModeChange?.(next);
     setLiveSelection(undefined);
     if (next === 'editing') setEditorMounted(true);
     setMode(next);
@@ -192,43 +231,110 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, capabiliti
   }
   const runHistoryProps = { api, apiBase, loading: history.loading, error: history.error, polling: history.polling, onRefresh: history.refresh, onRun: history.addRun, onWatch: startLive };
 
-  return <>
+  const suggestedTags = workspaceTags.filter((tag) => !tags.includes(tag));
+  function submitTag() {
+    if (!tagInput.trim()) return;
+    onAddTag(tagInput);
+    setTagInput('');
+  }
+
+  const statusChips = <>
+    <span className={`chip ${publishedId ? 'ok' : 'neutral'}`}>{publishedId ? '已發佈' : test.loading ? '載入中' : !test.data ? '狀態尚未確認' : '尚未發佈'}</span>
+    {activeInfo ? <span className="chip warm">{activeInfo.status === 'discarding' ? '正在放棄草稿' : `草稿 revision ${knownDraft?.revision ?? activeInfo.draftRevision}`}</span> : null}
+    {tags.map((tag) => <span key={tag} className="chip tag-chip">#{tag}</span>)}
+  </>;
+  const tabBusy = sessionBusy && !session;
+
+  return <div className="test-view">
     {test.loading ? <Loading text="正在載入測試詳情…" /> : null}
     {test.error ? <Notice message={test.error} retry={test.retry} /> : null}
     {sessionError ? <Notice message={sessionError} retry={() => { test.retry(); void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }} retryLabel="重新載入編輯狀態" /> : null}
-    <div className="test-mode general-mode" hidden={mode !== 'general'} role="region" aria-label="測試一般模式" data-mode="general">
-      <div className="detail-heading"><div><h2>{test.data?.name ?? '測試詳情'}</h2><p className="mode-label">{publishedId ? '已發佈' : test.loading ? '載入中' : !test.data ? '狀態尚未確認' : '尚未發佈'}</p></div><div className="detail-actions">
-        <button className="button secondary" disabled={sessionBusy || !test.data} onClick={() => { void edit(); }}>{sessionBusy ? '處理中…' : activeInfo?.status === 'discarding' ? '查看放棄進度' : activeInfo ? '繼續修改' : activeInfo === undefined ? '開啟編輯工作區' : '修改腳本'}</button>
-        <button className="button primary" disabled={submitting || !publishedId || !executionAvailable} onClick={runTest}>{submitting ? '送出中…' : '執行正式版本'}</button>
-      </div></div>
-      {publishedId ? <div className="formal-capability"><p className="inline-hint">目前正式版本來源：{scriptOriginLabel(publishedVersion?.scriptOrigin)}。執行能力依目前正式版本判斷，不隨歷史版本檢視切換。</p><CapabilityStatus label="正式版本執行" capability={formalCapability} /></div> : null}
-      <section className="version-description" aria-labelledby="version-description-title"><h3 id="version-description-title">版本說明</h3>
-        <p className="version-description-content">{test.loading || versions.loading ? '正在載入正式版本資訊…' : !publishedId ? '尚未發佈，尚無正式版本說明。請先在對話工作區完成修改、驗證與確認發佈。' : selectedVersion?.description ?? '此版本尚無版本說明（舊資料）。'}</p>
-        {selectedVersion ? <details className="version-background"><summary>查看版本背景摘要</summary><p className="summary-content">{selectedVersion.backgroundSummary ?? '此版本尚無背景摘要（舊資料）。'}</p></details> : null}
-        {historical ? <p className="inline-hint">正在檢視歷史版本 {selectedVersion?.id ?? selectedVersionId}。正式執行仍使用目前發佈版本。</p> : null}
-      </section>
-      {submitError ? <Notice message={submitError} retry={history.refresh} retryLabel="重新整理正式執行紀錄" /> : null}
-      <RunHistory {...runHistoryProps} runs={formalRuns} group="formal" liveView={mode === 'general' ? liveView : null} />
-      <VersionHistory api={api} apiBase={apiBase} versions={versions.data} runs={history.runs} publishedVersionId={publishedId} loading={versions.loading} error={versions.error} onRefresh={versions.retry} selectedVersionId={viewingVersionId} onSelectVersion={(version) => setSelectedVersionId(version.id)} onEditDraft={() => { void edit(); }} onDiscardDraft={() => { void askDiscard(); }} activeEditingSession={activeInfo} sessionBusy={sessionBusy} knownDraft={knownDraft} editorGuarded={editorGuarded} />
-      <section className="published-script-section" aria-labelledby="published-script-title" id="published-script-panel">
-        <div className="section-heading"><h3 id="published-script-title">{historical ? '歷史版本唯讀腳本' : '正式版本唯讀腳本'}</h3>{historical ? <button className="button secondary compact" onClick={() => setSelectedVersionId(undefined)}>回到目前正式版本</button> : null}</div>
-        {test.loading || versions.loading ? <Loading text="正在載入版本腳本…" /> : selectedVersion ? <>
-          <p className="script-version-label">{historical ? '歷史版本' : '目前正式版本'} · revision {selectedVersion.revision}</p><p className="inline-hint">版本腳本來源：{scriptOriginLabel(selectedVersion.scriptOrigin)}</p><p className="version-id identifier">{selectedVersion.id}</p>
-          <textarea className="script-editor readonly-script" readOnly rows={12} value={selectedVersion.script} spellCheck={false} aria-label={historical ? '歷史版本腳本（唯讀）' : '正式版本腳本（唯讀）'} />
-        </> : !publishedId ? <p className="mode-empty">尚無正式版本腳本。草稿只會在編輯模式顯示。</p> : versions.error ? <p className="muted">版本載入失敗，請從歷史版本區重新載入。</p> : <Notice message="未取得所選版本的腳本，請重新載入版本。" retry={versions.retry} />}
-      </section>
+    <header className="test-head">
+      <div className="test-title">
+        {railCollapsed && onExpandRail ? (
+          <button type="button" className="rail-icon-button light small rail-expand-btn" aria-label="展開左側測試列表" title="展開左側欄" onClick={onExpandRail}>
+            <SidebarIcon />
+            {unreadCount ? <span className="unread-light inline" aria-hidden="true" /> : null}
+          </button>
+        ) : null}
+        <h1>{test.data?.name ?? '測試詳情'}</h1>
+        <div className="test-chips">{statusChips}</div>
+      </div>
+      <div className="mode-tabs" role="tablist" aria-label="檢視">
+        <button role="tab" aria-selected={mode === 'general'} className={mode === 'general' ? 'on' : ''} onClick={() => changeMode('general')}>概覽</button>
+        <button role="tab" aria-selected={mode === 'editing'} className={mode === 'editing' ? 'on' : ''} disabled={sessionBusy || !test.data} onClick={() => { if (editorMounted && session) changeMode('editing'); else void edit(); }}>
+          {tabBusy ? '處理中…' : '對話編輯'}{activeInfo && mode !== 'editing' ? <span className="tab-dot" role="img" aria-label="有進行中的草稿" /> : null}
+        </button>
+      </div>
+      <div className="test-actions"><button className="button primary" disabled={submitting || !publishedId || !executionAvailable} onClick={runTest}><PlayIcon />{submitting ? '送出中…' : '執行正式版本'}</button></div>
+    </header>
+    <div className="test-mode general-mode overview" hidden={mode !== 'general'} role="tabpanel" aria-label="測試概覽" data-mode="general">
+      <div className="overview-main">
+        <section className="test-tags-section" aria-labelledby="test-tags-title">
+          <div className="section-heading">
+            <h2 id="test-tags-title">標籤分類</h2>
+            <span className="muted">可用於左側搜尋與快速篩選</span>
+          </div>
+          <div className="tag-editor">
+            <div className="tag-list" aria-label="已設定的標籤">
+              {tags.length === 0 ? <span className="muted">尚未加上標籤</span> : tags.map((tag) => (
+                <span key={tag} className="tag-pill">
+                  <span>#{tag}</span>
+                  <button type="button" className="tag-remove" aria-label={`移除標籤 ${tag}`} title={`移除 #${tag}`} onClick={() => onRemoveTag(tag)}><CloseIcon /></button>
+                </span>
+              ))}
+            </div>
+            <form className="tag-form" onSubmit={(event) => { event.preventDefault(); submitTag(); }}>
+              <input
+                type="text"
+                className="text-input tag-input"
+                value={tagInput}
+                maxLength={32}
+                placeholder="新增標籤（例如：登入、S3、冒煙測試），按 Enter 新增…"
+                aria-label="新增測試標籤"
+                onChange={(event) => setTagInput(event.target.value)}
+              />
+              <button type="submit" className="button secondary compact" disabled={!tagInput.trim()}><PlusIcon />新增標籤</button>
+            </form>
+            {suggestedTags.length > 0 ? (
+              <div className="tag-suggestions" aria-label="Workspace 常用標籤">
+                <span className="muted">點擊套用既有標籤：</span>
+                {suggestedTags.map((tag) => (
+                  <button key={tag} type="button" className="tag-suggestion" onClick={() => onAddTag(tag)}>+ #{tag}</button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </section>
+        <section className="version-description" aria-labelledby="version-description-title"><h2 id="version-description-title">版本說明</h2>
+          <p className="version-description-content">{test.loading || versions.loading ? '正在載入正式版本資訊…' : !publishedId ? '尚未發佈，尚無正式版本說明。切到「對話編輯」說明要驗證的流程，完成驗證並確認後即可發佈。' : selectedVersion?.description ?? '此版本尚無版本說明（舊資料）。'}</p>
+          {selectedVersion ? <details className="version-background"><summary>查看版本背景摘要</summary><p className="summary-content">{selectedVersion.backgroundSummary ?? '此版本尚無背景摘要（舊資料）。'}</p></details> : null}
+          {historical ? <p className="inline-hint">正在檢視歷史版本 {selectedVersion?.id ?? selectedVersionId}。正式執行仍使用目前發佈版本。</p> : null}
+          {publishedId ? <div className="formal-capability"><p className="inline-hint">目前正式版本來源：{scriptOriginLabel(publishedVersion?.scriptOrigin)}。執行能力依目前正式版本判斷，不隨歷史版本檢視切換。</p><CapabilityStatus label="正式版本執行" capability={formalCapability} /></div> : null}
+        </section>
+        {submitError ? <Notice message={submitError} retry={history.refresh} retryLabel="重新整理正式執行紀錄" /> : null}
+        <RunHistory {...runHistoryProps} runs={formalRuns} group="formal" liveView={mode === 'general' ? liveView : null} />
+      </div>
+      <div className="overview-side">
+        <VersionHistory api={api} apiBase={apiBase} versions={versions.data} runs={history.runs} publishedVersionId={publishedId} loading={versions.loading} error={versions.error} onRefresh={versions.retry} selectedVersionId={viewingVersionId} onSelectVersion={(version) => setSelectedVersionId(version.id)} onEditDraft={() => { void edit(); }} onDiscardDraft={() => { void askDiscard(); }} activeEditingSession={activeInfo} sessionBusy={sessionBusy} knownDraft={knownDraft} editorGuarded={editorGuarded} />
+        <section className="published-script-section" aria-labelledby="published-script-title" id="published-script-panel">
+          <div className="section-heading"><h3 id="published-script-title">{historical ? '歷史版本唯讀腳本' : '正式版本唯讀腳本'}</h3>{historical ? <button className="button quiet compact" onClick={() => setSelectedVersionId(undefined)}>回到目前正式版本</button> : null}</div>
+          {test.loading || versions.loading ? <Loading text="正在載入版本腳本…" /> : selectedVersion ? <>
+            <p className="script-version-label">{historical ? '歷史版本' : '目前正式版本'} · revision {selectedVersion.revision} · {scriptOriginLabel(selectedVersion.scriptOrigin)}</p><p className="version-id identifier">{selectedVersion.id}</p>
+            <textarea className="script-editor readonly-script" readOnly rows={12} value={selectedVersion.script} spellCheck={false} aria-label={historical ? '歷史版本腳本（唯讀）' : '正式版本腳本（唯讀）'} />
+          </> : !publishedId ? <p className="mode-empty">尚無正式版本腳本。草稿只會在「對話編輯」顯示。</p> : versions.error ? <p className="muted">版本載入失敗，請從歷史版本區重新載入。</p> : <Notice message="未取得所選版本的腳本，請重新載入版本。" retry={versions.retry} />}
+        </section>
+      </div>
     </div>
-    {editorMounted ? <div className="test-mode editing-mode" hidden={mode !== 'editing'} role="region" aria-label="測試編輯模式" data-mode="editing">
-      <div className="editing-heading"><div><h2>{test.data?.name ?? '編輯測試'}</h2><p>編輯模式 · {editorGuarded ? '有未儲存內容或進行中的操作' : '已儲存內容可持續接續'}</p></div><button className="button secondary" onClick={() => changeMode('general')}>返回一般模式</button></div>
-      <p className="editing-intro">說明要測試的流程或修改需求，從對話取得腳本與結果。切換回一般模式會保留此處的編輯內容。</p>
-      {session ? <section className="editing-session-status" aria-label="編輯週期狀態"><p>{session.status === 'discarding' ? '正在放棄草稿，等待任務停止與資源回收。' : session.status === 'active' ? '本次編輯週期進行中' : '本次編輯週期已結束'}</p>
-        {session.status === 'discarding' ? <p className="inline-hint">{session.reclaimPending ? '等待執行節點確認回收，尚未完成放棄。' : '正在確認本週期所有任務已終止。'}待確認任務：{session.pendingRunIds.length}；正式執行不受影響。</p> : null}
-        <div className="action-row"><button className="button quiet compact" disabled={sessionRefreshing} onClick={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }}>重新載入週期</button>{session.status === 'active' ? <button className="button quiet compact" disabled={sessionBusy} onClick={() => { void askDiscard(); }}>刪除草稿</button> : null}</div>
-      </section> : sessionBusy ? <Loading text="正在開始或接續編輯週期…" /> : <div className="mode-empty"><p>尚未載入編輯週期。請重試開始或接續修改。</p><button className="button secondary" onClick={() => { void openEditor(); }}>開始或接續修改</button></div>}
-      {session && session.draft && (session.status === 'active' || session.status === 'discarding') ? <DraftEditor key={session.id} api={api} apiBase={apiBase} testId={testId} capabilities={capabilities} session={session} sessionRefreshing={sessionRefreshing} onRefreshSession={refreshSession} runs={editingRuns} onRun={history.addRun} onPublished={published} onDirtyChange={handleEditorGuard} onRefreshRuns={history.refresh} settingsRefresh={settingsRefresh} onDraftChange={setKnownDraft}>
+    {editorMounted ? <div className="test-mode editing-mode" hidden={mode !== 'editing'} role="tabpanel" aria-label="測試編輯模式" data-mode="editing">
+      {session ? (session.status === 'discarding' ? <section className="editing-session-status" aria-label="編輯週期狀態"><p>正在放棄草稿，等待任務停止與資源回收。</p>
+        <p className="inline-hint">{session.reclaimPending ? '等待執行節點確認回收，尚未完成放棄。' : '正在確認本週期所有任務已終止。'}待確認任務：{session.pendingRunIds.length}；正式執行不受影響。</p>
+        <div className="action-row"><button className="button quiet compact" disabled={sessionRefreshing} onClick={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }}>重新載入週期</button></div></section> : null)
+        : sessionBusy ? <Loading text="正在開始或接續編輯週期…" /> : <div className="mode-empty"><p>尚未載入編輯週期。請重試開始或接續修改。</p><button className="button secondary" onClick={() => { void openEditor(); }}>開始或接續修改</button></div>}
+      {session && session.draft && (session.status === 'active' || session.status === 'discarding') ? <DraftEditor key={session.id} api={api} apiBase={apiBase} testId={testId} capabilities={capabilities} session={session} sessionRefreshing={sessionRefreshing} onRefreshSession={refreshSession} runs={editingRuns} onRun={history.addRun} onPublished={published} onDirtyChange={handleEditorGuard} onRefreshRuns={history.refresh} settingsRefresh={settingsRefresh} onDraftChange={setKnownDraft} onDiscard={session.status === 'active' ? () => { void askDiscard(); } : undefined} discardBusy={sessionBusy} onReloadSession={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }} testName={test.data?.name}>
         <RunHistory {...runHistoryProps} runs={editingRuns} group="editing" liveView={mode === 'editing' ? liveView : null} />
       </DraftEditor> : null}
     </div> : null}
     {discardTarget ? <DiscardSessionDialog session={discardTarget} busy={sessionBusy} error={discardError} onCancel={() => setDiscardTarget(undefined)} onConfirm={() => { void discard(); }} /> : null}
-  </>;
+  </div>;
 }

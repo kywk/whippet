@@ -143,6 +143,7 @@ export interface Run {
   editingSessionId?: string | null;
   authorMode?: 'edit' | 'summary' | 'workspace';
   scriptOrigin?: ScriptOrigin;
+  progressEvents?: string[];
 }
 
 export interface Draft {
