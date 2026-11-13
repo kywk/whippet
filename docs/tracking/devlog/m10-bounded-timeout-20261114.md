@@ -58,3 +58,12 @@ Plan stopped/r14，Run `256747aa-6298-4e4c-bc11-874ac38f3fd0` failed且全部回
 
 
 retry5最終時間投影：started→finished144508.863ms（約144.5秒），timeoutMs180000且timedOut=false；model3耗75300.804ms、model8耗25071.571ms。8工具為draft1/reference1/stage4/commit2，全部工具succeeded，但兩次自試失敗；只保留最後自試class=TEST_FAILED，不能認定前次同類，更不能猜具體斷言。timing.sql/json與final/review/safe-events已封存。
+
+
+### 自試診斷的剩餘缺口
+
+Runtime唯讀確認：TEST_FAILED來自reporter最後一次結構化failed計數，無法區分expect、locator/action、hook、程式或環境錯誤。verifyDraft的臨時results/runtime-summary與生成源碼在finally清除；沒有通過候選時亦無author artifact。不能在不讀raw的限制下回溯具體自試根因。
+
+真engine合成檢查第三／第八請求不要求完整final schema，短final可重建已通過checkpoint；本次無passing checkpoint，不能套用合成成功。第八請求仍可選工具，可能以LIMIT終止，但不是本次自試根因。共用update_draft文字與階段tool限制是後續可改善點，未修改。
+
+下一個最小切片提案（尚未實作）：在清理前保存每次自試固定status/count、第一個失敗step.category觀測位置及可信MODULE/HARNESS fileRole/有界line，排除title/message/stack/path/URL/selector。使用真Playwright正負與sentinel離線驗證；具體載體/schema仍需PM定案。這只補觀測，不代表修復或M10通過，無新模型授權。詳細提案 `/private/tmp/whippet-m10-timeout-root/RETRY5-READONLY-REVIEW.md`。
