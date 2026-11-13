@@ -36,6 +36,8 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
   const loadTest = useCallback((signal: AbortSignal) => api.getTest(testId, signal), [api, testId]);
   const loadVersions = useCallback((signal: AbortSignal) => api.listVersions(testId, signal), [api, testId]);
   const test = useResource(loadTest);
+  const loadedTest = useRef(test.data);
+  if (test.data) loadedTest.current = test.data;
   const versions = useResource(loadVersions);
   const history = useRuns(api, testId);
   const [mode, setMode] = useState<'general' | 'editing'>(initialEditing ? 'editing' : 'general');
@@ -122,20 +124,20 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
     finally { sessionControllers.current.delete(controller); sessionLock.current = false; if (!controller.signal.aborted) setSessionBusy(false); }
   }, [api, testId, test.retry]);
   useEffect(() => {
-    if (!initialEditing || initialStart.current) return;
+    if (!initialEditing || initialStart.current || !test.data) return;
     const timer = setTimeout(() => {
       initialStart.current = true;
       onModeChange?.('editing');
       if (pointer?.id) {
         setEditorMounted(true);
         setMode('editing');
-        void readSession(pointer.id, true).catch(() => openEditor());
+        void readSession(pointer.id, true).catch((cause: unknown) => setSessionError(errorMessage(cause)));
       } else {
         void openEditor();
       }
     }, 0);
     return () => clearTimeout(timer);
-  }, [initialEditing, pointer?.id, readSession, openEditor, onModeChange]);
+  }, [initialEditing, test.data, pointer?.id, readSession, openEditor, onModeChange]);
 
   // 若測試本身已有進行中的對話編輯週期（例如背景對話執行中或草稿進行中），且使用者未明確指定停留在「概覽」，自動載入並進入對話視窗。
   useEffect(() => {
@@ -331,7 +333,7 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
         <p className="inline-hint">{session.reclaimPending ? '等待執行節點確認回收，尚未完成放棄。' : '正在確認本週期所有任務已終止。'}待確認任務：{session.pendingRunIds.length}；正式執行不受影響。</p>
         <div className="action-row"><button className="button quiet compact" disabled={sessionRefreshing} onClick={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }}>重新載入週期</button></div></section> : null)
         : sessionBusy ? <Loading text="正在開始或接續編輯週期…" /> : <div className="mode-empty"><p>尚未載入編輯週期。請重試開始或接續修改。</p><button className="button secondary" onClick={() => { void openEditor(); }}>開始或接續修改</button></div>}
-      {session && session.draft && (session.status === 'active' || session.status === 'discarding') ? <DraftEditor key={session.id} api={api} apiBase={apiBase} testId={testId} capabilities={capabilities} session={session} sessionRefreshing={sessionRefreshing} onRefreshSession={refreshSession} runs={editingRuns} onRun={history.addRun} onPublished={published} onDirtyChange={handleEditorGuard} onRefreshRuns={history.refresh} settingsRefresh={settingsRefresh} onDraftChange={setKnownDraft} onDiscard={session.status === 'active' ? () => { void askDiscard(); } : undefined} discardBusy={sessionBusy} onReloadSession={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }} testName={test.data?.name} testKind={test.data?.kind}>
+      {session && session.draft && (session.status === 'active' || session.status === 'discarding') ? <DraftEditor key={session.id} api={api} apiBase={apiBase} testId={testId} capabilities={capabilities} session={session} sessionRefreshing={sessionRefreshing} onRefreshSession={refreshSession} runs={editingRuns} onRun={history.addRun} onPublished={published} onDirtyChange={handleEditorGuard} onRefreshRuns={history.refresh} settingsRefresh={settingsRefresh} onDraftChange={setKnownDraft} onDiscard={session.status === 'active' ? () => { void askDiscard(); } : undefined} discardBusy={sessionBusy} onReloadSession={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }} testName={loadedTest.current?.name} testKind={loadedTest.current?.kind} testSlug={loadedTest.current?.slug}>
         <RunHistory {...runHistoryProps} runs={editingRuns} group="editing" liveView={mode === 'editing' ? liveView : null} />
       </DraftEditor> : null}
     </div> : null}

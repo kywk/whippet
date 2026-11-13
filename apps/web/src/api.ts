@@ -1,6 +1,6 @@
-import { editableStage } from './plan';
+import { validRepairContent, editableStage } from './plan';
 import { RUN_STATUSES } from './types';
-import type { Plan, PlanStage, PlanSummary, StageArgument, JsonValue, AuthorPartial, CatalogItem, AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
+import type { StageRetry, ModuleMetadata, Plan, PlanStage, PlanSummary, StageArgument, JsonValue, AuthorPartial, CatalogItem, AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
 
 export class ApiError extends Error {
   readonly code: string;
@@ -154,6 +154,7 @@ function parseTest(value: unknown): Test {
   const data = record(value);
   return {
     id: string(data.id), workspaceId: string(data.workspaceId), name: string(data.name),
+    slug: data.kind === 'module' ? string(data.slug) : optionalString(data.slug),
     kind: data.kind == null ? 'test' : choice(data.kind, ['test', 'module', 'usecase'] as const),
     description: optionalString(data.description) ?? '',
     publishedVersionId: optionalString(data.publishedVersionId) || null,
@@ -177,6 +178,17 @@ function parsePlanStage(value: unknown): PlanStage {
     module: module ? { slug: string(module.slug), moduleKind: choice(module.moduleKind, ['setup', 'step', 'page'] as const), description: string(module.description) } : undefined,
     args, bind: optionalString(data.bind), draftRevision: data.draftRevision == null ? undefined : revision(data.draftRevision),
     candidateVersionId: optionalString(data.candidateVersionId), authorRunId: optionalString(data.authorRunId), validationRunId: optionalString(data.validationRunId), error: optionalString(data.error) };
+}
+function parseStageRetry(value: unknown): StageRetry {
+  const data = record(value);
+  const eligible = bool(data.eligible);
+  const reason = data.reason === null ? null : choice(data.reason, ['plan_not_stopped', 'stage_not_retryable', 'cancelled', 'source_unavailable', 'session_closed', 'reclaim_pending', 'snapshot_mismatch', 'prior_stage_invalid', 'scope_unavailable'] as const);
+  const planRevision = revision(data.planRevision);
+  const raw = data.source === null ? null : record(data.source);
+  const source = raw && { moduleTestId: string(raw.moduleTestId), editingSessionId: string(raw.editingSessionId), moduleRevision: revision(raw.moduleRevision), moduleContextRevision: revision(raw.moduleContextRevision), authorRunId: string(raw.authorRunId), authorStatus: parseStatus(raw.authorStatus), validationRunId: nullableString(raw.validationRunId), validationStatus: raw.validationStatus === null ? null : parseStatus(raw.validationStatus), reclaimed: bool(raw.reclaimed) };
+  const failed = (status: string | null) => status === 'failed' || status === 'timed_out';
+  if (planRevision < 1 || (source && (source.moduleRevision < 1 || !source.moduleTestId || !source.editingSessionId || !source.authorRunId || ((source.validationRunId === null) !== (source.validationStatus === null)))) || (eligible ? reason !== null || !source || !source.reclaimed || !(failed(source.authorStatus) || (source.authorStatus === 'succeeded' && failed(source.validationStatus))) : reason === null)) throw new ApiError('Stage 重試資格回應不符。', 'INVALID_RESPONSE');
+  return { eligible, reason, planRevision, source };
 }
 function parsePlan(value: unknown): Plan {
   const data = record(value);
@@ -225,9 +237,7 @@ function parseCatalogItem(value: unknown): CatalogItem {
   const module = record(data.module);
   return {
     testId: string(data.testId), versionId: string(data.versionId), name: string(data.name), description: string(data.description),
-    module: { slug: string(module.slug), moduleKind: choice(module.moduleKind, ['setup', 'step', 'page'] as const),
-      exportName: string(module.exportName), signature: string(module.signature), inputs: string(module.inputs), returns: string(module.returns),
-      preconditions: string(module.preconditions), postconditions: string(module.postconditions), harness: string(module.harness) },
+    module: parseModule(module),
     validationRunId: nullableString(data.validationRunId), validationStatus: data.validationStatus === '' || data.validationStatus == null ? undefined : parseStatus(data.validationStatus),
     referencedBy: array(data.referencedBy, (value) => { const item = record(value); return { testId: string(item.testId), versionId: string(item.versionId) }; }),
   };
@@ -256,10 +266,18 @@ function parseRun(value: unknown): Run {
   };
 }
 
+function parseModule(value: unknown): ModuleMetadata {
+  const data = record(value);
+  return { slug: string(data.slug), moduleKind: choice(data.moduleKind, ['setup', 'step', 'page'] as const),
+    exportName: string(data.exportName), signature: string(data.signature), inputs: string(data.inputs), returns: string(data.returns),
+    preconditions: string(data.preconditions), postconditions: string(data.postconditions), harness: string(data.harness) };
+}
+
 function parseDraft(value: unknown): Draft {
   const data = record(value);
   return {
     testId: string(data.testId), revision: revision(data.revision), script: string(data.script),
+    module: data.module == null ? undefined : parseModule(data.module),
     updatedAt: string(data.updatedAt), validationRunId: optionalString(data.validationRunId),
     validationStatus: data.validationStatus == null ? undefined : parseStatus(data.validationStatus),
     reportUrl: optionalString(data.reportUrl),
@@ -269,11 +287,13 @@ function parseDraft(value: unknown): Draft {
   };
 }
 
-function parseVersion(value: unknown): Version {
+function parseVersion(value: unknown, historical = false): Version {
   const data = record(value);
   return {
     id: string(data.id), testId: string(data.testId), revision: revision(data.revision),
-    script: string(data.script), createdAt: string(data.createdAt), validationRunId: string(data.validationRunId),
+    script: string(data.script), createdAt: string(data.createdAt),
+    // M1 seed versions predate validation_run_id; only history may contain null.
+    validationRunId: historical ? nullableString(data.validationRunId) : string(data.validationRunId),
     workspaceSettings: data.workspaceSettings == null ? undefined : parseWorkspaceSnapshot(data.workspaceSettings),
     description: optionalString(data.description) ?? null, backgroundSummary: optionalString(data.backgroundSummary) ?? null,
     summaryRunId: optionalString(data.summaryRunId) ?? null, editingSessionId: optionalString(data.editingSessionId) ?? null,
@@ -424,6 +444,18 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
       if (plan.testId !== testId || plan.editingSessionId !== input.editingSessionId) throw new ApiError('Plan 所屬測試或週期不符。', 'INVALID_RESPONSE');
       return plan;
     },
+    async getStageRetry(planId, stageId, signal) {
+      const data = record(await request(`/plans/${id(planId)}/stages/${id(stageId)}/retry`, 'GET', signal));
+      return parseStageRetry(data.retry);
+    },
+    async retryStage(planId, stageId, input, signal) {
+      if (!validRepairContent(input.content) || input.confirmed !== true || !Number.isSafeInteger(input.planRevision) || input.planRevision < 1 || !Number.isSafeInteger(input.moduleRevision) || input.moduleRevision < 1 || !Number.isSafeInteger(input.moduleContextRevision) || input.moduleContextRevision < 0) throw new ApiError('修復指示或重試 CAS 格式不符。', 'INVALID_REQUEST');
+      const { planRevision, moduleRevision, moduleContextRevision, confirmed, content } = input;
+      const data = record(await request(`/plans/${id(planId)}/stages/${id(stageId)}/retry`, 'POST', signal, { planRevision, moduleRevision, moduleContextRevision, confirmed, content }, false, 200));
+      const plan = parsePlan(data.plan);
+      if (plan.id !== planId) throw new ApiError('重試 Plan 回應不符。', 'INVALID_RESPONSE');
+      return plan;
+    },
     async confirmPlan(planId, planRevision, signal) {
       const data = record(await request(`/plans/${id(planId)}/confirm`, 'POST', signal, { planRevision, confirmed: true }, false, 200));
       const plan = parsePlan(data.plan);
@@ -449,7 +481,7 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     },
     async publishPlan(planId, planRevision, summaryRunId, signal) {
       const data = record(await request(`/plans/${id(planId)}/publish`, 'POST', signal, { planRevision, confirmed: true, summaryRunId }, false, 200));
-      return { usecaseVersion: parseVersion(data.usecaseVersion), moduleVersions: array(data.moduleVersions, parseVersion) };
+      return { usecaseVersion: parseVersion(data.usecaseVersion), moduleVersions: array(data.moduleVersions, (value) => parseVersion(value)) };
     },
     async listCatalog(workspaceId, signal) {
       return items(await request(`/workspaces/${id(workspaceId)}/catalog`, 'GET', signal), parseCatalogItem);
@@ -487,8 +519,10 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
       if (draft.editingSessionId !== editingSessionId) throw new ApiError('草稿已屬於其他編輯週期，請重新載入。', 'SESSION_CONFLICT', 409);
       return draft;
     },
-    async saveDraft(testId, editingSessionId, revision, script, signal) {
-      return parseDraft(await request(`/tests/${id(testId)}/draft`, 'PUT', signal, { editingSessionId, revision, script }));
+    async saveDraft(testId, editingSessionId, revision, script, signal, module) {
+      const saved = parseDraft(await request(`/tests/${id(testId)}/draft`, 'PUT', signal, { editingSessionId, revision, script, ...(module ? { module } : {}) }));
+      if (module && !saved.module) throw new ApiError('Module 儲存回應缺少完整 metadata，請重新載入確認。', 'INVALID_RESPONSE');
+      return saved;
     },
     async validateDraft(testId, editingSessionId, revision, signal) {
       return parseRun(await request(`/tests/${id(testId)}/draft/validate`, 'POST', signal, { editingSessionId, revision }));
@@ -497,7 +531,7 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
       return parseVersion(await request(`/tests/${id(testId)}/publish`, 'POST', signal, { editingSessionId, revision, summaryRunId, confirmed: true }));
     },
     async listVersions(testId, signal) {
-      return items(await request(`/tests/${id(testId)}/versions`, 'GET', signal), parseVersion);
+      return items(await request(`/tests/${id(testId)}/versions`, 'GET', signal), (value) => parseVersion(value, true));
     },
     async cancelRun(runId, signal) {
       return parseRun(await request(`/runs/${id(runId)}/cancel`, 'POST', signal));

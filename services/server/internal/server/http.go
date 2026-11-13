@@ -80,6 +80,8 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	mux.HandleFunc("GET /api/tests/{id}/plan", a.getPlan)
 	mux.HandleFunc("PUT /api/tests/{id}/plan", a.putPlan)
 	mux.HandleFunc("POST /api/plans/{id}/confirm", a.confirmPlan)
+	mux.HandleFunc("GET /api/plans/{id}/stages/{stageId}/retry", a.stageRetry)
+	mux.HandleFunc("POST /api/plans/{id}/stages/{stageId}/retry", a.stageRetry)
 	mux.HandleFunc("POST /api/plans/{id}/cancel", a.cancelPlan)
 	mux.HandleFunc("POST /api/plans/{id}/publish", a.publishPlan)
 	mux.HandleFunc("POST /api/plans/{id}/summary", a.createPlanSummary)

@@ -6,14 +6,14 @@ import { capabilitySnapshot } from "./manifest.js";
 import { loadToolRegistry, validateToolArguments, validateToolResult, exactObject } from "./registry.js";
 import type { AuthorInput } from "./types.js";
 
-export class HarnessError extends Error { constructor() { super("tool_unavailable"); } }
+export class HarnessError extends Error { constructor(readonly code: "tool_unavailable" | "catalog_search_invalid_request" = "tool_unavailable") { super(code); } }
 export class HarnessClient {
   private readonly transport: ReturnType<typeof attemptIO>;
   private readonly unsubscribe: () => void;
   private readonly registry = loadToolRegistry();
   private readonly calls = new Map<string, { id: string; arguments: string }>();
   private closed = false;
-  private pending?: { id: string; name: string; resolve(value: unknown): void; reject(): void; cleanup(): void };
+  private pending?: { id: string; name: string; resolve(value: unknown): void; reject(code?: "catalog_search_invalid_request"): void; cleanup(): void };
   constructor(private readonly input: AuthorInput, io?: { read: Readable; write: Writable }) {
     const snapshot = capabilitySnapshot(input.author);
     if (!snapshot || snapshot.toolRegistryVersion !== this.registry.version || snapshot.toolRegistrySha256 !== this.registry.sha256) throw new HarnessError();
@@ -25,6 +25,9 @@ export class HarnessClient {
     const pending = this.pending;
     if (!pending || frame.attemptId !== this.input.attemptId || frame.requestId !== pending.id) return;
     try {
+      if (pending.name === "catalog_search" && exactObject(frame,["kind","requestId","attemptId","error"]) && frame.error === "catalog_search_invalid_request") {
+        this.pending=undefined;pending.cleanup();pending.reject("catalog_search_invalid_request");return;
+      }
       if (!exactObject(frame, ["kind", "requestId", "attemptId", "result"])) throw new HarnessError();
       const tool = this.registry.tools.find(tool => tool.name === pending.name)!;
       validateToolResult(tool, frame.result);
@@ -47,7 +50,7 @@ export class HarnessClient {
       const id = call.id;
       return new Promise((resolve, reject) => {
         const timer = setTimeout(this.fail, tool.limits.timeoutMs);
-        this.pending = { id, name, resolve, reject: () => reject(new HarnessError()), cleanup: () => { this.transport.forgetTool(id); clearTimeout(timer); signal?.removeEventListener("abort", this.fail); } };
+        this.pending = { id, name, resolve, reject: (code) => reject(new HarnessError(code)), cleanup: () => { this.transport.forgetTool(id); clearTimeout(timer); signal?.removeEventListener("abort", this.fail); } };
         signal?.addEventListener("abort", this.fail, { once: true });
         this.transport.expectTool(id,name);
         this.transport.send({ kind: "tool_request", requestId: id, attemptId: this.input.attemptId, name, arguments: args }, this.fail);

@@ -4,6 +4,7 @@ import { ApiError, errorMessage, resolveReportUrl } from './api';
 import { executionCapabilityForScript, scriptOriginLabel } from './capabilities';
 import { formatDate, Loading, Notice, ReportLink, StatusBadge } from './components';
 import { useResource } from './hooks';
+import { emptyModule, ModuleFields, moduleProblem } from './ModuleFields';
 import { PlanPanel } from './PlanPanel';
 import { ConversationPanel } from './ConversationPanel';
 import { AcceptanceSummaryCard } from './AcceptanceSummary';
@@ -32,6 +33,7 @@ interface Props {
   discardBusy: boolean;
   onReloadSession: () => void;
   testName?: string;
+  testSlug?: string;
   testKind?: 'test' | 'module' | 'usecase';
 }
 
@@ -53,9 +55,13 @@ export function DraftEditor(props: Props) {
   </section>;
 }
 
-function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, onDirtyChange, onRefreshRuns, settingsRefresh, onDraftChange, children, initialSettingsSequence, session, sessionRefreshing, onRefreshSession, capabilities, onDiscard, discardBusy, onReloadSession, testName, testKind }: Props & { initial: Draft; initialSettingsSequence: number }) {
+function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, onDirtyChange, onRefreshRuns, settingsRefresh, onDraftChange, children, initialSettingsSequence, session, sessionRefreshing, onRefreshSession, capabilities, onDiscard, discardBusy, onReloadSession, testName, testKind, testSlug }: Props & { initial: Draft; initialSettingsSequence: number }) {
   const [draft, setDraft] = useState(initial);
   const [script, setScript] = useState(initial.script);
+  const [module, setModule] = useState(() => initial.module ?? emptyModule(testSlug ?? ''));
+  useEffect(() => {
+    if (testSlug) setModule(current => current.slug ? current : { ...current, slug: testSlug });
+  }, [testSlug]);
   const [localAction, setLocalAction] = useState<'manual' | 'candidate'>();
   const manualPanel = useRef<HTMLDetailsElement | null>(null);
   const scriptInput = useRef<HTMLTextAreaElement | null>(null);
@@ -79,29 +85,31 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
   const [tab, setTab] = useState<SideTab>('script');
   const [sideOpen, setSideOpen] = useState(() => typeof window === 'undefined' ? true : window.innerWidth > 1220);
   const [sideExpanded, setSideExpanded] = useState(false);
-  const dirty = script !== draft.script;
+  const moduleDirty = testKind === 'module' && JSON.stringify(module) !== JSON.stringify(draft.module ?? emptyModule(testSlug ?? ''));
+  const dirty = script !== draft.script || moduleDirty;
+  const moduleError = testKind === 'module' ? moduleProblem(module, testSlug, script) : undefined;
   const readOnly = session.status !== 'active';
   const activeAuthor = runs.some((run) => run.kind === 'author' && isActiveRun(run));
-  const editorState = useRef({ draft, script, busy });
-  editorState.current = { draft, script, busy };
+  const editorState = useRef({ draft, script, busy, dirty });
+  editorState.current = { draft, script, busy, dirty };
   const synchronizeDraft = useCallback((next: Draft, source: 'author' | 'settings' = 'author') => {
     const current = editorState.current;
     if (next.revision < Math.max(current.draft.revision, minimumDraftRevision.current)) return;
     minimumDraftRevision.current = next.revision;
     const changed = next.revision !== current.draft.revision || next.script !== current.draft.script;
     setConfirmed(false);
-    if (changed && (current.script !== current.draft.script || current.busy)) {
+    if (changed && (current.dirty || current.busy)) {
       setConflict(true); setQualificationFresh(false);
       setError(source === 'settings' ? 'Workspace 設定已變更，本機未儲存的腳本已保留。請先保留需要的內容，再重新載入最新草稿；舊驗證不能用於新設定。' : 'AI 完成後 Server 草稿已變更；目前本機編輯已保留，請先檢視對照，再決定是否重新載入。');
       return;
     }
     setDraft(next); setQualificationFresh(true); setConflict(false); setError(undefined);
     if (changed) {
-      setScript(next.script);
+      setScript(next.script); setModule(next.module ?? emptyModule(testSlug ?? ''));
       setLocalAction(undefined);
       setMessage(source === 'settings' ? `已同步設定變更後的草稿 revision ${next.revision}，請重新驗證。已發佈版本維持原設定。` : `已同步 AI 完成後的草稿 revision ${next.revision}，仍需驗證與人工確認發佈。`);
     }
-  }, []);
+  }, [testSlug]);
   useEffect(() => { if (session.draft) synchronizeDraft(session.draft); }, [session.draft, synchronizeDraft]);
   const lastSettingsSequence = useRef(initialSettingsSequence);
   const settingsPending = settingsRefresh !== lastSettingsSequence.current;
@@ -200,7 +208,7 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
   const summaryValid = Boolean(summary && summary.status === 'succeeded' && summary.validForCurrentDraft && summary.revision === draft.revision && summary.validationRunId === draft.validationRunId && summary.runId !== invalidatedSummaryId && summary.description?.trim() && summary.backgroundSummary?.trim());
   const executionCapability = executionCapabilityForScript(capabilities, draft.scriptOrigin);
   const executionAvailable = executionCapability?.available === true;
-  const eligible = testKind !== 'usecase' && !planGuarded && executionAvailable && !readOnly && !dirty && !conflict && !syncing && !settingsSyncing && !settingsPending && !sessionRefreshing && !activeAuthor && !summaryRequestBusy && !conversationGuarded && summaryValid && qualificationFresh && draft.validationStatus === 'succeeded' && Boolean(draft.validationRunId && report);
+  const eligible = !moduleError && testKind !== 'usecase' && !planGuarded && executionAvailable && !readOnly && !dirty && !conflict && !syncing && !settingsSyncing && !settingsPending && !sessionRefreshing && !activeAuthor && !summaryRequestBusy && !conversationGuarded && summaryValid && qualificationFresh && draft.validationStatus === 'succeeded' && Boolean(draft.validationRunId && report);
   useEffect(() => { setConfirmed(false); }, [summary?.runId, summaryValid, session.status, executionAvailable, draft.scriptOrigin]);
 
   function openManualEditor() {
@@ -223,15 +231,16 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
     if (actionLock.current) return;
     if (readOnly) return;
     if (kind !== 'reload' && (settingsSyncing || settingsPending)) return;
+    if (kind === 'save' && (testKind === 'usecase' || conflict || moduleError)) return;
     if (kind === 'reload' && dirty && !discard) { setReloadWarning(true); return; }
-    if ((kind === 'validate' && (!executionAvailable || dirty || conflict || !script.trim())) || (kind === 'publish' && (!eligible || !confirmed))) return;
+    if ((kind === 'validate' && (Boolean(moduleError) || !executionAvailable || dirty || conflict || !script.trim())) || (kind === 'publish' && (!eligible || !confirmed))) return;
     actionLock.current = true;
     const controller = new AbortController();
     actionController.current = controller;
     setBusy(kind); setError(undefined); setMessage(undefined);
     try {
       if (kind === 'save' || kind === 'reload') {
-        const next = kind === 'save' ? await api.saveDraft(testId, session.id, draft.revision, script, controller.signal) : await api.getDraft(testId, session.id, controller.signal);
+        const next = kind === 'save' ? await api.saveDraft(testId, session.id, draft.revision, script, controller.signal, testKind === 'module' ? module : undefined) : await api.getDraft(testId, session.id, controller.signal);
         if (controller.signal.aborted) return;
         if (next.revision < minimumDraftRevision.current) {
           setConflict(true); setQualificationFresh(false); setConfirmed(false);
@@ -239,7 +248,7 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
           return;
         }
         minimumDraftRevision.current = next.revision;
-        setDraft(next); setScript(next.script); setLocalAction(undefined); setConflict(false); setReloadWarning(false); setConfirmed(false);
+        setDraft(next); setScript(next.script); setModule(next.module ?? emptyModule(testSlug ?? '')); setLocalAction(undefined); setConflict(false); setReloadWarning(false); setConfirmed(false);
         lastSettingsSequence.current = settingsRefresh;
         setQualificationFresh(true);
         setMessage(kind === 'save' ? `已儲存 revision ${next.revision}。` : `已載入 revision ${next.revision}。`);
@@ -331,15 +340,18 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
         <pre className="code-view" tabIndex={0} aria-label="目前草稿腳本">{script.split('\n').map((line, index) => <span key={index} className="code-line"><i>{index + 1}</i>{line || ' '}{'\n'}</span>)}</pre>
         <details ref={manualPanel} className="manual-script"><summary>工程師手動修改（進階）{dirty ? ' · 有未儲存變更' : ''}</summary>
           <p id="manual-source-note" className="inline-hint">可編輯完整 Playwright／Node 腳本。Server 只在人工儲存實際改變腳本時記錄人工來源；開啟入口或原樣儲存不會改變來源。工程師腳本不套 AI 網站範圍限制，仍需真實驗證、報告與人工確認發佈。</p>
-          <label className="field-label" htmlFor="draft-script">Playwright TypeScript 腳本</label>
-          <textarea ref={scriptInput} id="draft-script" className="script-editor" rows={16} value={script} spellCheck={false} autoCapitalize="off" autoCorrect="off" disabled={planGuarded || readOnly || Boolean(busy)} onChange={(event) => { setScript(event.target.value); setLocalAction('manual'); setConfirmed(false); setMessage(undefined); }} aria-describedby="draft-help manual-source-note" />
+          <label className="field-label" htmlFor="draft-script">{testKind === 'module' ? 'Module TypeScript 本體' : 'Playwright TypeScript 腳本'}</label>
+          <textarea ref={scriptInput} id="draft-script" className="script-editor" rows={16} value={script} spellCheck={false} autoCapitalize="off" autoCorrect="off" disabled={testKind === 'usecase' || planGuarded || readOnly || Boolean(busy)} onChange={(event) => { setScript(event.target.value); setLocalAction('manual'); setConfirmed(false); setMessage(undefined); }} aria-describedby="draft-help manual-source-note" />
+          {testKind === 'module' ? <ModuleFields value={module} disabled={readOnly || Boolean(busy) || planGuarded} onChange={value => { setModule(value); setLocalAction('manual'); setConfirmed(false); setMessage(undefined); }} /> : null}
+          {testKind === 'usecase' ? <p className="inline-hint">Use Case 腳本由 Plan / Compose 產生，請至「驗證與發佈」編輯 Stage。</p> : null}
           <p id="draft-help" className="inline-hint">AI 續編只使用已儲存 revision。有未儲存內容時，先儲存草稿；切回對話不會自動儲存或放棄編輯。</p>
           <div className="action-row"><button className="button secondary compact" onClick={returnToAI}>回到 AI 續編</button></div>
         </details>
         <div className="action-row">
-          <button className="button secondary" disabled={readOnly || Boolean(busy) || settingsSyncing || settingsPending || !dirty || conflict} onClick={() => perform('save')}>{busy === 'save' ? '儲存中…' : '儲存草稿'}</button>
+          <button className="button secondary" disabled={testKind === 'usecase' || Boolean(moduleError) || readOnly || Boolean(busy) || settingsSyncing || settingsPending || !dirty || conflict} onClick={() => perform('save')}>{busy === 'save' ? '儲存中…' : '儲存草稿'}</button>
           <button className="button quiet" disabled={planGuarded || readOnly || Boolean(busy)} onClick={() => perform('reload')}>重新載入草稿</button>
         </div>
+        {moduleError ? <p className="inline-hint">{moduleError}</p> : null}
         {conflict ? <Notice message="目前草稿或驗證資格已變更，不會自動覆寫。本機編輯仍保留，可先複製需要的內容，再重新載入最新草稿。" /> : null}
         {reloadWarning ? <div className="confirmation-panel"><p>重新載入會放棄目前未儲存內容，請先複製需要保留的腳本。</p><div className="action-row">
           <button className="button secondary" disabled={Boolean(busy)} onClick={() => perform('reload', true)}>確定放棄並重新載入</button>
@@ -359,7 +371,7 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
           </div>
           {validation?.error ? <details className="error-details"><summary>查看驗證錯誤</summary><pre className="run-error">{validation.error}</pre></details> : null}
           {!executionAvailable ? <p className="blocked-hint">此草稿的來源或對應執行能力尚未確認可用，目前不能新增驗證或發佈。仍可離線對話與改稿；摘要完成不代表可發佈。</p> : null}
-          <div className="action-row"><button className="button secondary" disabled={!executionAvailable || readOnly || Boolean(busy) || settingsSyncing || settingsPending || dirty || conflict || validating || !script.trim()} onClick={() => perform('validate')}>{busy === 'validate' ? '送出中…' : validating ? '驗證進行中' : '驗證此 revision'}</button></div>
+          <div className="action-row"><button className="button secondary" disabled={Boolean(moduleError) || !executionAvailable || readOnly || Boolean(busy) || settingsSyncing || settingsPending || dirty || conflict || validating || !script.trim()} onClick={() => perform('validate')}>{busy === 'validate' ? '送出中…' : validating ? '驗證進行中' : '驗證此 revision'}</button></div>
           {dirty ? <p className="inline-hint">有未儲存變更，請先到「腳本」儲存；驗證只對應已儲存腳本。</p> : null}
         </section>
         <AcceptanceSummaryCard api={api} apiBase={apiBase} testId={testId} session={session} draft={draft} runs={runs} blocked={readOnly || dirty || Boolean(busy) || syncing || settingsSyncing || settingsPending || conflict || conversationGuarded || sessionRefreshing || activeAuthor} onRun={onRun} onRefresh={onRefreshSession} onBusyChange={setSummaryRequestBusy} />

@@ -315,6 +315,11 @@ func (m *Manager) startAttempt(ctx context.Context, r record, dispatch *Dispatch
 }
 
 func (m *Manager) runAttempt(ctx, executionCtx context.Context, r record, dispatch *Dispatch) {
+	var diagnostic *m109Diagnostic
+	if m109Enabled() && r.Kind == "author" {
+		diagnostic = newM109Diagnostic()
+		defer func() { _ = writeM109(m.cfg.WorkDir, r.AttemptID, diagnostic) }()
+	}
 	outcome := execution{ExitCode: -1}
 	if dispatch != nil && executionCtx.Err() == nil {
 		if err := m.prepare(r, *dispatch); err != nil {
@@ -324,7 +329,12 @@ func (m *Manager) runAttempt(ctx, executionCtx context.Context, r record, dispat
 			if err := m.store(r); err != nil {
 				outcome.Error = "persist running state: " + err.Error()
 			} else {
-				outcome = m.docker.Execute(executionCtx, r, m.taskDir(r), func(kind, text string) { m.emit(r, kind, text) })
+				outcome = m.docker.Execute(executionCtx, r, m.taskDir(r), func(kind, text string) {
+					if diagnostic != nil && diagnostic.consume(text) {
+						return
+					}
+					m.emit(r, kind, text)
+				})
 			}
 		}
 	}
@@ -358,14 +368,14 @@ func (m *Manager) runAttempt(ctx, executionCtx context.Context, r record, dispat
 		}
 	}
 	if dispatch != nil {
-		result, artifacts := collectAttemptResult(r, m.taskDir(r), outcome)
+		result, artifacts := collectAttemptResult(r, m.taskDir(r), outcome, diagnostic)
 		if ctx.Err() != nil {
 			result = Result{Status: "cancelled", Error: "Manager shutdown interrupted the Worker"}
 		}
 		r.Result, r.Artifacts = &result, artifacts
 	} else if r.Result == nil {
 		result := Result{Status: "failed", Error: "Manager restarted before terminal state was saved; previous attempt was stopped and will not be rerun"}
-		_, r.Artifacts = collectAttemptResult(r, m.taskDir(r), outcome)
+		_, r.Artifacts = collectAttemptResult(r, m.taskDir(r), outcome, diagnostic)
 		r.Result = &result
 	}
 	if dispatch == nil {
@@ -380,9 +390,19 @@ func (m *Manager) runAttempt(ctx, executionCtx context.Context, r record, dispat
 	m.mu.Unlock()
 	for _, name := range r.Artifacts {
 		for {
+			if diagnostic != nil && name == "author.json" {
+				diagnostic.Manager.UploadAttempted = true
+			}
 			if err := m.upload(ctx, r, name); err == nil {
+				if diagnostic != nil && name == "author.json" {
+					diagnostic.Manager.UploadAccepted = true
+					diagnostic.Manager.Disposition = "ACCEPTED"
+				}
 				break
 			} else {
+				if diagnostic != nil && name == "author.json" {
+					diagnostic.Manager.Disposition = "UPLOAD_FAILED"
+				}
 				var skipped *skippedEvidenceError
 				if errors.As(err, &skipped) {
 					slog.Warn("optional failure evidence upload skipped", "attemptId", r.AttemptID, "reason", "http_413")

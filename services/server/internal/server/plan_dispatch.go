@@ -80,25 +80,8 @@ func (p *Postgres) dispatchPlanModule(ctx context.Context, tx *sql.Tx, plan *Pla
 	if stage.Module != nil {
 		message += "\n" + stage.Module.Description
 	}
-	s.ContextRevision++
-	input := editingAuthorInput(s, d, "module-authoring", []ChatMessage{{Role: "user", Content: message}})
-	input.Platform = &AuthorPlatform{PlanID: &plan.ID, StageID: &stage.ID, Module: module}
-	input.AllowedTools = []string{"read_module_draft", "read_validation_report", "update_module_candidate", "request_module_validation"}
-	auth, proposal, err := p.prepareAuthor(ctx, tx, d, &input)
+	run, err := p.enqueuePlanModuleAuthor(ctx, tx, plan, stage, d, s, message)
 	if err != nil {
-		return "", err
-	}
-	if err = snapshotAuthor(&input); err != nil {
-		return "", err
-	}
-	run, err := enqueueAuthorSnapshot(ctx, tx, d, input, Run{authorizationRevision: auth, scopeProposalID: proposal})
-	if err != nil {
-		return "", err
-	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO messages(id,conversation_id,role,content,run_id,base_revision) VALUES($1,$2,'user',$3,$4,$5)`, NewID(), conversation, message, run.ID, revision); err != nil {
-		return "", err
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE editing_sessions SET context_revision=$2 WHERE id=$1`, session, s.ContextRevision); err != nil {
 		return "", err
 	}
 	stage.ModuleTestID = test
@@ -109,4 +92,29 @@ func (p *Postgres) dispatchPlanModule(ctx context.Context, tx *sql.Tx, plan *Pla
 		return "", err
 	}
 	return run.ID, nil
+}
+
+func (p *Postgres) enqueuePlanModuleAuthor(ctx context.Context, tx *sql.Tx, plan *Plan, stage *PlanStage, d draftState, s EditingSession, message string) (Run, error) {
+	s.ContextRevision++
+	input := editingAuthorInput(s, d, "module-authoring", []ChatMessage{{Role: "user", Content: message}})
+	input.Platform = &AuthorPlatform{PlanID: &plan.ID, StageID: &stage.ID, Module: d.Module}
+	input.AllowedTools = []string{"read_module_draft", "read_validation_report", "update_module_candidate", "request_module_validation"}
+	auth, proposal, err := p.prepareAuthor(ctx, tx, d, &input)
+	if err != nil {
+		return Run{}, err
+	}
+	if err = snapshotAuthor(&input); err != nil {
+		return Run{}, err
+	}
+	run, err := enqueueAuthorSnapshot(ctx, tx, d, input, Run{authorizationRevision: auth, scopeProposalID: proposal})
+	if err != nil {
+		return Run{}, err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO messages(id,conversation_id,role,content,run_id,base_revision) VALUES($1,$2,'user',$3,$4,$5)`, NewID(), s.ConversationID, message, run.ID, d.Revision); err != nil {
+		return Run{}, err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE editing_sessions SET context_revision=$2 WHERE id=$1`, s.ID, s.ContextRevision); err != nil {
+		return Run{}, err
+	}
+	return run, nil
 }

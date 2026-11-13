@@ -61,6 +61,9 @@ func (d dockerCLI) createArgs(r record, taskDir string) []string {
 		"--memory", "1g", "--cpus", "1", "--pids-limit", "256", "--shm-size", "256m",
 	}
 	if r.Kind == "author" {
+		if m109Enabled() {
+			args = append(args, "--env", "WHIPPET_M109_DIAGNOSTICS=1")
+		}
 		for _, name := range authorEnvNames {
 			args = append(args, "--env", name)
 		}

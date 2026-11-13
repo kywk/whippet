@@ -4,6 +4,7 @@
   "defaultTools": [
     "read_skill_reference",
     "catalog_search",
+    "catalog_next_page",
     "catalog_get",
     "read_usecase_draft",
     "read_plan",

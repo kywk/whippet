@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, errorMessage } from './api';
 import { Notice, RunStatusBadge, StatusBadge } from './components';
 import { batchPublishReady, editableStage, parseStageEditor } from './plan';
-import type { Draft, EditingSession, Plan, PlanSummary, Run, Version, WhippetApi } from './types';
+import type { Draft, EditingSession, Plan, PlanSummary, StageRetryInput, Run, Version, WhippetApi } from './types';
 import './platform-preview.css';
+import { StageRetryForm } from './StageRetryForm';
 
 const planLabels = { draft: '待確認', confirmed: '已確認', running: '逐階段執行中', composed: '已組合，等待驗證／摘要', done: '整批已發佈', stopped: '已停止' };
 const stageLabels = { pending: '等待前一階段', authoring: '產稿中', validating: '驗證中', ready: '就緒', failed: '失敗' };
@@ -78,6 +79,26 @@ export function PlanPanel({ api, testId, session, draft, blocked, onGuardChange,
   const validationReady = validation?.status === 'succeeded' && validation.id === plan?.validationRunId;
   const maySummarize = !disabled && !editor && plan?.status === 'composed' && plan.stages.every((stage) => stage.status === 'ready') && validationReady && Boolean(api.requestPlanSummary) && !(summary && ['queued', 'dispatched', 'running', 'collecting', 'cancelling'].includes(summary.status));
 
+  async function retryStage(stageId: string, input: StageRetryInput) {
+    if (lock.current || disabled || editor || !plan || !api.retryStage || !api.getPlan) throw new Error('目前無法重試，請重新確認。');
+    const currentPlan = plan;
+    lock.current = true; sequence.current++; setPending(true); setFresh(false); setConfirmation(''); setError(undefined);
+    const controller = new AbortController(); mutationController.current = controller;
+    try {
+      const receipt = await api.retryStage(currentPlan.id, stageId, input, controller.signal);
+      if (receipt.testId !== testId || receipt.editingSessionId !== session.id) throw new Error('重試回應所屬範圍不符。');
+      // An idempotent receipt may describe an old running Plan. Only a new GET is current state.
+      const current = await api.getPlan(testId, session.id, controller.signal);
+      if (controller.signal.aborted) return;
+      setPlan(current); setFresh(true); setSummary(undefined); setValidation(undefined);
+      setNote('Server 已接受修復請求；已重新讀取目前 Plan，不以歷史回應推斷正在執行。');
+      onRefresh();
+    } catch (cause) {
+      if (!controller.signal.aborted) { setConflict(true); setFresh(false); setError(`${errorMessage(cause)} 重試結果需重新確認；不會自動重送或更新 CAS。`); }
+      throw cause;
+    } finally { lock.current = false; if (!controller.signal.aborted) setPending(false); }
+  }
+
   async function mutate(action: 'save' | 'confirm' | 'cancel' | 'summary' | 'publish') {
     if (lock.current || disabled) return;
     const currentPlan = plan;
@@ -139,10 +160,11 @@ export function PlanPanel({ api, testId, session, draft, blocked, onGuardChange,
         {stage.candidateVersionId ? <p className="identifier">候選版本 {stage.candidateVersionId}（尚未發佈）</p> : null}
         <details><summary>參數與回傳綁定</summary><pre className="plan-json">{JSON.stringify(stage.args, null, 2)}</pre><p>綁定別名：{stage.bind || '未設定'}</p></details>
         {stage.authorRunId ? <p className="identifier">Author Run {stage.authorRunId}</p> : null}{stage.validationRunId ? <p className="identifier">Validation Run {stage.validationRunId}</p> : null}
-        {stage.error ? <Notice message={stage.error} /> : null}</li>)}</ol>
+        {stage.error ? <Notice message={stage.error} /> : null}
+        {stage.status === 'failed' && stage.action !== 'reuse' ? <StageRetryForm api={api} planId={plan.id} stageId={stage.id} planRevision={plan.revision} blocked={disabled || Boolean(editor) || plan.status !== 'stopped'} onSubmit={retryStage} /> : null}</li>)}</ol>
       <div className="action-row"><button className="button primary" disabled={disabled || Boolean(editor) || plan.status !== 'draft' || plan.baseRevision !== draft.revision || !api.confirmPlan} onClick={() => { void mutate('confirm'); }}>確認 Plan 並開始</button>
         <button className="button secondary" disabled={disabled || Boolean(editor) || ['done', 'stopped'].includes(plan.status) || !api.cancelPlan} onClick={() => { void mutate('cancel'); }}>停止 Plan</button></div>
-      {plan.status === 'stopped' ? <p className="inline-hint">已停止；需修訂並儲存 Plan 後重新確認，不會自動重跑。</p> : null}
+      {plan.status === 'stopped' ? <p className="inline-hint">已停止，不會自動重跑。失敗 Stage 可先查詢人工修復資格；修訂整份 Plan 則須儲存後重新確認。</p> : null}
       {plan.status === 'draft' && plan.baseRevision !== draft.revision ? <p className="blocked-hint">Plan 基底與目前草稿不同，請重新載入草稿並修訂計畫。</p> : null}
     </> : null}
     {editable && fresh ? <div className="plan-editor">{!editor ? <button className="button secondary" disabled={disabled || !api.savePlan} onClick={() => setEditor({ text: JSON.stringify(plan?.stages.map(editableStage) ?? [], null, 2), planRevision: plan?.revision ?? 0, draftRevision: draft.revision })}>{plan ? '修訂 Stage' : '建立 Plan'}</button> : <>

@@ -166,6 +166,8 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
     });
   }, []);
   const [creating, setCreating] = useState(false);
+  const [moduleForm, setModuleForm] = useState(false);
+  const [moduleInput, setModuleInput] = useState({ slug: '', name: '', description: '' });
   const [createError, setCreateError] = useState<string>();
   const [autoEditId, setAutoEditId] = useState<string>();
   const [testModes, setTestModes] = useState<Record<string, 'general' | 'editing'>>({});
@@ -207,17 +209,22 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
   });
   const updateTest = useCallback((test: Test) => setOverrides((current) => ({ ...current, [test.id]: test })), []);
   const { activity, running, unread, permission, enableNotifications } = useActivity(api, allTests, surface === 'tests' ? selected?.id : undefined);
-  const handleModeChange = useCallback((testId: string, mode: 'general' | 'editing') => {
-    setTestModes((current) => current[testId] === mode ? current : { ...current, [testId]: mode });
-  }, []);
+  const selectedTestId = selected?.id;
+  // Session closure effects depend on this callback; keep its identity stable
+  // across Test refreshes so switching to general mode cannot trigger a retry loop.
+  const handleModeChange = useCallback((mode: 'general' | 'editing') => {
+    if (!selectedTestId) return;
+    setTestModes((current) => current[selectedTestId] === mode ? current : { ...current, [selectedTestId]: mode });
+  }, [selectedTestId]);
 
-  async function createTest(kind: 'test' | 'usecase' = 'test') {
+  async function createTest(kind: 'test' | 'module' | 'usecase' = 'test') {
     if (createLock.current || !confirmNavigation()) return;
     createLock.current = true; setCreating(true); setCreateError(undefined);
     const controller = new AbortController(); createController.current = controller;
     try {
-      const test = await api.createTest(workspace.id, kind === 'usecase' ? { kind } : {}, controller.signal);
+      const test = await api.createTest(workspace.id, kind === 'module' ? { kind, ...moduleInput } : kind === 'usecase' ? { kind } : {}, controller.signal);
       if (controller.signal.aborted) return;
+      setModuleForm(false); setModuleInput({ slug: '', name: '', description: '' });
       updateTest(test); setSelectedId(test.id); onSelected(test.id); setAutoEditId(test.id);
       setTestModes((current) => ({ ...current, [test.id]: 'editing' }));
       setSearch(''); setSelectedTag(undefined); setSurface('tests'); setRailOpen(false);
@@ -267,6 +274,19 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
         </div>
         <button className="button rail-primary" disabled={creating} onClick={() => { void createTest(); }}><PlusIcon />{creating ? '正在建立測試…' : '新增測試'}</button>
         <button className="button rail-primary" disabled={creating} onClick={() => { void createTest('usecase'); }}>新增 Use Case</button>
+        <button className="button rail-primary" disabled={creating} onClick={() => setModuleForm(value => !value)}>新增 Module</button>
+        {moduleForm ? <form className="module-create" onSubmit={event => { event.preventDefault(); void createTest('module'); }}>
+          <p>建立真實 Module 草稿，尚未驗證或發佈。</p>
+          <label htmlFor="new-module-slug">slug（不可修改）</label>
+          <input id="new-module-slug" required pattern="[a-z][a-z0-9-]{0,63}" maxLength={64} value={moduleInput.slug} disabled={creating} onChange={event => setModuleInput({ ...moduleInput, slug: event.target.value })} />
+          <label htmlFor="new-module-name">名稱</label>
+          <input id="new-module-name" required value={moduleInput.name} disabled={creating} onChange={event => setModuleInput({ ...moduleInput, name: event.target.value })} />
+          <label htmlFor="new-module-description">說明</label>
+          <textarea id="new-module-description" value={moduleInput.description} disabled={creating} onChange={event => setModuleInput({ ...moduleInput, description: event.target.value })} />
+          <p>slug 使用小寫英文字母開頭，可含數字與連字號，Workspace 內不可重複。</p>
+          <button className="button secondary" disabled={creating || !moduleInput.name.trim()} type="submit">{creating ? '建立中…' : '建立 Module 草稿'}</button>
+          <button className="button secondary" disabled={creating} type="button" onClick={() => setModuleForm(false)}>取消</button>
+        </form> : null}
         {createError ? <Notice message={createError} /> : null}
         <label className="search-label"><span className="sr-only">搜尋測試</span>
           <SearchIcon /><input type="search" value={search} placeholder="搜尋測試名稱或 #標籤" onChange={(event) => setSearch(event.target.value)} />
@@ -340,7 +360,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
               settingsRefresh={0}
               initialEditing={shouldInitialEdit}
               preferredMode={selectedPreferredMode}
-              onModeChange={(mode) => handleModeChange(selected.id, mode)}
+              onModeChange={handleModeChange}
               railCollapsed={railCollapsed}
               onExpandRail={() => toggleRailCollapsed(false)}
               unreadCount={unread}

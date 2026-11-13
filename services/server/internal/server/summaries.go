@@ -93,6 +93,14 @@ func clearDraftSummary(ctx context.Context, tx *sql.Tx, testID string) error {
 }
 
 func (p *Postgres) validationProof(ctx context.Context, tx *sql.Tx, d draftState) (validationEvidence, error) {
+	return p.readValidationProof(ctx, tx, d, true)
+}
+
+func (p *Postgres) readValidationProof(ctx context.Context, tx *sql.Tx, d draftState, lock bool) (validationEvidence, error) {
+	suffix := ""
+	if lock {
+		suffix = " FOR UPDATE OF r"
+	}
 	var v validationEvidence
 	if d.ValidationRunID == nil {
 		return v, fmt.Errorf("%w: current revision needs validation", ErrConflict)
@@ -103,7 +111,7 @@ func (p *Postgres) validationProof(ctx context.Context, tx *sql.Tx, d draftState
 	var bundleHash *string
 	err := tx.QueryRowContext(ctx, `SELECT r.id,r.test_id,r.kind,r.draft_revision,r.script_snapshot,COALESCE(r.script_hash,''),r.timeout_ms,r.status,
  a.storage_key,a.size_bytes,r.workspace_settings,r.editing_session_id,COALESCE(r.attempt_id::text,''),r.workspace_context,r.script_origin,r.files_snapshot,r.bundle_hash,r.bundle_metadata FROM runs r
- LEFT JOIN artifacts a ON a.run_id=r.id AND a.attempt_id=r.attempt_id AND a.name='report.html' WHERE r.id=$1 FOR UPDATE OF r`, *d.ValidationRunID).
+ LEFT JOIN artifacts a ON a.run_id=r.id AND a.attempt_id=r.attempt_id AND a.name='report.html' WHERE r.id=$1`+suffix, *d.ValidationRunID).
 		Scan(&v.id, &v.testID, &v.kind, &v.revision, &v.script, &v.hash, &v.timeoutMS, &v.status, &key, &size, &settings, &v.sessionID, &v.attemptID, &context, &v.scriptOrigin, &files, &bundleHash, &metadata)
 	if err != nil {
 		return v, err

@@ -20,6 +20,27 @@ globalThis.fetch = async (url, init) => {
 const source = { id: 'source', workspaceId: 'workspace', testId: 'test', editingSessionId: 'session', kind: 'author', authorMode: 'edit', status: 'succeeded', createdAt: '2026-11-13T00:00:00Z', draftRevision: 3,
   authorPartial: { reason: 'budget_exhausted', nextStep: '補齊斷言', checkpoint: { scriptHash: 'a'.repeat(64), selfTestPassed: true }, appliedRevision: 4 } };
 try {
+  const metadata = { slug: 'sample', moduleKind: 'step', exportName: 'sample', signature: 'sample()', inputs: '', returns: 'number', preconditions: '', postconditions: '', harness: 'synthetic harness' };
+  const moduleDraft = { testId: 'module', editingSessionId: 'session', revision: 2, script: 'synthetic body', module: metadata, updatedAt: '2026-11-13T00:00:00Z' };
+  body = { id: 'module', workspaceId: 'workspace', kind: 'module', slug: 'sample', name: 'Sample', description: '', publishedVersionId: null, activeEditingSession: null }; status = 201;
+  assert.equal((await api.createTest('workspace', { kind: 'module', slug: 'sample', name: 'Sample', description: '' })).slug, 'sample');
+  assert.deepEqual(calls.at(-1).body, { kind: 'module', slug: 'sample', name: 'Sample', description: '' });
+  status = 200; body = moduleDraft;
+  assert.deepEqual((await api.getDraft('module', 'session')).module, metadata);
+  assert.deepEqual((await api.saveDraft('module', 'session', 1, 'synthetic body', undefined, metadata)).module, metadata);
+  assert.deepEqual(calls.at(-1).body, { editingSessionId: 'session', revision: 1, script: 'synthetic body', module: metadata });
+  for (const invalid of [undefined, null, 5]) {
+    body = { ...moduleDraft, module: { ...metadata, harness: invalid } };
+    await assert.rejects(api.getDraft('module', 'session'), error => error.code === 'INVALID_RESPONSE');
+  }
+  body = { ...moduleDraft, module: undefined };
+  assert.equal((await api.getDraft('module', 'session')).module, undefined);
+  status = 409; body = { error: { code: 'CONFLICT', message: 'stale module' } };
+  const moduleCalls = calls.length;
+  await assert.rejects(api.saveDraft('module', 'session', 1, 'synthetic body', undefined, metadata), error => error.status === 409);
+  assert.equal(calls.length, moduleCalls + 1);
+  status = 200;
+
   body = { items: [{ testId: 'module', versionId: 'v1', name: '登入', description: '', module: { slug: 'login', moduleKind: 'setup', exportName: 'login', signature: 'login({page})', inputs: '', returns: '', preconditions: '', postconditions: '', harness: 'synthetic' }, validationRunId: 'validation', validationStatus: 'succeeded', referencedBy: [{ testId: 'usecase', versionId: 'v2' }] }] };
   assert.equal((await api.listCatalog('workspace/a'))[0].referencedBy[0].versionId, 'v2');
   assert.equal(calls.at(-1).url, '/api/workspaces/workspace%2Fa/catalog');
@@ -85,6 +106,21 @@ try {
   body = { usecaseVersion: version, moduleVersions: [{ ...version, id: 'candidate', testId: 'module' }] };
   assert.equal((await api.publishPlan('plan', 4, 'summary')).moduleVersions[0].id, 'candidate');
   assert.deepEqual(calls.at(-1).body, { planRevision: 4, confirmed: true, summaryRunId: 'summary' });
+  // Historical M1 seed versions legitimately have a null validation_run_id
+  // (M2 migration 003 + Server Version.ValidationRunID *string).
+  body = { items: [{ ...version, validationRunId: null }] };
+  assert.equal((await api.listVersions('test'))[0].validationRunId, null);
+  body = { items: [version] };
+  assert.equal((await api.listVersions('test'))[0].validationRunId, 'validation');
+  for (const invalid of [undefined, 123, {}, false]) {
+    body = { items: [{ ...version, validationRunId: invalid }] };
+    await assert.rejects(api.listVersions('test'), (error) => error.code === 'INVALID_RESPONSE');
+  }
+  // New publication still requires a real validation Run, including batch results.
+  body = { ...version, validationRunId: null };
+  await assert.rejects(api.publishTest('test', 'session', 4, 'summary'), (error) => error.code === 'INVALID_RESPONSE');
+  body = { usecaseVersion: { ...version, validationRunId: null }, moduleVersions: [] };
+  await assert.rejects(api.publishPlan('plan', 4, 'summary'), (error) => error.code === 'INVALID_RESPONSE');
   status = 409; body = { error: { code: 'conflict', message: 'stale' } };
   const planCalls = calls.length;
   await assert.rejects(api.confirmPlan('plan', 4), (error) => error.status === 409);
@@ -93,5 +129,26 @@ try {
   assert.deepEqual(parseStageEditor(JSON.stringify([stage])), [stage]);
   assert.equal(editableStage({ ...stage, status: 'ready', authorRunId: 'hidden' }).status, undefined);
   for (const stages of [[], [stage, stage], [{ ...stage, status: 'ready' }], [{ ...stage, args: { page: { kind: 'literal', value: 1 } } }], [{ ...stage, args: { user: { kind: 'binding', stageId: stage.id, path: [] } } }]]) assert.throws(() => parseStageEditor(JSON.stringify(stages)));
-  console.log('M10 API checks passed: Catalog/partial/Continue; Plan envelopes, CAS/write payloads, batch-summary readiness and candidates, publish, 409/no retry, Stage editor guards.');
+  status = 200;
+  const retrySource = { moduleTestId: 'module', editingSessionId: 'module-session', moduleRevision: 2, moduleContextRevision: 3, authorRunId: 'failed-author', authorStatus: 'failed', validationRunId: null, validationStatus: null, reclaimed: true };
+  const retry = { eligible: true, reason: null, planRevision: 4, source: retrySource };
+  body = { retry };
+  assert.deepEqual(await api.getStageRetry('plan/a', 'stage/b'), retry);
+  assert.equal(calls.at(-1).url, '/api/plans/plan%2Fa/stages/stage%2Fb/retry');
+  for (const invalid of [{ ...retry, source: null }, { ...retry, reason: 'unknown' }, { ...retry, planRevision: 0 }, { ...retry, source: { ...retrySource, reclaimed: false } }, { ...retry, source: { ...retrySource, moduleContextRevision: undefined } }, { ...retry, source: { ...retrySource, authorStatus: 'cancelled' } }, { ...retry, source: { ...retrySource, validationStatus: 'failed' } }]) {
+    body = { retry: invalid }; await assert.rejects(api.getStageRetry('plan','stage'), e => e.code === 'INVALID_RESPONSE');
+  }
+  for (const reason of ['plan_not_stopped','stage_not_retryable','cancelled','source_unavailable','session_closed','reclaim_pending','snapshot_mismatch','prior_stage_invalid','scope_unavailable']) {
+    body = { retry: { eligible: false, reason, planRevision: 4, source: null } }; assert.equal((await api.getStageRetry('plan','stage')).eligible, false);
+  }
+  const retryInput = { planRevision: 4, moduleRevision: 2, moduleContextRevision: 3, confirmed: true, content: '  人工修復 🐕  ' };
+  body = { plan };
+  await api.retryStage(plan.id, 'stage', retryInput);
+  assert.deepEqual(calls.at(-1).body, retryInput, 'preserve original text and exact three CAS');
+  for (const content of ['', '  ', '\0', '\ud800', '🐕'.repeat(16001)]) {
+    const count = calls.length; await assert.rejects(api.retryStage(plan.id,'stage',{...retryInput,content}), e => e.code === 'INVALID_REQUEST'); assert.equal(calls.length,count);
+  }
+  await api.retryStage(plan.id, 'stage', { ...retryInput, content: '🐕'.repeat(16000) });
+  for (const failure of [409,503]) { status=failure; body={error:{code:'CONFLICT',message:'synthetic'}}; const count=calls.length; await assert.rejects(api.retryStage(plan.id,'stage',retryInput)); assert.equal(calls.length,count+1); assert.deepEqual(calls.at(-1).body,retryInput); }
+  console.log('M10 API checks passed: Module create/full metadata save/strict parse/409; history explicit-null compatibility; Catalog/partial/Continue; Plan envelopes, CAS/write payloads, batch-summary readiness and candidates, publish, 409/no retry, Stage editor guards.');
 } finally { globalThis.fetch = originalFetch; }

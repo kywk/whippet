@@ -1,3 +1,6 @@
+import type { ModuleDiagnostics } from "./module-diagnostics.js";
+import { AuthorObservation } from "./observation.js";
+import { HarnessError } from "./harness.js";
 import { moduleAuthor, plannerAuthor, PLATFORM_TOOLS, PLATFORM_SERVER_TOOLS, validateModule, plannerCandidate, type ModuleMetadata, type PlannerOutput } from "./platform.js";
 import { HarnessClient } from "./harness.js";
 import { capabilitySnapshot, loadSkillBundle } from "./manifest.js";
@@ -45,9 +48,11 @@ export async function runAuthor(
   input: AuthorInput,
   config: AIConfig,
   browser: ExplorationBrowser | undefined,
-  options: { fetcher?: typeof fetch; signal?: AbortSignal; progress?: (message: string) => void;secrets?:KnownSecrets; history?: Pick<HistoryClient, "read">; harness?: Pick<HarnessClient,"call">; engine?: AgentEngine; onPartial?: (partial: EnginePartial) => void } = {},
+  options: { moduleDiagnostics?:ModuleDiagnostics; observer?: (event:string)=>void; fetcher?: typeof fetch; signal?: AbortSignal; progress?: (message: string) => void;secrets?:KnownSecrets; history?: Pick<HistoryClient, "read">; harness?: Pick<HarnessClient,"call">; engine?: AgentEngine; onPartial?: (partial: EnginePartial) => void } = {},
 ): Promise<AuthorOutput | SummaryOutput | WorkspaceAuthorOutput | PlannerOutput> {
   validateAuthorInput(input);
+  const observation=new AuthorObservation(options.observer);
+  const feedback=new Map<string,string>();
   const module = moduleAuthor(input), planner = plannerAuthor(input);
   const summary = isSummary(input);
   const workspace = isWorkspaceAuthor(input);
@@ -111,9 +116,20 @@ export async function runAuthor(
       ...(capability ? { maxRequestBytes: 64 * 1024 * 1024, maxToolOutputBytes: module || planner ? 25 * 1024 * 1024 : 13 * 1024 * 1024 } : {}),
       request: async (body) => {
         const prepared = buildResponsesRequest(config, { sessionId: input.author.conversationId, input: "Whippet author coding task" });
-        const response = await withHeartbeat(fetcher(prepared.url, { ...prepared.init, body: JSON.stringify({ ...JSON.parse(prepared.init.body), ...body }), signal }), `author:model:${pendingModel}:heartbeat`);
+        const serializedBody=JSON.stringify({ ...JSON.parse(prepared.init.body), ...body });
+        if(options.observer){
+          const outgoing=JSON.parse(serializedBody);
+          const entries=Array.isArray(outgoing.input)?outgoing.input:[];
+          if(entries.some((i:any)=>i?.type==='function_call_output'&&typeof i.call_id==='string'&&feedback.has(i.call_id)&&feedback.get(i.call_id)===i.output))observation.emit('feedbackIncludedAtFetch');
+          if(Array.isArray(outgoing.tools)&&outgoing.tools.length>0)observation.emit('toolsIncludedAtFetch');
+        }
+        observation.fetch();
+        const response = await withHeartbeat(fetcher(prepared.url, { ...prepared.init, body: serializedBody, signal }), `author:model:${pendingModel}:heartbeat`);
+        observation.headers();
         if (!response.ok) { await response.body?.cancel().catch(() => undefined); throw new AuthorError("provider_failed"); }
         const raw: unknown = await withHeartbeat(response.json(), `author:model:${pendingModel}:heartbeat`);
+        observation.body();
+        if(raw && typeof raw==='object' && Array.isArray((raw as any).output) && (raw as any).output.some((i:any)=>i?.type==='function_call'))observation.emit('functionCallObserved');
         noSecret(raw, config.apiKey);
         return raw;
       },
@@ -123,8 +139,8 @@ export async function runAuthor(
       },
       onEvent: (event) => {
         const match = /^author:model:(\d+):started$/.exec(event);
-        if (match) pendingModel = Number(match[1]);
-        if (event.endsWith(":succeeded")) pendingModel = 0;
+        if (match) {pendingModel = Number(match[1]);observation.start(pendingModel);}
+        if (/^author:model:\d+:succeeded$/.test(event)) {pendingModel = 0;observation.accepted();}
         options.progress?.(event);
       },
       checkpoint: () => checkpoint === undefined ? undefined : { script: checkpoint.script },
@@ -161,7 +177,14 @@ export async function runAuthor(
             if(next.module.slug!==input.author.platform!.module!.slug)throw new AuthorError("tool_failed");
             noSecret(next,config.apiKey);
             if(options.secrets && JSON.stringify(options.secrets.clean(next))!==JSON.stringify(next))throw new AuthorError("sensitive_output");
-            const check=await withHeartbeat(browser.verifyDraft(next.module.harness,{signal:toolSignal,moduleFile:{slug:next.module.slug,content:next.script}}), `author:tool:${toolCount}:${safeToolName}:heartbeat`,toolSignal);
+            let selfTestFailure:unknown='UNKNOWN';
+            let check;
+            try {
+              check=await withHeartbeat(browser.verifyDraft(next.module.harness,{signal:toolSignal,moduleFile:{slug:next.module.slug,content:next.script},...(options.moduleDiagnostics?{onSelfTestFailure:(value:unknown)=>{selfTestFailure=value;}}:{})}), `author:tool:${toolCount}:${safeToolName}:heartbeat`,toolSignal);
+            } finally {
+              if(!check?.passed)options.moduleDiagnostics?.selfTestFailure(selfTestFailure);
+            }
+            options.moduleDiagnostics?.selfTest(check.passed);
             if(check.passed){moduleCheckpoint=next;result={candidate:true,selfTestPassed:true};}
             else result={candidate:false,selfTestPassed:false,error:check.error??check.summary};
           } else if(call.name === "request_module_validation") {
@@ -243,7 +266,11 @@ export async function runAuthor(
           toolStatus = "succeeded";
         } catch (error) {
           if (signal.aborted || error instanceof AuthorError && ["sensitive_output", "limit"].includes(error.code)) throw error;
-          if (error instanceof HistoryError) {
+          if (call.name === "catalog_search" && error instanceof HarnessError && error.code === "catalog_search_invalid_request") {
+            observation.emit('feedbackFrameAccepted');
+            result = {error:"catalog_search_invalid_request", message:"Catalog search parameters were rejected. Check query and limit, then retry within the existing budget. catalog_search accepts only query and limit."};
+          if(options.observer){feedback.set(call.call_id as string,JSON.stringify(result));observation.emit('feedbackQueued');}
+          } else if (error instanceof HistoryError) {
             result = { error: "history_unavailable", message: "歷史目前無法讀取，請依已提供背景繼續；必要時向使用者確認。" };
           } else if (error instanceof BrowserScopeError) {
             result = error.issue;
@@ -270,6 +297,7 @@ export async function runAuthor(
                 };
           }
         } finally {
+          if(toolSignal.aborted)observation.emit(options.signal?.aborted?'toolCancelled':'timeoutToolWait');
           if (toolSignal.aborted && !signal.aborted && definition?.effect === "browser" && browser) {
             await bounded(browser.close(), AbortSignal.timeout(1000)).catch(() => undefined);
           }
@@ -279,6 +307,7 @@ export async function runAuthor(
 
       },
     });
+    options.moduleDiagnostics?.checkpoint(!!moduleCheckpoint);
     if (engineResult.partial) {
       if (summary || workspace || module || planner) throw new AuthorError("limit");
       // The adapter's claimed checkpoint is never authority. Rebuild from guard state.
@@ -316,14 +345,18 @@ export async function runAuthor(
     } else {
       let conversationSummary: string | undefined;
       if (input.author.skillId) {
-        const final = JSON.parse(message) as { message: string; conversationSummary?: string };
+        let parsedFinal:unknown;
+        try{parsedFinal=JSON.parse(message);}catch(error){options.moduleDiagnostics?.failure('FINAL_JSON_PARSE');throw error;}
+        const final = parsedFinal as { message: string; conversationSummary?: string };
         if (!final || typeof final !== "object" || Array.isArray(final) || Object.keys(final).some((k) => !["message","conversationSummary"].includes(k)) ||
-          !boundedText(final.message,128000,true) || final.message.length>32000 || final.conversationSummary !== undefined && !boundedText(final.conversationSummary,8192)) throw new AuthorError("invalid_response");
+          !boundedText(final.message,128000,true) || final.message.length>32000 || final.conversationSummary !== undefined && !boundedText(final.conversationSummary,8192)) {options.moduleDiagnostics?.failure('FINAL_SHAPE');throw new AuthorError("invalid_response");}
         message = final.message; conversationSummary = final.conversationSummary;
       } else message = message.slice(0,32000);
       if (!message) throw new AuthorError("invalid_response");
       if(module){
-        if(!moduleCheckpoint || options.secrets && JSON.stringify(options.secrets.clean(moduleCheckpoint))!==JSON.stringify(moduleCheckpoint))throw new AuthorError("invalid_response");
+        if(!moduleCheckpoint){options.moduleDiagnostics?.failure('CHECKPOINT_MISSING');throw new AuthorError("invalid_response");}
+        if(options.secrets && JSON.stringify(options.secrets.clean(moduleCheckpoint))!==JSON.stringify(moduleCheckpoint)){options.moduleDiagnostics?.failure('CHECKPOINT_REJECTED');throw new AuthorError("invalid_response");}
+        options.moduleDiagnostics?.checkpoint(true,true);
         result={message,...structuredClone(moduleCheckpoint),requestValidation:validation,...(conversationSummary!==undefined?{conversationSummary}:{})};
       } else if(planner){
         if(!planRef || options.secrets && options.secrets.redact(planRef)!==planRef)throw new AuthorError("invalid_response");
@@ -332,9 +365,12 @@ export async function runAuthor(
     }
     if(options.secrets)result=options.secrets.clean(result);
     noSecret(result, config.apiKey);
-    serializeAuthorArtifact(result,input.author.skillId);
+    try{serializeAuthorArtifact(result,input.author.skillId);}catch(error){options.moduleDiagnostics?.failure('ARTIFACT_SERIALIZE_LIMIT');throw error;}
     return result;
   } catch (error) {
+    options.moduleDiagnostics?.checkpoint(!!moduleCheckpoint,!!moduleCheckpoint && !(options.secrets && JSON.stringify(options.secrets.clean(moduleCheckpoint))!==JSON.stringify(moduleCheckpoint)));
+    options.moduleDiagnostics?.failure(options.signal?.aborted?'CANCELLED':signal.aborted?'TIMEOUT':error instanceof AuthorError && error.code==='limit'?'LIMIT':error instanceof AuthorError && error.code==='invalid_response'?'INVALID_RESPONSE':error instanceof AuthorError && error.code==='provider_failed'||error instanceof AIError?'PROVIDER_FAILED':'UNKNOWN');
+    observation.failure(signal.aborted,!!options.signal?.aborted);
     if (pendingModel) options.progress?.(`author:model:${pendingModel}:failed`);
     if (signal.aborted) throw new AuthorError(options.signal?.aborted ? "cancelled" : "timed_out");
     if (error instanceof AuthorError) throw error;

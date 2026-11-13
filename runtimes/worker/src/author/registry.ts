@@ -45,7 +45,21 @@ export function modelTool(tool: ToolDefinition) {
   // Only provider representation drops extension keywords; guard uses original schema.
   const extended = JSON.stringify(tool.inputSchema).includes('"x-max') || JSON.stringify(tool.inputSchema).includes('"oneOf"');
   const parameters = extended ? JSON.parse(JSON.stringify(tool.inputSchema, (key,value) => key.startsWith("x-") ? undefined : value)) as ToolSchema : tool.inputSchema;
-  return { type: "function", name: tool.name, description: tool.description, strict: !extended, parameters };
+  let strict = !extended;
+  if (tool.name === "catalog_search") {
+    // This one closed, fully-required object is compatible after local-only
+    // extensions are removed. Never infer compatibility for other tools.
+    const names = ["query", "limit"];
+    const exactNames = (keys: string[]) => keys.length === names.length && names.every(name => keys.includes(name));
+    const leaf = (name: string, allowed: string[]) => Object.keys(parameters.properties[name]!).every(key => allowed.includes(key));
+    if (parameters.type !== "object" || parameters.additionalProperties !== false ||
+        !exactNames(Object.keys(parameters.properties)) || !exactNames(parameters.required) ||
+        Object.keys(parameters).some(key => !["type","properties","required","additionalProperties"].includes(key)) ||
+        parameters.properties.query?.type !== "string" || !leaf("query", ["type","maxLength"]) ||
+        parameters.properties.limit?.type !== "integer" || !leaf("limit", ["type","minimum","maximum"])) throw new AuthorError("invalid_input");
+    strict = true;
+  }
+  return { type: "function", name: tool.name, description: tool.description, strict, parameters };
 }
 export function validateToolArguments(tool: ToolDefinition, value: unknown): asserts value is Record<string, unknown> {
   if (!matchesSchema(tool.inputSchema, value) || Buffer.byteLength(JSON.stringify(value)) > tool.limits.maxInputBytes) throw new AuthorError("tool_failed");

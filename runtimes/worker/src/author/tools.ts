@@ -1,3 +1,4 @@
+import type { SelfTestFailureClass } from './module-diagnostics.js';
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
@@ -45,7 +46,7 @@ export interface ExplorationBrowser {
   click(selector: string): Promise<unknown>;
   fill(selector: string, value: string): Promise<unknown>;
   login?(roleId:string,usernameSelector:string,passwordSelector:string,submitSelector:string):Promise<unknown>;
-  verifyDraft?(script: string, options?: { signal?: AbortSignal; moduleFile?: {slug:string;content:string} }): Promise<DraftSelfTestResult>;
+  verifyDraft?(script: string, options?: { signal?: AbortSignal; moduleFile?: {slug:string;content:string}; onSelfTestFailure?: (value:SelfTestFailureClass)=>void }): Promise<DraftSelfTestResult>;
   close(): Promise<void>;
 }
 
@@ -156,8 +157,10 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
       finally{values.username='';values.password='';}
     },
     async verifyDraft(script, runOptions = {}) {
-      if (closed || runOptions.signal?.aborted) throw new AuthorError("cancelled");
+      const failure=(value:SelfTestFailureClass)=>{try{runOptions.onSelfTestFailure?.(value);}catch{/* Diagnostic observers never change execution. */}};
+      if (closed || runOptions.signal?.aborted) { failure('CANCELLED'); throw new AuthorError("cancelled"); }
       if (!isValidPlaywrightSpec(script)) {
+        failure('INVALID_SPEC');
         return {
           passed: false,
           category: "invalid_spec",
@@ -166,6 +169,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
         };
       }
       if (options.scope && options.scope.targets.length === 0) {
+        failure('GUARD');
         return {
           passed: false,
           category: "environment",
@@ -270,7 +274,8 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
         };
         const onAbort = () => stopChild();
         runOptions.signal?.addEventListener("abort", onAbort, { once: true });
-        const watchdog = setTimeout(stopChild, selfTestTimeout + 3000);
+        let watchdogExpired=false;
+        const watchdog = setTimeout(()=>{watchdogExpired=true;stopChild();}, selfTestTimeout + 3000);
         let exitCode: number | null = null;
         try {
           exitCode = await new Promise<number | null>((done) => {
@@ -281,7 +286,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
           clearTimeout(watchdog);
           runOptions.signal?.removeEventListener("abort", onAbort);
         }
-        if (closed || runOptions.signal?.aborted) throw new AuthorError("cancelled");
+        if (closed || runOptions.signal?.aborted) {failure('CANCELLED');throw new AuthorError("cancelled");}
         let summary: RuntimeSummary | undefined;
         let json: { stats?: { expected?: number; unexpected?: number }; errors?: { message?: string }[] } | undefined;
         try { summary = JSON.parse(await readFile(summaryPath, "utf8")) as RuntimeSummary; } catch { /* ignore */ }
@@ -302,6 +307,10 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
             summary: `自我試跑通過（${summary!.passed} 項測試通過），已寫入草稿並排入正式驗證。`,
           };
         }
+        // Only structured reporter status/counts or the actual watchdog are evidence.
+        const count=(value:unknown)=>typeof value==='number'&&Number.isSafeInteger(value)&&value>0;
+        failure(watchdogExpired || summary?.status==='timedout' || count(summary?.timedOut) ? 'TIMEOUT' :
+          summary?.status==='failed' && count(summary?.failed) ? 'TEST_FAILED' : 'UNKNOWN');
         const rawErr = redact(
           summary?.errors?.[0] ??
           json?.errors?.[0]?.message ??

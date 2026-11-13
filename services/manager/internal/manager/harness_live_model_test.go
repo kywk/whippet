@@ -36,6 +36,7 @@ type liveToolObservation struct {
 	searched, read, proposed bool
 	calls, success           int
 	candidateRef             string
+	feedbackMapped           bool
 	expected                 string
 }
 
@@ -53,6 +54,9 @@ func (o *liveToolObservation) response(raw []byte) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	q, ok := o.pending[reply.RequestID]
+	if ok && reply.AttemptID == q.AttemptID && q.Name == "catalog_search" && reply.Error == "catalog_search_invalid_request" {
+		o.feedbackMapped = true
+	}
 	if !ok || reply.AttemptID != q.AttemptID || reply.Error != "" {
 		return
 	}
@@ -180,7 +184,8 @@ func TestM106LiveModelServerBridge(t *testing.T) {
 	transport.Proxy = nil
 	transport.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
 	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport, Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errCapability }}
+	httpObservation := &liveHTTPObservation{base: transport, statuses: map[int]int{}, codes: map[string]int{}}
+	client := &http.Client{Transport: httpObservation, Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errCapability }}
 	root := t.TempDir()
 	work := filepath.Join(root, "runs", input.AttemptID)
 	if os.MkdirAll(work, 0700) != nil {
@@ -197,7 +202,7 @@ func TestM106LiveModelServerBridge(t *testing.T) {
 			cmd.Env = append(cmd.Env, name+"="+value)
 		}
 	}
-	cmd.Env = append(cmd.Env, "WHIPPET_WORK_DIR="+work)
+	cmd.Env = append(cmd.Env, "WHIPPET_WORK_DIR="+work, "WHIPPET_M106_OBSERVE=1")
 	stdin, e := cmd.StdinPipe()
 	if e != nil {
 		t.Fatal("cannot open Worker pipe")
@@ -209,6 +214,14 @@ func TestM106LiveModelServerBridge(t *testing.T) {
 	r := record{Kind: "author", RunID: input.RunID, AttemptID: input.AttemptID, Author: input.Author, TimeoutMS: input.TimeoutMS, WorkspaceID: input.WorkspaceID, TestID: input.TestID, WorkspaceContext: input.WorkspaceContext}
 	channel := &toolChannel{ctx: ctx, cfg: Config{ServerURL: serverURL, Token: token}, r: r, input: &observedToolInput{target: writer, observation: observation}, client: client}
 	modelRequests := 0
+	observer := newLiveObserver()
+	defer func() {
+		observation.mu.Lock()
+		observer.Flags["feedbackMapped"] = observation.feedbackMapped
+		observation.mu.Unlock()
+		safe, _ := json.Marshal(observer)
+		t.Logf("liveObserver=%s", safe)
+	}()
 	cmd.Stdout = &lineWriter{toolFrames: true, intercept: func(line string) bool {
 		var q toolRequest
 		if json.Unmarshal([]byte(line), &q) == nil && q.Kind == "tool_request" {
@@ -216,6 +229,7 @@ func TestM106LiveModelServerBridge(t *testing.T) {
 		}
 		return channel.handle(line)
 	}, emit: func(_ string, text string) {
+		observer.accept(text)
 		if strings.HasPrefix(text, "author:model:") && strings.HasSuffix(text, ":started") {
 			modelRequests++
 		}
@@ -223,6 +237,16 @@ func TestM106LiveModelServerBridge(t *testing.T) {
 	stderr := &byteCounter{}
 	cmd.Stderr = stderr
 	if cmd.Run() != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			observer.ManagerProcessDeadline = 1
+		}
+		observation.mu.Lock()
+		calls, success, searched, read, proposed := observation.calls, observation.success, observation.searched, observation.read, observation.proposed
+		observation.mu.Unlock()
+		httpObservation.mu.Lock()
+		diagnostic, _ := json.Marshal(map[string]any{"workerClass": liveWorkerFileClass(work), "modelStarts": modelRequests, "genericIPC": calls, "toolSuccess": success, "http200": httpObservation.ok, "httpNon200": httpObservation.failed, "httpStatuses": httpObservation.statuses, "httpCodes": httpObservation.codes, "toolNames": httpObservation.names, "search": searched, "get": read, "propose": proposed})
+		httpObservation.mu.Unlock()
+		t.Logf("liveDiagnostic=%s", diagnostic)
 		t.Fatalf("live Worker failed; modelRequests=%d stderrBytes=%d (details suppressed)", modelRequests, stderr.n)
 	}
 	result, names := collectAttemptResult(r, work, execution{ExitCode: 0})

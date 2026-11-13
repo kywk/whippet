@@ -122,7 +122,7 @@ func (p *Postgres) scheduleModuleValidation(ctx context.Context, run, test, sess
 	var resolved, released bool
 	var status string
 	var planActive bool
-	if err = tx.QueryRowContext(ctx, `SELECT q.revision,q.context_revision,q.resolved,r.slot_released,r.status, CASE WHEN r.author_payload->'platform'->>'planId' IS NULL THEN true ELSE EXISTS(SELECT 1 FROM plans p WHERE p.id::text=r.author_payload->'platform'->>'planId' AND p.status='running') END FROM module_validation_requests q JOIN runs r ON r.id=q.source_run_id WHERE q.source_run_id=$1 FOR UPDATE OF q,r`, run).Scan(&revision, &contextRevision, &resolved, &released, &status, &planActive); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT q.revision,q.context_revision,q.resolved,r.slot_released,r.status, CASE WHEN r.author_payload->'platform'->>'planId' IS NULL THEN true ELSE EXISTS(SELECT 1 FROM plans p WHERE p.id::text=r.author_payload->'platform'->>'planId' AND p.status='running' AND EXISTS(SELECT 1 FROM jsonb_array_elements(p.stages) stage WHERE stage->>'id'=r.author_payload->'platform'->>'stageId' AND stage->>'authorRunId'=r.id::text AND stage->>'status'='authoring')) END FROM module_validation_requests q JOIN runs r ON r.id=q.source_run_id WHERE q.source_run_id=$1 FOR UPDATE OF q,r`, run).Scan(&revision, &contextRevision, &resolved, &released, &status, &planActive); err != nil {
 		return err
 	}
 	if resolved || !released || status != "succeeded" {

@@ -209,17 +209,43 @@ func (m *Manager) upload(ctx context.Context, r record, name string) error {
 	return err
 }
 
-func collectAttemptResult(r record, taskDir string, outcome execution) (Result, []string) {
+func collectAttemptResult(r record, taskDir string, outcome execution, observations ...*m109Diagnostic) (Result, []string) {
 	if r.Kind != "author" {
 		return collectResult(taskDir, outcome)
 	}
+	var diagnostic *m109Diagnostic
+	if len(observations) > 0 {
+		diagnostic = observations[0]
+	}
+	if diagnostic != nil {
+		diagnostic.Manager.WorkerResultPresent = m109Present(taskDir, "result.json")
+		diagnostic.Manager.AuthorArtifactPresent = m109Present(taskDir, "author.json")
+	}
 	var result Result
 	if err := readOutput(taskDir, "result.json", &result); err != nil || !result.valid() {
+		if diagnostic != nil {
+			diagnostic.Manager.Disposition = "RESULT_INVALID"
+		}
 		result.Status = "failed"
+	}
+	if diagnostic != nil && diagnostic.Manager.Disposition != "RESULT_INVALID" {
+		diagnostic.Manager.WorkerResultValid = true
+		diagnostic.Manager.WorkerStatus = result.Status
+		if result.Status != "succeeded" {
+			diagnostic.Manager.Disposition = "WORKER_FAILED"
+		}
 	}
 	var artifacts []string
 	if result.Status == "succeeded" {
-		if !validAuthorArtifact(taskDir, r.Author, r.WorkspaceContext) {
+		accepted := validAuthorArtifact(taskDir, r.Author, r.WorkspaceContext)
+		if diagnostic != nil {
+			diagnostic.Manager.AuthorParserChecked = true
+			diagnostic.Manager.AuthorParserAccepted = accepted
+			if !accepted {
+				diagnostic.Manager.Disposition = "AUTHOR_REJECTED"
+			}
+		}
+		if !accepted {
 			result.Status = "failed"
 		} else {
 			artifacts = []string{"author.json"}

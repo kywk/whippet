@@ -149,6 +149,22 @@ func preparePlanStages(ctx context.Context, q queryDB, workspace string, inputs 
 	return stages, nil
 }
 func (p *Postgres) Plan(ctx context.Context, test, session string) (*Plan, error) {
+	// Resolve ownership through the Test before choosing the historical branch.
+	// Workspace is inherited from that same Test; a foreign session cannot match.
+	var kind, status string
+	if err := p.DB.QueryRowContext(ctx, `SELECT t.kind,e.status FROM tests t JOIN editing_sessions e ON e.test_id=t.id WHERE t.id=$1 AND e.id=$2`, test, session).Scan(&kind, &status); err != nil {
+		return nil, dbError(err)
+	}
+	if kind != "usecase" {
+		return nil, ErrConflict
+	}
+	if status == "published" || status == "discarded" {
+		plan, err := scanPlan(p.DB.QueryRowContext(ctx, `SELECT `+planColumns+` FROM plans WHERE test_id=$1 AND editing_session_id=$2`, test, session))
+		if errors.Is(err, ErrNotFound) {
+			return nil, nil
+		}
+		return plan, err
+	}
 	tx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err

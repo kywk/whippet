@@ -14,11 +14,11 @@ func TestM10RegistrySchemaGuard(t *testing.T) {
 		name, raw string
 		valid     bool
 	}{
-		{"catalog_search", `{"query":"測試","limit":20,"cursor":null}`, true},
-		{"catalog_search", `{"query":"x","limit":1.5,"cursor":null}`, false},
-		{"catalog_search", `{"query":"x","limit":21,"cursor":null}`, false},
-		{"catalog_search", `{"query":"x","limit":1}`, false},
-		{"catalog_search", `{"query":"` + strings.Repeat("測", 342) + `","limit":1,"cursor":null}`, false},
+		{"catalog_search", `{"query":"測試","limit":20}`, true},
+		{"catalog_search", `{"query":"x","limit":1.5}`, false},
+		{"catalog_search", `{"query":"x","limit":21}`, false},
+		{"catalog_search", `{"query":"x","limit":1,"cursor":null}`, false},
+		{"catalog_search", `{"query":"` + strings.Repeat("測", 342) + `","limit":1}`, false},
 		{"catalog_get", `{"moduleVersionId":"bad"}`, false},
 		{"read_plan", `{"extra":null}`, false},
 	}

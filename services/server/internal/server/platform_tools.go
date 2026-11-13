@@ -10,7 +10,7 @@ import (
 
 func platformServerTool(name string) bool {
 	switch name {
-	case "catalog_search", "catalog_get", "read_module_draft", "read_usecase_draft", "read_plan", "propose_plan":
+	case "catalog_search", "catalog_next_page", "catalog_get", "read_module_draft", "read_usecase_draft", "read_plan", "propose_plan":
 		return true
 	}
 	return false
@@ -91,6 +91,31 @@ func (p *Postgres) HarnessPlatform(ctx context.Context, manager, run, attempt st
 				return nil, ErrHistoryUnavailable
 			}
 		}
+	}
+	var nextArgs []byte
+	if request.Name == "catalog_next_page" {
+		var args struct {
+			Cursor string `json:"cursor"`
+			Limit  int    `json:"limit"`
+		}
+		if json.Unmarshal(canonical, &args) != nil {
+			return nil, ErrInvalid
+		}
+		b, e := base64.RawURLEncoding.DecodeString(args.Cursor)
+		var cursor catalogToolCursor
+		if e != nil || json.Unmarshal(b, &cursor) != nil || cursor.Workspace != workspace || !ValidID(cursor.After) {
+			return nil, ErrInvalid
+		}
+		// Only catalog_search/catalog_next_page produce top-level nextCursor in this table.
+		// History pages use harness_history_calls, so no migration or tool-name column is needed.
+		var issued bool
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM platform_tool_calls WHERE run_id=$1 AND attempt_id=$2 AND result->>'nextCursor'=$3)`, run, attempt, args.Cursor).Scan(&issued); err != nil {
+			return nil, err
+		}
+		if !issued {
+			return nil, ErrHistoryUnavailable
+		}
+		nextArgs, _ = json.Marshal(map[string]any{"query": cursor.Query, "limit": args.Limit, "cursor": args.Cursor})
 	}
 	hash := scriptHash(request.Name + "\n" + string(canonical))
 	var priorHash string
@@ -178,6 +203,11 @@ func (p *Postgres) HarnessPlatform(ctx context.Context, manager, run, attempt st
 			return nil, ErrHistoryUnavailable
 		}
 		output = map[string]any{"testId": id, "versionId": version, "script": script, "scriptOrigin": origin, "module": module}
+	case "catalog_next_page":
+		output, err = searchToolCatalog(ctx, tx, workspace, nextArgs)
+		if err != nil {
+			return nil, err
+		}
 	case "catalog_search":
 		output, err = searchToolCatalog(ctx, tx, workspace, canonical)
 		if err != nil {

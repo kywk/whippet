@@ -195,3 +195,59 @@ Worker input頂層script仍是Module本體，Worker/Manager核對bodyHash等於s
 moduleSummary完整JSON<=13MiB；body/harness raw各<=2MiB，Worker input envelope<=64MiB。allowedTools=[]、maxToolCalls=0；summary prompt包含metadata、本體、harness與已核對evidence，均當資料而非指令。final仍嚴格為既有 `{message,description,backgroundSummary,name?}`，author.json上限13MiB，不接受Module本體/partial或任意新欄位。
 
 沿既有draft summary與人工publish API，不新增發佈捷徑。Server enqueue/摘要收尾/人工發佈三時點核對同revision/context/bundleHash、正式validation成功及回收；metadata/body/harness任一修改皆使舊驗證及摘要失效。獨立Module不得借用author.batch摘要或其他Module的summaryRunId；版本metadata與本體/harness固定保存，已發佈版本不可變且僅成功發佈後Catalog可見。版本預配為Server內部實作，不由模型決定。
+
+### Catalog 搜尋游標使用說明（2026-11-13）
+
+`catalog_search` 首頁必須傳 `cursor: null`，不可用空字串代替。後續頁只可原樣使用同一 Workspace、同一 query 前次回應的 `nextCursor`；不得自行製造或修改游標，更換 query 時必須重設為 null。`nextCursor: null` 表示沒有下一頁。這是既有游標語意的明確說明，schema、授權、範圍綁定與無效游標拒絕規則不變。registry description 更新須重新計算原始 bytes SHA 並供新 Run 快照使用；既有 Run 不可替換快照。
+
+### Catalog 搜尋參數錯誤回饋（2026-11-13）
+
+既有 `tool_response.error` 字串新增固定值 `catalog_search_invalid_request`，不改 envelope。僅當 pending 工具為 `catalog_search`、既有可信 TLS/attempt/request 綁定通過、HTTP 狀態為 400、回應符合既有 `Cache-Control: no-store` 要求，且在既有大小限制內驗證 JSON error envelope 的 `error.code` 精確為 `invalid_request` 時，Manager 才可映射此值。不得傳遞原始 body、message、參數、游標或 endpoint。其餘狀況維持原有不透明錯誤；不得由 HTTP 400 單獨推論此值。
+
+Worker 僅可在對應 pending `catalog_search` 回覆識別此值，其他工具、未知或格式錯誤回覆仍按原失敗路徑處理。此值僅表示搜尋參數遭拒，不代表已知是游標錯誤。模型可見固定回饋應要求檢查 query/limit/cursor，並重述：首次 cursor 使用 JSON null、翻頁僅原樣使用相同 query/Workspace 的 nextCursor、更換 query 重設 null、nextCursor=null 停止翻頁。允許模型在既有預算內自行修正參數重試，不自動代換參數、不增加預算、不擴權、不放寬 schema 或 Server 游標檢查。成功提案與收尾守衛仍須原有工具成功證據。
+
+### Catalog provider strict 映射（2026-11-13）
+
+`catalog_search` 傳給模型的 function tool，在移除僅供本機使用的 `x-*` 擴充後使用 `strict: true`，保留原 object、required、nullable cursor 與 `additionalProperties: false` 結構。本機仍以完整 registry schema 驗證 UTF-8 bytes、limit 與其他限制；Server 游標語意不變。不將字串 null 或其他錯誤游標自動轉為 JSON null。不擴及其他包含動態 keys/oneOf 的工具。後端若拒絕 strict，按既有 provider failure 處理，不靜默降級或增加預算；支援程度與驗收效果須由實跑證明。
+
+### Registry 10.2：Catalog 首頁與翻頁分離（2026-11-13，覆蓋前述搜尋 cursor 規則）
+
+- `catalog_search` 僅接受 `{query:string,limit:integer}`，limit=1..20；兩欄必填，禁止其他欄位（包含 cursor）。固定搜尋首頁，不是將錯誤 cursor 轉為 null。provider strict 映射僅對此 closed/required 兩欄 schema 啟用；本機原始 schema 守衛不變。
+- 新增 `catalog_next_page`：`{cursor:string,limit:integer}`，cursor 非空且最多1024 UTF-8 bytes，limit=1..20；兩欄必填，禁止其他欄位。沿用 server/read、15秒、輸入16KiB／輸出128KiB。結果與首頁相同 `{items,nextCursor}`。
+- 翻頁 query／after 由 cursor 解析，Workspace 必須比對權威 Run。cursor 還必須精確匹配同 Run、同 attempt 先前成功 `catalog_search` 或 `catalog_next_page` 的 `platform_tool_calls.result.nextCursor`（非 null）。不得僅憑 base64 格式宣稱為 Server 核發。先核 active attempt／scope／epoch／權限，再做發行匹配及既有去重；舊、跨 attempt／Run、未發行或改造游標拒絕。合法已發行游標可重讀，結果仍受原預算與 callId 去重規則約束。
+- 兩工具共用既有 MaxToolCalls，不新增預算、HTTP endpoint、frame 上限或 migration。`catalog_next_page` 的模型 strict 使用原通用映射，不自動擴及搜尋專用 strict 規則。
+- `catalog_search_invalid_request` 映射仍僅限首頁搜尋；固定修正提示改為檢查 query／limit，不再要求首頁填 cursor。翻頁錯誤維持既有不透明回覆，不自動重新首頁、不轉換游標。
+- Planner manifest 明確加入翻頁工具；skills／registry 新原始 bytes 必須由三端一致封裝並釘選。既有 Run 快照不得更換。單 registry 部署須先排空，或取消並等待舊 Run 回收後切換；不提供雙版 fallback。
+
+10.2 發行匹配儲存裁定：沿用 `platform_tool_calls`，不新增 `tool_name` 欄或 migration。以同 Run／attempt 的非 null 頂層 `result.nextCursor` 精確匹配；此成立的必要條件是該表僅 `catalog_search`／`catalog_next_page` 由 Server 產生的成功結果含頂層 nextCursor，其他工具結果及模型內容不得注入此欄。history 使用獨立表，不作發行來源。實作須以定向測試守住此來源條件，未來若新增同名輸出須先更新發行來源設計。`minLength` 以 Unicode code point（Go rune）數計算，與 `x-maxUtf8Bytes` 上限獨立驗證。
+
+### 發布後 Plan 唯讀查詢（2026-11-13）
+
+既有 `GET /api/tests/{id}/plan?editingSessionId=...` 維持 `{plan:null|Plan}` 回應。先核對 Test 為 usecase、session 屬於同 Test／Workspace及既有存取權限。active session 沿既有 reconcile 路徑；closed session 僅 SELECT 同 test/session 的既有 Plan，可讀取歷史 done 狀態，不要求目前 Draft、不 refresh／建立 session／修改任何狀態。closed GET 不可取得另一 Test／Workspace 的 Plan。PUT、confirm、cancel、publish 的 active/CAS/所有權門檻完全不變；公開版本成功不代替 Plan 狀態實讀證據。
+
+### 失敗 Stage 人工修復與重試（2026-11-13）
+
+此段新增明確人工操作，補足 stopped Plan 的原 Stage 修復；不代表自動重試，也不要求先獨立發布 Module。原 PUT 修訂／confirm 路徑保持，不能以重新 confirm 舊操作當作 retry。
+
+- `GET /api/plans/{id}/stages/{stageId}/retry` → 200 `{retry:{eligible:boolean,reason:null|string,planRevision:number,source:null|{moduleTestId:string,editingSessionId:string,moduleRevision:number,moduleContextRevision:number,authorRunId:string,authorStatus:string,validationRunId:string|null,validationStatus:string|null,reclaimed:boolean}}}`。先核既有權限及資源歸屬，Stage 不存在回404；此 GET 純讀、不 reconcile、不建立 session、不入列。eligible=true 時 reason=null、source完整且reclaimed=true。不可用 reason 固定為 `plan_not_stopped`、`stage_not_retryable`、`cancelled`、`source_unavailable`、`session_closed`、`reclaim_pending`、`snapshot_mismatch`、`prior_stage_invalid`、`scope_unavailable`；無法安全取得來源時 source=null。這是當下資格快照，POST 必須再次核對，不是授權憑證。
+- `POST /api/plans/{id}/stages/{stageId}/retry` body 必填 `{planRevision:int>=1,moduleRevision:int>=1,moduleContextRevision:int>=0,confirmed:true,content:string}` → 200 `{plan:Plan}`。禁止未知欄位／null／省略 CAS；不接受客戶端指定 Module、session、sourceRun ID。content 沿 validateUserMessage：合法 UTF-8、無 NUL、trim 後非空、最多16000 Unicode code points；保留原字串，不默默 trim。只供人工 UI，不新增 Agent tool。
+- 首版僅收 stopped Plan 中 failed 的 create/modify Stage：前序全ready、後序全pending。author失敗只收failed/timed_out；validation失敗須source author succeeded、immutable candidate／validation關係完整且validation failed/timed_out。取消／cancelling／interrupted、dispatch無sourceRun、Compose失敗均不涵蓋。核取消世代／歷史，不能只由 stopped+failed 推斷資格。
+- Server 從原 Run 的 author.platform.planId/stageId、Test／Workspace／session關係推導來源，原 Module session必須仍active。Module request兩CAS須同時匹配當前值及失敗鏈權威快照（失敗author的baseRevision/contextRevision；失敗validation的immutable candidate revision/contextRevision）。UseCase當前revision/context須匹配Plan baseRevision/contextRevision。任一人工或其他author異動皆409，不能傳新CAS偷偷採納。相關author/validation及同session無active/pending且slot已釋放；回收前409。
+- 重核前序reuse固定版本／Workspace，及前序candidate的session/revision/context/bundleHash、成功validation與回收；保留其候選ID及Run，不重做。失效409，整筆不得入列。
+- 單一交易內保留原Module session／稿，追加人工修復訊息，Module context+1，依現行prepareAuthor權限與最新skills/registry/model快照建立fresh module-authoring Run，author.platform仍綁原Plan/Stage，預算不加。只將此Stage改authoring/newAuthorRun，清當前validation/candidate引用及error；舊Run、immutable candidate與validation request保留。Plan轉running/revision+1，其他Stage不變。舊author收尾與舊validation scheduler都須核當前Stage.AuthorRunID/sourceRun及Stage狀態，遲到結果不能復活歷史工作。
+- migration019新增不可變 `plan_stage_retries`，PK `(plan_id,request_plan_revision)`，保存stage_id、canonical完整request（content原字串）、source_author_run_id、nullable source_validation_run_id、new_author_run_id、result JSON與FK。同原revision相同stage/body回原結果／同Run；不同stage/body409。先核權限與資源歸屬再查冪等；命中不重跑已改變的CAS／active門檻。取消後重送只回歷史結果，不復活。拒絕不留成功紀錄；紀錄、入列及Plan更新同交易。
+- Web僅根據GET資格開放failed Stage修復表單，顯示原Module/session、來源Run與回收狀態，必填修復指示及獨立人工確認。固定三個CAS；文字／快照改變清確認，缺欄／未知／回收中禁用。409或不確定提交結果鎖住，不自動取得新CAS重送；明確reload後重新人工確認。不得使用UseCase blocked狀態代替Module回收證據，不得以獨立Module發布繞過批次發布。
+
+取消歷史補充：既有Run取消後可能被failed終態覆蓋，不能以目前status或缺少run_events推論從未取消。migration019另增nullable `runs.cancel_requested`：既有cancelling/cancelled回填true，其餘既有Run保留NULL（歷史未知）；新Run預設false。資料庫trigger遇cancelling/cancelled永久鎖true，不允許true重設或既有NULL在非取消轉移被改成false。retry來源author及validation必須明確false；true回資格reason=cancelled，NULL回source_unavailable並拒絕POST。Plan取消世代檢查仍保留。此限制意味升級前的失敗Stage可能不可原地retry，不得人工修改旗標繞過；以升級後新Run驗證新功能，舊失敗證據保留。公開Run terminal wire不變。
+
+### M10.9 自試安全診斷 v2（2026-11-14）
+
+僅限既有 `WHIPPET_M109_DIAGNOSTICS=1` 的 opt-in 診斷，預設關閉，不變更公開 Run API、預算、skill、Run 結果或驗收門檻。診斷 sidecar schemaVersion=2 在原 Worker 固定摘要增加 `lastSelfTestFailureClass`；Manager 嚴格驗型並保留 v1 讀取相容，v1 無此資訊必須視為 UNKNOWN，不回填舊 Run。
+
+固定值為 `INVALID_SPEC`、`GUARD`、`TIMEOUT`、`CANCELLED`、`TEST_FAILED`、`UNKNOWN`。僅可由實際可信程式分支／reporter 結構產生；無可證 producer 的類別回 UNKNOWN，不以自由文字 regex、錯誤名稱或 exit code 猜測。TEST_FAILED 只代表 reporter 記錄測試 failed，不代表已定位 assertion 根因；INVALID_SPEC 只代表現有前置檢查拒絕，不冒稱編譯失敗。欄位只記最後一次自試失敗，與整個 Run 的 terminalClass 獨立；未觀測為 UNKNOWN。
+
+不得加入自由文字、selector、URL、ID、content、hash 或原始 error。既有大小上限、exclusive/no-follow、單次輸出及診斷失敗不影響 Run 語意維持；先完成離線分支與敏感 sentinel 驗證，再由 PM 切換已排空的 19287。此次已回收 Run 不可據新診斷推論歷史原因。
+
+封裝裁定：Worker 的 v2 診斷訊息包含 `schemaVersion:2` 與七個摘要欄位；v1 訊息維持原六欄、無版本欄。Manager sidecar 使用外層 schemaVersion，worker 子物件不重複版本欄，v1 六欄／v2 七欄均精確驗型。尚未觀測 Worker 的新 sidecar 為 v2 且類別 UNKNOWN；收到舊 payload 則保留 v1，不假造新資訊。
+
+2026-11-14 離線修補裁定：terminalClass 增加固定 `INVALID_RESPONSE`，僅映射可信 `AuthorError(invalid_response)`；它是通用拒絕碼，不宣稱模型專屬原因，也不可取代已記錄的 FINAL_SHAPE／FINAL_JSON_PARSE 等較精確分類。main 的可信 cancelled 碼可映射 CANCELLED；原生未知例外仍 UNKNOWN。`lastSelfTestFailureClass` 白名單不變。此修補尚未封包／部署，不回填現場 retry2 的 UNKNOWN。

@@ -51,7 +51,7 @@ func runM106PlatformServerBridge(t *testing.T, live bool) {
 	inputAuthor.BaseRevision = d.Revision
 	inputAuthor.ContextRevision = s.ContextRevision
 	inputAuthor.Messages = []ChatMessage{{Role: "user", Content: "Build the synthetic plan"}}
-	inputAuthor.AllowedTools = []string{"catalog_search", "catalog_get", "propose_plan"}
+	inputAuthor.AllowedTools = []string{"catalog_search", "catalog_next_page", "catalog_get", "propose_plan"}
 	inputAuthor.Budget.MaxModelRequests = 4
 	if live {
 		if err = snapshotAuthor(&inputAuthor); err != nil {
@@ -99,7 +99,7 @@ func runM106PlatformServerBridge(t *testing.T, live bool) {
 	}
 	a := assignments[0]
 	token := "synthetic-m10-isolated-bridge-token"
-	server := httptest.NewTLSServer(NewAPI(p, files, engine, token, log).Handler(nil))
+	server := httptest.NewTLSServer(observeBridgeTools(t, NewAPI(p, files, engine, token, log).Handler(nil), registry, item.WorkspaceID))
 	defer server.Close()
 	temp := t.TempDir()
 	ca := filepath.Join(temp, "public-ca.pem")
@@ -132,7 +132,7 @@ func runM106PlatformServerBridge(t *testing.T, live bool) {
 		"WHIPPET_M10_WORKER_ENTRY="+repositoryFile("runtimes", "worker", "dist", "author", "main.js"))
 	resultPath := filepath.Join(temp, "handoff.json")
 	callPath := filepath.Join(temp, "calls.json")
-	callsInput := []any{map[string]any{"name": "catalog_search", "arguments": map[string]any{"query": "setup", "limit": 1, "cursor": nil}}, map[string]any{"name": "catalog_get", "arguments": map[string]any{"moduleVersionId": stage.ModuleVersionID}}, map[string]any{"name": "propose_plan", "arguments": map[string]any{"stages": []PlanStageInput{stage}}}}
+	callsInput := []any{map[string]any{"name": "catalog_search", "arguments": map[string]any{"query": "setup", "limit": 1}}, map[string]any{"name": "catalog_get", "arguments": map[string]any{"moduleVersionId": stage.ModuleVersionID}}, map[string]any{"name": "propose_plan", "arguments": map[string]any{"stages": []PlanStageInput{stage}}}}
 	if err = os.WriteFile(callPath, []byte(jsonText(callsInput)), 0600); err != nil {
 		t.Fatal(err)
 	}

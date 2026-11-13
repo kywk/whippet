@@ -130,6 +130,9 @@ func matchesToolSchema(s map[string]any, v any) bool {
 	}
 	switch x := v.(type) {
 	case string:
+		if n, ok := s["minLength"].(float64); ok && utf8.RuneCountInString(x) < int(n) {
+			return false
+		}
 		if n, ok := s["maxLength"].(float64); ok && utf8.RuneCountInString(x) > int(n) {
 			return false
 		}

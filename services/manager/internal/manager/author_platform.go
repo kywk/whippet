@@ -16,7 +16,7 @@ func plannerAuthor(a *AuthorTask) bool {
 }
 func platformTool(name string) bool {
 	switch name {
-	case "catalog_search", "catalog_get", "read_module_draft", "read_usecase_draft", "read_plan", "propose_plan", "update_module_candidate", "request_module_validation":
+	case "catalog_search", "catalog_next_page", "catalog_get", "read_module_draft", "read_usecase_draft", "read_plan", "propose_plan", "update_module_candidate", "request_module_validation":
 		return true
 	}
 	return false
@@ -34,7 +34,7 @@ func allowedPlatformTool(a *AuthorTask, name string) bool {
 	if moduleAuthor(a) {
 		return name == "read_module_draft" || name == "update_module_candidate" || name == "request_module_validation" || name == "read_validation_report" || strings.HasPrefix(name, "browser_")
 	}
-	return name == "catalog_search" || name == "catalog_get" || name == "read_usecase_draft" || name == "read_plan" || name == "propose_plan"
+	return name == "catalog_search" || name == "catalog_next_page" || name == "catalog_get" || name == "read_usecase_draft" || name == "read_plan" || name == "propose_plan"
 }
 func validModuleCandidate(script string, module json.RawMessage) bool {
 	registry, e := loadToolRegistry()

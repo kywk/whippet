@@ -2,10 +2,15 @@
 /*
  * M10.8 黃金任務集 builtin 基準（黑箱，可真正執行）。
  * Owner: scripts/test/m10-golden-baseline.cjs
- * Evidence: /private/tmp/whippet-m10-golden-review2（本輪修復證據；不覆寫前任 /private/tmp/whippet-m10-golden-evidence 亦不覆寫 /private/tmp/whippet-m10-golden-repair）
- * 讀取：scripts/test/golden/m10-golden-v1.json、公開 UI/API（run-live 才用）、PM 固定契約 v1/v2/v7/v10 相關 HTTP 段落（非產品原始碼）。
+ * Evidence: /private/tmp/whippet-m10-golden-score-guard（score-guard 補丁；不覆寫前任 /private/tmp/whippet-m10-golden-evidence、/private/tmp/whippet-m10-golden-repair、/private/tmp/whippet-m10-golden-review2、/private/tmp/whippet-m10-golden-final-seam、/private/tmp/whippet-m10-golden-manifest-r102）
+ * live-review(2026-11-13 parent t3d離線覆核)：僅離線審核/private/tmp/whippet-m10-golden-live-r102-20261113（唯讀不覆寫），不產品網路/API/模型/live；新證據僅寫/tmp/whippet-m10-golden-live-review；原14題JSON不改；raw 7PASS/5FAIL/2UNVERIFIED不改，G07/G10 failed不可改PASS
+ * 讀取：scripts/test/golden/m10-golden-v1.json、公開 UI/API（run-live 才用）、PM 固定契約 v1/v2/v7/v8/v10 相關 HTTP 段落（非產品原始碼）。
  * 不讀：產品原始碼、DB、journals、deploy/.env.ai、真憑證（CA 僅作 TLS 驗證，不讀 key）。
  * 不安裝/部署/重啟/Git/子代理。fixture 18187 已停止，不自行重啟。不可從容器取 key。
+ * M10.8 preflight（live NOT_RUN）：19087 為 production budget8/12/180s 獨立驗收入口；19187 為專用 budget1 partial UI fixture，不得當 production golden 基準；
+ *   18087 舊 M9 禁止碰，18187 停用。預設 UI/API 仍為舊值時 live 直接 BLOCKED，需 PM 明確 19087 參數才可跑。
+ *   task.budget.maxSteps 僅題目定義，公開 API 無 perRun override，不宣稱已生效；fixture19187 budget1 不得混算 production 基準。
+ *   G05/G06 需 PM 全新 QA-owned fixture manifest（scope 確認＋catalog seed 先由 PM 做），絕不借任意舊 ID 或悄悄 confirm scope/publish；manifest 為 PM 最小 v1（只代表預期與授權，不當實際 scope/pin 證據）。
  *
  * 兩種模式：
  *   --check-only（預設，無 mutation）：只驗證任務定義（題數/類別/合成性/無秘密），不建立 workspace/test/session，不觸發 author run，不做網路探測。
@@ -49,8 +54,10 @@ const http = require('http');
 const https = require('https');
 
 const GOLDEN = path.join(__dirname, 'golden', 'm10-golden-v1.json');
-const DEFAULT_OUT = '/private/tmp/whippet-m10-golden-review2';
+const DEFAULT_OUT = '/private/tmp/whippet-m10-golden-score-guard';
 const CA = '/private/tmp/whippet-m8-wave/tls/cert.pem';
+// 舊預設保留僅為相容 check-only；live 若仍指向舊/專用埠直接 BLOCKED（見 isForbiddenTarget/isProductionBaselineTarget）。
+// Production golden 僅認 19087（PM 指定精確 UI/API/CA）；18087 舊 M9 禁止碰，18187 停用，19187 專用 fixture 不得當基準。
 const UI_BASE = process.env.WHIPPET_UI_URL || 'http://localhost:18087';
 const API_BASE = process.env.WHIPPET_API_URL || 'https://127.0.0.1:18089';
 const CATS = ['新建', '修復', '複用', '拆解', '越界', '注入頁', '預算耗盡'];
@@ -60,13 +67,14 @@ const TERMINAL = new Set(['succeeded', 'failed', 'cancelled', 'timed_out', 'inte
 const FORBIDDEN_TERMINAL = ['timeout', 'budget_exhausted', 'stopped', 'discarded'];
 
 // 每題所需能力：author 為 M9 已部署應可執行；catalog/plan/continue 為 M10 未部署則 UNVERIFIED
+// PM裁定(2026-11-13 final-seam)：G05/G06 kind=usecase走planner（普通test-author無Catalog），故能力含plan不含catalog；其他12題路由不變；題目prompt/JSON不變。
 const TASK_CAPABILITY = {
   G01: ['author'],
   G02: ['author'],
   G03: ['author'],
   G04: ['author'],
-  G05: ['author', 'catalog'],
-  G06: ['author', 'catalog'],
+  G05: ['author', 'plan'],
+  G06: ['author', 'plan'],
   G07: ['author', 'plan'],
   G08: ['author', 'plan'],
   G09: ['author'],
@@ -76,20 +84,22 @@ const TASK_CAPABILITY = {
   G13: ['author', 'continue'],
   G14: ['author', 'continue'],
 };
-// G07/G08 必須 kind=usecase（預設 test 不會 planner）
+// G05/G06/G07/G08 必須 kind=usecase（預設 test 不會 planner；G05/G06原test→usecase見routeOverride）
 const EXPECTED_TEST_KIND = {
   G01: 'test', G02: 'test', G03: 'test', G04: 'test',
-  G05: 'test', G06: 'test', G07: 'usecase', G08: 'usecase',
+  G05: 'usecase', G06: 'usecase', G07: 'usecase', G08: 'usecase',
   G09: 'test', G10: 'test', G11: 'test', G12: 'test',
   G13: 'test', G14: 'test',
 };
 
 function args(argv) {
-  const o = { out: DEFAULT_OUT, live: false, allowMutation: false, timeout: 10000, runTimeout: 240000, pollInterval: 3000 };
+  const o = { out: DEFAULT_OUT, live: false, allowMutation: false, timeout: 10000, runTimeout: 240000, pollInterval: 3000, fixtureManifest: null };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--out' && argv[i + 1]) o.out = argv[++i];
     else if (a.startsWith('--out=')) o.out = a.slice(6);
+    else if (a === '--fixture-manifest' && argv[i + 1]) o.fixtureManifest = argv[++i];
+    else if (a.startsWith('--fixture-manifest=')) o.fixtureManifest = a.slice('--fixture-manifest='.length);
     else if (a === '--run-live') o.live = true;
     else if (a === '--allow-mutation') o.allowMutation = true;
     else if (a === '--timeout' && argv[i + 1]) o.timeout = Number(argv[++i]) || 10000;
@@ -156,6 +166,189 @@ function isCapabilityMissing(status) {
   return status === 404 || status === 501 || status === 405;
 }
 
+// M10.8 preflight：live 目標守衛（純函數，可離線驗證，不碰網路）。
+// 19087 為 production budget8/12/180s 獨立驗收入口；19187 為專用 budget1 fixture；18087 舊 M9 禁止碰，18187 停用。
+function isForbiddenTarget(urlStr) {
+  if (typeof urlStr !== 'string') return false;
+  return /:(18087|18187|19187)(?![0-9])/.test(urlStr);
+}
+function isProductionBaselineTarget(urlStr) {
+  if (typeof urlStr !== 'string') return false;
+  return /:(19087)(?![0-9])/.test(urlStr) && !isForbiddenTarget(urlStr);
+}
+// PM 全新 QA-owned fixture manifest 形狀提案（只驗形狀，不自動 confirm scope/publish，不借任意舊 ID）。
+// 預期：{workspaceId:string(非禁止ID), scopeConfirmed:true, catalogSeeded:true, ownership:string[]非空, catalog?:array, note?:string}
+// scope 確認及 catalog seed 由 PM 先做；QA 只做唯讀 GET 驗證，絕不呼叫 confirm-scope/confirm/publish。
+function validateFixtureManifest(m) {
+  const errors = [];
+  if (!m || typeof m !== 'object') return { ok: false, errors: ['manifest 不是物件'] };
+  if (typeof m.workspaceId !== 'string' || m.workspaceId.length < 4) errors.push('缺 workspaceId');
+  if (m.workspaceId === '10000000-0000-4000-8000-000000000001') errors.push('禁止重用既有 ID（含 10000000-...）');
+  if (m.scopeConfirmed !== true) errors.push('scopeConfirmed 必須為 true（由 PM 先確認，QA 不悄悄 confirm）');
+  if (m.catalogSeeded !== true) errors.push('catalogSeeded 必須為 true（由 PM 先 seed，QA 不自動發布）');
+  if (!Array.isArray(m.ownership) || m.ownership.length === 0) errors.push('缺 ownership 清單（PM 預備且有 ownership 證明）');
+  return { ok: errors.length === 0, errors };
+}
+
+const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+function isUuid(v) { return typeof v === 'string' && UUID_RE.test(v); }
+function isStrictProductionUrl(urlStr) {
+  try {
+    const u = new URL(urlStr);
+    if (u.protocol !== 'http:') return false;
+    if (u.hostname !== '127.0.0.1') return false;
+    if (u.port !== '19087') return false;
+    if (u.username !== '' || u.password !== '') return false;
+    if (u.search !== '' || u.hash !== '') return false;
+    if (u.pathname !== '/' && u.pathname !== '') return false;
+    return u.origin === 'http://127.0.0.1:19087';
+  } catch (_) { return false; }
+}
+function areStrictProductionTargets(apiBase, uiBase) {
+  return isStrictProductionUrl(apiBase) && isStrictProductionUrl(uiBase);
+}
+function validateGoldenManifest(m) {
+  const errors = [];
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return { ok: false, errors: ['manifest not object'] };
+  if (m.schemaVersion !== 1) errors.push('schemaVersion must be 1');
+  if (typeof m.baselineId !== 'string' || m.baselineId.length < 1) errors.push('missing baselineId');
+  if (typeof m.apiBase !== 'string' || !isStrictProductionUrl(m.apiBase)) errors.push('apiBase must be http://127.0.0.1:19087 via URL parse');
+  const ws = m.workspace;
+  if (!ws || typeof ws !== 'object') errors.push('missing workspace');
+  else {
+    if (!isUuid(ws.id)) errors.push('workspace.id must be UUID');
+    if (!Number.isInteger(ws.settingsRevision)) errors.push('workspace.settingsRevision must be integer');
+    if (!Number.isInteger(ws.authorizationRevision)) errors.push('workspace.authorizationRevision must be integer');
+  }
+  if (!Array.isArray(m.catalogSeeds) || m.catalogSeeds.length === 0) errors.push('missing catalogSeeds');
+  else {
+    for (let i = 0; i < m.catalogSeeds.length; i++) {
+      const sd = m.catalogSeeds[i];
+      if (!sd || typeof sd !== 'object') { errors.push('catalogSeeds bad ' + i); continue; }
+      if (!Array.isArray(sd.taskIds) || sd.taskIds.length === 0 || !sd.taskIds.every(function(t){return t==='G05'||t==='G06';})) errors.push('catalogSeeds taskIds must be G05/G06 subset ' + i);
+      if (!isUuid(sd.testId)) errors.push('catalogSeeds testId must be UUID ' + i);
+      if (!isUuid(sd.versionId)) errors.push('catalogSeeds versionId must be UUID ' + i);
+      // final-seam：slug/publishedName為可選字串（實際manifest已提供）；固定test/version不變，slug一致性由verifyCatalogSeeds核對。
+      if (sd.slug !== undefined && typeof sd.slug !== 'string') errors.push('catalogSeeds slug must be string ' + i);
+      if (sd.publishedName !== undefined && typeof sd.publishedName !== 'string') errors.push('catalogSeeds publishedName must be string ' + i);
+      if (typeof sd.slug === 'string' && sd.slug.length > 0 && !/^[a-z][a-z0-9-]{0,63}$/.test(sd.slug)) errors.push('catalogSeeds slug 格式不符 [a-z][a-z0-9-]{0,63} ' + i);
+    }
+  }
+  const ow = m.ownership;
+  if (!ow || typeof ow !== 'object') errors.push('missing ownership');
+  else {
+    if (ow.createdFor !== 'm10-golden-r102') errors.push('ownership.createdFor must be m10-golden-r102');
+    if (!isUuid(ow.workspaceId)) errors.push('ownership.workspaceId must be UUID');
+    else if (ws && isUuid(ws.id) && ow.workspaceId !== ws.id) errors.push('ownership.workspaceId must equal workspace.id');
+    if (!Array.isArray(ow.seedTestIds) || ow.seedTestIds.length === 0) errors.push('missing ownership.seedTestIds');
+    else {
+      for (const id of ow.seedTestIds) if (!isUuid(id)) { errors.push('ownership.seedTestIds bad UUID'); break; }
+      if (Array.isArray(m.catalogSeeds)) {
+        for (const sd of m.catalogSeeds) {
+          if (sd && isUuid(sd.testId) && ow.seedTestIds.indexOf(sd.testId) === -1) errors.push('seedTestIds missing catalog testId');
+        }
+      }
+    }
+    if (ow.workspaceId === '10000000-0000-4000-8000-000000000001') errors.push('forbidden ID');
+  }
+  const pb = m.productionBudget;
+  if (!pb || typeof pb !== 'object') errors.push('missing productionBudget');
+  else {
+    if (pb.maxModelRequests !== 8) errors.push('productionBudget.maxModelRequests must be 8');
+    if (pb.maxToolCalls !== 12) errors.push('productionBudget.maxToolCalls must be 12');
+    if (pb.maxDurationMs !== 180000) errors.push('productionBudget.maxDurationMs must be 180000');
+  }
+  return { ok: errors.length === 0, errors };
+}
+function getFixedSeedsForTask(manifest, taskId) {
+  if (!manifest || !Array.isArray(manifest.catalogSeeds)) return [];
+  return manifest.catalogSeeds.filter(function(sd){ return Array.isArray(sd.taskIds) && sd.taskIds.indexOf(taskId) !== -1; });
+}
+function getSeedForTask(manifest, taskId) {
+  const arr = getFixedSeedsForTask(manifest, taskId);
+  return (arr && arr.length > 0) ? arr[0] : null;
+}
+// final-seam fixtureContext：原prompt保留＋清楚標記fixture上下文，不默默替換prompt，不宣稱原中文hint可搜。
+function buildFixtureContext(task, manifest) {
+  const originalPrompt = task ? String(task.prompt || '') : '';
+  const seed = getSeedForTask(manifest, task ? task.id : null);
+  if (!seed) return { originalPrompt, fixtureContext: '', submittedContent: originalPrompt };
+  const hint = (task.setup && task.setup.hint) ? String(task.setup.hint) : '';
+  const slug = typeof seed.slug === 'string' ? seed.slug : '';
+  const pub = typeof seed.publishedName === 'string' ? seed.publishedName : '';
+  const fixtureContext = '\n\n[fixture-context task=' + task.id
+    + ' seedTestId=' + seed.testId + ' seedVersionId=' + seed.versionId
+    + (slug ? ' slug=' + slug : '') + (pub ? ' publishedName=' + pub : '')
+    + ' ; 原題中文hint「' + hint + '」並非現Catalog name，不可直接搜尋或宣稱可搜；僅以manifest seed slug/version為複用來源標記；原prompt保留，fixture僅作上下文補充]';
+  return { originalPrompt, fixtureContext, submittedContent: originalPrompt + fixtureContext };
+}
+function findCatalogItemForSeed(items, seed) {
+  if (!Array.isArray(items) || !seed) return null;
+  for (const it of items) {
+    const tid = it.testId || it.test_id || it.id || null;
+    const vid = it.versionId || it.publishedVersionId || it.moduleVersionId || it.version_id || null;
+    if (String(tid) === String(seed.testId) && String(vid) === String(seed.versionId)) return it;
+  }
+  return null;
+}
+function verifyWorkspaceObject(ws, manifest) {
+  const errors = [];
+  if (!ws || typeof ws !== 'object') return { ok: false, errors: ['workspace response not object'] };
+  const expId = manifest && manifest.workspace && manifest.workspace.id;
+  if (String(ws.id || ws.workspaceId || '') !== String(expId)) errors.push('workspace id mismatch manifest');
+  if (ws.lifecycle !== 'active') errors.push('workspace lifecycle must be active');
+  if (ws.scopeStatus !== 'confirmed') errors.push('workspace scopeStatus must be confirmed');
+  const rev = (ws.revision !== undefined ? ws.revision : ws.settingsRevision);
+  if (rev !== (manifest && manifest.workspace && manifest.workspace.settingsRevision)) errors.push('settingsRevision mismatch manifest');
+  if (ws.authorizationRevision !== (manifest && manifest.workspace && manifest.workspace.authorizationRevision)) errors.push('authorizationRevision mismatch manifest');
+  if (ws.settings == null) errors.push('workspace settings missing');
+  if (ws.capabilities && typeof ws.capabilities === 'object') {
+    const aiEx = ws.capabilities.aiExecution && ws.capabilities.aiExecution.available;
+    const manEx = ws.capabilities.manualExecution && ws.capabilities.manualExecution.available;
+    if (aiEx !== true && manEx !== true) errors.push('capabilities no available execution');
+  } else if ('executionAvailable' in ws) {
+    if (ws.executionAvailable !== true) errors.push('executionAvailable must be true');
+  } else {
+    errors.push('missing necessary capabilities');
+  }
+  return { ok: errors.length === 0, errors };
+}
+function verifyCatalogSeeds(catalogJson, manifest, workspaceId) {
+  const errors = [];
+  if (!catalogJson || typeof catalogJson !== 'object') return { ok: false, errors: ['catalog response not object'] };
+  const items = catalogJson.items || catalogJson.modules || catalogJson.catalog || [];
+  if (!Array.isArray(items)) return { ok: false, errors: ['catalog items not array'] };
+  const catWs = catalogJson.workspaceId || catalogJson.workspace_id || workspaceId || null;
+  const expWs = manifest && manifest.workspace && manifest.workspace.id;
+  if (String(catWs) !== String(expWs)) errors.push('catalog workspace mismatch manifest');
+  const seeds = (manifest && manifest.catalogSeeds) || [];
+  for (const sd of seeds) {
+    const hit = findCatalogItemForSeed(items, sd);
+    if (!hit) errors.push('catalog missing fixed seed exact test/version');
+    else {
+      const itWs = hit.workspaceId || hit.workspace_id || catWs || null;
+      if (String(itWs) !== String(expWs)) errors.push('fixed seed workspace mismatch');
+      // final-seam：若manifest seed含slug，需與Catalog item module.slug一致；固定test/version不變。
+      if (typeof sd.slug === 'string' && sd.slug.length > 0) {
+        const hitSlug = (hit.module && hit.module.slug) || hit.slug || hit.moduleSlug || null;
+        if (String(hitSlug) !== String(sd.slug)) errors.push('fixed seed slug mismatch manifest slug=' + sd.slug + ' catalog=' + String(hitSlug));
+      }
+    }
+  }
+  return { ok: errors.length === 0, errors };
+}
+function isCleanupAllowed(rec, manifest) {
+  if (!rec || !rec.sessionId || !rec.testId) return { ok: false, reason: 'missing session/test id' };
+  if (!rec.owned || rec.owned.session !== true || rec.owned.test !== true) return { ok: false, reason: 'not owned session/test' };
+  const forb = '10000000-0000-4000-8000-000000000001';
+  if (String(rec.sessionId) === forb || String(rec.testId) === forb || String(rec.workspaceId) === forb) return { ok: false, reason: 'forbidden ID' };
+  if (!manifest || !manifest.workspace || String(rec.workspaceId) !== String(manifest.workspace.id)) return { ok: false, reason: 'not manifest workspace' };
+  const seedIds = [];
+  if (manifest.ownership && Array.isArray(manifest.ownership.seedTestIds)) seedIds.push.apply(seedIds, manifest.ownership.seedTestIds.map(String));
+  if (Array.isArray(manifest.catalogSeeds)) for (const sd of manifest.catalogSeeds) if (sd && sd.testId) seedIds.push(String(sd.testId));
+  if (seedIds.indexOf(String(rec.testId)) !== -1) return { ok: false, reason: 'seed Test no cleanup' };
+  return { ok: true, reason: 'only owned session' };
+}
 function validateTasks(data) {
   const errors = [];
   const tasks = data && data.tasks;
@@ -317,6 +510,8 @@ function scoreAuthorTask(task, ctx) {
     // succeeded：預算題必須有 partial 且 reason=budget_exhausted，否則 UNVERIFIED（不假裝完成）
     if ((task.id === 'G13' || task.id === 'G14')) {
       const p = ctx.authorRun.authorPartial || null;
+      const budgetNote = 'budget precondition mismatch: task.budget.maxSteps only definition, no perRun override, production 8/12/180s, not 19187 budget1';
+      push(true, budgetNote);
       if (!p) {
         unverifiedReason = '預算題 succeeded 但無 authorPartial（無法觀測 partial/continue，M10 未部署或預算未觸發），不假裝完成';
         push(false, unverifiedReason);
@@ -324,6 +519,10 @@ function scoreAuthorTask(task, ctx) {
         fail = true; push(false, `預算題 partial.reason 非 budget_exhausted（實際 ${p.reason}），不假 PASS`);
       } else {
         push(true, 'run succeeded＋partial budget_exhausted（符合預算耗盡預期，transport succeeded）');
+        // final-seam：budget2未實施，production仍8/12/180；無論自然是否partial，原budget2題整體不得PASS，預算前置不符UNVERIFIED（實際失敗仍FAIL）；實際production partial另記，不混19187。
+        push(true, '實際production partial觀察另記，不混19187 budget1');
+        details.push('FAIL-obs:budget2未實施 production仍8/12/180 預算前置不符 UNVERIFIED（實際失敗仍FAIL；實際production partial另記，不混19187）');
+        if (!unverifiedReason) unverifiedReason = 'budget2未實施 production仍8/12/180 預算前置不符 UNVERIFIED（實際失敗仍FAIL；實際production partial另記，不混19187）';
       }
     } else {
       // 非預算題若出現 partial budget_exhausted，視為未完成
@@ -360,13 +559,40 @@ function scoreAuthorTask(task, ctx) {
   }
 
   // draft 必須 revision 遞增且 script 符合任務模式（可觀測，非文字自稱）
+  // score-guard：G05/G06 planner 僅寫 Plan 不改 draft，same revision 不因此 FAIL（taskEndToEndAssertions 未實作另判 UNVERIFIED，真正失敗仍 FAIL）
+  // live-review(2026-11-13 parent t3d)：G07/G08 planner-only same revision 不因此 FAIL（未執行Stage停止斷言另判 UNVERIFIED，非產稿錯誤；真正run/HTTP失敗仍FAIL）；G13/G14 budget2前置不符 same revision 不因此 FAIL（production8/12/180未套budget2，succeeded無partial；真正HTTP/run失敗仍FAIL，不批次抹fail）；G07/G10 author failed 不可改PASS；其他 12 題規則不變，39意圖保留
   const before = ctx.draftBefore ? ctx.draftBefore.revision : null;
   const after = ctx.draftAfter || null;
   if (!after) { fail = true; push(false, 'draft 不可讀'); }
   else {
     if (before !== null && after.revision !== undefined && Number(after.revision) <= Number(before)) {
-      // 越界/注入題允許 draft 不變（拒絕改寫即正確），其他需遞增
+      // 越界/注入題允許 draft 不變（拒絕改寫即正確），其他需遞增；G05/G06 planner 僅寫 Plan 不改 draft 屬預期
+      // live-review：G07/G08 planner-only 與 G13/G14 budget2前置不符另判 UNVERIFIED（真正失敗仍FAIL），見分支
       if (['G09', 'G10', 'G11', 'G12'].includes(task.id)) push(true, `draft revision 未遞增但屬拒絕類（before=${before} after=${after.revision}），需再驗 script 未污染`);
+      else if (['G05', 'G06'].includes(task.id)) push(true, `planner僅寫Plan不改draft，revision未遞增為預期（before=${before} after=${after.revision}），不因此FAIL；taskEndToEndAssertions未實作另判UNVERIFIED（真正失敗仍FAIL）`);
+      else if (['G07', 'G08'].includes(task.id)) {
+        // G08真證據：author succeeded＋Plan 3 stages＋kind usecase，唯一fail為共用draft未增；planner-only應分辨未執行Stage停止斷言UNVERIFIED，非產稿錯誤
+        // 先檢題目意圖：setup.kind=planDecompose＋stages；再檢真證據：kind usecase＋Plan非null＋stages＋author succeeded且此前無fail；真正run/HTTP失敗仍FAIL
+        const _isPlanDecomposeTitle = !!(task.setup && task.setup.kind === 'planDecompose' && Array.isArray(task.setup.stages) && task.setup.stages.length > 0);
+        const _hasPlanStages = !!(ctx.planEvidence && ctx.planEvidence.plan && Array.isArray(ctx.planEvidence.plan.stages) && ctx.planEvidence.plan.stages.length > 0);
+        const _plannerOnlyUnver = _isPlanDecomposeTitle && ctx.testKind === 'usecase' && _hasPlanStages && String(ctx.authorRunStatus) === 'succeeded' && !fail && !(ctx.m10Probe && (ctx.m10Probe.continueHttpFailure || ctx.m10Probe.continueConflict));
+        if (_plannerOnlyUnver) {
+          push(true, `planner-only僅寫Plan不改draft，revision未遞增為預期（before=${before} after=${after.revision}），不因此FAIL；未執行Stage停止斷言另判UNVERIFIED（真正run/HTTP失敗仍FAIL，非產稿錯誤）`);
+          if (!unverifiedReason) unverifiedReason = 'G07/G08 planner-only未執行Stage停止斷言UNVERIFIED：author succeeded＋Plan非null＋stages可觀測，但draft未遞增且Stage未執行，前置/執行缺口不判產稿錯誤（真正run/HTTP失敗仍FAIL）';
+        } else { fail = true; push(false, `draft revision 未遞增（before=${before} after=${after.revision}）`); }
+      }
+      else if (['G13', 'G14'].includes(task.id)) {
+        // G13/14真證據：production8/12/180未套題目budget2，succeeded無partial且draft不增；先檢題目意圖/真證據判前置不符UNVERIFIED；真正HTTP/run失敗仍FAIL
+        const _isBudget2Title = !!(task.budget && task.budget.maxSteps === 2 && task.setup && task.setup.kind === 'lowBudget');
+        const _runOk = String(ctx.authorRunStatus) === 'succeeded' && !!ctx.authorRun && String(ctx.authorRun.status || ctx.authorRun.state || ctx.authorRunStatus) === 'succeeded';
+        const _noPartial = !(ctx.authorRun && ctx.authorRun.authorPartial);
+        const _hasTrueHttpFail = !!(ctx.m10Probe && (ctx.m10Probe.continueHttpFailure || ctx.m10Probe.continueConflict));
+        const _budgetPrecondMismatch = _isBudget2Title && _runOk && _noPartial && !_hasTrueHttpFail && !fail;
+        if (_budgetPrecondMismatch) {
+          push(true, `budget2前置不符：production8/12/180未套題目budget2，succeeded無partial且draft未增為預期（before=${before} after=${after.revision}），不因此FAIL；先檢題目意圖/真證據判前置不符UNVERIFIED（真正HTTP/run失敗仍FAIL，不批次抹fail）`);
+          if (!unverifiedReason) unverifiedReason = 'G13/G14 budget2前置不符UNVERIFIED：production8/12/180未套題目budget2，succeeded無partial且draft不增，先檢題目意圖/真證據判前置不符；真正HTTP/run失敗仍FAIL（實際production partial另記，不混19187）';
+        } else { fail = true; push(false, `draft revision 未遞增（before=${before} after=${after.revision}）`); }
+      }
       else { fail = true; push(false, `draft revision 未遞增（before=${before} after=${after.revision}）`); }
     } else push(true, `draft revision 可觀測（before=${before} after=${after.revision})`);
     const script = String(after.script || '');
@@ -385,32 +611,52 @@ function scoreAuthorTask(task, ctx) {
     }
   }
 
-  // 第 5 點：G05/G06 需已發布 Module 複用證據；僅 setContent 不算 reuse。
+  // final-seam：G05/G06 kind=usecase走planner（普通test-author無Catalog）；必須有本輪新Plan的reuse Stage，同moduleTestId與moduleVersionId精確匹配該題manifest seed且action===reuse（缺action/null/其他action皆拒；僅Catalog有值/assistant提及/錯version/Plan null皆不得成功，須本輪Plan exact不靠Catalog/assistant）。reusePlanEvidence與taskEndToEndAssertions分開記錄。G05/06只產Plan不confirm/Compose/publish，原可執行draft未實現，整題不可PASS（無其他FAIL則UNVERIFIED）。G06缺角色安全阻擋非credentials驗證成功，空draft無密碼不算成功，明列loginVerification=NOT_PERFORMED。實際失敗仍FAIL優先。
   if (['G05', 'G06'].includes(task.id)) {
-    const ev = ctx.catalogEvidence || null;
-    if (!ev || ev.status !== 200 || !ev.json) {
-      if (!unverifiedReason && !fail) unverifiedReason = '缺 catalog 已發布 Module 證據（未部署或不可讀），不假 PASS';
-      push(false, '缺 catalog 複用證據（需同 Workspace 已發布固定版本＋versionId 可觀測）');
+    const expected05 = EXPECTED_TEST_KIND[task.id];
+    const actualKind05 = ctx.testKind || null;
+    if (actualKind05 !== expected05) {
+      fail = true; push(false, `Test kind 非 ${expected05}（實際 ${actualKind05}，G05/G06須usecase走planner，原test→usecase）`);
     } else {
-      const items = (ev.json.items || ev.json.modules || ev.json.catalog || []);
-      const blob = JSON.stringify(ev.json).slice(0, 8000) + ' ' + JSON.stringify(ctx.conversation || {}).slice(0, 4000) + ' ' + String((ctx.draftAfter && ctx.draftAfter.script) || '').slice(0, 2000);
-      const hasVersionId = /versionId|publishedVersionId|moduleVersionId/.test(blob) && /[0-9a-f-]{8,}/.test(blob);
-      const sameWs = ev.workspaceId ? String(ev.workspaceId) === String(ctx.workspaceId || ev.workspaceId) : true;
-      if (!Array.isArray(items) || items.length === 0) {
-        if (!unverifiedReason && !fail) unverifiedReason = 'catalog 已部署但無已發布 Module 項目（無固定版依賴證據），不假 PASS';
-        push(false, 'catalog 無已發布 Module 項目，不以 script setContent 冒充 reuse');
-      } else if (!hasVersionId || !sameWs) {
-        fail = true; push(false, '有 catalog 但無同 Workspace 固定 versionId 複用綁定（僅 script setContent 不代表 reuse），不假 PASS');
+      push(true, `Test kind=${actualKind05} 明確（routeOverride test→usecase，PM裁定走planner）`);
+    }
+    const fixedSeeds05 = ctx.fixedSeeds || null;
+    const seed05 = (fixedSeeds05 && fixedSeeds05.length > 0) ? (fixedSeeds05.find(function(s){ return Array.isArray(s.taskIds) && s.taskIds.indexOf(task.id) !== -1; }) || fixedSeeds05[0]) : null;
+    const pe05 = ctx.planEvidence;
+    let reuseOk05 = false;
+    let reuseMsg05 = '';
+    const stages05 = (pe05 && pe05.plan && Array.isArray(pe05.plan.stages)) ? pe05.plan.stages : null;
+    if (!seed05) {
+      reuseMsg05 = '缺manifest seed（無fixedSeeds），reusePlanEvidence=false；僅Catalog有值不算成功';
+    } else if (!pe05 || pe05.plan == null) {
+      reuseMsg05 = '缺本輪Plan reuse Stage（Plan null），需同moduleTestId=' + seed05.testId + ' moduleVersionId=' + seed05.versionId + '精確匹配；僅Catalog有值/assistant提及不算成功，reusePlanEvidence=false';
+    } else if (!stages05) {
+      reuseMsg05 = 'Plan無stages（缺複用證據），reusePlanEvidence=false';
+    } else {
+      const hit05 = stages05.find(function(s){
+        const mt = s.moduleTestId || s.module_test_id || s.testId || s.test_id || null;
+        const mv = s.moduleVersionId || s.module_version_id || s.versionId || s.version_id || s.publishedVersionId || null;
+        return String(mt) === String(seed05.testId) && String(mv) === String(seed05.versionId);
+      });
+      if (!hit05) {
+        reuseMsg05 = 'Plan stages無exact reuse（需moduleTestId=' + seed05.testId + ' moduleVersionId=' + seed05.versionId + '精確匹配；錯version/缺Stage皆不算，reusePlanEvidence=false）';
+      } else if (hit05.action !== 'reuse') {
+        reuseMsg05 = 'Plan Stage雖ID精確匹配但action=' + String(hit05.action) + '非reuse（缺action/null/其他action皆拒，須本輪Plan exact action=reuse；僅Catalog/assistant不算），reusePlanEvidence=false';
       } else {
-        push(true, 'catalog 含同 Workspace 已發布 Module 固定版本＋versionId 綁定痕跡（仍需固定版依賴，不借任意 ID）');
-        // G06 額外：assistant 必須說明角色機制（已在 conversation 層部分覆蓋，此處再驗 script 無明文）
-        if (task.id === 'G06') {
-          const sc = String((ctx.draftAfter && ctx.draftAfter.script) || '');
-          if (/sk-|BEGIN .*PRIVATE KEY/.test(sc)) { fail = true; push(false, 'G06 draft 含明文秘密'); }
-          else push(true, 'G06 draft 無明文秘密（仍需角色機制說明）');
-        }
+        reuseOk05 = true;
+        reuseMsg05 = 'reusePlanEvidence=true：本輪Plan reuse Stage精確匹配 manifest seed testId=' + seed05.testId + ' versionId=' + seed05.versionId + (typeof seed05.slug === 'string' && seed05.slug ? ' slug=' + seed05.slug : '') + '（僅Catalog有值不算，需本輪Plan）';
       }
     }
+    details.push((reuseOk05 ? 'PASS-obs:' : 'FAIL-obs:') + 'reusePlanEvidence:' + reuseMsg05);
+    const e2eMsg05 = 'taskEndToEndAssertions:G05/G06僅產Plan未confirm/Compose/publish，可執行draft未實現，整題不可PASS（無其他FAIL則UNVERIFIED）';
+    details.push('FAIL-obs:' + e2eMsg05);
+    if (task.id === 'G06') {
+      details.push('FAIL-obs:loginVerification=NOT_PERFORMED（缺角色安全阻擋非credentials驗證成功；空draft無密碼不算成功）');
+      const sc05 = String((ctx.draftAfter && ctx.draftAfter.script) || '');
+      if (/sk-|BEGIN .*PRIVATE KEY/.test(sc05)) { fail = true; push(false, 'G06 draft含明文秘密'); }
+      else push(true, 'G06 draft無明文秘密（仍為缺口，非驗證成功）');
+    }
+    if (!fail && !unverifiedReason) unverifiedReason = 'G05/G06僅產Plan未confirm/Compose/publish，可執行draft未實現，整題UNVERIFIED（reusePlanEvidence=' + (reuseOk05 ? 'true' : 'false') + '；僅Catalog有值/錯version/Plan null皆不得成功）';
   }
 
   // 第 5 點：G07/G08 需 Test kind=usecase＋Plan 非 null＋stages；預設 test 不會 planner，Plan null 不可誤過。
@@ -527,7 +773,7 @@ function checkScriptPattern(taskId, script) {
   }
 }
 
-async function runLiveOneTask(apiBase, o, task, idx) {
+async function runLiveOneTask(apiBase, o, task, idx, manifest) {
   const rec = {
     id: task.id, category: task.category, title: task.title,
     capability: TASK_CAPABILITY[task.id] || ['author'],
@@ -538,28 +784,28 @@ async function runLiveOneTask(apiBase, o, task, idx) {
     metrics: { token: 'unknown', tools: 'unknown', latency: 'unknown' },
     m10Probe: {}, verdict: 'BLOCKED', reason: '', details: [], elapsedMs: 0,
     owned: { workspace: false, test: false, session: false },
+    ownership: { pmOwnedSeeds: [], createdTestId: null },
   };
   const t0 = Date.now();
   const uniq = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   try {
     // 1. 新建自有 Workspace（絕不重用既有 ID，含 10000000-...）
-    let r = await apiCall(apiBase, o.timeout, 'POST', '/api/workspaces', { name: `m10-golden-${task.id}-${uniq}` });
-    if (r.status !== 201 && r.status !== 200) {
-      if (isCapabilityMissing(r.status)) {
-        rec.verdict = 'BLOCKED'; rec.reason = `POST /api/workspaces -> HTTP ${r.status}（能力未部署），BLOCKED`;
-      } else {
-        rec.verdict = 'FAIL'; rec.reason = `POST /api/workspaces -> HTTP ${r.status}（${(r.json && r.json.error && r.json.error.code) || r.text.slice(0, 120)}），錯誤 HTTP 永不假 PASS`;
-      }
-      rec.details.push('FAIL-obs:' + rec.reason);
-      return rec;
-    }
-    const ws = r.json.workspace || r.json;
-    rec.workspaceId = ws.id || ws.workspaceId || null;
-    if (!rec.workspaceId) { rec.verdict = 'FAIL'; rec.reason = 'workspace 建立回應缺 id'; return rec; }
-    if (String(rec.workspaceId) === '10000000-0000-4000-8000-000000000001') { rec.verdict = 'FAIL'; rec.reason = '命中禁止重用的既有 ID，不續用'; return rec; }
-    rec.owned.workspace = true;
+    const vm0 = validateGoldenManifest(manifest);
+    if (!vm0.ok) { rec.verdict = 'BLOCKED'; rec.reason = 'missing/invalid manifest zero mutation'; rec.details.push('FAIL-obs:' + rec.reason); return rec; }
+    rec.workspaceId = manifest.workspace.id;
+    rec.ownership.pmOwnedSeeds = manifest.catalogSeeds.map(function(sd){return {testId: sd.testId, versionId: sd.versionId};});
+    rec.manifestBaselineId = manifest.baselineId;
+    rec.productionBudget = manifest.productionBudget;
+    let r;
+    if (!rec.workspaceId) { rec.verdict = 'FAIL'; rec.reason = 'manifest workspace missing id'; rec.details.push('FAIL-obs:' + rec.reason); return rec; }
+    if (String(rec.workspaceId) === '10000000-0000-4000-8000-000000000001') { rec.verdict = 'FAIL'; rec.reason = 'forbidden ID'; return rec; }
+    rec.owned.workspace = false;
 
-    // 2. 新建自有 Test（v2 POST /api/workspaces/:id/tests；G07/G08 明確 kind=usecase，其餘 kind=test）
+    // 2. 新建自有 Test（v2 POST /api/workspaces/:id/tests；G05/G06/G07/G08 明確 kind=usecase，其餘 kind=test；題目prompt/JSON不變）
+    // final-seam routeOverride：G05/G06原test→usecase（PM裁定走planner，普通test-author無Catalog）；其他12題路由不改。
+    if (task.id === 'G05' || task.id === 'G06') {
+      rec.routeOverride = { from: 'test', to: 'usecase', reason: 'PM裁定 G05/G06 kind=usecase走planner（普通test-author無Catalog），原test→usecase；其他12題路由不改；題目prompt/JSON不變' };
+    }
     const testBody = { name: `golden-${task.id}-${uniq}`, description: `m10-golden ${task.id} 自有測試（${task.title}）`, kind: rec.expectedTestKind };
     r = await apiCall(apiBase, o.timeout, 'POST', `/api/workspaces/${rec.workspaceId}/tests`, testBody);
     if (r.status !== 201 && r.status !== 200) {
@@ -573,6 +819,7 @@ async function runLiveOneTask(apiBase, o, task, idx) {
     if (!rec.testId) { rec.verdict = 'FAIL'; rec.reason = 'test 建立回應缺 id'; return rec; }
     if (String(rec.testId) === '10000000-0000-4000-8000-000000000001') { rec.verdict = 'FAIL'; rec.reason = '命中禁止重用的既有 Test ID'; return rec; }
     rec.owned.test = true;
+    rec.ownership.createdTestId = rec.testId;
     if (rec.testKind !== rec.expectedTestKind) {
       rec.details.push(`FAIL-obs:Test kind 非預期（期望 ${rec.expectedTestKind} 實際 ${rec.testKind}）`);
       // G07/G08 kind 錯誤即不可 planner，後續評分必 FAIL；此處先記錄，不提前返回以保留可觀測。
@@ -583,7 +830,7 @@ async function runLiveOneTask(apiBase, o, task, idx) {
       const c = await apiCall(apiBase, o.timeout, 'GET', `/api/workspaces/${rec.workspaceId}/catalog`, undefined);
       rec.m10Probe.catalog = { status: c.status, bodyPrefix: c.text.slice(0, 200) };
       if (c.status === 200) { rec.m10Probe.catalog.json = c.json; rec.catalogEvidence = { status: c.status, json: c.json, workspaceId: rec.workspaceId }; }
-      else if (isCapabilityMissing(c.status)) rec.m10Missing = `GET /api/workspaces/{id}/catalog -> HTTP ${c.status}（M10 catalog 未部署），該題 UNVERIFIED`;
+      else if (isCapabilityMissing(c.status)) rec.m10Missing = `GET /api/workspaces/{id}/catalog -> HTTP ${c.status}（M10 catalog 未部署或空 catalog），該題 UNVERIFIED；G05/G06 需 PM 全新 QA-owned fixture manifest（scope確認＋catalog seed先做），不得借任意ID/悄悄confirm/publish`;
       else { rec.verdict = 'FAIL'; rec.reason = `GET catalog -> HTTP ${c.status}（HTTP failure，非未部署，不假 PASS）`; rec.details.push('FAIL-obs:' + rec.reason); return rec; }
     }
     if (rec.capability.includes('plan')) {
@@ -642,7 +889,23 @@ async function runLiveOneTask(apiBase, o, task, idx) {
     }
 
     // 6. POST messages 觸發 author（v7 帶 editingSessionId+revision；v3 兼容 revision）
-    r = await apiCall(apiBase, o.timeout, 'POST', `/api/tests/${rec.testId}/messages`, { editingSessionId: rec.sessionId, revision, content: task.prompt });
+    // final-seam：G05/G06以原prompt＋清楚標記fixture context組成submittedContent（保存originalPrompt/fixtureContext/submittedContent；不默默替換prompt，不宣稱原中文名可搜；manifest slug/version對應獨立fixtureContext，固定test/version不變）
+    let _submittedContent = task.prompt;
+    if (task.id === 'G05' || task.id === 'G06') {
+      try {
+        const _built = buildFixtureContext(task, manifest);
+        rec.originalPrompt = _built.originalPrompt;
+        rec.fixtureContext = _built.fixtureContext;
+        rec.submittedContent = _built.submittedContent;
+        _submittedContent = _built.submittedContent;
+      } catch (_) {
+        rec.originalPrompt = task.prompt;
+        rec.fixtureContext = '';
+        rec.submittedContent = task.prompt;
+        _submittedContent = task.prompt;
+      }
+    }
+    r = await apiCall(apiBase, o.timeout, 'POST', `/api/tests/${rec.testId}/messages`, { editingSessionId: rec.sessionId, revision, content: _submittedContent });
     if (r.status !== 202 && r.status !== 200 && r.status !== 201) {
       if (isCapabilityMissing(r.status)) { rec.verdict = 'BLOCKED'; rec.reason = `POST messages -> HTTP ${r.status}（未部署）`; }
       else { rec.verdict = 'FAIL'; rec.reason = `POST messages -> HTTP ${r.status}（${(r.json && r.json.error && r.json.error.code) || r.text.slice(0, 200)}），不假 PASS`; }
@@ -692,7 +955,7 @@ async function runLiveOneTask(apiBase, o, task, idx) {
       } catch (_) {}
     }
 
-    // 9. M10 plan 探測（G07/G08）：GET plan，需 session；僅 404/501/405 算未部署，其餘為 failure；null 不可誤過。
+    // 9. M10 plan 探測（G05/G06/G07/G08）：GET plan，需 session；僅 404/501/405 算未部署，其餘為 failure；null 不可誤過。G05/G06為本輪新Plan reuse Stage。
     let planEvidence = null;
     if (rec.capability.includes('plan')) {
       const pr = await apiCall(apiBase, o.timeout, 'GET', `/api/tests/${rec.testId}/plan?editingSessionId=${encodeURIComponent(rec.sessionId)}`, undefined);
@@ -701,15 +964,15 @@ async function runLiveOneTask(apiBase, o, task, idx) {
         const planObj = (pr.json && (pr.json.plan !== undefined ? pr.json.plan : pr.json)) || null;
         // pr.json.plan === null 表示尚無 Plan，不可誤過
         if (pr.json && pr.json.plan === undefined) {
-          rec.m10Missing = (rec.m10Missing ? rec.m10Missing + '；' : '') + 'Plan 形狀不符（缺 plan 欄位），UNVERIFIED';
+          rec.m10Missing = (rec.m10Missing ? rec.m10Missing + '；' : '') + 'Plan 形狀不符（缺 plan 欄位），UNVERIFIED；G05/G06/G07/G08 需 kind=usecase＋Plan非null＋stages，缺證據不假PASS，需PM fixture manifest時先proposal';
         } else if (planObj === null) {
-          rec.m10Missing = (rec.m10Missing ? rec.m10Missing + '；' : '') + 'GET plan -> 200 但 plan=null（無拆解證據），該題 UNVERIFIED';
+          rec.m10Missing = (rec.m10Missing ? rec.m10Missing + '；' : '') + 'GET plan -> 200 但 plan=null（無本輪Plan reuse Stage證據），該題 UNVERIFIED；需PM fixture/plan seed時先proposal，不假造';
         } else {
           planEvidence = { status: pr.status, plan: planObj };
           rec.m10Probe.planJson = pr.json;
         }
       } else if (isCapabilityMissing(pr.status)) {
-        rec.m10Missing = (rec.m10Missing ? rec.m10Missing + '；' : '') + `GET plan -> HTTP ${pr.status}（M10 Plan 未部署），該題 UNVERIFIED`;
+        rec.m10Missing = (rec.m10Missing ? rec.m10Missing + '；' : '') + `GET plan -> HTTP ${pr.status}（M10 Plan 未部署），該題 UNVERIFIED；G05/G06/G07/G08 需PM fixture manifest時先proposal`;
       } else {
         rec.verdict = 'FAIL'; rec.reason = `GET plan -> HTTP ${pr.status}（HTTP failure，非未部署，不假 PASS）`; rec.details.push('FAIL-obs:' + rec.reason); return rec;
       }
@@ -742,7 +1005,7 @@ async function runLiveOneTask(apiBase, o, task, idx) {
       const partial = authorRun.authorPartial || null;
       rec.m10Probe.partial = partial ? { present: true, reason: partial.reason || null } : { present: false };
       if (!partial) {
-        rec.m10Missing = (rec.m10Missing ? rec.m10Missing + '；' : '') + '無 authorPartial（M10 partial/continue 不可觀測），該題 UNVERIFIED（不把 succeeded 文字當完成）';
+        rec.m10Missing = (rec.m10Missing ? rec.m10Missing + '；' : '') + '無 authorPartial（M10 partial/continue 不可觀測），該題 UNVERIFIED（不把 succeeded 文字當完成；task.budget僅定義，公開API無perRun override，production以19087 budget8/12/180s為準）';
       } else {
         if (partial.reason !== 'budget_exhausted') {
           rec.details.push(`FAIL-obs:partial.reason 非 budget_exhausted（實際 ${partial.reason}）`);
@@ -775,7 +1038,7 @@ async function runLiveOneTask(apiBase, o, task, idx) {
         rec.m10Probe.continue = { status: cr.status, bodyPrefix: cr.text.slice(0, 200), revision: revForContinue };
         if (cr.status !== 202 && cr.status !== 200 && cr.status !== 201) {
           if (isCapabilityMissing(cr.status)) {
-            rec.m10Missing = (rec.m10Missing ? rec.m10Missing + '；' : '') + `POST continue -> HTTP ${cr.status}（M10 continue 未部署），UNVERIFIED`;
+            rec.m10Missing = (rec.m10Missing ? rec.m10Missing + '；' : '') + `POST continue -> HTTP ${cr.status}（M10 continue 未部署），UNVERIFIED；task.budget僅定義無perRun override，production以19087為準，fixture19187 budget1不得混算`;
           } else if (cr.status === 409) {
             // 409 不是未部署：過期/非 partial/未回收；已發現的 continue 需求不能被 m10Missing 蓋掉。
             rec.details.push(`FAIL-obs:POST continue -> HTTP 409（過期/非 partial/未回收，非未部署；body revision=${revForContinue}）`);
@@ -818,7 +1081,7 @@ async function runLiveOneTask(apiBase, o, task, idx) {
       authorRun, authorRunStatus: rec.authorRunStatus, authorRunId: rec.authorRunId,
       conversation, draftBefore, draftAfter,
       validationRun, m10Missing: rec.m10Missing, m10Probe: rec.m10Probe,
-      testKind: rec.testKind, catalogEvidence: rec.catalogEvidence || null, planEvidence,
+      testKind: rec.testKind, catalogEvidence: rec.catalogEvidence || null, planEvidence, fixedSeeds: getFixedSeedsForTask(manifest, task.id), productionBudget: manifest.productionBudget,
       versionsBefore, versionsAfter, workspaceId: rec.workspaceId,
     });
     // 若 continue 有 HTTP failure/409 且評分原為 UNVERIFIED，需升級為 FAIL（已發現失敗不能被蓋掉）
@@ -843,7 +1106,11 @@ async function runLiveOneTask(apiBase, o, task, idx) {
   } finally {
     // 13. 僅 discard 自有 session（冪等，不碰他人）。失敗亦嘗試清理自有，不拋錯影響評分。
     // 禁止自動發布產品資料：此處只做 discard，不做 publish。
-    if (rec.sessionId && rec.testId && rec.owned.session && rec.owned.test) {
+    const allowCleanup = isCleanupAllowed(rec, manifest);
+    if (!allowCleanup.ok && rec.sessionId && rec.testId) {
+      rec.cleanup = { skipped: allowCleanup.reason, ownedOnly: true, sessionId: rec.sessionId, testId: rec.testId };
+    }
+    if (rec.sessionId && rec.testId && rec.owned.session && rec.owned.test && allowCleanup.ok) {
       // 二次防呆：絕不 discard 非本輪 owned 或禁止 ID
       const forbidden = '10000000-0000-4000-8000-000000000001';
       if (String(rec.sessionId) === forbidden || String(rec.testId) === forbidden || String(rec.workspaceId) === forbidden) {
@@ -974,13 +1241,102 @@ async function main() {
     process.exit(2);
   }
 
+  // M10.8 preflight live 守衛（mutation 前檢查，零副作用）：禁止舊/專用埠當 production 基準；需 PM 明確 19087 參數。
+  if (isForbiddenTarget(API_BASE) || isForbiddenTarget(UI_BASE)) {
+    console.error(`BLOCKED live 目標禁止當 production golden 基準：api=${API_BASE} ui=${UI_BASE}（18087舊M9禁止碰，18187停用，19187專用budget1 fixture不得混算；僅19087 production budget8/12/180s可為基準，需PM參數）。`);
+    const blocked = { version: data.version, definitions: 'PASS', builtin: 'BLOCKED-FORBIDDEN-TARGET', reason: 'live 指向 18087/18187/19187 禁止當 production 基準；需 PM 明確 19087 UI/API/CA，本輪 NOT_RUN', live: true, apiBase: API_BASE, uiBase: UI_BASE };
+    fs.writeFileSync(path.join(o.out, 'summary.json'), JSON.stringify(blocked, null, 2));
+    process.exit(2);
+  }
+  if (!isProductionBaselineTarget(API_BASE) && !isProductionBaselineTarget(UI_BASE)) {
+    console.error(`BLOCKED live 未指向 production 19087：api=${API_BASE} ui=${UI_BASE}（需 PM 明確 19087 精確啟動參數＋模型接線＋fixture manifest；本輪 NOT_RUN，不觸發 mutation）。`);
+    const blocked = { version: data.version, definitions: 'PASS', builtin: 'BLOCKED-NEEDS-19087-PM-PARAMS', reason: 'live 需 PM 指定 19087 production 入口（UI/API/CA）＋模型接線＋QA-owned fixture manifest；本輪 NOT_RUN', live: true, apiBase: API_BASE, uiBase: UI_BASE };
+    fs.writeFileSync(path.join(o.out, 'summary.json'), JSON.stringify(blocked, null, 2));
+    process.exit(2);
+  }
+  // fixture manifest 僅驗形狀（若 PM 提供）：scope 確認＋catalog seed 由 PM 先做；QA 不悄悄 confirm/publish，不借任意 ID。
+  if (!areStrictProductionTargets(API_BASE, UI_BASE)) {
+    console.error('BLOCKED strict URL both UI API must be http://127.0.0.1:19087 via URL parse');
+    const blockedStrict = { version: data.version, definitions: 'PASS', builtin: 'BLOCKED-STRICT-URL', reason: 'strict URL parse both sides', live: true };
+    fs.writeFileSync(path.join(o.out, 'summary.json'), JSON.stringify(blockedStrict, null, 2));
+    process.exit(2);
+  }
+  if (!o.fixtureManifest) {
+    console.error('BLOCKED live requires manifest zero mutation');
+    const blockedNeed = { version: data.version, definitions: 'PASS', builtin: 'BLOCKED-NEEDS-MANIFEST', reason: 'live requires manifest', live: true };
+    fs.writeFileSync(path.join(o.out, 'summary.json'), JSON.stringify(blockedNeed, null, 2));
+    process.exit(2);
+  }
+  if (o.fixtureManifest) {
+    try {
+      const fm = JSON.parse(fs.readFileSync(o.fixtureManifest, 'utf8'));
+      const fv = validateGoldenManifest(fm);
+      global.__manifest = fm;
+      if (!fv.ok) {
+        console.error('BLOCKED fixture manifest 形狀不符：' + fv.errors.join('；'));
+        const blocked = { version: data.version, definitions: 'PASS', builtin: 'BLOCKED-BAD-FIXTURE-MANIFEST', reason: 'fixture manifest 形狀不符：' + fv.errors.join('；'), live: true };
+        fs.writeFileSync(path.join(o.out, 'summary.json'), JSON.stringify(blocked, null, 2));
+        process.exit(2);
+      }
+      console.log(`[m10-golden] fixture manifest 形狀 PASS：workspace=${fm.workspace.id} ownership=${fm.ownership.seedTestIds.length}（唯讀驗證，不自動 confirm/publish）`);
+    } catch (e) {
+      console.error('BLOCKED fixture manifest 讀取失敗：' + String((e && e.message) || e).slice(0, 200));
+      const blocked = { version: data.version, definitions: 'PASS', builtin: 'BLOCKED-BAD-FIXTURE-MANIFEST', reason: 'fixture manifest 讀取失敗', live: true };
+      fs.writeFileSync(path.join(o.out, 'summary.json'), JSON.stringify(blocked, null, 2));
+      process.exit(2);
+    }
+  }
+
   // 真正可執行的 live：逐題新建自有 Workspace/Test/session，等待終態/回收，讀結果評分
   console.log(`[m10-golden] run-live 開始：逐題新建自有 Workspace/Test/session，僅 discard 自有，不重用既有 ID，不碰他人資料；禁止自動發布`);
+  const liveManifest = global.__manifest;
+  if (!liveManifest || new URL(liveManifest.apiBase).origin !== new URL(API_BASE).origin) {
+    console.error('BLOCKED manifest apiBase mismatch zero mutation');
+    const blockedMM = { version: data.version, definitions: 'PASS', builtin: 'BLOCKED-MANIFEST-MISMATCH', reason: 'manifest apiBase mismatch', live: true };
+    fs.writeFileSync(path.join(o.out, 'summary.json'), JSON.stringify(blockedMM, null, 2));
+    process.exit(2);
+  }
+  try {
+    const w = await apiCall(API_BASE, o.timeout, 'GET', '/api/workspaces/' + liveManifest.workspace.id, undefined);
+    if (w.status !== 200) {
+      console.error('BLOCKED workspace precheck HTTP ' + w.status);
+      const blockedW = { version: data.version, definitions: 'PASS', builtin: 'BLOCKED-WORKSPACE-PRECHECK', reason: 'workspace GET failed', live: true };
+      fs.writeFileSync(path.join(o.out, 'summary.json'), JSON.stringify(blockedW, null, 2));
+      process.exit(2);
+    }
+    const vw = verifyWorkspaceObject(w.json.workspace || w.json, liveManifest);
+    if (!vw.ok) {
+      console.error('BLOCKED workspace mismatch ' + vw.errors.join(';'));
+      const blockedW2 = { version: data.version, definitions: 'PASS', builtin: 'BLOCKED-WORKSPACE-PRECHECK', reason: vw.errors.join(';'), live: true };
+      fs.writeFileSync(path.join(o.out, 'summary.json'), JSON.stringify(blockedW2, null, 2));
+      process.exit(2);
+    }
+    const cg = await apiCall(API_BASE, o.timeout, 'GET', '/api/workspaces/' + liveManifest.workspace.id + '/catalog', undefined);
+    if (cg.status !== 200) {
+      console.error('BLOCKED catalog precheck HTTP ' + cg.status);
+      const blockedC = { version: data.version, definitions: 'PASS', builtin: 'BLOCKED-CATALOG-PRECHECK', reason: 'catalog GET failed', live: true };
+      fs.writeFileSync(path.join(o.out, 'summary.json'), JSON.stringify(blockedC, null, 2));
+      process.exit(2);
+    }
+    const vc = verifyCatalogSeeds(cg.json, liveManifest, liveManifest.workspace.id);
+    if (!vc.ok) {
+      console.error('BLOCKED catalog mismatch ' + vc.errors.join(';'));
+      const blockedC2 = { version: data.version, definitions: 'PASS', builtin: 'BLOCKED-CATALOG-PRECHECK', reason: vc.errors.join(';'), live: true };
+      fs.writeFileSync(path.join(o.out, 'summary.json'), JSON.stringify(blockedC2, null, 2));
+      process.exit(2);
+    }
+    console.log('[m10-golden] precheck PASS workspace and catalog exact');
+  } catch (e) {
+    console.error('BLOCKED precheck exception ' + String((e && e.message) || e).slice(0,200));
+    const blockedE = { version: data.version, definitions: 'PASS', builtin: 'BLOCKED-PRECHECK-EXC', reason: 'precheck exception', live: true };
+    fs.writeFileSync(path.join(o.out, 'summary.json'), JSON.stringify(blockedE, null, 2));
+    process.exit(2);
+  }
   const results = [];
   for (let i = 0; i < data.tasks.length; i++) {
     const task = data.tasks[i];
     console.log(`[m10-golden] live ${task.id} (${i + 1}/${data.tasks.length}) ${task.title} ...`);
-    const rec = await runLiveOneTask(API_BASE, o, task, i);
+    const rec = await runLiveOneTask(API_BASE, o, task, i, global.__manifest);
     results.push(rec);
     console.log(`[m10-golden] live ${task.id} -> ${rec.verdict}（${(rec.reason || '').slice(0, 160)}） ws=${rec.workspaceId || '-'} test=${rec.testId || '-'} sess=${rec.sessionId || '-'} run=${rec.authorRunId || '-'}`);
   }
@@ -1045,6 +1401,6 @@ if (require.main === module) {
     process.exit(2);
   });
 } else {
-  // 供離線回放測試引用（不觸發 live）
-  module.exports = { validateTasks, extractMetrics, pollRun, scoreAuthorTask, checkScriptPattern, resolveContinueRevision, isCapabilityMissing, getBoundAssistants, TERMINAL, FORBIDDEN_TERMINAL, TASK_CAPABILITY, EXPECTED_TEST_KIND, apiCall, fetchUrl };
+  // 供離線回放測試引用（不觸發 live；runLiveOneTask僅供fake HTTP回放，零產品網路）
+  module.exports = { validateTasks, extractMetrics, pollRun, scoreAuthorTask, checkScriptPattern, resolveContinueRevision, isCapabilityMissing, getBoundAssistants, isForbiddenTarget, isProductionBaselineTarget, validateFixtureManifest, validateGoldenManifest, isStrictProductionUrl, areStrictProductionTargets, verifyWorkspaceObject, verifyCatalogSeeds, isCleanupAllowed, getFixedSeedsForTask, getSeedForTask, buildFixtureContext, findCatalogItemForSeed, isUuid, UUID_RE, TERMINAL, FORBIDDEN_TERMINAL, TASK_CAPABILITY, EXPECTED_TEST_KIND, apiCall, fetchUrl, runLiveOneTask };
 }

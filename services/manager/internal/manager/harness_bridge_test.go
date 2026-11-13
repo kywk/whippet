@@ -469,7 +469,7 @@ func TestM106PlannerRealAuthorIPC(t *testing.T) {
 	a.AllowedTools = &names
 	version := newID()
 	stages := []any{map[string]any{"id": "first", "title": "reuse", "action": "reuse", "moduleVersionId": version, "args": map[string]any{}}}
-	calls := []any{map[string]any{"name": "catalog_search", "arguments": map[string]any{"query": "search", "limit": 1, "cursor": nil}}, map[string]any{"name": "catalog_get", "arguments": map[string]any{"moduleVersionId": version}}, map[string]any{"name": "propose_plan", "arguments": map[string]any{"stages": stages}}}
+	calls := []any{map[string]any{"name": "catalog_search", "arguments": map[string]any{"query": "search", "limit": 1}}, map[string]any{"name": "catalog_get", "arguments": map[string]any{"moduleVersionId": version}}, map[string]any{"name": "propose_plan", "arguments": map[string]any{"stages": stages}}}
 	path := filepath.Join(t.TempDir(), "calls.json")
 	raw, _ := json.Marshal(calls)
 	_ = os.WriteFile(path, raw, 0600)

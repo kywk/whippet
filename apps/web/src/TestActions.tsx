@@ -54,7 +54,7 @@ export function VersionHistory({ api, apiBase, versions, runs, publishedVersionI
   </section>;
 }
 
-function VersionReport({ api, apiBase, runId, run }: { api: WhippetApi; apiBase: string; runId: string; run?: Run }) {
+function VersionReport({ api, apiBase, runId, run }: { api: WhippetApi; apiBase: string; runId: string | null; run?: Run }) {
   const [fetched, setFetched] = useState<Run>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -62,6 +62,7 @@ function VersionReport({ api, apiBase, runId, run }: { api: WhippetApi; apiBase:
   useEffect(() => () => controller.current?.abort(), []);
   const result = run ?? fetched;
   async function loadReport() {
+    if (!runId) return;
     if (controller.current && !controller.current.signal.aborted && busy) return;
     const request = new AbortController(); controller.current = request;
     setBusy(true); setError(undefined);
@@ -69,6 +70,7 @@ function VersionReport({ api, apiBase, runId, run }: { api: WhippetApi; apiBase:
     catch (cause) { if (!request.signal.aborted) setError(errorMessage(cause)); }
     finally { if (!request.signal.aborted) setBusy(false); }
   }
+  if (runId === null) return <span className="muted">此歷史版本未保留驗證紀錄（舊版資料）</span>;
   return result?.reportUrl ? <ReportLink reportUrl={result.reportUrl} apiBase={apiBase} label="查看版本驗證報告" />
     : <div><button className="button quiet compact" disabled={busy} onClick={loadReport}>{busy ? '載入中…' : result ? '重新載入驗證報告' : '載入驗證報告'}</button>{error ? <Notice message={error} /> : null}</div>;
 }

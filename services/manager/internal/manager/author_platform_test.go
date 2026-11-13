@@ -154,12 +154,12 @@ func TestM106RegistrySchemaGuards(t *testing.T) {
 		t.Fatal(name)
 		return registryTool{}
 	}
-	for _, raw := range []string{`{"query":"ok","limit":0,"cursor":null}`, `{"query":"ok","limit":1.5,"cursor":null}`, `{"query":"ok","limit":1,"cursor":null,"extra":1}`, `{"query":"` + strings.Repeat("中", 342) + `","limit":1,"cursor":null}`} {
+	for _, raw := range []string{`{"query":"ok","limit":0}`, `{"query":"ok","limit":1.5}`, `{"query":"ok","limit":1,"extra":1}`, `{"query":"` + strings.Repeat("中", 342) + `","limit":1}`} {
 		if validToolArguments(get("catalog_search"), []byte(raw)) {
 			t.Fatal("invalid search accepted")
 		}
 	}
-	if !validToolArguments(get("catalog_search"), []byte(`{"query":"ok","limit":20,"cursor":null}`)) {
+	if !validToolArguments(get("catalog_search"), []byte(`{"query":"ok","limit":20}`)) {
 		t.Fatal("valid search rejected")
 	}
 	for _, args := range []string{`{"page":{"kind":"literal","value":1}}`, `{"x":{"kind":"literal","value":{"__proto__":1}}}`, `{"x":{"kind":"binding","stageId":"a","path":[1]}}`} {

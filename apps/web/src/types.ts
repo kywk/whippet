@@ -104,6 +104,7 @@ export interface WorkspaceSettingsPatch {
 }
 
 export interface Test {
+  slug?: string;
   kind?: 'test' | 'module' | 'usecase';
   id: string;
   workspaceId: string;
@@ -189,6 +190,13 @@ export interface Plan {
   validationRunId?: string;
   error?: string;
 }
+export interface StageRetry {
+  eligible: boolean;
+  reason: null | 'plan_not_stopped' | 'stage_not_retryable' | 'cancelled' | 'source_unavailable' | 'session_closed' | 'reclaim_pending' | 'snapshot_mismatch' | 'prior_stage_invalid' | 'scope_unavailable';
+  planRevision: number;
+  source: null | { moduleTestId: string; editingSessionId: string; moduleRevision: number; moduleContextRevision: number; authorRunId: string; authorStatus: RunStatus; validationRunId: string | null; validationStatus: RunStatus | null; reclaimed: boolean };
+}
+export interface StageRetryInput { planRevision: number; moduleRevision: number; moduleContextRevision: number; confirmed: true; content: string }
 export interface PlanSummary {
   runId: string;
   planId: string;
@@ -226,6 +234,7 @@ export interface Run {
 }
 
 export interface Draft {
+  module?: ModuleMetadata;
   testId: string;
   revision: number;
   script: string;
@@ -244,7 +253,7 @@ export interface Version {
   revision: number;
   script: string;
   createdAt: string;
-  validationRunId: string;
+  validationRunId: string | null;
   workspaceSettings?: WorkspaceSettingsSnapshot;
   description: string | null;
   backgroundSummary: string | null;
@@ -331,6 +340,8 @@ export function isActiveRun(run: Run): boolean {
 export interface WhippetApi {
   getPlan?: (testId: string, editingSessionId: string, signal?: AbortSignal) => Promise<Plan | null>;
   savePlan?: (testId: string, input: { editingSessionId: string; revision: number; planRevision: number; stages: PlanStageInput[] }, signal?: AbortSignal) => Promise<Plan>;
+  getStageRetry?: (planId: string, stageId: string, signal?: AbortSignal) => Promise<StageRetry>;
+  retryStage?: (planId: string, stageId: string, input: StageRetryInput, signal?: AbortSignal) => Promise<Plan>;
   confirmPlan?: (planId: string, planRevision: number, signal?: AbortSignal) => Promise<Plan>;
   cancelPlan?: (planId: string, planRevision: number, signal?: AbortSignal) => Promise<Plan>;
   getPlanSummary?: (planId: string, signal?: AbortSignal) => Promise<PlanSummary | null>;
@@ -347,9 +358,9 @@ export interface WhippetApi {
   createRun(testId: string, signal?: AbortSignal): Promise<Run>;
   listRuns(testId: string, signal?: AbortSignal): Promise<Run[]>;
   getRun(runId: string, signal?: AbortSignal): Promise<Run>;
-  createTest(workspaceId: string, input: { name?: string; description?: string; kind?: 'test' | 'usecase' }, signal?: AbortSignal): Promise<Test>;
+  createTest(workspaceId: string, input: { name?: string; description?: string; kind?: 'test' | 'module' | 'usecase'; slug?: string }, signal?: AbortSignal): Promise<Test>;
   getDraft(testId: string, editingSessionId: string, signal?: AbortSignal): Promise<Draft>;
-  saveDraft(testId: string, editingSessionId: string, revision: number, script: string, signal?: AbortSignal): Promise<Draft>;
+  saveDraft(testId: string, editingSessionId: string, revision: number, script: string, signal?: AbortSignal, module?: ModuleMetadata): Promise<Draft>;
   validateDraft(testId: string, editingSessionId: string, revision: number, signal?: AbortSignal): Promise<Run>;
   publishTest(testId: string, editingSessionId: string, revision: number, summaryRunId: string, signal?: AbortSignal): Promise<Version>;
   listVersions(testId: string, signal?: AbortSignal): Promise<Version[]>;

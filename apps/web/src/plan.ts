@@ -48,3 +48,8 @@ export function batchPublishReady(plan: Plan | null | undefined, summary: PlanSu
   }
   return expected.size === summary.candidates.length && new Set(summary.candidates.map((item) => item.versionId)).size === summary.candidates.length && summary.candidates.every((item) => expected.get(item.versionId) === item.testId);
 }
+
+export function validRepairContent(content: string): boolean {
+  // UTF-16 lone surrogates cannot represent valid UTF-8 scalar values.
+  return Boolean(content.trim()) && !content.includes('\0') && Array.from(content).length <= 16000 && !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(content);
+}
