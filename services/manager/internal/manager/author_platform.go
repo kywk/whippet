@@ -70,10 +70,14 @@ func validModuleCandidate(script string, module json.RawMessage) bool {
 	return false
 }
 func validPlatform(raw json.RawMessage, a *AuthorTask, script string) bool {
+	return validPlatformForMode(raw, a, script, executionAuthorValidation)
+}
+
+func validPlatformForMode(raw json.RawMessage, a *AuthorTask, script string, mode authorValidationMode) bool {
 	if !moduleAuthor(a) && !plannerAuthor(a) {
 		return len(raw) == 0
 	}
-	registry, e := validCapabilitySnapshot(a)
+	registry, e := validCapabilitySnapshotForMode(a, mode)
 	if e != nil || registry == nil || !exactWorkspaceObject(raw, "planId", "stageId", "module") {
 		return false
 	}

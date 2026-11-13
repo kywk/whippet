@@ -100,6 +100,10 @@ type skillModel struct {
 
 // Nil means legacy; any partial v10 pin fails closed before dispatch.
 func validCapabilitySnapshot(a *AuthorTask) (*toolRegistry, error) {
+	return validCapabilitySnapshotForMode(a, executionAuthorValidation)
+}
+
+func validCapabilitySnapshotForMode(a *AuthorTask, mode authorValidationMode) (*toolRegistry, error) {
 	if a == nil {
 		return nil, errCapability
 	}
@@ -110,8 +114,12 @@ func validCapabilitySnapshot(a *AuthorTask) (*toolRegistry, error) {
 	if len(a.Skills) == 0 || len(a.Budget) == 0 || len(a.Model) == 0 || a.ToolRegistryVersion == nil || a.ToolRegistrySHA256 == nil || a.SkillID == nil || a.SkillVersion == nil {
 		return nil, errCapability
 	}
+	// Historical pins remain structurally valid and immutable; they are not execution authority.
+	if !boundedAuthorText(*a.ToolRegistryVersion, len(*a.ToolRegistryVersion), true) || !capabilityHash.MatchString(*a.ToolRegistrySHA256) {
+		return nil, errCapability
+	}
 	registry, err := loadToolRegistry()
-	if err != nil || *a.ToolRegistryVersion != registry.Version || *a.ToolRegistrySHA256 != registry.SHA256 {
+	if err != nil || mode != terminalJournalAuthorValidation && (*a.ToolRegistryVersion != registry.Version || *a.ToolRegistrySHA256 != registry.SHA256) {
 		return nil, errCapability
 	}
 	var rawPins []json.RawMessage

@@ -126,7 +126,11 @@ func loadRecords(workDir string) (map[string]record, error) {
 		if r.Kind != "" && r.Kind != "run" && r.Kind != "author" {
 			return nil, fmt.Errorf("invalid journal kind: %s", entry.Name())
 		}
-		if r.Author != nil && (r.Kind != "author" || validAuthorMetadata(r.Author, nil) != nil) {
+		validationMode := executionAuthorValidation
+		if r.Phase == "complete" && r.Reclaimed && r.Result != nil && r.Result.valid() {
+			validationMode = terminalJournalAuthorValidation
+		}
+		if r.Author != nil && (r.Kind != "author" || validAuthorMetadataForMode(r.Author, nil, validationMode) != nil) {
 			return nil, errors.New("invalid journal author snapshot")
 		}
 		if validWorkspaceOwner(r.WorkspaceID, r.TestID, r.WorkspaceContext, r.Author) != nil {

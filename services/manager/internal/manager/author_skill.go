@@ -21,7 +21,19 @@ func workspaceAuthor(a *AuthorTask) bool {
 	return a != nil && a.SkillID != nil && *a.SkillID == "workspace-author"
 }
 
+type authorValidationMode uint8
+
+const (
+	executionAuthorValidation authorValidationMode = iota
+	terminalJournalAuthorValidation
+)
+
 func validAuthorMetadata(a *AuthorTask, script *string) error {
+	return validAuthorMetadataForMode(a, script, executionAuthorValidation)
+}
+
+// Only loadRecords may select historical validation after proving complete/reclaimed/result.
+func validAuthorMetadataForMode(a *AuthorTask, script *string, mode authorValidationMode) error {
 	if a == nil {
 		return errors.New("missing author snapshot")
 	}
@@ -35,10 +47,10 @@ func validAuthorMetadata(a *AuthorTask, script *string) error {
 	if script != nil {
 		platformScript = *script
 	}
-	if !validPlatform(a.Platform, a, platformScript) {
+	if !validPlatformForMode(a.Platform, a, platformScript, mode) {
 		return errCapability
 	}
-	registry, err := validCapabilitySnapshot(a)
+	registry, err := validCapabilitySnapshotForMode(a, mode)
 	if err != nil {
 		return err
 	}
