@@ -1,0 +1,26 @@
+{
+  "plan": {
+    "id": "b7c83de2-5b1f-4531-b526-ba4d65682045",
+    "status": "running",
+    "revision": 17,
+    "stages": [
+      {
+        "id": "login",
+        "status": "ready"
+      },
+      {
+        "id": "search",
+        "status": "authoring",
+        "authorRunId": "ff056bf9-37da-4130-89c0-3758a855872b"
+      },
+      {
+        "id": "order",
+        "status": "pending"
+      },
+      {
+        "id": "verify",
+        "status": "pending"
+      }
+    ]
+  }
+}

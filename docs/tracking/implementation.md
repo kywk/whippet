@@ -346,8 +346,8 @@ M9歷史失敗已定位（81352430診斷回合）：模型將首次cursor輸出�
 | M10.6 | t4c＋t4b | catalog／module／usecase／plan 工具接上註冊表與 IPC | 單元測試加一次真模型「搜尋並複用」 | 完成（registry10.2；定向測試及真模型搜尋→固定版複用→Server保存非SKIP PASS，5model/3tools；未含整批發布） |
 | M10.7 | t4d | Module 列表與詳情（簽章、引用者）、Use Case Stage 檢視、Plan 確認卡、Stage 進度、partial「繼續」卡 | build 加目視 | 完成（build＋真Module/Plan/批次發布目視；B隔離真partial/單次continue，限制見證據） |
 | M10.8 | PM＋t4p | 黃金任務集 v1（10–15 題，含新建、修復、複用、拆解、越界、注入頁、預算耗盡），放在 `scripts/test/golden/` | 用 builtin 跑一次並記錄基準 | 完成（首次真基準與離線覆核已保存：4 PASS／2 FAIL／8 UNVERIFIED；不是完整驗收通過） |
-| M10.9 | PM t4s＋Server t50＋Runtime t4z | 整合 smoke：用真模型把「登入 → 搜尋 → 下單 → 驗證」拆成 4 段並發佈 | 一條主流程 | 受阻（retry5已跨過產稿逾時，但自試0/2、模型8次用盡LIMIT；Plan stopped/r14已回收，無候選／正式validation） |
-| M10.10 | PM t4s＋t4z＋t50 | 有界Module兩段暫存／commit真自試，timeout清理與安全階段觀測 | 正負真自試、三端回收／正式驗證、一次受控真模型 | 進行中（分段工具／診斷部署及一次真模型已驗；retry5無timeout但兩次自試FAIL，尚未產生通過候選） |
+| M10.9 | PM t4s＋Server t50＋Runtime t4z | 整合 smoke：用真模型把「登入 → 搜尋 → 下單 → 驗證」拆成 4 段並發佈 | 一條主流程 | 進行中（Plan composed/r18四Stage ready；3 author＋3 Module驗證＋整體Use Case驗證共7 Run成功並回收，待批次摘要／發佈） |
+| M10.10 | PM t4s＋t4z＋t50 | 有界Module兩段暫存／commit真自試，timeout清理與安全階段觀測 | 正負真自試、三端回收／正式驗證、一次受控真模型 | 完成（分段工具／診斷、journal與Module遮蔽修補已部署；retry7三Module自試1/0、parser/upload與正式驗證及Compose成功，秘密負向守衛保持） |
 | **M10.Z** | PM＋t33 | **階段一完整驗證**（見下方） | 全部通過後標記 `phase1-verified` | 待辦 |
 
 M10.Z 清單：
@@ -665,3 +665,32 @@ retry5安全停點：Plan stopped/r14，Run256747aa-6298-4e4c-bc11-874ac38f3fd0 
 
 
 retry5最終時間投影：started→finished144508.863ms（約144.5秒），timeoutMs180000且timedOut=false；model3耗75300.804ms、model8耗25071.571ms。8工具為draft1/reference1/stage4/commit2，全部工具succeeded，但兩次自試失敗；只保留最後自試class=TEST_FAILED，不能認定前次同類，更不能猜具體斷言。timing.sql/json與final/review/safe-events已封存。
+
+
+使用者要求繼續實際查明並修復TEST_FAILED，PM接續派原owner：t50核原attempt目錄/Worker已清理，僅存在journal布林與sidecar，未讀journal/秘密。批准以部署Worker c31055…、同shop fixture源碼隔離複本與新合成憑證，真verifyDraft/loginAs/@lib及原登入/price120/productId斷言做定向重現，保留負向控制；這是runner接縫驗證，不冒稱retry5原稿回放。t4z保留Runtime owner，待red接縫做最小修補，不擴診斷schema、不新模型、不放寬斷言。
+
+
+TEST_FAILED定向重現進展：t50固定部署Worker c31055…＋同shop fixture隔離複本、全新合成憑證、真verifyDraft/loginAs/@lib已驗最小search參考候選。最終正向734ms PASS；未登入1556ms及錯價121之694ms皆按原斷言FAIL。這反證固定參考流程的runner接線故障，非retry5已刪原稿回放。第一次最終負向替換未命中新文字造成control意外PASS，修正替換命中檢查後三控制符合預期，原產品/斷言未弱化。
+
+PM已審閱同slug、exportName=run、動態productId與price120完整候選。現有直接PUT draft會令原失敗鏈CAS不符，不能無模型原Plan接續；不擴新API或繞批次。t50準備既有Stage retry6 content附完整已驗候選，要求原樣stage/commit及短final，待PM核精確request後才單次POST。t4z只離線備order/verify參考候選，不現場修改或執行。
+
+
+retry6已在PM審閱完整候選/content hash與守衛後單次授權提交：11項一般/-O測試、isolated PG真SQL候選hash相符/漂移/無候選三控制PASS。完整前置PASS後唯一POST，Plan running/r15、search Run dc65295a-f787-4856-93c5-705827f57573；source payload unchanged、新pin/budget與providedContentPinned PASS。t50只觀察原樣落稿、自試/正式validation及自動後續Stages到安全停點，不另POST/summary/publish。
+
+
+retry6已取得具體現場故障：search真自試1/0、checkpoint完整、Worker COMPLETED，Manager卻未collect/artifact。t50經PM批准只對單一attempt journal逐層NOFOLLOW/regular/上限/duplicate與型別校驗，僅回固定enum/布林：CREDENTIAL_EVIDENCE_REJECTED、credentialsUsed=true、credentialsSanitized=false、complete/reclaimed；無raw輸出或副本。PM定位sanitizeCredentialOutputs將scrub重新JSON序列化的byte差異誤判為Module含秘密。t4z真路徑red→green修補中：乾淨artifact保持原bytes，真secret/duplicate/非法仍拒，不放寬憑證保護、不改其他報告遮蔽。retry6 Plan stopped/r16；禁止重送，新Manager修補完成後再單次驗同一已驗候選。
+
+
+Manager credential修補已commit a895872，真serializer red→green、token/秘密/duplicate/非法/超限守衛、普通report與runAttempt parser/upload/race/Linux build PASS。PM核manager-credential-release最終89檔manifest f739a71b…，COPY-only image655d9bd4…部署；Binds順序斷言中止後只讀核逐值相同並收尾receipt，未重跑apply。原三服務/Worker/設定與資料保留。t50完整三receipt鏈與前置PASS後唯一retry7，Plan running/r17、Runff056bf9-37da-4130-89c0-3758a855872b，原content/candidate不變、新snapshot PASS，觀察至回收，不追加POST。
+
+
+retry7 search現場驗證成功：selftest1/0、checkpoint三true，Manager result/parser/upload accepted；candidateCount1且body/harness/metadata hash完全相符，正式validation d80088bd-bcd5-4d52-8759-30d83c09a8c7 succeeded。Plan r17 search ready，order自動author Run b3e8fd53-a1ca-4c32-896f-55de8b7a0537執行中，verify pending。這是原阻擋的正式修復證據，仍不代表四Stage/整批發佈通過。
+
+
+retry7自動下游order：Run b3e8fd53-a1ca-4c32-896f-55de8b7a0537自試1/0、Manager ACCEPTED，正式validation dc69a01a-a130-4089-9167-59f7078e014f succeeded並回收，order ready；verify自動author cfbb09d9-12e0-4add-8fb4-1c99d4c7596e執行中，無額外POST。t4z離線order/verify備援11/11符合預期（兩正向、各錯product/quantity/total/status拒絕、新session讀原單404）；僅備援未採入Plan，不當現場成績。
+
+
+retry7最終驗收：Plan composed/r18、login/search/order/verify全ready。三author、三Module validation、整體Use Case validation70f3d51a-56d8-4e17-a3d3-6d617ab21e06共7 Run全succeeded/slotReleased=true；session無pending/reclaim，active/unreclaimed/unresolvedValidation/activePlans全0。search原稿SHA/metadata完全相符，sourcePayloadUnchanged=true，唯一POST。services/server/m10_shop_t50_retry7.{final,review}.json為安全證據。M10.10完成；M10.9尚待批次摘要/發佈，M10.Z其他缺口與原4PASS/2FAIL/8UNVERIFIED不回填、不改分數。未追加retry/summary/publish、未tag/push。
+
+
+四個正式validation報告ready已補實讀：report.html/results.json公開metadata size>0且逐一HEAD200（未讀內容），reportsReadyCount4。既有批次summary/publish請求欄位與三receipt SHA已存services/server/m10_shop_t50_retry7.handoff.json；尚未送出。

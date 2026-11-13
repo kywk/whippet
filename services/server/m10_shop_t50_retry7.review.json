@@ -1,0 +1,242 @@
+{
+  "schemaVersion": 1,
+  "finalSHA256": "f77fe02f7d91c6a141638cee5be4524961682b8677712f72fd1d7ae02b0418ea",
+  "plan": {
+    "id": "b7c83de2-5b1f-4531-b526-ba4d65682045",
+    "status": "composed",
+    "revision": 18,
+    "validationRunId": "70f3d51a-56d8-4e17-a3d3-6d617ab21e06",
+    "stages": [
+      {
+        "id": "login",
+        "status": "ready"
+      },
+      {
+        "id": "search",
+        "status": "ready",
+        "authorRunId": "ff056bf9-37da-4130-89c0-3758a855872b",
+        "validationRunId": "d80088bd-bcd5-4d52-8759-30d83c09a8c7"
+      },
+      {
+        "id": "order",
+        "status": "ready",
+        "authorRunId": "b3e8fd53-a1ca-4c32-896f-55de8b7a0537",
+        "validationRunId": "dc69a01a-a130-4089-9167-59f7078e014f"
+      },
+      {
+        "id": "verify",
+        "status": "ready",
+        "authorRunId": "cfbb09d9-12e0-4add-8fb4-1c99d4c7596e",
+        "validationRunId": "a76ad4b7-ef64-489b-ba83-5541e7601adb"
+      }
+    ]
+  },
+  "completeAndReclaimed": true,
+  "drainCounts": {
+    "heartbeatAgeSeconds": 9.616826,
+    "active": 0,
+    "unreclaimed": 0,
+    "unresolvedValidation": 0,
+    "activePlans": 0
+  },
+  "sourcePayloadUnchanged": true,
+  "runs": [
+    {
+      "run": {
+        "id": "70f3d51a-56d8-4e17-a3d3-6d617ab21e06",
+        "testId": "7bb3430f-3acc-4eb6-ba72-556441acc145",
+        "editingSessionId": "6947dc0f-9417-4b36-b0e9-c57c88f713bc",
+        "kind": "validation",
+        "status": "succeeded",
+        "slotReleased": true,
+        "attemptId": "a871dcf6-5a60-4119-a7a9-84727a506fe7"
+      }
+    },
+    {
+      "run": {
+        "id": "a76ad4b7-ef64-489b-ba83-5541e7601adb",
+        "testId": "c0438829-761e-443e-8745-1b2cd957d415",
+        "editingSessionId": "aec9f163-a03e-4d98-919c-0d56bdfac927",
+        "kind": "validation",
+        "status": "succeeded",
+        "slotReleased": true,
+        "attemptId": "baab984b-96f1-485c-b752-cbfeaaa56217"
+      }
+    },
+    {
+      "run": {
+        "id": "b3e8fd53-a1ca-4c32-896f-55de8b7a0537",
+        "testId": "52f187e3-beed-492d-8c63-477c5c145a8e",
+        "editingSessionId": "8a75a2e1-b578-4d1b-b261-f9ac20389bb2",
+        "kind": "author",
+        "status": "succeeded",
+        "slotReleased": true,
+        "attemptId": "a25495f2-97c5-45a1-9767-8b5afb89bbc5"
+      },
+      "diagnostic": {
+        "status": "validated",
+        "value": {
+          "schemaVersion": 3,
+          "workerObserved": true,
+          "worker": {
+            "modelRequestFailureStage": "UNKNOWN",
+            "lastSelfTestFailureClass": "UNKNOWN",
+            "selfTestPassedCount": 1,
+            "selfTestFailedCount": 0,
+            "checkpointCreated": true,
+            "checkpointPresentAtFinalize": true,
+            "checkpointRetainedAfterSecretGuard": true,
+            "terminalClass": "COMPLETED"
+          },
+          "manager": {
+            "workerResultPresent": true,
+            "workerResultValid": true,
+            "workerStatus": "succeeded",
+            "authorArtifactPresent": true,
+            "authorParserChecked": true,
+            "authorParserAccepted": true,
+            "uploadAttempted": true,
+            "uploadAccepted": true,
+            "disposition": "ACCEPTED"
+          }
+        },
+        "lastSelfTestFailureClass": "UNKNOWN",
+        "modelRequestFailureStage": "UNKNOWN"
+      },
+      "formalValidation": {
+        "requestCount": 1,
+        "unresolvedCount": 0,
+        "validationRunIds": [
+          "dc69a01a-a130-4089-9167-59f7078e014f"
+        ]
+      }
+    },
+    {
+      "run": {
+        "id": "cfbb09d9-12e0-4add-8fb4-1c99d4c7596e",
+        "testId": "c0438829-761e-443e-8745-1b2cd957d415",
+        "editingSessionId": "aec9f163-a03e-4d98-919c-0d56bdfac927",
+        "kind": "author",
+        "status": "succeeded",
+        "slotReleased": true,
+        "attemptId": "567de633-6227-4df0-80a5-b263560e1fcc"
+      },
+      "diagnostic": {
+        "status": "validated",
+        "value": {
+          "schemaVersion": 3,
+          "workerObserved": true,
+          "worker": {
+            "modelRequestFailureStage": "UNKNOWN",
+            "lastSelfTestFailureClass": "UNKNOWN",
+            "selfTestPassedCount": 1,
+            "selfTestFailedCount": 0,
+            "checkpointCreated": true,
+            "checkpointPresentAtFinalize": true,
+            "checkpointRetainedAfterSecretGuard": true,
+            "terminalClass": "COMPLETED"
+          },
+          "manager": {
+            "workerResultPresent": true,
+            "workerResultValid": true,
+            "workerStatus": "succeeded",
+            "authorArtifactPresent": true,
+            "authorParserChecked": true,
+            "authorParserAccepted": true,
+            "uploadAttempted": true,
+            "uploadAccepted": true,
+            "disposition": "ACCEPTED"
+          }
+        },
+        "lastSelfTestFailureClass": "UNKNOWN",
+        "modelRequestFailureStage": "UNKNOWN"
+      },
+      "formalValidation": {
+        "requestCount": 1,
+        "unresolvedCount": 0,
+        "validationRunIds": [
+          "a76ad4b7-ef64-489b-ba83-5541e7601adb"
+        ]
+      }
+    },
+    {
+      "run": {
+        "id": "d80088bd-bcd5-4d52-8759-30d83c09a8c7",
+        "testId": "64738e4b-c378-4c05-82ea-10dc20164e99",
+        "editingSessionId": "b63a9953-1764-4a0a-981c-e7154b3f5452",
+        "kind": "validation",
+        "status": "succeeded",
+        "slotReleased": true,
+        "attemptId": "a06dd68b-baa5-44b8-8f80-80c33186a6df"
+      }
+    },
+    {
+      "run": {
+        "id": "dc69a01a-a130-4089-9167-59f7078e014f",
+        "testId": "52f187e3-beed-492d-8c63-477c5c145a8e",
+        "editingSessionId": "8a75a2e1-b578-4d1b-b261-f9ac20389bb2",
+        "kind": "validation",
+        "status": "succeeded",
+        "slotReleased": true,
+        "attemptId": "1e8ac268-53b2-44cf-a72f-06e2fdbd4f38"
+      }
+    },
+    {
+      "run": {
+        "id": "ff056bf9-37da-4130-89c0-3758a855872b",
+        "testId": "64738e4b-c378-4c05-82ea-10dc20164e99",
+        "editingSessionId": "b63a9953-1764-4a0a-981c-e7154b3f5452",
+        "kind": "author",
+        "status": "succeeded",
+        "slotReleased": true,
+        "attemptId": "eb5bf133-6caf-444f-9843-a9023a93324f"
+      },
+      "diagnostic": {
+        "status": "validated",
+        "value": {
+          "schemaVersion": 3,
+          "workerObserved": true,
+          "worker": {
+            "modelRequestFailureStage": "UNKNOWN",
+            "lastSelfTestFailureClass": "UNKNOWN",
+            "selfTestPassedCount": 1,
+            "selfTestFailedCount": 0,
+            "checkpointCreated": true,
+            "checkpointPresentAtFinalize": true,
+            "checkpointRetainedAfterSecretGuard": true,
+            "terminalClass": "COMPLETED"
+          },
+          "manager": {
+            "workerResultPresent": true,
+            "workerResultValid": true,
+            "workerStatus": "succeeded",
+            "authorArtifactPresent": true,
+            "authorParserChecked": true,
+            "authorParserAccepted": true,
+            "uploadAttempted": true,
+            "uploadAccepted": true,
+            "disposition": "ACCEPTED"
+          }
+        },
+        "lastSelfTestFailureClass": "UNKNOWN",
+        "modelRequestFailureStage": "UNKNOWN"
+      },
+      "providedCandidateProof": {
+        "candidateCount": 1,
+        "bodyHashMatches": true,
+        "harnessHashMatches": true,
+        "metadataMatches": true
+      },
+      "formalValidation": {
+        "requestCount": 1,
+        "unresolvedCount": 0,
+        "validationRunIds": [
+          "d80088bd-bcd5-4d52-8759-30d83c09a8c7"
+        ]
+      }
+    }
+  ],
+  "postCount": 1,
+  "additionalRetry": false,
+  "publishRequested": false
+}

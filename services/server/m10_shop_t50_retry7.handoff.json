@@ -1,0 +1,200 @@
+{
+  "plan": {
+    "id": "b7c83de2-5b1f-4531-b526-ba4d65682045",
+    "status": "composed",
+    "revision": 18,
+    "validationRunId": "70f3d51a-56d8-4e17-a3d3-6d617ab21e06",
+    "stages": [
+      {
+        "id": "login",
+        "status": "ready"
+      },
+      {
+        "id": "search",
+        "status": "ready",
+        "authorRunId": "ff056bf9-37da-4130-89c0-3758a855872b",
+        "validationRunId": "d80088bd-bcd5-4d52-8759-30d83c09a8c7"
+      },
+      {
+        "id": "order",
+        "status": "ready",
+        "authorRunId": "b3e8fd53-a1ca-4c32-896f-55de8b7a0537",
+        "validationRunId": "dc69a01a-a130-4089-9167-59f7078e014f"
+      },
+      {
+        "id": "verify",
+        "status": "ready",
+        "authorRunId": "cfbb09d9-12e0-4add-8fb4-1c99d4c7596e",
+        "validationRunId": "a76ad4b7-ef64-489b-ba83-5541e7601adb"
+      }
+    ]
+  },
+  "reports": [
+    {
+      "runId": "70f3d51a-56d8-4e17-a3d3-6d617ab21e06",
+      "status": "succeeded",
+      "slotReleased": true,
+      "reportsReady": true,
+      "publicMetadata": [
+        {
+          "name": "report.html",
+          "size": 523272,
+          "headStatus": 200
+        },
+        {
+          "name": "results.json",
+          "size": 2859,
+          "headStatus": 200
+        }
+      ]
+    },
+    {
+      "runId": "a76ad4b7-ef64-489b-ba83-5541e7601adb",
+      "status": "succeeded",
+      "slotReleased": true,
+      "reportsReady": true,
+      "publicMetadata": [
+        {
+          "name": "report.html",
+          "size": 522156,
+          "headStatus": 200
+        },
+        {
+          "name": "results.json",
+          "size": 2553,
+          "headStatus": 200
+        }
+      ]
+    },
+    {
+      "runId": "d80088bd-bcd5-4d52-8759-30d83c09a8c7",
+      "status": "succeeded",
+      "slotReleased": true,
+      "reportsReady": true,
+      "publicMetadata": [
+        {
+          "name": "report.html",
+          "size": 521344,
+          "headStatus": 200
+        },
+        {
+          "name": "results.json",
+          "size": 2577,
+          "headStatus": 200
+        }
+      ]
+    },
+    {
+      "runId": "dc69a01a-a130-4089-9167-59f7078e014f",
+      "status": "succeeded",
+      "slotReleased": true,
+      "reportsReady": true,
+      "publicMetadata": [
+        {
+          "name": "report.html",
+          "size": 522480,
+          "headStatus": 200
+        },
+        {
+          "name": "results.json",
+          "size": 2548,
+          "headStatus": 200
+        }
+      ]
+    }
+  ],
+  "receiptEvidence": {
+    "receipt": {
+      "pending": false,
+      "images": {
+        "server": "sha256:cd0c30595da4ae0c66f1f7a52a31cbbe633a402fd6cabd22734ea8dc62ec11f6",
+        "manager": "sha256:743048d7dd1b90cd3eaaf0c34eccd2e93565ec60018e71bf2abacb4b54635145",
+        "worker": "sha256:c310550a783c12854d025613abf57155531842b2654909246ce5f16d74f3ced6"
+      },
+      "oldIds": {
+        "server": "75bf18f170325b408023dccd1358f7933ad81307dca3382cf6694b415ea2122d",
+        "manager": "2e4185b0f5197bc24b54959182f414f8f055e990ab1c3ccdb2e282ebba824dd9"
+      },
+      "sharedManifestSHA256": "789f704c90680db237b6699a3366ce97a6553bbc0a832dcd69ddfc08aa70610d",
+      "newIds": {
+        "server": "a5bef00709bc71983ab95670c111fa5d08b679f3c90ba025cf0afdce7299288e",
+        "manager": "e3904660d442a8d67f474cc3f921168bdf47b76cb377c22faf5836154dd451c5"
+      },
+      "settingsPreserved": true,
+      "networkAliasesPreserved": true,
+      "databaseWebUntouched": true,
+      "oldContainersRetained": true,
+      "onlyBindChanges": [
+        "skills",
+        "registry"
+      ]
+    },
+    "receiptSha256": "79847ec1a8a0799b50f4f7699c5c7a24a77039f6c0ca93a417fee593a36c30a4",
+    "managerRepairReceipt": {
+      "pending": false,
+      "originalReceiptSha256": "79847ec1a8a0799b50f4f7699c5c7a24a77039f6c0ca93a417fee593a36c30a4",
+      "oldManagerId": "e3904660d442a8d67f474cc3f921168bdf47b76cb377c22faf5836154dd451c5",
+      "managerImage": "sha256:50dd74248757b60ec227e7c67a66f37cc23fef1e77fafa252f007ce143962aa8",
+      "sharedManifestSHA256": "789f704c90680db237b6699a3366ce97a6553bbc0a832dcd69ddfc08aa70610d",
+      "images": {
+        "server": "sha256:cd0c30595da4ae0c66f1f7a52a31cbbe633a402fd6cabd22734ea8dc62ec11f6",
+        "worker": "sha256:c310550a783c12854d025613abf57155531842b2654909246ce5f16d74f3ced6"
+      },
+      "unchangedIds": {
+        "server": "a5bef00709bc71983ab95670c111fa5d08b679f3c90ba025cf0afdce7299288e",
+        "postgres": "a60266777d0683842d4399a1c26cfec91e3996669073cd0b13ca683a51d91e1f",
+        "web": "03f4d6e0c875e7e83d80333c1e181fa2d4f8986ee0787f4272d9fe0da0a55ce1"
+      },
+      "newManagerId": "127027d9946327f9cac41c46cc9fc0192cd6a56f6057bf83e38d18b9802a0681",
+      "settingsPreserved": true,
+      "serverWorkerDatabaseWebUntouched": true
+    },
+    "managerRepairReceiptSha256": "6ea4676d3e955e7c1a1066ac1a50daf294541a687174a479c3a976b6aa19426b",
+    "sanitizeRepairReceipt": {
+      "pending": false,
+      "parentRepairReceiptSha256": "6ea4676d3e955e7c1a1066ac1a50daf294541a687174a479c3a976b6aa19426b",
+      "oldManagerId": "127027d9946327f9cac41c46cc9fc0192cd6a56f6057bf83e38d18b9802a0681",
+      "managerImage": "sha256:655d9bd4d69e1e8cb5f06014e5c0a588375f2a0bdcfa133ec7b42d21e97cf0ce",
+      "sharedManifestSHA256": "789f704c90680db237b6699a3366ce97a6553bbc0a832dcd69ddfc08aa70610d",
+      "images": {
+        "server": "sha256:cd0c30595da4ae0c66f1f7a52a31cbbe633a402fd6cabd22734ea8dc62ec11f6",
+        "worker": "sha256:c310550a783c12854d025613abf57155531842b2654909246ce5f16d74f3ced6"
+      },
+      "unchangedIds": {
+        "server": "a5bef00709bc71983ab95670c111fa5d08b679f3c90ba025cf0afdce7299288e",
+        "postgres": "a60266777d0683842d4399a1c26cfec91e3996669073cd0b13ca683a51d91e1f",
+        "web": "03f4d6e0c875e7e83d80333c1e181fa2d4f8986ee0787f4272d9fe0da0a55ce1"
+      },
+      "newManagerId": "b389b96b97884aac2d58125fc8d5fe9971c90da53c5da1330459c38c56452b75",
+      "settingsPreserved": true,
+      "serverWorkerDatabaseWebUntouched": true
+    },
+    "sanitizeRepairReceiptSha256": "de87a50bcb5597c03308c2590c9333e75bc50311f93e2cd4c5526fe98990072a"
+  },
+  "summaryRequestDraft": {
+    "method": "POST",
+    "path": "/api/plans/b7c83de2-5b1f-4531-b526-ba4d65682045/summary",
+    "body": {
+      "planRevision": 18,
+      "validationRunId": "70f3d51a-56d8-4e17-a3d3-6d617ab21e06"
+    }
+  },
+  "summaryReadPath": "/api/plans/b7c83de2-5b1f-4531-b526-ba4d65682045/summary",
+  "publishRequestTemplate": {
+    "method": "POST",
+    "path": "/api/plans/b7c83de2-5b1f-4531-b526-ba4d65682045/publish",
+    "body": {
+      "planRevision": 18,
+      "confirmed": true,
+      "summaryRunId": "REQUIRES_SUCCESSFUL_RECLAIMED_SUMMARY_RUN"
+    }
+  },
+  "guards": [
+    "Re-read current Plan revision/status and all stages ready before later authorization",
+    "Summary creates a model Run; not authorized or sent in this round",
+    "Summary must succeed and reclaim; GET summary must have stale=false and publishReady=true",
+    "Batch/CAS/candidate revisions/context/bundle/validation evidence rechecked by server",
+    "Publish requires separate explicit approval; no draft or assertion changes"
+  ],
+  "requestsSent": false
+}

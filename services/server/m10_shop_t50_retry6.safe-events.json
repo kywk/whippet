@@ -1,0 +1,340 @@
+{
+  "registryVersion": "10.3",
+  "evidence": {
+    "events": [
+      {
+        "seq": 2,
+        "created_at": "2026-11-13T19:54:25.787371+00:00",
+        "event_kind": "observation",
+        "ordinal": 1,
+        "tool_name": null,
+        "status": "started"
+      },
+      {
+        "seq": 3,
+        "created_at": "2026-11-13T19:54:25.787752+00:00",
+        "event_kind": "model",
+        "ordinal": 1,
+        "tool_name": null,
+        "status": "started"
+      },
+      {
+        "seq": 4,
+        "created_at": "2026-11-13T19:54:25.788145+00:00",
+        "event_kind": "observation",
+        "ordinal": 1,
+        "tool_name": null,
+        "status": "toolsIncludedAtFetch"
+      },
+      {
+        "seq": 5,
+        "created_at": "2026-11-13T19:54:25.788331+00:00",
+        "event_kind": "observation",
+        "ordinal": 1,
+        "tool_name": null,
+        "status": "fetchInvoked"
+      },
+      {
+        "seq": 6,
+        "created_at": "2026-11-13T19:54:31.7054+00:00",
+        "event_kind": "observation",
+        "ordinal": 1,
+        "tool_name": null,
+        "status": "headersReceived"
+      },
+      {
+        "seq": 7,
+        "created_at": "2026-11-13T19:54:31.714554+00:00",
+        "event_kind": "observation",
+        "ordinal": 1,
+        "tool_name": null,
+        "status": "bodyParsed"
+      },
+      {
+        "seq": 8,
+        "created_at": "2026-11-13T19:54:31.715736+00:00",
+        "event_kind": "observation",
+        "ordinal": 1,
+        "tool_name": null,
+        "status": "functionCallObserved"
+      },
+      {
+        "seq": 9,
+        "created_at": "2026-11-13T19:54:31.716205+00:00",
+        "event_kind": "observation",
+        "ordinal": 1,
+        "tool_name": null,
+        "status": "responseAccepted"
+      },
+      {
+        "seq": 10,
+        "created_at": "2026-11-13T19:54:31.716672+00:00",
+        "event_kind": "model",
+        "ordinal": 1,
+        "tool_name": null,
+        "status": "succeeded"
+      },
+      {
+        "seq": 11,
+        "created_at": "2026-11-13T19:54:31.717042+00:00",
+        "event_kind": "tool",
+        "ordinal": 1,
+        "tool_name": "stage_module_candidate_part",
+        "status": "started"
+      },
+      {
+        "seq": 12,
+        "created_at": "2026-11-13T19:54:31.717379+00:00",
+        "event_kind": "tool",
+        "ordinal": 1,
+        "tool_name": "stage_module_candidate_part",
+        "status": "succeeded"
+      },
+      {
+        "seq": 13,
+        "created_at": "2026-11-13T19:54:31.719266+00:00",
+        "event_kind": "observation",
+        "ordinal": 2,
+        "tool_name": null,
+        "status": "started"
+      },
+      {
+        "seq": 14,
+        "created_at": "2026-11-13T19:54:31.721015+00:00",
+        "event_kind": "model",
+        "ordinal": 2,
+        "tool_name": null,
+        "status": "started"
+      },
+      {
+        "seq": 15,
+        "created_at": "2026-11-13T19:54:31.721983+00:00",
+        "event_kind": "observation",
+        "ordinal": 2,
+        "tool_name": null,
+        "status": "toolsIncludedAtFetch"
+      },
+      {
+        "seq": 16,
+        "created_at": "2026-11-13T19:54:31.72243+00:00",
+        "event_kind": "observation",
+        "ordinal": 2,
+        "tool_name": null,
+        "status": "fetchInvoked"
+      },
+      {
+        "seq": 17,
+        "created_at": "2026-11-13T19:54:35.10965+00:00",
+        "event_kind": "observation",
+        "ordinal": 2,
+        "tool_name": null,
+        "status": "headersReceived"
+      },
+      {
+        "seq": 18,
+        "created_at": "2026-11-13T19:54:35.111143+00:00",
+        "event_kind": "observation",
+        "ordinal": 2,
+        "tool_name": null,
+        "status": "bodyParsed"
+      },
+      {
+        "seq": 19,
+        "created_at": "2026-11-13T19:54:35.1113+00:00",
+        "event_kind": "observation",
+        "ordinal": 2,
+        "tool_name": null,
+        "status": "functionCallObserved"
+      },
+      {
+        "seq": 20,
+        "created_at": "2026-11-13T19:54:35.11152+00:00",
+        "event_kind": "observation",
+        "ordinal": 2,
+        "tool_name": null,
+        "status": "responseAccepted"
+      },
+      {
+        "seq": 21,
+        "created_at": "2026-11-13T19:54:35.11162+00:00",
+        "event_kind": "model",
+        "ordinal": 2,
+        "tool_name": null,
+        "status": "succeeded"
+      },
+      {
+        "seq": 22,
+        "created_at": "2026-11-13T19:54:35.111712+00:00",
+        "event_kind": "tool",
+        "ordinal": 2,
+        "tool_name": "stage_module_candidate_part",
+        "status": "started"
+      },
+      {
+        "seq": 23,
+        "created_at": "2026-11-13T19:54:35.111889+00:00",
+        "event_kind": "tool",
+        "ordinal": 2,
+        "tool_name": "stage_module_candidate_part",
+        "status": "succeeded"
+      },
+      {
+        "seq": 24,
+        "created_at": "2026-11-13T19:54:35.112112+00:00",
+        "event_kind": "observation",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "started"
+      },
+      {
+        "seq": 25,
+        "created_at": "2026-11-13T19:54:35.112252+00:00",
+        "event_kind": "model",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "started"
+      },
+      {
+        "seq": 26,
+        "created_at": "2026-11-13T19:54:35.112344+00:00",
+        "event_kind": "observation",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "toolsIncludedAtFetch"
+      },
+      {
+        "seq": 27,
+        "created_at": "2026-11-13T19:54:35.112436+00:00",
+        "event_kind": "observation",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "fetchInvoked"
+      },
+      {
+        "seq": 28,
+        "created_at": "2026-11-13T19:54:37.507201+00:00",
+        "event_kind": "observation",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "headersReceived"
+      },
+      {
+        "seq": 29,
+        "created_at": "2026-11-13T19:54:37.516999+00:00",
+        "event_kind": "observation",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "bodyParsed"
+      },
+      {
+        "seq": 30,
+        "created_at": "2026-11-13T19:54:37.517715+00:00",
+        "event_kind": "observation",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "functionCallObserved"
+      },
+      {
+        "seq": 31,
+        "created_at": "2026-11-13T19:54:37.520195+00:00",
+        "event_kind": "observation",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "responseAccepted"
+      },
+      {
+        "seq": 32,
+        "created_at": "2026-11-13T19:54:37.52086+00:00",
+        "event_kind": "model",
+        "ordinal": 3,
+        "tool_name": null,
+        "status": "succeeded"
+      },
+      {
+        "seq": 33,
+        "created_at": "2026-11-13T19:54:37.521188+00:00",
+        "event_kind": "tool",
+        "ordinal": 3,
+        "tool_name": "commit_module_candidate",
+        "status": "started"
+      },
+      {
+        "seq": 34,
+        "created_at": "2026-11-13T19:54:38.665721+00:00",
+        "event_kind": "tool",
+        "ordinal": 3,
+        "tool_name": "commit_module_candidate",
+        "status": "succeeded"
+      },
+      {
+        "seq": 35,
+        "created_at": "2026-11-13T19:54:38.666134+00:00",
+        "event_kind": "observation",
+        "ordinal": 4,
+        "tool_name": null,
+        "status": "started"
+      },
+      {
+        "seq": 36,
+        "created_at": "2026-11-13T19:54:38.666372+00:00",
+        "event_kind": "model",
+        "ordinal": 4,
+        "tool_name": null,
+        "status": "started"
+      },
+      {
+        "seq": 37,
+        "created_at": "2026-11-13T19:54:38.666556+00:00",
+        "event_kind": "observation",
+        "ordinal": 4,
+        "tool_name": null,
+        "status": "toolsIncludedAtFetch"
+      },
+      {
+        "seq": 38,
+        "created_at": "2026-11-13T19:54:38.666696+00:00",
+        "event_kind": "observation",
+        "ordinal": 4,
+        "tool_name": null,
+        "status": "fetchInvoked"
+      },
+      {
+        "seq": 39,
+        "created_at": "2026-11-13T19:54:43.132136+00:00",
+        "event_kind": "observation",
+        "ordinal": 4,
+        "tool_name": null,
+        "status": "headersReceived"
+      },
+      {
+        "seq": 40,
+        "created_at": "2026-11-13T19:54:43.145051+00:00",
+        "event_kind": "observation",
+        "ordinal": 4,
+        "tool_name": null,
+        "status": "bodyParsed"
+      },
+      {
+        "seq": 41,
+        "created_at": "2026-11-13T19:54:43.14642+00:00",
+        "event_kind": "observation",
+        "ordinal": 4,
+        "tool_name": null,
+        "status": "responseAccepted"
+      },
+      {
+        "seq": 42,
+        "created_at": "2026-11-13T19:54:43.147283+00:00",
+        "event_kind": "model",
+        "ordinal": 4,
+        "tool_name": null,
+        "status": "succeeded"
+      }
+    ],
+    "unknownEventCount": 1
+  },
+  "limitations": [
+    "Only fixed producer grammar; unmatched events counted, never returned",
+    "Tool succeeded is not self-test passed"
+  ]
+}

@@ -1,0 +1,139 @@
+{
+  "runId": "dc65295a-f787-4856-93c5-705827f57573",
+  "plan": {
+    "id": "b7c83de2-5b1f-4531-b526-ba4d65682045",
+    "status": "stopped",
+    "revision": 16,
+    "stages": [
+      {
+        "id": "login",
+        "status": "ready"
+      },
+      {
+        "id": "search",
+        "status": "failed",
+        "authorRunId": "dc65295a-f787-4856-93c5-705827f57573"
+      },
+      {
+        "id": "order",
+        "status": "pending"
+      },
+      {
+        "id": "verify",
+        "status": "pending"
+      }
+    ]
+  },
+  "completeAndReclaimed": true,
+  "drainCounts": {
+    "heartbeatAgeSeconds": 7.150981,
+    "active": 0,
+    "unreclaimed": 0,
+    "unresolvedValidation": 0,
+    "activePlans": 0
+  },
+  "timing": {
+    "runId": "dc65295a-f787-4856-93c5-705827f57573",
+    "createdAt": "2026-11-13T19:54:25.302563+00:00",
+    "startedAt": "2026-11-13T19:54:25.546145+00:00",
+    "finishedAt": "2026-11-13T19:54:43.351201+00:00",
+    "startedToFinishedMs": 17805.056,
+    "timeoutMs": 180000
+  },
+  "counts": [
+    {
+      "kind": "model",
+      "tool": null,
+      "status": "started",
+      "count": 4
+    },
+    {
+      "kind": "model",
+      "tool": null,
+      "status": "succeeded",
+      "count": 4
+    },
+    {
+      "kind": "tool",
+      "tool": "stage_module_candidate_part",
+      "status": "started",
+      "count": 2
+    },
+    {
+      "kind": "tool",
+      "tool": "stage_module_candidate_part",
+      "status": "succeeded",
+      "count": 2
+    },
+    {
+      "kind": "tool",
+      "tool": "commit_module_candidate",
+      "status": "started",
+      "count": 1
+    },
+    {
+      "kind": "tool",
+      "tool": "commit_module_candidate",
+      "status": "succeeded",
+      "count": 1
+    }
+  ],
+  "diagnostic": {
+    "status": "validated",
+    "value": {
+      "schemaVersion": 3,
+      "workerObserved": true,
+      "worker": {
+        "modelRequestFailureStage": "UNKNOWN",
+        "lastSelfTestFailureClass": "UNKNOWN",
+        "selfTestPassedCount": 1,
+        "selfTestFailedCount": 0,
+        "checkpointCreated": true,
+        "checkpointPresentAtFinalize": true,
+        "checkpointRetainedAfterSecretGuard": true,
+        "terminalClass": "COMPLETED"
+      },
+      "manager": {
+        "workerResultPresent": false,
+        "workerResultValid": false,
+        "workerStatus": "UNKNOWN",
+        "authorArtifactPresent": false,
+        "authorParserChecked": false,
+        "authorParserAccepted": false,
+        "uploadAttempted": false,
+        "uploadAccepted": false,
+        "disposition": "UNKNOWN"
+      }
+    },
+    "lastSelfTestFailureClass": "UNKNOWN",
+    "modelRequestFailureStage": "UNKNOWN"
+  },
+  "managerJournalProjection": {
+    "phase": "complete",
+    "errorClass": "CREDENTIAL_EVIDENCE_REJECTED",
+    "credentialsUsed": true,
+    "credentialsSanitized": false,
+    "reclaimed": true
+  },
+  "providedCandidateProof": {
+    "candidateCount": 0,
+    "bodyHashMatches": false,
+    "harnessHashMatches": false,
+    "metadataMatches": false
+  },
+  "formalValidation": {
+    "requestCount": 0,
+    "unresolvedCount": 0,
+    "validationRunIds": []
+  },
+  "sourcePayloadUnchanged": true,
+  "observedWorkerImages": [
+    {
+      "containerId": "d5a96e53ab59",
+      "image": "sha256:c310550a783c12854d025613abf57155531842b2654909246ce5f16d74f3ced6"
+    }
+  ],
+  "interpretation": "Self-test passed and Worker completed with checkpoint retained; Manager credential-output sanitization rejected before collect/upload. No persisted candidate, so supplied candidate hashes cannot yet be verified in Server. Not TEST_FAILED.",
+  "additionalRetry": false,
+  "summaryOrPublish": false
+}

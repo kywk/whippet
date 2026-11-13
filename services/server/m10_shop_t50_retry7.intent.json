@@ -1,0 +1,152 @@
+{
+  "createdAt": "2026-11-14T04:05:27.742588+08:00",
+  "url": "http://127.0.0.1:19287/api/plans/b7c83de2-5b1f-4531-b526-ba4d65682045/stages/search/retry",
+  "request": {
+    "planRevision": 16,
+    "moduleRevision": 1,
+    "moduleContextRevision": 7,
+    "confirmed": true,
+    "content": "修復目前原Plan的search Stage，保留原Module/session/slug與run({page}) API、前序login固定版本及後序args/bindings。下面是PM人工提供、用同部署Worker映像與同商店程式的隔離複本完成真verifyDraft的完整參考候選，不是retry5原稿；正常登入搜尋通過，未登入與錯價負向斷言都會失敗。\n請直接逐字採用下方script/harness/metadata，不探索、不重讀draft/reference、不重新設計，不更動內容或刪除/弱化斷言。依序呼叫stage_module_candidate_part(part=script,stagingRevision=0)、stage_module_candidate_part(part=harness,stagingRevision=1)，再commit_module_candidate(stagingRevision=2,metadata=下方metadata)執行真自試。使用實際工具回覆revision，不猜成功。commit自試通過後只回短final；本Plan由Server自動排正式validation，不另耗模型回合request_module_validation。不通過要據實回報，不把工具succeeded當自試通過。\n作用域仍僅http://host.docker.internal:19387；真平台loginAs由broker提供帳密，不讀取/索取/硬編帳密。不browser探索，不任意Node網路，不外網，不真付款、不假登入、不舊訂單。productId必從當次DOM讀取，price從當次頁面解析後斷言120，不把預期值當回傳資料。維持原8模型/12工具/180秒/16384與模型，不擴大budget或自行修改skills。不summary/publish。\n完整候選（JSON資料；逐字使用字串值）：\n{\n  \"script\": \"import { expect, type Page } from '@playwright/test';\\n\\nexport async function run({ page }: { page: Page }): Promise<{ productId: string; price: number }> {\\n  await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer');\\n  await page.locator('input[name=\\\"q\\\"]').fill('Whippet');\\n  await page.getByRole('button', { name: 'Search', exact: true }).click();\\n  const product = page.getByTestId('product');\\n  await expect(product).toHaveCount(1);\\n  await expect(product.locator('h2')).toContainText('Whippet');\\n  const productId = await product.getAttribute('data-product-id');\\n  expect(productId).toBeTruthy();\\n  const price = Number(await product.getByTestId('unit-price').innerText());\\n  expect(Number.isFinite(price)).toBe(true);\\n  expect(price).toBe(120);\\n  return { productId: productId!, price };\\n}\\n\",\n  \"harness\": \"import { test, expect } from '@playwright/test';\\nimport { loginAs } from 'whippet/login';\\nimport { run } from '@lib/shop-t4r-20261114-search';\\n\\ntest('search returns current productId and price after real role login', async ({ page }) => {\\n  await page.goto('http://host.docker.internal:19387/login');\\n  await loginAs(page, '7da20730-874d-41ff-aea0-7a5650f37c12',\\n    'input[name=username]', 'input[name=password]', 'button[type=submit]');\\n  await expect(page).toHaveURL('http://host.docker.internal:19387/products');\\n  await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer');\\n  const result = await run({ page });\\n  expect(result.productId).toBeTruthy();\\n  expect(result.price).toBe(120);\\n  const product = page.getByTestId('product');\\n  await expect(product.locator('h2')).toContainText('Whippet');\\n  await expect(product).toHaveAttribute('data-product-id', result.productId);\\n  await expect(product.getByTestId('unit-price')).toHaveText('120');\\n});\\n\",\n  \"metadata\": {\n    \"slug\": \"shop-t4r-20261114-search\",\n    \"moduleKind\": \"step\",\n    \"exportName\": \"run\",\n    \"signature\": \"run({page}): Promise<{productId:string,price:number}>\",\n    \"inputs\": \"page: same authenticated Playwright Page from login Stage\",\n    \"returns\": \"Current DOM productId and numeric price\",\n    \"preconditions\": \"Authenticated synthetic customer on /products within confirmed shop origin\",\n    \"postconditions\": \"Search Whippet; one matching product; nonempty dynamic productId; finite price equals 120\"\n  }\n}"
+  },
+  "retryGet": {
+    "eligible": true,
+    "reason": null,
+    "planRevision": 16,
+    "source": {
+      "moduleTestId": "64738e4b-c378-4c05-82ea-10dc20164e99",
+      "editingSessionId": "b63a9953-1764-4a0a-981c-e7154b3f5452",
+      "moduleRevision": 1,
+      "moduleContextRevision": 7,
+      "authorRunId": "dc65295a-f787-4856-93c5-705827f57573",
+      "authorStatus": "failed",
+      "validationRunId": null,
+      "validationStatus": null,
+      "reclaimed": true
+    }
+  },
+  "runCounts": {
+    "heartbeatAgeSeconds": 1.253143,
+    "active": 0,
+    "unreclaimed": 0,
+    "unresolvedValidation": 0,
+    "activePlans": 0
+  },
+  "scope": {
+    "id": "f7918b78-2171-47cf-b000-407ca05f86d3",
+    "revision": 2,
+    "authorizationRevision": 2,
+    "lifecycle": "active",
+    "scopeStatus": "confirmed"
+  },
+  "targetOrigins": [
+    "http://host.docker.internal:19387"
+  ],
+  "deployment": {
+    "receipt": {
+      "pending": false,
+      "images": {
+        "server": "sha256:cd0c30595da4ae0c66f1f7a52a31cbbe633a402fd6cabd22734ea8dc62ec11f6",
+        "manager": "sha256:743048d7dd1b90cd3eaaf0c34eccd2e93565ec60018e71bf2abacb4b54635145",
+        "worker": "sha256:c310550a783c12854d025613abf57155531842b2654909246ce5f16d74f3ced6"
+      },
+      "oldIds": {
+        "server": "75bf18f170325b408023dccd1358f7933ad81307dca3382cf6694b415ea2122d",
+        "manager": "2e4185b0f5197bc24b54959182f414f8f055e990ab1c3ccdb2e282ebba824dd9"
+      },
+      "sharedManifestSHA256": "789f704c90680db237b6699a3366ce97a6553bbc0a832dcd69ddfc08aa70610d",
+      "newIds": {
+        "server": "a5bef00709bc71983ab95670c111fa5d08b679f3c90ba025cf0afdce7299288e",
+        "manager": "e3904660d442a8d67f474cc3f921168bdf47b76cb377c22faf5836154dd451c5"
+      },
+      "settingsPreserved": true,
+      "networkAliasesPreserved": true,
+      "databaseWebUntouched": true,
+      "oldContainersRetained": true,
+      "onlyBindChanges": [
+        "skills",
+        "registry"
+      ]
+    },
+    "receiptSha256": "79847ec1a8a0799b50f4f7699c5c7a24a77039f6c0ca93a417fee593a36c30a4",
+    "managerRepairReceipt": {
+      "pending": false,
+      "originalReceiptSha256": "79847ec1a8a0799b50f4f7699c5c7a24a77039f6c0ca93a417fee593a36c30a4",
+      "oldManagerId": "e3904660d442a8d67f474cc3f921168bdf47b76cb377c22faf5836154dd451c5",
+      "managerImage": "sha256:50dd74248757b60ec227e7c67a66f37cc23fef1e77fafa252f007ce143962aa8",
+      "sharedManifestSHA256": "789f704c90680db237b6699a3366ce97a6553bbc0a832dcd69ddfc08aa70610d",
+      "images": {
+        "server": "sha256:cd0c30595da4ae0c66f1f7a52a31cbbe633a402fd6cabd22734ea8dc62ec11f6",
+        "worker": "sha256:c310550a783c12854d025613abf57155531842b2654909246ce5f16d74f3ced6"
+      },
+      "unchangedIds": {
+        "server": "a5bef00709bc71983ab95670c111fa5d08b679f3c90ba025cf0afdce7299288e",
+        "postgres": "a60266777d0683842d4399a1c26cfec91e3996669073cd0b13ca683a51d91e1f",
+        "web": "03f4d6e0c875e7e83d80333c1e181fa2d4f8986ee0787f4272d9fe0da0a55ce1"
+      },
+      "newManagerId": "127027d9946327f9cac41c46cc9fc0192cd6a56f6057bf83e38d18b9802a0681",
+      "settingsPreserved": true,
+      "serverWorkerDatabaseWebUntouched": true
+    },
+    "managerRepairReceiptSha256": "6ea4676d3e955e7c1a1066ac1a50daf294541a687174a479c3a976b6aa19426b",
+    "sanitizeRepairReceipt": {
+      "pending": false,
+      "parentRepairReceiptSha256": "6ea4676d3e955e7c1a1066ac1a50daf294541a687174a479c3a976b6aa19426b",
+      "oldManagerId": "127027d9946327f9cac41c46cc9fc0192cd6a56f6057bf83e38d18b9802a0681",
+      "managerImage": "sha256:655d9bd4d69e1e8cb5f06014e5c0a588375f2a0bdcfa133ec7b42d21e97cf0ce",
+      "sharedManifestSHA256": "789f704c90680db237b6699a3366ce97a6553bbc0a832dcd69ddfc08aa70610d",
+      "images": {
+        "server": "sha256:cd0c30595da4ae0c66f1f7a52a31cbbe633a402fd6cabd22734ea8dc62ec11f6",
+        "worker": "sha256:c310550a783c12854d025613abf57155531842b2654909246ce5f16d74f3ced6"
+      },
+      "unchangedIds": {
+        "server": "a5bef00709bc71983ab95670c111fa5d08b679f3c90ba025cf0afdce7299288e",
+        "postgres": "a60266777d0683842d4399a1c26cfec91e3996669073cd0b13ca683a51d91e1f",
+        "web": "03f4d6e0c875e7e83d80333c1e181fa2d4f8986ee0787f4272d9fe0da0a55ce1"
+      },
+      "newManagerId": "b389b96b97884aac2d58125fc8d5fe9971c90da53c5da1330459c38c56452b75",
+      "settingsPreserved": true,
+      "serverWorkerDatabaseWebUntouched": true
+    },
+    "sanitizeRepairReceiptSha256": "de87a50bcb5597c03308c2590c9333e75bc50311f93e2cd4c5526fe98990072a",
+    "serverNetwork": {
+      "aliases": [
+        "whippet-m10-server"
+      ],
+      "ip": "192.168.207.3"
+    },
+    "actual": {
+      "server": {
+        "id": "a5bef00709bc71983ab95670c111fa5d08b679f3c90ba025cf0afdce7299288e",
+        "image": "sha256:cd0c30595da4ae0c66f1f7a52a31cbbe633a402fd6cabd22734ea8dc62ec11f6",
+        "running": true,
+        "sharedBindsVerified": true
+      },
+      "manager": {
+        "id": "b389b96b97884aac2d58125fc8d5fe9971c90da53c5da1330459c38c56452b75",
+        "image": "sha256:655d9bd4d69e1e8cb5f06014e5c0a588375f2a0bdcfa133ec7b42d21e97cf0ce",
+        "running": true,
+        "sharedBindsVerified": true
+      }
+    },
+    "shared": {
+      "manifestSha256": "789f704c90680db237b6699a3366ce97a6553bbc0a832dcd69ddfc08aa70610d",
+      "filesVerified": 22,
+      "moduleManifestSha256": "e5a28599fb735e3d70d3157155a160ae0ba8e1e19fe3f050a7cf8d4167c66e3a"
+    },
+    "workerConfiguredImageEvidence": "PM switch receipt; actual Worker image checked during observation"
+  },
+  "sourceSnapshotBefore": {
+    "runId": "dc65295a-f787-4856-93c5-705827f57573",
+    "primaryModule": true,
+    "version1": true,
+    "maxOutputTokensPresent": true,
+    "authorPayloadSha256": "ee0fba05a0479f73eaef9109779b5d01bc8812946c6355a51336c404d1d851b8",
+    "manifestSha256": "e5a28599fb735e3d70d3157155a160ae0ba8e1e19fe3f050a7cf8d4167c66e3a",
+    "maxOutputTokens": 16384,
+    "maxModelRequests": 8,
+    "maxToolCalls": 12,
+    "maxDurationMs": 180000,
+    "effectiveMaxOutputTokens": 16384
+  },
+  "classification": "single PM-authorized retry7; Manager sanitize fix only; identical retry6 content and candidate; budgets/model unchanged"
+}

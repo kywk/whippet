@@ -1,0 +1,7 @@
+{
+  "phase": "complete",
+  "errorClass": "CREDENTIAL_EVIDENCE_REJECTED",
+  "credentialsUsed": true,
+  "credentialsSanitized": false,
+  "reclaimed": true
+}

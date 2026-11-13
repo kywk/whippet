@@ -1,0 +1,86 @@
+{
+  "status": "offline_draft_not_submitted",
+  "url": "http://127.0.0.1:19287/api/plans/b7c83de2-5b1f-4531-b526-ba4d65682045/stages/search/retry",
+  "requestDraft": {
+    "planRevision": 14,
+    "moduleRevision": 1,
+    "moduleContextRevision": 6,
+    "confirmed": true,
+    "content": "修復目前原Plan的search Stage，保留原Module/session/slug與run({page}) API、前序login固定版本及後序args/bindings。下面是PM人工提供、用同部署Worker映像與同商店程式的隔離複本完成真verifyDraft的完整參考候選，不是retry5原稿；正常登入搜尋通過，未登入與錯價負向斷言都會失敗。\n請直接逐字採用下方script/harness/metadata，不探索、不重讀draft/reference、不重新設計，不更動內容或刪除/弱化斷言。依序呼叫stage_module_candidate_part(part=script,stagingRevision=0)、stage_module_candidate_part(part=harness,stagingRevision=1)，再commit_module_candidate(stagingRevision=2,metadata=下方metadata)執行真自試。使用實際工具回覆revision，不猜成功。commit自試通過後只回短final；本Plan由Server自動排正式validation，不另耗模型回合request_module_validation。不通過要據實回報，不把工具succeeded當自試通過。\n作用域仍僅http://host.docker.internal:19387；真平台loginAs由broker提供帳密，不讀取/索取/硬編帳密。不browser探索，不任意Node網路，不外網，不真付款、不假登入、不舊訂單。productId必從當次DOM讀取，price從當次頁面解析後斷言120，不把預期值當回傳資料。維持原8模型/12工具/180秒/16384與模型，不擴大budget或自行修改skills。不summary/publish。\n完整候選（JSON資料；逐字使用字串值）：\n{\n  \"script\": \"import { expect, type Page } from '@playwright/test';\\n\\nexport async function run({ page }: { page: Page }): Promise<{ productId: string; price: number }> {\\n  await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer');\\n  await page.locator('input[name=\\\"q\\\"]').fill('Whippet');\\n  await page.getByRole('button', { name: 'Search', exact: true }).click();\\n  const product = page.getByTestId('product');\\n  await expect(product).toHaveCount(1);\\n  await expect(product.locator('h2')).toContainText('Whippet');\\n  const productId = await product.getAttribute('data-product-id');\\n  expect(productId).toBeTruthy();\\n  const price = Number(await product.getByTestId('unit-price').innerText());\\n  expect(Number.isFinite(price)).toBe(true);\\n  expect(price).toBe(120);\\n  return { productId: productId!, price };\\n}\\n\",\n  \"harness\": \"import { test, expect } from '@playwright/test';\\nimport { loginAs } from 'whippet/login';\\nimport { run } from '@lib/shop-t4r-20261114-search';\\n\\ntest('search returns current productId and price after real role login', async ({ page }) => {\\n  await page.goto('http://host.docker.internal:19387/login');\\n  await loginAs(page, '7da20730-874d-41ff-aea0-7a5650f37c12',\\n    'input[name=username]', 'input[name=password]', 'button[type=submit]');\\n  await expect(page).toHaveURL('http://host.docker.internal:19387/products');\\n  await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer');\\n  const result = await run({ page });\\n  expect(result.productId).toBeTruthy();\\n  expect(result.price).toBe(120);\\n  const product = page.getByTestId('product');\\n  await expect(product.locator('h2')).toContainText('Whippet');\\n  await expect(product).toHaveAttribute('data-product-id', result.productId);\\n  await expect(product.getByTestId('unit-price')).toHaveText('120');\\n});\\n\",\n  \"metadata\": {\n    \"slug\": \"shop-t4r-20261114-search\",\n    \"moduleKind\": \"step\",\n    \"exportName\": \"run\",\n    \"signature\": \"run({page}): Promise<{productId:string,price:number}>\",\n    \"inputs\": \"page: same authenticated Playwright Page from login Stage\",\n    \"returns\": \"Current DOM productId and numeric price\",\n    \"preconditions\": \"Authenticated synthetic customer on /products within confirmed shop origin\",\n    \"postconditions\": \"Search Whippet; one matching product; nonempty dynamic productId; finite price equals 120\"\n  }\n}"
+  },
+  "sourceRunId": "256747aa-6298-4e4c-bc11-874ac38f3fd0",
+  "sourceRun": {
+    "id": "256747aa-6298-4e4c-bc11-874ac38f3fd0",
+    "testId": "64738e4b-c378-4c05-82ea-10dc20164e99",
+    "editingSessionId": "b63a9953-1764-4a0a-981c-e7154b3f5452",
+    "kind": "author",
+    "status": "failed",
+    "slotReleased": true,
+    "attemptId": "2483ba6c-aa2a-451c-9727-34eacf9531b0"
+  },
+  "sourceSnapshot": {
+    "runId": "256747aa-6298-4e4c-bc11-874ac38f3fd0",
+    "primaryModule": true,
+    "version1": true,
+    "maxOutputTokensPresent": true,
+    "authorPayloadSha256": "c043940c4ca7d0c36fa1cc91004c652f29e2069ce6fee368b64f6faea8137c7f",
+    "manifestSha256": "e5a28599fb735e3d70d3157155a160ae0ba8e1e19fe3f050a7cf8d4167c66e3a",
+    "maxOutputTokens": 16384,
+    "maxModelRequests": 8,
+    "maxToolCalls": 12,
+    "maxDurationMs": 180000,
+    "effectiveMaxOutputTokens": 16384
+  },
+  "expectedPlan": {
+    "id": "b7c83de2-5b1f-4531-b526-ba4d65682045",
+    "status": "stopped",
+    "revision": 14,
+    "stages": [
+      {
+        "id": "login",
+        "status": "ready"
+      },
+      {
+        "id": "search",
+        "status": "failed",
+        "authorRunId": "256747aa-6298-4e4c-bc11-874ac38f3fd0"
+      },
+      {
+        "id": "order",
+        "status": "pending"
+      },
+      {
+        "id": "verify",
+        "status": "pending"
+      }
+    ]
+  },
+  "historicalSourcesSha256": {
+    "m10_shop_t50_retry5.intent.json": "027d889a3b9fffd3ba1f436e05af1b7310c02a0f9027ced531cad40df04e12d6",
+    "m10_shop_t50_retry5.final.json": "18b4b7d40e608e4549ae9fcbe179842252c87aba4a65201de7cd8e5219186123"
+  },
+  "originalContentSha256": "dc39f1b8a49c25590f1dfc5be3e75b1f609a5cafb15f0aa0c9142aa07f91a315",
+  "newContentSha256": "4ac9cce96eba9afd47555f4d82e0cdf0cadfe062a098ad3a89790bc5bceca385",
+  "candidatePath": "/private/tmp/whippet-m10-search-repro/candidate.json",
+  "candidateFileSha256": "ff916e7410794fecfdde50f3a464865db0ca7906f7936d3cfcc1fe3aae079a50",
+  "providedCandidate": {
+    "script": "import { expect, type Page } from '@playwright/test';\n\nexport async function run({ page }: { page: Page }): Promise<{ productId: string; price: number }> {\n  await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer');\n  await page.locator('input[name=\"q\"]').fill('Whippet');\n  await page.getByRole('button', { name: 'Search', exact: true }).click();\n  const product = page.getByTestId('product');\n  await expect(product).toHaveCount(1);\n  await expect(product.locator('h2')).toContainText('Whippet');\n  const productId = await product.getAttribute('data-product-id');\n  expect(productId).toBeTruthy();\n  const price = Number(await product.getByTestId('unit-price').innerText());\n  expect(Number.isFinite(price)).toBe(true);\n  expect(price).toBe(120);\n  return { productId: productId!, price };\n}\n",
+    "harness": "import { test, expect } from '@playwright/test';\nimport { loginAs } from 'whippet/login';\nimport { run } from '@lib/shop-t4r-20261114-search';\n\ntest('search returns current productId and price after real role login', async ({ page }) => {\n  await page.goto('http://host.docker.internal:19387/login');\n  await loginAs(page, '7da20730-874d-41ff-aea0-7a5650f37c12',\n    'input[name=username]', 'input[name=password]', 'button[type=submit]');\n  await expect(page).toHaveURL('http://host.docker.internal:19387/products');\n  await expect(page.getByTestId('account-state')).toHaveText('Authenticated synthetic customer');\n  const result = await run({ page });\n  expect(result.productId).toBeTruthy();\n  expect(result.price).toBe(120);\n  const product = page.getByTestId('product');\n  await expect(product.locator('h2')).toContainText('Whippet');\n  await expect(product).toHaveAttribute('data-product-id', result.productId);\n  await expect(product.getByTestId('unit-price')).toHaveText('120');\n});\n",
+    "metadata": {
+      "slug": "shop-t4r-20261114-search",
+      "moduleKind": "step",
+      "exportName": "run",
+      "signature": "run({page}): Promise<{productId:string,price:number}>",
+      "inputs": "page: same authenticated Playwright Page from login Stage",
+      "returns": "Current DOM productId and numeric price",
+      "preconditions": "Authenticated synthetic customer on /products within confirmed shop origin",
+      "postconditions": "Search Whippet; one matching product; nonempty dynamic productId; finite price equals 120"
+    }
+  },
+  "bodySha256": "ff79afd4075f0ac6412954e63ff37dfefe4a260a2105f05abc665cc41d76c9e3",
+  "harnessSha256": "2483313ad4e565ac8147b416fca2eca7b7f8dcb2790bae8774d48e7069d0e461",
+  "experimentalChanges": [
+    "PM-provided fully tested reference candidate; no claim to recover retry5 original"
+  ],
+  "requires": "PM review and explicit single POST authorization"
+}

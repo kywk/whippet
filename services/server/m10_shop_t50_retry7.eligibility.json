@@ -1,0 +1,16 @@
+{
+  "eligible": true,
+  "reason": null,
+  "planRevision": 16,
+  "source": {
+    "moduleTestId": "64738e4b-c378-4c05-82ea-10dc20164e99",
+    "editingSessionId": "b63a9953-1764-4a0a-981c-e7154b3f5452",
+    "moduleRevision": 1,
+    "moduleContextRevision": 7,
+    "authorRunId": "dc65295a-f787-4856-93c5-705827f57573",
+    "authorStatus": "failed",
+    "validationRunId": null,
+    "validationStatus": null,
+    "reclaimed": true
+  }
+}
