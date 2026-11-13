@@ -315,3 +315,9 @@ M9歷史失敗已定位（81352430診斷回合）：模型將首次cursor輸出�
 ## 使用者指定提交與環境整理（2026-11-12）
 
 已提交d2ba719（M9有界歷史／全鏈驗收／映像盤點，共38檔）；提交前diff check與指定檔案憑證模式掃描PASS，未push。依指示停止16個舊Whippet容器：M1四服務、M7/M8A各三服務、M3 fixture、M8 progress、四個殘留QA。保留最新B的Web/Server/Manager/Postgres及18187合成網站，資料volume/報告未刪，其他專案未動。Git只有main、origin/main與目前主worktree，worktree prune --dry-run無失效項目，沒有可清理的多餘分支／worktree。
+
+## AI 對話原生語音輸入（2026-11-12）
+
+測試對話與 Workspace 設定對話已共用語音輸入按鈕；僅瀏覽器提供 SpeechRecognition／webkitSpeechRecognition 時顯示。使用者點擊後才啟動，辨識完成把文字附加於草稿，由使用者確認送出；辨識錯誤顯示在輸入區，切換頁面會停止錄音。不使用 Server STT 或新增依賴。Web build/typecheck PASS；本機瀏覽器以模擬原生 STT 驗證兩處輸入、原文保留及不自動送出，無 STT 介面時按鈕隱藏。真麥克風與各瀏覽器辨識服務可用性仍依使用者設備與權限決定。新Web dist已於2026-11-12 copy-only套用至現有18087 Web容器，原靜態檔備份於/private/tmp/whippet-stt-web-backup；18087真UI再驗測試對話語音填字PASS，未送出訊息。未提交。
+
+語音輸入中斷修復（2026-11-12）：原 `continuous=false` 且每次瀏覽器 `onend` 即結束聆聽，真語音停頓後無法接續。改為持續模式，正常 `onend` 於短暫間隔後自動重啟；手動停止、送出停用、權限或辨識錯誤會終止重啟。18087 瀏覽器模擬 STT 回歸先紅（首句後 starts=1、麥克風停止），修後綠（starts=2、麥克風保持聆聽），第二句接續、手動停止及權限拒絕不重啟皆 PASS。Web build/typecheck PASS，已 copy-only 更新現有Web容器，更新前靜態檔備份 `/private/tmp/whippet-stt-before-continuous`。未實測實體麥克風與瀏覽器語音服務，未提交。
