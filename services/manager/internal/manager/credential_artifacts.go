@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 func (m *Manager) rememberCredentials(r record, v credentialValues) error {
@@ -159,6 +160,87 @@ func scrubCredentialBytes(data []byte, replacer *strings.Replacer, depth int) ([
 	return []byte(replacer.Replace(string(data))), nil
 }
 
+// Certify every decoded JSON string without rewriting Module source bytes.
+// Token traversal rejects duplicate keys before they can hide a credential value.
+func certifyModuleCredentialJSON(data []byte, replacer *strings.Replacer) error {
+	if !utf8.Valid(data) {
+		return errCredentials
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	checkString := func(value string) error {
+		if replacer.Replace(value) != value {
+			return errors.New("module candidate changed during redaction")
+		}
+		// Embedded report archives are not Module source evidence; retain fail-closed handling.
+		if embeddedReportZIP.MatchString(value) {
+			return errCredentials
+		}
+		return nil
+	}
+	var value func(int) error
+	value = func(depth int) error {
+		if depth > 64 {
+			return errCredentials
+		}
+		token, err := decoder.Token()
+		if err != nil {
+			return errCredentials
+		}
+		switch token := token.(type) {
+		case string:
+			return checkString(token)
+		case json.Delim:
+			switch token {
+			case '{':
+				seen := make(map[string]bool)
+				for decoder.More() {
+					keyToken, err := decoder.Token()
+					key, ok := keyToken.(string)
+					if err != nil || !ok || seen[key] {
+						return errCredentials
+					}
+					seen[key] = true
+					if err := checkString(key); err != nil {
+						return err
+					}
+					if err := value(depth + 1); err != nil {
+						return err
+					}
+				}
+				end, err := decoder.Token()
+				if err != nil || end != json.Delim('}') {
+					return errCredentials
+				}
+			case '[':
+				for decoder.More() {
+					if err := value(depth + 1); err != nil {
+						return err
+					}
+				}
+				end, err := decoder.Token()
+				if err != nil || end != json.Delim(']') {
+					return errCredentials
+				}
+			default:
+				return errCredentials
+			}
+		}
+		return nil
+	}
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return errCredentials
+	}
+	if err := value(0); err != nil {
+		return err
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		return errCredentials
+	}
+	return nil
+}
+
 func sanitizeCredentialOutputs(taskDir string, values []string, authors ...*AuthorTask) error {
 	if len(values) == 0 {
 		return errors.New("credential evidence cannot be certified after restart")
@@ -225,12 +307,15 @@ func sanitizeCredentialOutputs(taskDir string, values []string, authors ...*Auth
 		if err != nil {
 			return err
 		}
+		if name == "author.json" && len(authors) == 1 && moduleAuthor(authors[0]) {
+			if err := certifyModuleCredentialJSON(data, replacer); err != nil {
+				return err
+			}
+			continue // Clean Module bytes (including key order/newline) remain immutable.
+		}
 		clean, err := scrubCredentialBytes(data, replacer, 0)
 		if err != nil {
 			return err
-		}
-		if name == "author.json" && len(authors) == 1 && moduleAuthor(authors[0]) && !bytes.Equal(data, clean) {
-			return errors.New("module candidate changed during redaction")
 		}
 		if err := root.WriteFile(name, clean, 0600); err != nil {
 			return err
