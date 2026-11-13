@@ -134,7 +134,7 @@ func TestDispatchAuthorAndValidationUseDistinctKinds(t *testing.T) {
 		TimeoutMS int          `json:"timeoutMs"`
 		Author    *AuthorInput `json:"author"`
 	}
-	if err := json.Unmarshal(peer.messages[0].Payload, &payload); err != nil || payload.Kind != "author" || payload.TimeoutMS != 180000 || payload.Author == nil || payload.Author.BaseRevision != 2 || payload.Author.Validation == nil || payload.Author.Validation.RunID != input.Validation.RunID {
+	if err := json.Unmarshal(peer.messages[0].Payload, &payload); err != nil || payload.Kind != "author" || payload.TimeoutMS != authorTimeoutMS || payload.Author == nil || payload.Author.BaseRevision != 2 || payload.Author.Validation == nil || payload.Author.Validation.RunID != input.Validation.RunID {
 		t.Fatalf("invalid author dispatch: %+v %v", payload, err)
 	}
 	assignment.Kind, assignment.Author, assignment.AttemptID = "validation", nil, NewID()

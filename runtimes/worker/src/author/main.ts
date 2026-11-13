@@ -31,7 +31,7 @@ async function main(): Promise<void> {
     const input = validateAuthorInput(JSON.parse(await readFile(join(workDir, "input.json"), "utf8")) as unknown);
     if(input.workspaceId)credentials=new CredentialClient(input);
     if(hasHistory(input))history=new HistoryClient(input);
-    if (authorNeedsBrowser(input)) browser = explorationBrowser(process.env,{scope:input.workspaceContext?.config??unconfirmedBrowserScope(),credentials});
+    if (authorNeedsBrowser(input)) browser = explorationBrowser(process.env,{scope:input.workspaceContext?.config??unconfirmedBrowserScope(),credentials,defaultTestUrl:input.workspaceContext?.config?.defaultTestUrl||input.workspaceSettings?.defaultTestUrl,timeoutMs:input.workspaceContext?.config?.timeoutMs||input.workspaceSettings?.timeoutMs});
     const output = await runAuthor(input, readAIConfig(process.env), browser, {
       signal: stop.signal,
       progress: (message) => process.stdout.write(`${JSON.stringify({ kind: "log", message })}\n`),

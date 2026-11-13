@@ -77,9 +77,31 @@ func dockerCommand(ctx context.Context, args ...string) *exec.Cmd {
 
 func (d dockerCLI) attach(ctx context.Context, r record, emit func(string, string)) execution {
 	// Playwright owns timeoutMs; allow startup and report flushing before the
-	// independent Manager watchdog force-removes the container.
-	runCtx, runCancel := context.WithTimeout(ctx, time.Duration(r.TimeoutMS)*time.Millisecond+30*time.Second)
+	// independent Manager watchdog force-removes the container. For author runs,
+	// renew the idle watchdog whenever the Worker emits progress/heartbeat events
+	// (up to the hard ceiling) so an actively working AI session stays connected.
+	idleTimeout := time.Duration(r.TimeoutMS)*time.Millisecond + 30*time.Second
+	maxCeiling := idleTimeout
+	if r.Kind == "author" {
+		if idleTimeout < 5*time.Minute {
+			idleTimeout = 5 * time.Minute
+		}
+		if maxCeiling < 20*time.Minute {
+			maxCeiling = 20 * time.Minute
+		}
+	}
+	runCtx, runCancel := context.WithCancel(ctx)
 	defer runCancel()
+	watchdog := time.AfterFunc(idleTimeout, runCancel)
+	defer watchdog.Stop()
+	ceilingTimer := time.AfterFunc(maxCeiling, runCancel)
+	defer ceilingTimer.Stop()
+	touchActivity := func(kind, msg string) {
+		if r.Kind == "author" && ctx.Err() == nil {
+			watchdog.Reset(idleTimeout)
+		}
+		emit(kind, msg)
+	}
 	cmd := dockerCommand(runCtx, "start", "--attach", "--interactive", d.name(r))
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -95,12 +117,12 @@ func (d dockerCLI) attach(ctx context.Context, r record, emit func(string, strin
 		return nil
 	}}
 	history := &historyChannel{ctx: runCtx, cfg: d.cfg, r: r, input: input, client: newHTTPClient()}
-	cmd.Stdout = &lineWriter{emit: emit, intercept: func(line string) bool { return channel.handle(line) || history.handle(line) }}
-	cmd.Stderr = &lineWriter{emit: emit, stderr: true}
+	cmd.Stdout = &lineWriter{emit: touchActivity, intercept: func(line string) bool { return channel.handle(line) || history.handle(line) }}
+	cmd.Stderr = &lineWriter{emit: touchActivity, stderr: true}
 	if err := cmd.Start(); err != nil {
 		return execution{ExitCode: -1, Error: "docker start: " + err.Error()}
 	}
-	emit("started", "Worker container starting")
+	touchActivity("started", "Worker container starting")
 	waitErr := cmd.Wait()
 	if runCtx.Err() != nil {
 		return execution{ExitCode: -1, TimedOut: ctx.Err() == nil, Error: runCtx.Err().Error()}

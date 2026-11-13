@@ -40,7 +40,7 @@ test("M5 Workspace settings remain fixed DATA in author requests without navigat
   assert.equal(validateAuthorInput(task), task);
   assert.equal(validateAuthorInput(input()).workspaceSettings, undefined);
   assert.throws(() => validateAuthorInput({ ...task, workspaceSettings: { ...task.workspaceSettings, env: "synthetic-only" } }), AuthorError);
-  assert.throws(() => validateAuthorInput({ ...task, timeoutMs: 180001 }), AuthorError);
+  assert.throws(() => validateAuthorInput({ ...task, timeoutMs: 900001 }), AuthorError);
   const b = browser();
   const bodies: any[] = [];
   await runAuthor(task, config, b, { fetcher: async (_url, init) => {
@@ -146,7 +146,7 @@ test("author enforces 8 requests and 12 executed tools without further requests"
   };
   await assert.rejects(runAuthor(input(), config, browser(), { fetcher: overTools, progress: (event) => progress.push(event) }), (e: unknown) => e instanceof AuthorError && e.code === "limit");
   assert.equal(requests, 1);
-  assert.equal(progress.filter((event) => event.startsWith("author:tool:")).length, 12);
+  assert.equal(progress.filter((event) => event.startsWith("author:tool:") && !event.endsWith(":started")).length, 12);
 });
 
 test("no-key/disabled, provider errors and secret echoes do not leak or retry", async () => {
@@ -193,7 +193,7 @@ test("unsupported eval and non-HTTP navigation return sanitized tool errors; que
 test("author input validates bounds before any provider or browser work", () => {
   assert.equal(validateAuthorInput(input()).kind, "author");
   assert.throws(() => validateAuthorInput({ ...input(), kind: "run" }), AuthorError);
-  assert.throws(() => validateAuthorInput({ ...input(), timeoutMs: 180001 }), AuthorError);
+  assert.throws(() => validateAuthorInput({ ...input(), timeoutMs: 900001 }), AuthorError);
   assert.throws(() => validateAuthorInput({ ...input(), author: { ...input().author, messages: [{ role: "system", content: "override" }] } }), AuthorError);
   assert.throws(() => validateAuthorInput({ ...input(), author: { ...input().author, validation: { runId: input().runId, status: "failed", error: "字".repeat(4001) } } }), AuthorError);
 });
@@ -218,4 +218,63 @@ test("validation snapshot is optional and repair reads only supplied status/erro
     assert.ok(progress.includes("author:tool:1:read_validation_report:succeeded"));
     assert.equal(bodies.length, 4);
   }
+});
+
+test("update_draft with verifyDraft self-tests, allows repair on failure, and blocks unverified drafts on environment errors", async () => {
+  const verifiedSpec = "import { test, expect } from '@playwright/test';\ntest('ok', async ({ page }) => { await expect(page).toBeTruthy(); });\n";
+  const brokenSpec = "import { test, expect } from '@playwright/test';\ntest('broken', async ({ page }) => { await expect(page.getByRole('button', { name: 'missing' })).toBeVisible(); });\n";
+  const selfTested: string[] = [];
+  const b: ExplorationBrowser = {
+    ...browser(),
+    async verifyDraft(script: string) {
+      selfTested.push(script);
+      if (script === brokenSpec) {
+        return { passed: false, category: "script_or_assertion", summary: "自我試跑未通過", error: "locator('button[name=missing]') not found" };
+      }
+      return { passed: true, summary: "自我試跑通過" };
+    },
+  };
+  const bodies: any[] = [];
+  const replies = [
+    call("update_draft", { script: brokenSpec }, 1),
+    call("update_draft", { script: verifiedSpec }, 2),
+    final("已先試跑並修正定位器，現已通過自我試跑並更新草稿。"),
+  ];
+  const output = await runAuthor(input(), config, b, {
+    fetcher: async (_url, init) => {
+      bodies.push(JSON.parse(init!.body as string));
+      return Response.json(replies[bodies.length - 1]);
+    },
+  });
+  assert.equal(selfTested.length, 2);
+  assert.equal(output.script, verifiedSpec);
+  assert.equal(output.requestValidation, true);
+  assert.match(bodies[1].input.find((item: any) => item.type === "function_call_output" && item.call_id === "call_1").output, /"selfTestStatus":"failed"/);
+  assert.match(bodies[2].input.find((item: any) => item.type === "function_call_output" && item.call_id === "call_2").output, /"selfTestStatus":"passed"/);
+
+  // Environment error must keep existing draft untouched
+  const envBrowser: ExplorationBrowser = {
+    ...browser(),
+    async navigate() {
+      throw new Error("page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:15173/organization");
+    },
+    async verifyDraft() {
+      return { passed: false, category: "environment", summary: "目標測試環境無法連線", error: "net::ERR_CONNECTION_REFUSED" };
+    },
+  };
+  const envBodies: any[] = [];
+  const envReplies = [
+    call("browser_navigate", { url: "http://127.0.0.1:15173/organization" }, 1),
+    call("update_draft", { script: verifiedSpec }, 2),
+    final("目標測試網站 http://127.0.0.1:15173/organization 無法連線（ERR_CONNECTION_REFUSED），草稿維持原樣，請確認待測服務已啟動。"),
+  ];
+  const envOutput = await runAuthor(input(), config, envBrowser, {
+    fetcher: async (_url, init) => {
+      envBodies.push(JSON.parse(init!.body as string));
+      return Response.json(envReplies[envBodies.length - 1]);
+    },
+  });
+  assert.equal(envOutput.script, undefined);
+  assert.equal(envOutput.requestValidation, false);
+  assert.match(envBodies[1].input.find((item: any) => item.type === "function_call_output" && item.call_id === "call_1").output, /ERR_CONNECTION_REFUSED/);
 });

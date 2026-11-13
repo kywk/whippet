@@ -90,7 +90,7 @@ export function validateAuthorInput(value: unknown): AuthorInput {
   if (!v || v.kind !== "author" || typeof v.runId !== "string" || !uuid.test(v.runId) ||
     typeof v.attemptId !== "string" || !uuid.test(v.attemptId) ||
     typeof v.script !== "string" || Buffer.byteLength(v.script) > 2 * 1024 * 1024 ||
-    !Number.isSafeInteger(v.timeoutMs) || v.timeoutMs < 1 || v.timeoutMs > 180000 ||
+    !Number.isSafeInteger(v.timeoutMs) || v.timeoutMs < 1 || v.timeoutMs > 900000 ||
     !v.author || typeof v.author.conversationId !== "string" || !uuid.test(v.author.conversationId) ||
     !Number.isSafeInteger(v.author.baseRevision) || v.author.baseRevision < 0 ||
     !Array.isArray(v.author.messages) || v.author.messages.length > 12

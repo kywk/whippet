@@ -9,7 +9,7 @@ import (
 	"unicode/utf8"
 )
 
-const authorTimeoutMS = 180000
+const authorTimeoutMS = 900000
 
 func (p *Postgres) Conversation(ctx context.Context, testID, sessionID string) (Conversation, error) {
 	tx, err := p.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})

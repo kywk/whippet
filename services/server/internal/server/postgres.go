@@ -143,16 +143,20 @@ const runColumns = `r.id,r.test_id,r.status,r.created_at,r.started_at,r.finished
     CASE WHEN EXISTS(SELECT 1 FROM artifacts a WHERE a.run_id=r.id AND a.attempt_id=r.attempt_id AND a.name='report.html')
     THEN '/api/runs/' || r.id::text || '/artifacts/report.html' ELSE '' END,
     r.kind,r.draft_revision,r.version_id,r.workspace_settings,r.editing_session_id,r.workspace_id,r.workspace_context,
-    CASE WHEN r.kind='author' THEN CASE WHEN r.author_payload->>'skillId'='acceptance-summary' THEN 'summary' WHEN r.author_payload->>'skillId'='workspace-author' THEN 'workspace' ELSE 'edit' END ELSE '' END,r.script_origin,r.authorization_revision,r.scope_proposal_id`
+    CASE WHEN r.kind='author' THEN CASE WHEN r.author_payload->>'skillId'='acceptance-summary' THEN 'summary' WHEN r.author_payload->>'skillId'='workspace-author' THEN 'workspace' ELSE 'edit' END ELSE '' END,r.script_origin,r.authorization_revision,r.scope_proposal_id,
+    CASE WHEN r.kind='author' AND r.attempt_id IS NOT NULL THEN COALESCE((SELECT jsonb_agg(e.message ORDER BY e.created_at) FROM run_events e WHERE e.run_id=r.id AND e.attempt_id=r.attempt_id AND e.kind='log'),'[]'::jsonb) ELSE '[]'::jsonb END`
 
 func scanRun(row scanner) (Run, error) {
 	var r Run
-	var settings, workspaceContext []byte
-	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL, &r.Kind, &r.DraftRevision, &r.VersionID, &settings, &r.EditingSessionID, &r.WorkspaceID, &workspaceContext, &r.AuthorMode, &r.ScriptOrigin, &r.authorizationRevision, &r.scopeProposalID)
+	var settings, workspaceContext, progressEvents []byte
+	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL, &r.Kind, &r.DraftRevision, &r.VersionID, &settings, &r.EditingSessionID, &r.WorkspaceID, &workspaceContext, &r.AuthorMode, &r.ScriptOrigin, &r.authorizationRevision, &r.scopeProposalID, &progressEvents)
 	if err == nil {
 		r.WorkspaceSettings, err = decodeSettings(settings)
 		if err == nil {
 			r.WorkspaceContext, err = decodeWorkspaceContext(workspaceContext)
+		}
+		if err == nil && len(progressEvents) > 0 {
+			_ = json.Unmarshal(progressEvents, &r.ProgressEvents)
 		}
 	}
 	r.CreatedAt = r.CreatedAt.UTC()

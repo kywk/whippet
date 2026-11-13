@@ -59,7 +59,7 @@ test("M7 invalid pin/context/evidence is rejected before any model request",asyn
     (v:any)=>{v.author.context={};},(v:any)=>{v.author.validationEvidence.scriptHash="0".repeat(64);},
     (v:any)=>{v.author.validationEvidence.draftRevision=2;},(v:any)=>{v.author.validationEvidence.reportsReady=false;},
     (v:any)=>{v.author.validationEvidence.reportUrl="https://example.test/report";},(v:any)=>{delete v.author.validationEvidence.stats.duration;},
-    (v:any)=>{v.author.allowedTools=["update_draft"];},(v:any)=>{v.timeoutMs=180001;},
+    (v:any)=>{v.author.allowedTools=["update_draft"];},(v:any)=>{v.timeoutMs=900001;},
   ];
   let requests=0;
   for(const mutate of variants){const task=input(true);mutate(task);await assert.rejects(runAuthor(task,cfg,undefined,{fetcher:async()=>{requests++;return final({});}}),AuthorError);}

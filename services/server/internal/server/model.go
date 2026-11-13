@@ -64,6 +64,7 @@ type Run struct {
 	WorkspaceSettings     *WorkspaceSettings `json:"workspaceSettings,omitempty"`
 	EditingSessionID      *string            `json:"editingSessionId"`
 	AuthorMode            string             `json:"authorMode,omitempty"`
+	ProgressEvents        []string           `json:"progressEvents,omitempty"`
 }
 
 type Draft struct {

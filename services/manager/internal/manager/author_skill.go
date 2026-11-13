@@ -110,6 +110,28 @@ func boundedAuthorText(value string, limit int, nonempty bool) bool {
 	return utf8.ValidString(value) && len(value) <= limit && !strings.ContainsRune(value, '\x00') && (!nonempty || strings.TrimSpace(value) != "")
 }
 
+func validPlaywrightSpec(script string) bool {
+	trimmed := strings.TrimSpace(script)
+	if trimmed == "" {
+		return false
+	}
+	hasImport := strings.Contains(trimmed, "@playwright/test") || strings.Contains(trimmed, "whippet/login")
+	hasTestBlock := strings.Contains(trimmed, "test(") || strings.Contains(trimmed, "test (") || strings.Contains(trimmed, "test.describe(")
+	return hasImport && hasTestBlock
+}
+
+func hasAllowedTool(a *AuthorTask, name string) bool {
+	if a == nil || a.AllowedTools == nil {
+		return true
+	}
+	for _, tool := range *a.AllowedTools {
+		if tool == name {
+			return true
+		}
+	}
+	return false
+}
+
 func validAuthorArtifact(taskDir string, a *AuthorTask, context json.RawMessage) bool {
 	var raw json.RawMessage
 	if readOutput(taskDir, "author.json", &raw) != nil {
@@ -165,6 +187,18 @@ func validAuthorArtifact(taskDir string, a *AuthorTask, context json.RawMessage)
 		RequestValidation   *bool   `json:"requestValidation"`
 		ConversationSummary *string `json:"conversationSummary,omitempty"`
 	}
-	return decoder.Decode(&out) == nil && out.Message != nil && boundedAuthorText(*out.Message, 128000, true) && utf8.RuneCountInString(*out.Message) <= 32000 && out.RequestValidation != nil &&
-		(out.Script == nil || boundedAuthorText(*out.Script, maxScriptBytes, false)) && (out.ConversationSummary == nil || boundedAuthorText(*out.ConversationSummary, 8192, false))
+	if decoder.Decode(&out) != nil || out.Message == nil || !boundedAuthorText(*out.Message, 128000, true) || utf8.RuneCountInString(*out.Message) > 32000 || out.RequestValidation == nil ||
+		(out.Script != nil && !boundedAuthorText(*out.Script, maxScriptBytes, false)) || (out.ConversationSummary != nil && !boundedAuthorText(*out.ConversationSummary, 8192, false)) {
+		return false
+	}
+	if out.Script != nil && !hasAllowedTool(a, "update_draft") {
+		return false
+	}
+	if out.RequestValidation != nil && *out.RequestValidation && !hasAllowedTool(a, "request_validation") {
+		return false
+	}
+	if len(context) > 0 && a != nil && a.SkillID != nil && *a.SkillID == "test-author" && out.Script != nil && !validPlaywrightSpec(*out.Script) {
+		return false
+	}
+	return true
 }

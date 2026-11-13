@@ -13,7 +13,9 @@ var authorEnvNames = []string{
 	"WHIPPET_AI_REASONING_EFFORT", "OPENCODE_API_KEY",
 }
 
-var authorProgressPattern = regexp.MustCompile(`^author:(model:[1-8]:(started|succeeded|failed)|tool:([1-9]|1[0-2]):(read_draft|read_validation_report|update_draft|browser_navigate|browser_snapshot|browser_click|browser_fill|browser_login|request_validation|read_conversation_history|unknown):(succeeded|failed))$`)
+var authorProgressPattern = regexp.MustCompile(`^author:(model:([1-9]|1[0-2]):(started|succeeded|failed|heartbeat)|tool:([1-9]|1[0-9]|20):(read_draft|read_validation_report|update_draft|browser_navigate|browser_snapshot|browser_click|browser_fill|browser_login|request_validation|read_conversation_history|unknown):(started|succeeded|failed|heartbeat))$`)
+
+const maxAuthorTimeoutMS = 900000
 
 func validDispatch(d Dispatch) error {
 	if err := validWorkspaceSettings(d.WorkspaceSettings); err != nil {
@@ -41,7 +43,7 @@ func validDispatch(d Dispatch) error {
 	if d.Kind == "run" && d.Author == nil && strings.TrimSpace(d.Script) != "" {
 		return nil
 	}
-	if d.Kind != "author" || d.Author == nil || d.TimeoutMS > 180000 {
+	if d.Kind != "author" || d.Author == nil || d.TimeoutMS > maxAuthorTimeoutMS {
 		return errors.New("dispatch requires run or author with valid input")
 	}
 	a := d.Author

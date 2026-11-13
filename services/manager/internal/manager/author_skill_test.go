@@ -172,4 +172,17 @@ func TestM7AuthorArtifactSchemaComesFromSavedInputNotArtifactMetadata(t *testing
 	if result.Status != "succeeded" {
 		t.Fatal("legacy output broke")
 	}
+	// Workspace test-author artifacts must only accept valid Playwright specs when a script is emitted
+	r.Author = edit.Author
+	r.WorkspaceContext = json.RawMessage(`{"schemaVersion":"1","workspaceId":"` + newID() + `","settingsRevision":1,"config":null,"roleRefs":[]}`)
+	atomicJSON(file, map[string]any{"message": "非 Playwright 程式碼", "requestValidation": false, "script": "def hello():\n  print('not playwright')"})
+	result, _ = collectAttemptResult(r, m.taskDir(r), execution{ExitCode: 0})
+	if result.Status != "failed" {
+		t.Fatal("manager accepted non-Playwright script in Workspace test-author output")
+	}
+	atomicJSON(file, map[string]any{"message": "已驗證 Playwright 腳本", "requestValidation": true, "script": "import { test, expect } from '@playwright/test';\ntest('smoke', async ({ page }) => { await expect(page).toBeTruthy(); });\n"})
+	result, _ = collectAttemptResult(r, m.taskDir(r), execution{ExitCode: 0})
+	if result.Status != "succeeded" {
+		t.Fatal("manager rejected valid Playwright spec in Workspace test-author output")
+	}
 }
