@@ -1,0 +1,64 @@
+# M11：MCP 與外部 Agent 接縫
+
+2026-11-14 獨立 PM t52 固定首波；Server t53、Runtime t54 提案已納入。承接 v10，不更動既有 Run 快照或 registry10.3。此文件定義介面，不代表 M11 整階段完成。進度以 implementation.md 為準。
+
+## 啟用與管理邊界
+
+- 官方 `github.com/modelcontextprotocol/go-sdk v1.3.1`，相容既有 Go1.23；只在 Server 新增此直接依賴及必要間接依賴，不升全工具鏈。
+- `/mcp` 為 Streamable HTTP，首波 Stateless=true，JSON 回應；GET 可回405，不建立可跨 Token 重用的 MCP transport session。SDK處理協定協商，業務 browser session 與 MCP transport session 分開。
+- MCP 為 opt-in：`WHIPPET_ADMIN_TOKEN` 未設定時，MCP及Agent Token管理回503 disabled；既有非MCP流程維持。設定後，所有非Manager `/api`（含dev-login、Token管理、publish）必須以 `X-Whippet-Admin-Token` constant-time核對；這些路徑一律拒絕 Authorization Bearer，即使同帶正確管理header。管理key不得等於Manager token。
+- `/api/manager/*` 維持Manager專用認證；`/mcp` 僅接受Agent Bearer，不能接受管理key或Manager token。health/ready不受管理gate影響。Agent移除Bearer也不能繞過已啟用的管理gate。
+- 管理key只由部署secret注入；Web未接線前，管理API只能透過受信任管理客戶端使用。後續Web輸入僅留記憶體，不寫localStorage/sessionStorage/URL/log。此為MVP管理gate，不宣稱完整帳號或RBAC。
+- `/mcp` 每個HTTP請求及工具執行前都查DB驗Token與撤銷，不以長效cache授權。Origin缺席可接受；有值須精確等於已設定 `WHIPPET_PUBLIC_ORIGIN` 的scheme/host/port，缺配置、null、複數或格式錯誤拒403，不信任轉送Host推導allowlist。部署只透過HTTPS或loopback隔離測試。
+- 每Token token bucket：每分鐘60次、burst10，超限429及Retry-After；未知Token不建立無界bucket。合法Token bucket需有界清理；速率上限不取代工具大小／期限限制。
+
+## Agent Token 與稽核 HTTP
+
+管理gate通過後，沿Workspace權威關聯核對；未知欄位與錯誤型別拒絕。
+
+- `POST /api/workspaces/{id}/agent-tokens`，body `{name:string}`（trim後非空，最多100 Unicode code points）；201 `{token:string,agentToken:AgentToken}`。密碼學亂數至少32 bytes；明文僅此次回應，Cache-Control:no-store，不記log或audit。不得先持久保存明文再刪除。
+- `GET /api/workspaces/{id}/agent-tokens` → `{items:AgentToken[]}`，只metadata。
+- `DELETE /api/workspaces/{id}/agent-tokens/{tokenId}` →204；同Workspace重複撤銷仍204，跨Workspace404，不回傳Token。
+- `AgentToken={id,workspaceId,name,createdAt,revokedAt,lastUsedAt}`，nullable時間明示null；不含hash、prefix或任何明文片段。
+- DB `agent_tokens` 保存id/workspace/name、SHA256 digest（unique）、created/revoked/last_used。撤銷已提交後的新請求一律拒絕；工具在提交副作用前須再次核撤銷。
+- `GET /api/workspaces/{id}/agent-tool-audit?limit=...&before=...` → `{items,nextCursor}`，limit預設20、1..100；before為Server發行cursor，scope不可擴大。audit項目 `{id,tokenId,workspaceId,toolName,decision,occurredAt}`。
+- 稽核只保存固定工具名或`unknown`、固定decision（`allowed|denied|rate_limited|failed`）、Token/Workspace ID與時間；不存參數、輸出、URL、錯誤文字、Token/hash。每個已驗證Token的tool call皆記；未知Token不寫原文。首波不自動刪歷史紀錄，以有界分頁讀取，保留策略另定。
+
+## 首波 registry 與 skills
+
+- 初期只公開已實作 `catalog_search`、`catalog_get`；schema、description、limits直接來自registry，無第二份工具schema。不列未接線browser/candidate/queue工具，不提供publish/confirm/retry等人工動作。
+- tools/call先驗原始大小、完整JSON/schema與Workspace，再執行共享業務查詢；不能直接繞過HarnessPlatform的Run/attempt守衛，也不能以UI HTTP handler替代Agent授權。
+- catalog_get只可取得Token所屬Workspace已發佈Module固定版本；跨Workspace統一拒絕，不洩露存在資訊。catalog_search沿同Workspace查詢；首波可能回nextCursor但尚未提供catalog_next_page，指南明列不能翻頁，不偽造完整結果。後切片需有Token／租約發行綁定才公開翻頁。
+- MCP results提供結構化JSON及等價text；超限拒絕，不截斷JSON。安全固定錯誤，不回raw error或HTTP body。任何寫入後續都由Server標記ai來源，不能沿用manual寫入路徑。
+- resources只列打包且明確允許的skill主檔／reference，URI為Server生成；不可任意檔案path、環境、機密、歷史對話或內部model設定。遵守既有主檔8KiB、reference及結果上限；同樣先驗Token。無需同時增加prompts第二份內容。
+
+## Browser session wire（Runtime首波核心）
+
+session是獨立租約，不冒充author Run。沿WSS Envelope protocolVersion=1、messageId/managerId；下列session訊息省略runId/attemptId。sessionId/leaseId/callId皆UUID。Server維護Token/Workspace所有權，Manager只接受現有可信控制連線；Worker永不取得Agent/Manager token或模型key。
+
+- Server→Manager `session.open` payload `{sessionId,leaseId,workspaceId,workspaceContext,allowedTools,toolRegistryVersion,toolRegistrySha256,idleTimeoutMs:600000,maxLifetimeMs:1800000}`。
+- Manager→Server `session.ready` payload `{sessionId,leaseId}`。
+- Server→Manager `session.call` payload `{sessionId,leaseId,callId,name,arguments}`。
+- Manager→Server `session.reply` payload `{sessionId,leaseId,callId,result}` 或 `{sessionId,leaseId,callId,error}`，兩者互斥。error固定為 `session_unavailable|tool_unavailable|invalid_request|busy|unknown_result|cancelled|timeout`，不含自由文字。
+- Server→Manager `session.close` payload `{sessionId,leaseId}`；Manager→Server `session.closed` payload `{sessionId,leaseId,reason,reclaimed}`；reason固定 `closed|idle_timeout|lifetime_timeout|cancelled|worker_failed|manager_restart`。reclaimed=true僅Docker確認移除後。
+- Manager heartbeat/reconcile追加 `sessions:[{sessionId,leaseId,state}]`；state=`starting|ready|closing|reclaim_pending`。不得將未回收session從容量或對帳中移除。
+
+Manager接受open即固定硬期限，先原子journal最小識別／Workspace／期限／狀態，再保留共用slot；Run與未回收session總量不得超過MaxWorkers。ready不重設硬期限；idle自ready／最後已受理call完成計，心跳不續idle。啟動亦受30分鐘硬期限。重複相同sessionId/leaseId回目前狀態，不再開容器；同session異lease拒絕。
+
+同lease只允許一筆in-flight call。核registry worker/browser、allowedTools、原始bytes／schema／timeout與scope，無候選／fs／shell／模型工具。同callId相同參數在存活程序內回原結果或busy，不重作副作用；異參數拒絕。參數hash與結果僅有界記憶體保存，不入journal；記錄淘汰後舊callId不得當新呼叫重新執行。重啟不恢復瀏覽器，原lease一律失效，先清本Manager標記的孤兒容器，回收確認前仍占slot。結果未知回unknown_result，不自動重送。
+
+Worker input獨立 `{kind:"session",sessionId,leaseId,workspaceId,workspaceContext,allowedTools,toolRegistryVersion,toolRegistrySha256}`，不含script/author/model。容器明確用 `dist/session/main.js`；stdin `tool_call`、stdout `tool_result`攜帶相同lease/call識別，沿整幀鎖與既有大小邊界。期滿／取消先阻止新call、取消in-flight，再終止及回收，遲到reply不得恢復lease或提前放slot。
+
+瀏覽器沿既有scope/noSecret/login(roleId)守衛。credential resolver與LiveView需新增lease權威綁定；首波注入hook可做隔離測試，但未接Server時browser_login必拒，不能回假submitted。roleId查詢僅走受控Worker→Manager→Server通道，session.call/reply不得承載憑證。未完成真viewer綁定前不宣稱LiveView整合。
+
+## 後續接單與互動寫入邊界
+
+`authorEngine=builtin|external`、claim/heartbeat/submit須另固定精確wire後才公開；首波不能開external設定或宣告已支援接單。後續必綁Token/Workspace/Run/attempt/lease、同一context/skill/allowedTools/budget快照，取消／逾時失效，submit以同parser/CAS及持久冪等收斂；不採信外部自報selfTestPassed。不將session browser結果當正式validation或發佈資格。
+
+M11.0完整完成仍須固定上述後續接縫；本文件首波已授權Server與Runtime在各自owner範圍實作，不等待其他階段。M10.Z缺口保留，不建立tag、不merge/push。
+
+## 首波驗證
+
+Server：隔離HTTP/DB驗初始化、精確工具列舉、跨Workspace拒絕、撤銷即拒、限流、Origin、管理gate與Bearer不能轉UI/Manager、稽核無敏感內容。Runtime：隔離IPC與容量驗重送不重click、閒置／硬期限、取消遲到結果、回收失敗不放slot、重啟孤兒清理與未知結果不重試。新功能先有失敗案例再實作；不弱化既有斷言、不重跑M1–M9。
+
+官方依據：[Go SDK v1.3.1](https://github.com/modelcontextprotocol/go-sdk/tree/v1.3.1)、[Streamable HTTP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)。

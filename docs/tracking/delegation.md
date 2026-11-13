@@ -169,3 +169,13 @@ M8 依相同方式先固定 proposal／機密／網路政策再並行；Runtime 
 4. 每位 owner 回報修改檔案、介面、最小驗證與剩餘限制；PM 整合後做 M10.9，再派 t33 執行 M10.Z。
 
 M11、M12 依相同方式進行：先固定契約，再並行開發，最後做 Z 項完整驗證。分支只由 PM 建立與 merge；owner 在 PM 指定的分支上工作。
+
+## M11 最新路由（2026-11-14，覆蓋歷史模型／tab 規則）
+
+獨立 PM t52 直接對使用者負責，parent=null，gpt-6-astra low。新 Server t53 與 Runtime t54（及後續 Web／QA）統一 gpt-6-sol high；全新對話，parent=t52、crew=1、keep/outlive-parent、明確 repo cwd，Codex no-daemon／完整 YOLO。不得續用舊 owner 或帶入 herdr.tab。
+
+同 space `spc410627697c591af2a35cc533b8f1ad8` 實核新 tab：PM `tb0c4939cce7992d29f9b08b2d3c759df8`（Whippet M11 PM 11-14）、Server `tb03591fb11813679ec68a0c2462ea5ed8`（Whippet M11 Server 11-14）、Runtime `tba56c70dc8c17110664c12a5c0da3684c`（Whippet M11 Runtime 11-14）。三者 argv／parent／cwd／活動皆已核對。
+
+檔案 owner 維持原角色邊界；最多三實作加 PM。子 agent 不 Git／部署／重啟共享服務。M11 先隔離測試，不動19287。首波收集 Server／Runtime 最小介面，由 PM 固定 v11；Web 待介面穩定再啟動。後續本地階段 commit 可執行，不自動 push／merge／tag。
+
+首波介面固定後啟動 Web t55（gpt-6-sol high、parent=t52），獨立 tab `tb2081d7e3947353996d4de83b21a5e8e8`，命名 Whippet M11 Web 11-14；argv/keep/outlive-parent/cwd/working 已實核。唯一 owner apps/web，先接管理gate、Token與稽核，不啟用尚未實作external engine。

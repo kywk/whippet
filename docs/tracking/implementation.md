@@ -360,19 +360,23 @@ M10.Z 清單：
 7. 預算耗盡時保留 partial，按「繼續」能完成。
 8. 黃金任務集 builtin 成績不低於 M10.8 基準。
 
-### M11 階段二：MCP（`feat/mcp`，自 `phase1-verified` 分出）
+### M11 階段二：MCP（`feat/mcp`，基線 `ded0364`）
 
-狀態：待辦。依賴：M10.Z。
+狀態：進行中。2026-11-14 使用者明確授權直接開發，覆蓋原 M10.Z 開發順序門檻；M10.Z 尚未完成，未建立 phase1-verified。既有驗收現場19287保留，新工作先隔離驗證。
+
+獨立 PM t52（parent=null、gpt-6-astra low）接手；Server t53、Runtime t54 為全新 gpt-6-sol high 對話，parent=t52，各自新 tab，crew=1、keep/outlive-parent、明確 repo cwd、no-daemon 與 YOLO 均已 hc 實核 working。PM 唯一 docs/contracts/Git owner；首波兩 owner 盤點最小接縫，v11 固定後實作。
 
 | 項目 | Owner | 內容 | 最小驗證 | 狀態 |
 | --- | --- | --- | --- | --- |
-| M11.0 | PM | v11 契約：MCP 工具如何對應註冊表、Agent Token、session 租約、claim／submit；tech-stack 加入 MCP Go SDK | owner 確認 | 待辦 |
-| M11.1 | t31 | MCP 端點、Token 雜湊與撤銷、速率限制、Server 端工具、稽核、prompts／resources 提供 skill | Go 測試：列出工具、撤銷後立即拒絕、跨 Workspace 拒絕 | 待辦 |
-| M11.2 | t32 | Worker `session` 模式、Manager 租約與閒置回收、browser／login 工具代理 | 建立、閒置逾時、回收後釋放名額 | 待辦 |
-| M11.3 | t31 | 接單模式：`authorEngine` 設定、claim／心跳／submit、逾時與取消收斂 | 單元測試：重複 submit、逾時、取消 | 待辦 |
-| M11.4 | t30 | Token 管理（只顯示一次）、authorEngine 設定、來源徽章、稽核列表 | build 加目視 | 待辦 |
+| M11.0 | t52 PM | v11 契約：MCP 工具如何對應註冊表、Agent Token、session 租約、claim／submit；tech-stack 加入 MCP Go SDK | owner 確認 | 進行中 |
+| M11.1 | t53 | MCP 端點、Token 雜湊與撤銷、速率限制、Server 端工具、稽核、prompts／resources 提供 skill | Go 測試：列出工具、撤銷後立即拒絕、跨 Workspace 拒絕 | 進行中 |
+| M11.2 | t54 | Worker `session` 模式、Manager 租約與閒置回收、browser／login 工具代理 | 建立、閒置逾時、回收後釋放名額 | 進行中 |
+| M11.3 | t53 | 接單模式：`authorEngine` 設定、claim／心跳／submit、逾時與取消收斂 | 單元測試：重複 submit、逾時、取消 | 待辦 |
+| M11.4 | t55 | Token 管理（只顯示一次）、authorEngine 設定、來源徽章、稽核列表 | build 加目視 | 進行中 |
 | M11.5 | PM | `docs/guides/mcp-agent.md` 接入指南；用一個現成 Agent 跑一次互動模式 | 外部 Agent 產出 Use Case 草稿 | 待辦 |
 | **M11.Z** | PM＋t33 | **階段二完整驗證** | 通過後 merge 回 main，標記 `phase2-verified` | 待辦 |
+
+2026-11-14 首波v11已固定並派實作：t53為Token／管理gate／唯讀MCP與skill resources；t54為獨立browser session核心、IPC及共用容量回收。claim/submit、互動寫入與Server session代理尚待後切片，M11.0不提前列完成。MCP啟用時管理API必須同步受保護，避免既有開發身分入口繞過Token邊界；既有19287不改。
 
 M11.Z 清單：
 1. M10.Z 第 1、2 項回歸，並用 builtin 跑一次黃金任務集。
