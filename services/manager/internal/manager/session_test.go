@@ -20,6 +20,7 @@ type fixtureSessionRuntime struct {
 	release     chan struct{}
 	onResult    func(sessionToolResult)
 	holdReplies bool
+	removeErr   error
 }
 
 func (f *fixtureSessionRuntime) Start(ctx context.Context, _ sessionRecord, _ string, ready func(), result func(sessionToolResult)) error {
@@ -42,11 +43,103 @@ func (f *fixtureSessionRuntime) Send(_ sessionRecord, call sessionToolCall) erro
 }
 func (f *fixtureSessionRuntime) Remove(ctx context.Context, _ sessionRecord) error {
 	f.removes.Add(1)
+	if f.removeErr != nil {
+		return f.removeErr
+	}
 	select {
 	case <-f.release:
 		return nil
 	case <-ctx.Done():
 		return errors.New("fixture removal pending")
+	}
+}
+
+func TestSessionCloseReplayOnlyConfirmsVerifiedReclaim(t *testing.T) {
+	m, err := New(Config{ServerURL: "http://server.invalid", ManagerID: "manager-test", WorkerImage: "fixture", WorkDir: t.TempDir(), MaxWorkers: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	runtime := &fixtureSessionRuntime{ready: make(chan struct{}, 1), release: make(chan struct{})}
+	close(runtime.release)
+	m.sessionsRuntime = runtime
+	received := make(chan Envelope, 4)
+	server := httptest.NewServer(websocket.Handler(func(conn *websocket.Conn) {
+		defer conn.Close()
+		for {
+			var event Envelope
+			if websocket.JSON.Receive(conn, &event) != nil {
+				return
+			}
+			received <- event
+		}
+	}))
+	defer server.Close()
+	ws, err := websocket.NewConfig("ws"+server.URL[len("http"):], server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := ws.DialContext(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	m.setConn(conn)
+	readClosed := func(id, lease, reason string) {
+		t.Helper()
+		select {
+		case event := <-received:
+			var payload struct {
+				SessionID string `json:"sessionId"`
+				LeaseID   string `json:"leaseId"`
+				Reason    string `json:"reason"`
+				Reclaimed bool   `json:"reclaimed"`
+			}
+			if event.Type != "session.closed" || !exactWorkspaceObject(event.Payload, "sessionId", "leaseId", "reason", "reclaimed") || json.Unmarshal(event.Payload, &payload) != nil || payload.SessionID != id || payload.LeaseID != lease || payload.Reason != reason || !payload.Reclaimed {
+				t.Fatal("close replay did not confirm the exact reclaimed lease")
+			}
+		case <-time.After(time.Second):
+			t.Fatal("missing verified session.closed replay")
+		}
+	}
+	id, lease := newID(), newID()
+	m.mu.Lock()
+	err = m.saveSessionLocked(sessionRecord{SessionID: id, LeaseID: lease, WorkspaceID: newID(), DeadlineAt: time.Now().Add(time.Minute).UnixMilli(), State: "reclaim_pending", Reason: "idle_timeout", Reclaimed: true})
+	m.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.closeSession(message("manager-test", "session.close", "", "", sessionClose{id, lease})); err != nil {
+		t.Fatal(err)
+	}
+	readClosed(id, lease, "idle_timeout")
+	if runtime.removes.Load() != 0 || m.sessionSlotCount() != 0 {
+		t.Fatal("reclaimed replay changed local capacity or reran cleanup")
+	}
+	unknownID, unknownLease := newID(), newID()
+	runtime.removeErr = errors.New("synthetic inspect failure")
+	if err := m.closeSession(message("manager-test", "session.close", "", "", sessionClose{unknownID, unknownLease})); err == nil {
+		t.Fatal("unknown lease cleanup failure was accepted")
+	}
+	select {
+	case event := <-received:
+		t.Fatalf("unverified lease received %s", event.Type)
+	case <-time.After(40 * time.Millisecond):
+	}
+	runtime.removeErr = nil
+	if err := m.closeSession(message("manager-test", "session.close", "", "", sessionClose{unknownID, unknownLease})); err != nil {
+		t.Fatal(err)
+	}
+	readClosed(unknownID, unknownLease, "closed")
+	if runtime.removes.Load() != 2 {
+		t.Fatal("unknown lease did not perform exact cleanup check on each close")
+	}
+	wrongLease := newID()
+	if err := m.closeSession(message("manager-test", "session.close", "", "", sessionClose{id, wrongLease})); err == nil {
+		t.Fatal("existing session with different lease was accepted")
+	}
+	if runtime.removes.Load() != 2 {
+		t.Fatal("different lease touched a container")
 	}
 }
 

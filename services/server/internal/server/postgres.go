@@ -350,7 +350,8 @@ func (p *Postgres) Claim(ctx context.Context, managerID string, capacity int) (*
 		capacity = persistedCapacity
 	}
 	var occupied int
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM runs WHERE manager_id=$1 AND NOT slot_released`, managerID).Scan(&occupied); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM runs WHERE manager_id=$1 AND NOT slot_released)
+		+ (SELECT count(*) FROM agent_browser_leases WHERE manager_id=$1 AND NOT reclaimed)`, managerID).Scan(&occupied); err != nil {
 		return nil, err
 	}
 	if occupied >= capacity {

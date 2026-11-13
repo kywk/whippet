@@ -65,8 +65,17 @@ func TestM11MCPRegistryReadScopeAndRevocation(t *testing.T) {
 			} `json:"tools"`
 		} `json:"result"`
 	}
-	if json.Unmarshal(tools.Body.Bytes(), &listed) != nil || len(listed.Result.Tools) != 2 || listed.Result.Tools[0].Name != "catalog_get" || listed.Result.Tools[1].Name != "catalog_search" {
-		t.Fatal("MCP listed tools beyond the connected registry read tools")
+	if json.Unmarshal(tools.Body.Bytes(), &listed) != nil {
+		t.Fatal("invalid MCP tools/list response")
+	}
+	wantTools := []string{"browser_click", "browser_fill", "browser_navigate", "browser_session_close", "browser_session_open", "browser_session_status", "browser_snapshot", "catalog_get", "catalog_search"}
+	if len(listed.Result.Tools) != len(wantTools) {
+		t.Fatalf("MCP exposed %d tools; want exactly %d", len(listed.Result.Tools), len(wantTools))
+	}
+	for i, want := range wantTools {
+		if listed.Result.Tools[i].Name != want {
+			t.Fatalf("MCP tool %d = %q; want %q", i, listed.Result.Tools[i].Name, want)
+		}
 	}
 	resources := post("", secret, `{"jsonrpc":"2.0","id":4,"method":"resources/list","params":{}}`)
 	if resources.Code != http.StatusOK || !bytes.Contains(resources.Body.Bytes(), []byte("whippet://skill/catalog-reuse/main")) || !bytes.Contains(resources.Body.Bytes(), []byte("whippet://skill/catalog-reuse/references/selection")) {

@@ -23,6 +23,24 @@ type mcpAuditState struct{ failed bool }
 
 const maxMCPHTTPBodyBytes = 64 << 10
 
+var mcpExposedTools = []string{
+	"catalog_search", "catalog_get",
+	"browser_session_open", "browser_session_status", "browser_session_close",
+	"browser_navigate", "browser_snapshot", "browser_click", "browser_fill",
+}
+
+func mcpToolConnected(tool ToolDefinition) bool {
+	switch tool.Name {
+	case "catalog_search", "catalog_get", "browser_session_status":
+		return tool.Side == "server" && tool.Effect == "read"
+	case "browser_session_open", "browser_session_close":
+		return tool.Side == "server" && tool.Effect == "queue"
+	case "browser_navigate", "browser_snapshot", "browser_click", "browser_fill":
+		return tool.Side == "worker" && tool.Effect == "browser"
+	}
+	return false
+}
+
 func (a *API) newMCPHandler() http.Handler {
 	p, ok := a.store.(*Postgres)
 	if !ok {
@@ -36,9 +54,9 @@ func (a *API) newMCPHandler() http.Handler {
 			writeError(w, http.StatusServiceUnavailable, "disabled", "MCP unavailable")
 		})
 	}
-	for _, name := range []string{"catalog_search", "catalog_get"} {
+	for _, name := range mcpExposedTools {
 		tool, found := registry.tool(name)
-		if !found || tool.Side != "server" || tool.Effect != "read" {
+		if !found || !mcpToolConnected(tool) {
 			return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				writeError(w, http.StatusServiceUnavailable, "disabled", "MCP unavailable")
 			})
@@ -55,8 +73,13 @@ func (a *API) newMCPHandler() http.Handler {
 				return nil, ErrHistoryUnavailable
 			}
 			name := "unknown"
-			if params, ok := request.GetParams().(*mcp.CallToolParamsRaw); ok && (params.Name == "catalog_search" || params.Name == "catalog_get") {
-				name = params.Name
+			if params, ok := request.GetParams().(*mcp.CallToolParamsRaw); ok {
+				for _, exposed := range mcpExposedTools {
+					if params.Name == exposed {
+						name = exposed
+						break
+					}
+				}
 			}
 			if name == "unknown" {
 				if auditErr := p.RecordAgentToolAudit(ctx, auth.token, name, "denied"); auditErr != nil {
@@ -81,7 +104,7 @@ func (a *API) newMCPHandler() http.Handler {
 			return result, err
 		}
 	})
-	for _, name := range []string{"catalog_search", "catalog_get"} {
+	for _, name := range mcpExposedTools {
 		tool, found := registry.tool(name)
 		if !found {
 			continue
@@ -194,6 +217,9 @@ func (a *API) callMCPTool(ctx context.Context, p *Postgres, tool ToolDefinition,
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(tool.Limits.TimeoutMS)*time.Millisecond)
 	defer cancel()
+	if strings.HasPrefix(tool.Name, "browser_") {
+		return a.callMCPBrowser(ctx, p, tool, token, req, canonical), nil
+	}
 	var output any
 	switch tool.Name {
 	case "catalog_search":

@@ -369,11 +369,11 @@ M10.Z 清單：
 | 項目 | Owner | 內容 | 最小驗證 | 狀態 |
 | --- | --- | --- | --- | --- |
 | M11.0 | t52 PM | v11 契約：MCP 工具如何對應註冊表、Agent Token、session 租約、claim／submit；tech-stack 加入 MCP Go SDK | owner 確認 | 進行中 |
-| M11.1 | t53 | MCP 端點、Token 雜湊與撤銷、速率限制、Server 端工具、稽核、prompts／resources 提供 skill | Go 測試：列出工具、撤銷後立即拒絕、跨 Workspace 拒絕 | 進行中 |
-| M11.2 | t54 | Worker `session` 模式、Manager 租約與閒置回收、browser／login 工具代理 | 建立、閒置逾時、回收後釋放名額 | 進行中 |
+| M11.1 | t58（首波t53） | MCP 端點、Token 雜湊與撤銷、速率限制、Server 端工具、稽核、prompts／resources 提供 skill | Go 測試：列出工具、撤銷後立即拒絕、跨 Workspace 拒絕 | 進行中 |
+| M11.2 | t59（首波t54） | Worker `session` 模式、Manager 租約與閒置回收、browser／login 工具代理 | 建立、閒置逾時、回收後釋放名額 | 進行中 |
 | M11.3 | t53 | 接單模式：`authorEngine` 設定、claim／心跳／submit、逾時與取消收斂 | 單元測試：重複 submit、逾時、取消 | 待辦 |
 | M11.4 | t55 | Token 管理（只顯示一次）、authorEngine 設定、來源徽章、稽核列表 | build 加目視 | 進行中 |
-| M11.5 | PM | `docs/guides/mcp-agent.md` 接入指南；用一個現成 Agent 跑一次互動模式 | 外部 Agent 產出 Use Case 草稿 | 待辦 |
+| M11.5 | PM | `docs/guides/mcp-agent.md` 接入指南；用一個現成 Agent 跑一次互動模式 | 外部 Agent 產出 Use Case 草稿 | 進行中 |
 | **M11.Z** | PM＋t33 | **階段二完整驗證** | 通過後 merge 回 main，標記 `phase2-verified` | 待辦 |
 
 2026-11-14 首波v11已固定並派實作：t53為Token／管理gate／唯讀MCP與skill resources；t54為獨立browser session核心、IPC及共用容量回收。claim/submit、互動寫入與Server session代理尚待後切片，M11.0不提前列完成。MCP啟用時管理API必須同步受保護，避免既有開發身分入口繞過Token邊界；既有19287不改。
@@ -381,6 +381,8 @@ M10.Z 清單：
 首波Web已交付管理key記憶體登入／cookie接線、Token一次顯示／撤銷／稽核及MCP代理；`npm run build`與`node scripts/check-m11-agent-api.mjs`通過，隔離真Server整合待QA t56。external engine與來源徽章尚未啟用，M11.4維持進行中。
 
 2026-11-14 首波程式與隔離驗證已交付（各子項仍進行中）：Server TestM11/Postgres與build PASS，Manager定向race/build PASS，Worker session＋privacy 7/7 PASS，Web build/API檢查及QA合成UI PASS，PM真HTTP smoke 18項PASS。修復Token遲到回應、Catalog DB錯誤誤成功與匿名session敏感快照，均有行為red→green。新隔離服務已回收，未動19287。詳見 [首波交接](handoff/m11-first-wave-20261114.md)；後續先固定Server session／claim wire，未完成項不提前列完成。
+
+2026-11-14 Wave 2 匿名瀏覽器切片已交付（M11整階段仍進行中）：registry11.0 與 v11 租約契約固定；t58 接 Server 持久租約／MCP browser 代理，t59 完成 close 重送收斂，t5b 完成本機 transport（Keychain不可互動時採0600專用憑證檔）。PM 實跑真 Docker Runtime browser/reclaim 測試 PASS（2.427s），不等同 Server 全鏈驗收。t5c租約異常QA全PASS，t5d真MCP→Server→Manager→Docker→Worker 33項全PASS（含同callId不重點擊、實際回收與容量恢復）；本機持久 MCP 已獨立安裝於19587，先使用首波Server驗接入；全新Codex QA t5f實際catalog_search與skill resource讀取皆PASS。Wave2 Server已經兩路QA通過並更新本機；stdio真連線initialize、精確9工具與Catalog皆PASS，本機Workspace未確認scope。首波 39c15cc 已依使用者要求推送。
 
 M11.Z 清單：
 1. M10.Z 第 1、2 項回歸，並用 builtin 跑一次黃金任務集。

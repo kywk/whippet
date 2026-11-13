@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 )
@@ -25,17 +26,19 @@ type Session struct {
 }
 
 type Engine struct {
-	store        Store
-	log          *slog.Logger
-	mu           sync.Mutex
-	session      *Session
-	wake         chan struct{}
-	liveCommands chan LiveCommand
-	liveHub      *LiveHub
+	store             Store
+	log               *slog.Logger
+	mu                sync.Mutex
+	session           *Session
+	wake              chan struct{}
+	liveCommands      chan LiveCommand
+	liveHub           *LiveHub
+	browserCalls      map[string]*browserCallFlight
+	browserCacheBytes int
 }
 
 func NewEngine(store Store, log *slog.Logger) *Engine {
-	return &Engine{store: store, log: log, wake: make(chan struct{}, 1), liveCommands: make(chan LiveCommand, 32)}
+	return &Engine{store: store, log: log, wake: make(chan struct{}, 1), liveCommands: make(chan LiveCommand, 32), browserCalls: map[string]*browserCallFlight{}}
 }
 
 func (e *Engine) Wake() {
@@ -92,6 +95,12 @@ func (e *Engine) Attach(ctx context.Context, managerID string, capacity int, pee
 		previous = e.session
 		_ = e.session.peer.Close()
 	}
+	if p, ok := e.store.(*Postgres); ok {
+		if err := p.MarkBrowserLeaseReclaimPending(ctx, managerID); err != nil {
+			return nil, err
+		}
+		e.failBrowserCallsLocked("unknown_result")
+	}
 	// Even a fresh DB must reconcile the Manager's active journal before dispatch.
 	s := &Session{managerID: managerID, liveEpoch: NewID(), capacity: capacity, peer: peer, sent: map[string]time.Time{}}
 	e.session = s
@@ -104,6 +113,12 @@ func (e *Engine) Detach(s *Session) {
 	hub := e.liveHub
 	if e.session == s {
 		e.session = nil
+		if p, ok := e.store.(*Postgres); ok {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = p.MarkBrowserLeaseReclaimPending(ctx, s.managerID)
+			cancel()
+			e.failBrowserCallsLocked("unknown_result")
+		}
 	}
 	_ = s.peer.Close()
 	e.mu.Unlock()
@@ -118,6 +133,12 @@ func (e *Engine) Close() {
 	if e.session != nil {
 		_ = e.session.peer.Close()
 		e.session = nil
+		if p, ok := e.store.(*Postgres); ok {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = p.MarkBrowserLeaseReclaimPending(ctx, previous.managerID)
+			cancel()
+			e.failBrowserCallsLocked("unknown_result")
+		}
 	}
 	e.mu.Unlock()
 	if hub != nil && previous != nil {
@@ -150,7 +171,12 @@ func (e *Engine) Handle(ctx context.Context, s *Session, m Envelope) error {
 	}
 	if m.Type == "heartbeat" {
 		var payload struct {
-			Active *[]ActiveAttempt `json:"active"`
+			Active   *[]ActiveAttempt `json:"active"`
+			Sessions []struct {
+				SessionID string `json:"sessionId"`
+				LeaseID   string `json:"leaseId"`
+				State     string `json:"state"`
+			} `json:"sessions"`
 		}
 		if err := json.Unmarshal(m.Payload, &payload); err != nil || payload.Active == nil {
 			return fmt.Errorf("%w: heartbeat requires active array", ErrInvalid)
@@ -183,6 +209,21 @@ func (e *Engine) Handle(ctx context.Context, s *Session, m Envelope) error {
 		if err := e.store.ReleaseSlots(ctx, s.managerID, *payload.Active); err != nil {
 			return err
 		}
+		if p, ok := e.store.(*Postgres); ok {
+			for _, reported := range payload.Sessions {
+				if !ValidID(reported.SessionID) || !ValidID(reported.LeaseID) ||
+					(reported.State != "starting" && reported.State != "ready" && reported.State != "closing" && reported.State != "reclaim_pending") {
+					return ErrInvalid
+				}
+				lease, err := p.BrowserLeaseBySession(ctx, reported.SessionID)
+				if err != nil || lease.LeaseID != reported.LeaseID || lease.ManagerID != s.managerID || lease.Reclaimed || lease.ManagerEpoch != s.liveEpoch || lease.State == "closing" || lease.State == "reclaim_pending" {
+					if err := s.peer.Send(NewEnvelope("session.close", s.managerID, "", "", map[string]string{"sessionId": reported.SessionID, "leaseId": reported.LeaseID})); err != nil {
+						s.ready = false
+						return err
+					}
+				}
+			}
+		}
 		if err := s.peer.Send(NewEnvelope("heartbeat_ack", s.managerID, "", "", struct{}{})); err != nil {
 			s.ready = false
 			_ = s.peer.Close()
@@ -191,6 +232,9 @@ func (e *Engine) Handle(ctx context.Context, s *Session, m Envelope) error {
 		s.ready = true
 		e.Wake()
 		return nil
+	}
+	if strings.HasPrefix(m.Type, "session.") {
+		return e.handleBrowserMessageLocked(ctx, s, m)
 	}
 	if !ValidID(m.RunID) || !ValidID(m.AttemptID) {
 		return fmt.Errorf("%w: runId and attemptId must be UUIDs", ErrInvalid)
@@ -225,6 +269,11 @@ func (e *Engine) Handle(ctx context.Context, s *Session, m Envelope) error {
 }
 
 func (e *Engine) Tick(ctx context.Context) error {
+	if p, ok := e.store.(*Postgres); ok {
+		if err := p.ExpireBrowserLeases(ctx); err != nil {
+			return err
+		}
+	}
 	if finisher, ok := e.store.(interface{ FinalizeDiscardingSessions(context.Context) error }); ok {
 		if err := finisher.FinalizeDiscardingSessions(ctx); err != nil {
 			return err
@@ -235,6 +284,9 @@ func (e *Engine) Tick(ctx context.Context) error {
 	s := e.session
 	if s == nil || !s.ready {
 		return nil
+	}
+	if err := e.sendBrowserClosesLocked(ctx, s); err != nil {
+		return err
 	}
 	assignments, err := e.store.Assignments(ctx, s.managerID)
 	if err != nil {

@@ -93,13 +93,29 @@ func (p *Postgres) RevokeAgentToken(ctx context.Context, workspace, id string) e
 	if !ValidID(workspace) || !ValidID(id) {
 		return ErrInvalid
 	}
+	tx, err := p.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	var got string
-	err := p.DB.QueryRowContext(ctx, `UPDATE agent_tokens SET revoked_at=COALESCE(revoked_at,now())
+	err = tx.QueryRowContext(ctx, `UPDATE agent_tokens SET revoked_at=COALESCE(revoked_at,now())
 		WHERE id=$1 AND workspace_id=$2 RETURNING id`, id, workspace).Scan(&got)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE agent_browser_leases SET state='closing'
+		WHERE token_id=$1 AND workspace_id=$2 AND NOT reclaimed`, id, workspace); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE agent_browser_calls SET state='unknown' WHERE state='sent' AND session_id IN
+		(SELECT session_id FROM agent_browser_leases WHERE token_id=$1 AND workspace_id=$2 AND NOT reclaimed)`, id, workspace); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (p *Postgres) AuthorizeAgentToken(ctx context.Context, secret string) (AgentToken, error) {

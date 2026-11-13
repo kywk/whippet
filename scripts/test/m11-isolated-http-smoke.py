@@ -119,7 +119,10 @@ def main():
             status, initialized, _ = mcp("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "m11-smoke", "version": "1"}})
             check("mcp_initialize", status == 200 and "result" in initialized)
             status, tools, _ = mcp("tools/list", {})
-            check("exact_read_tools", status == 200 and sorted(t["name"] for t in tools["result"]["tools"]) == ["catalog_get", "catalog_search"])
+            check("exact_m11_tools", status == 200 and sorted(t["name"] for t in tools["result"]["tools"]) == sorted([
+                "catalog_get", "catalog_search", "browser_session_open", "browser_session_status",
+                "browser_session_close", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill",
+            ]))
             status, result, _ = mcp("tools/call", {"name": "catalog_search", "arguments": {"query": "", "limit": 5}})
             check("catalog_read", status == 200 and not result["result"].get("isError", False) and "items" in result["result"]["structuredContent"])
             status, resources, _ = mcp("resources/list", {})

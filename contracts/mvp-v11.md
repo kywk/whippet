@@ -58,7 +58,28 @@ Worker input獨立 `{kind:"session",sessionId,leaseId,workspaceId,workspaceConte
 
 瀏覽器沿既有scope/noSecret/login(roleId)守衛。credential resolver與LiveView需新增lease權威綁定；首波注入hook可做隔離測試，但未接Server時browser_login必拒，不能回假submitted。roleId查詢僅走受控Worker→Manager→Server通道，session.call/reply不得承載憑證。未完成真viewer綁定前不宣稱LiveView整合。
 
-## 後續接單與互動寫入邊界
+## Wave 2：MCP browser lease（2026-11-14）
+
+本波固定匿名browser端到端。registry升11.0，僅追加下列三個server工具；原browser工具schema與limits不變，新部署三端必須封裝同份原始bytes，既有19287與舊Run快照不替換。
+
+- `browser_session_open({requestId:UUID})`：Token推導Workspace；同Token最多一個未回收lease。持久唯一鍵 `(token_id,request_id)`，同鍵重送回原lease當下狀態，原lease關閉後也不另開。若另一requestId已有active lease則拒；未有可用Manager或capacity則明確拒絕。送出前落地租約與發送意圖，不因網路未知重送open。
+- `browser_session_status({sessionId:UUID,leaseId:UUID})`：純讀、核Token/Workspace/lease所有權；不得藉status更新idle或提升權限。
+- `browser_session_close({sessionId:UUID,leaseId:UUID})`：冪等標closing並送close；不同Token或lease拒絕，已closed回原終態。
+- 三者結果固定 `{sessionId,leaseId,state,reclaimed}`；state=`opening|ready|closing|reclaim_pending|closed`。open最多等待10秒，尚未ready回opening，不能宣稱可操作。未完成Docker回收時reclaimed=false；open_rejected證明未配置新資源時可closed/reclaimed=true。
+- 公開原 `browser_navigate|browser_snapshot|browser_click|browser_fill`，參數完全沿registry。MCP `tools/call`必有 `params._meta.whippet={sessionId,leaseId,callId}`，三UUID精確驗型、未知內部欄位拒絕；SDK v1.3.1使用`req.Params.GetMeta()`取值。callId是客戶端邏輯操作重試鍵，不是JSON-RPC id。不得將租約欄位塞入工具arguments或默默綁另一session。browser_login未有可信resolver前不列工具；不提供shell/fs/eval/publish。
+- MCP工具總集合本波為原Catalog兩項＋三個控制＋四個browser，無其他未接線能力。控制工具同樣來自registry，不加入builtin skill的allowedTools。
+
+Server保存lease的Token/Workspace/Manager、epoch、registry與scope快照、deadline、狀態及回收證據；`agent_browser_calls`以lease/callId與canonical工具名/arguments hash持久去重，發送前先寫tombstone。重送同body在記憶體有結果時回原結果，in-flight回busy；不同body拒絕，已發送但無結果／重啟後回unknown_result，不重送副作用。結果與參數內容不存journal/audit，記憶體遵守首波256 calls／2MiB快取；上限不能靠淘汰舊callId後重新執行繞過。
+
+open交易與Run Claim鎖同Manager row，capacity計算未釋放Run＋未回收lease；Manager也保留共用容量守衛。Workspace必須active／scope confirmed；Server由權威設定產生workspaceContext，租約四項browser能力與registry hash固定，不接受客戶端Workspace或scope。每個call先重驗Token未撤銷、所有權、Workspace scope版本與期限；失效標closing並收斂，不延續舊授權。
+
+撤銷Token同交易將其lease標closing，阻止後續工具；close由Engine送，回收完成才釋名額。Engine維持單一WSS writer及目前Manager epoch驗證，session.*分流在Run/attempt要求之前。Gateway沿有界訊息與工具128KiB結果上限，不放寬credential/history frame。
+
+失聯／Server重啟將未回收lease標reclaim_pending，失效pending calls，只重送close，不重送open/call。heartbeat.sessions只作對帳，不以缺席推定回收；unknown／stale租約要求close。Manager同lease已回收tombstone重送原closed(true)；未知識別須核精確deterministic容器不存在或標籤吻合且移除成功才closed(true)，異lease現存record拒絕，不動其他容器。所有closed／reply必綁當前可信Manager連線與租約，遲到成功不能復活lease。Manager總期限仍為兜底回收，不因heartbeat續租。
+
+本波驗收為隔離真MCP→Server→Manager→Docker Worker：open、navigate/snapshot/click/fill、同callId不重作、close後回收與容量恢復；另以定向測試驗跨Token/Workspace、撤銷、斷線未知結果與重啟收斂。login、session LiveView、互動產稿、claim/submit留後波，不以匿名browser成功代替它們。
+
+## 後續接單與互動寫入邊界（未公開）
 
 `authorEngine=builtin|external`、claim/heartbeat/submit須另固定精確wire後才公開；首波不能開external設定或宣告已支援接單。後續必綁Token/Workspace/Run/attempt/lease、同一context/skill/allowedTools/budget快照，取消／逾時失效，submit以同parser/CAS及持久冪等收斂；不採信外部自報selfTestPassed。不將session browser結果當正式validation或發佈資格。
 

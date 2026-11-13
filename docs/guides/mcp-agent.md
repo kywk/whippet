@@ -1,6 +1,6 @@
 # MCP Agent 接入（M11 開發中）
 
-本頁對應 [v11 契約](../../contracts/mvp-v11.md)。目前首波正在實作 Token、唯讀 Catalog、skill resources 與 browser session 核心；不代表互動產稿、接單或階段驗收已完成。不得將此設定套用到既有19287驗收現場。
+本頁對應 [v11 契約](../../contracts/mvp-v11.md)。目前首波已交付 Token、唯讀 Catalog、skill resources 與 browser session 核心，並完成定向隔離驗證；不代表互動產稿、接單或階段驗收已完成。不得將此設定套用到既有19287驗收現場。
 
 ## 部署與管理
 
@@ -25,7 +25,7 @@ MCP採明確啟用：部署端提供獨立 `WHIPPET_ADMIN_TOKEN`，不得使用M
 
 在支援Streamable HTTP的MCP客戶端設定Server URL為 `https://<部署主機>/mcp`，Authorization header為 `Bearer <Agent Token>`。這裡的角括號是說明占位，不能直接照貼；避免在會列印header的除錯模式下連線。
 
-先執行initialize，再查tools/list與resources/list，以實際列出的能力為準。首波工具為：
+先執行initialize，再查tools/list與resources/list，以實際列出的能力為準。Catalog工具為：
 
 | 工具 | 用途 | 參數 |
 | --- | --- | --- |
@@ -45,10 +45,28 @@ schema直接來自工具註冊表；catalog_search不接受cursor。首波尚未
 
 工具錯誤使用MCP isError與安全固定訊息。超限不截斷JSON。稽核只記Token/Workspace識別、工具名、固定結果及時間，不記參數、內容或Token明文。
 
+## Wave 2 匿名瀏覽器租約
+
+registry11.0 另公開 `browser_session_open({requestId})`、`browser_session_status({sessionId,leaseId})`、`browser_session_close({sessionId,leaseId})` 與原 schema 的 `browser_navigate`、`browser_snapshot`、`browser_click`、`browser_fill`。所有識別為 UUID；open 的 requestId 重送會回原租約，關閉後也不重新開啟。
+
+browser 工具呼叫須在 JSON-RPC `params._meta.whippet` 放 `{sessionId,leaseId,callId}`，不得加入工具 arguments；客戶端需支援傳送這項 metadata。相同 callId/參數只回原結果，忙碌回 busy，結果遺失回 unknown_result，不能自動產生新 callId 重做副作用。Codex 本機驗收目前證明 Catalog/resources 接入；尚未驗證 Codex 的 browser metadata 傳送能力。
+
+兩路隔離 QA 已通過租約異常與真 Docker 全鏈；真 browser 測試使用獨立 schema 的已確認 scope fixture，不代表 Workspace 設定 UI 已驗。close 只有 status.reclaimed=true 才代表已釋容量；heartbeat 未列出 session 不算回收證據。
+
 ## 尚未完成的整合
 
-browser session採10分鐘閒置／30分鐘硬期限，共用Worker容量且回收後才釋放名額。首波Runtime核心的隔離測試不等於Server租用入口、登入或LiveView已接通；未有可信credential resolver時登入必須拒絕。
+browser session採10分鐘閒置／30分鐘硬期限，共用Worker容量且回收後才釋放名額。Server匿名租約入口與真Docker已接通；登入與LiveView仍未接通，未有可信credential resolver時登入必須拒絕。
 
 `authorEngine=external`、task_claim／心跳／task_submit、互動Module/Use Case寫入與外部Agent端到端仍待後續切片。不要提前開啟設定或以本頁示意宣稱可完成產稿。
 
 官方協定參考：[Streamable HTTP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)、[本專案固定的Go SDK v1.3.1](https://github.com/modelcontextprotocol/go-sdk/tree/v1.3.1)。
+
+## macOS 本機安裝（獨立環境）
+
+`deploy/install-local-mcp.py --server-binary <已驗證的原生Server> --manager-binary <原生Manager>` 建立全新安裝；已有同名服務、DB或Codex設定時拒絕覆寫。Worker映像先以本repo建置為 `whippet-worker:m11w2`。安裝使用 `~/.local/share/whippet-mcp`、loopback Server19587、Postgres19589與獨立 `whippet-mcp-local-db` volume，不使用19287現場。launchd使用者服務為 `io.whippet.mcp.local.server` 與 `io.whippet.mcp.local.manager`，需本機Docker可用。
+
+Codex MCP名稱為 `whippet`，以 stdio bridge 連到本機 `/mcp`；啟動新的Codex對話載入設定。新Workspace起初沒有確認scope，只可讀已接線Catalog與封裝resources；不能把工具列出等同已授權browser操作，也不能跳過Workspace確認。
+
+本次執行環境的Keychain新增回-25308（不允許互動），因此安裝改用專用 `secrets/` 目錄0700及每帳號檔0600。bridge只接受本人擁有的regular、單一硬連結檔案，拒絕符號連結與寬鬆權限；Codex設定只存非秘密路徑，不存Token。Keychain模式仍可供允許互動的環境使用。憑證不得貼進終端輸出、對話或Git；備份此安裝時須把憑證視為秘密處理。
+
+本機Server/Manager輸出送至 `/dev/null`；以 `/readyz`、launchd狀態與定向MCP驗收確認，不蒐集原始請求日誌。停止時可對兩個獨立plist執行 `launchctl bootout gui/$(id -u) <plist路徑>`，停止 `whippet-mcp-local-db`；保留volume、artifacts與work，不以刪資料當停止方式。

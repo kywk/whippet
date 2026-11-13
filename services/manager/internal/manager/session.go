@@ -388,8 +388,29 @@ func (m *Manager) closeSession(env Envelope) error {
 	m.mu.Lock()
 	r, ok := m.sessions[p.SessionID]
 	m.mu.Unlock()
-	if !ok || r.LeaseID != p.LeaseID {
+	if ok && r.LeaseID != p.LeaseID {
 		return errors.New("unknown session lease")
+	}
+	if !ok {
+		// A missing journal record is not proof that Docker has reclaimed the
+		// lease. Remove checks the deterministic name and all ownership labels;
+		// only its confirmed absence/removal permits a terminal reply.
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		err := m.sessionsRuntime.Remove(cleanupCtx, sessionRecord{SessionID: p.SessionID, LeaseID: p.LeaseID})
+		cancel()
+		if err != nil {
+			return err
+		}
+		_ = m.send(message(m.cfg.ManagerID, "session.closed", "", "", map[string]any{"sessionId": p.SessionID, "leaseId": p.LeaseID, "reason": "closed", "reclaimed": true}))
+		return nil
+	}
+	if r.Reclaimed {
+		reason := r.Reason
+		if reason == "" {
+			reason = "closed"
+		}
+		_ = m.send(message(m.cfg.ManagerID, "session.closed", "", "", map[string]any{"sessionId": r.SessionID, "leaseId": r.LeaseID, "reason": reason, "reclaimed": true}))
+		return nil
 	}
 	m.requestSessionClose(p.SessionID, "closed")
 	return nil

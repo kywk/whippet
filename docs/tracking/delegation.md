@@ -181,3 +181,13 @@ M11、M12 依相同方式進行：先固定契約，再並行開發，最後做 
 首波介面固定後啟動 Web t55（gpt-6-sol high、parent=t52），獨立 tab `tb2081d7e3947353996d4de83b21a5e8e8`，命名 Whippet M11 Web 11-14；argv/keep/outlive-parent/cwd/working 已實核。唯一 owner apps/web，先接管理gate、Token與稽核，不啟用尚未實作external engine。
 
 Web首切片交付停寫後，新增QA t56（全新gpt-6-sol high、parent=t52、crew=1、keep/outlive-parent/no-daemon/YOLO），獨立tab `tba3ee94e316121c59de0a0a2402f1743b`（Whippet M11 QA 11-14），已核cwd/argv/working。QA只寫scripts/test/m11-*及專用tmp證據，先審首波跨入口與敏感狀態，不重跑已通過build。實作中為Server、Runtime、QA三位。
+
+## M11 Wave 2（2026-11-14）
+
+使用者已明確授權首波 commit/push 與下一波，feat/mcp 已推送至 39c15cc；另授權多位 QA 並行及本機安裝 Whippet MCP。三位全新實作 owner 為 t58 Server（services/server）、t59 Runtime（services/manager、runtimes/worker）、t5b Local transport（scripts/local-mcp）；QA t5c 只寫 scripts/test/m11w2-lease-*，t5d 只寫 scripts/test/m11w2-browser-*。PM 保持 docs/contracts/deploy/Git owner。
+
+以上五位皆已實核 parent=t52、gpt-6-sol high、no-daemon/YOLO、crew=1、keep/outlive-parent 與 repo cwd；獨立新 tab 分別為 tb8f290fddf29358dcdf375296f107ebeb、tb464ca566dbdfddffa3e04f6060a7009f、tb9a82f197d54d1e3e1cb2d9840688637d、tb27fe8d8637546b54ac94e80ab6dac529、tbb63bd9e6ac285b7471fd6c222e462ebb，均在指定 space 命名。未繼承 herdr.tab，未喚醒首波舊 owner。
+
+本波契約以 v11 Wave 2 與 registry11.0 為準：匿名四項 browser 工具與租約 open/status/close，持久 requestId/callId 去重與確認回收。QA 分別驗 fake Manager 異常及真 Docker 全鏈；不把兩者證據混用。login/LiveView/claim/互動寫入仍未整合，19287 保留。
+
+本機實接QA t5f為全新gpt-6-sol high／parent=t52，argv/cwd/keep/outlive-parent/working已核，獨立tab `tb65ebfdd9f517da7b88a8a10c3cf54b94`（Whippet M11 Local MCP QA）。只以已註冊MCP讀Catalog/resources，不讀憑證檔、不以shell HTTP取代MCP，不改repo。

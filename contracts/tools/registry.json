@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "10.3",
+  "version": "11.0",
   "tools": [
     {
       "name": "read_conversation_history",
@@ -983,6 +983,88 @@
         "timeoutMs": 15000,
         "maxInputBytes": 16384,
         "maxOutputBytes": 16384
+      }
+    },
+    {
+      "name": "browser_session_open",
+      "description": "Open one bounded browser lease in the Agent Token workspace. Retry the same requestId to observe the same lease, never to create a second browser.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        },
+        "required": [
+          "requestId"
+        ],
+        "additionalProperties": false
+      },
+      "side": "server",
+      "effect": "queue",
+      "limits": {
+        "timeoutMs": 15000,
+        "maxInputBytes": 4096,
+        "maxOutputBytes": 4096
+      }
+    },
+    {
+      "name": "browser_session_status",
+      "description": "Read the state of an owned browser lease. Only ready permits browser calls; reclaimed is true only after confirmed cleanup.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "leaseId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        },
+        "required": [
+          "sessionId",
+          "leaseId"
+        ],
+        "additionalProperties": false
+      },
+      "side": "server",
+      "effect": "read",
+      "limits": {
+        "timeoutMs": 15000,
+        "maxInputBytes": 4096,
+        "maxOutputBytes": 4096
+      }
+    },
+    {
+      "name": "browser_session_close",
+      "description": "Close an owned browser lease. Repeated close does not repeat browser actions; wait for reclaimed before capacity is free.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "leaseId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        },
+        "required": [
+          "sessionId",
+          "leaseId"
+        ],
+        "additionalProperties": false
+      },
+      "side": "server",
+      "effect": "queue",
+      "limits": {
+        "timeoutMs": 15000,
+        "maxInputBytes": 4096,
+        "maxOutputBytes": 4096
       }
     }
   ]
