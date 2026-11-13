@@ -131,3 +131,46 @@ M9 歷史工具依 [v9 契約](../../contracts/mvp-v9.md)：Server 在排入 aut
 ### 契約交付界線
 
 PM 在各波實作前固定 HTTP／dispatch／輸出與遷移規則；Server／Runtime owner 先回覆既有介面的最小差異。M7 固定編輯週期與摘要契約；M8 固定 Workspace proposal、機密參照與範圍政策；M9 整合技能路由與對話事件。尚未固定的 wire 欄位不由各 Agent 各自猜測。
+
+
+## M10–M12：Use Case 與 Agent 平台化（2026-11-13）
+
+需求依 [Use Case 與 Agent 平台化規格](../requirements/usecase-agent-platform.md)。wire 欄位由各階段的契約（v10／v11／v12）固定；本節只定義邊界。
+
+### 分層
+
+- **控制面（Server）**：決定 skill 組合、允許工具、預算、模型、Plan 狀態與來源記錄；負責 Stage 調度與發佈交易。不新增排程服務，沿用任務表。
+- **守衛（Worker）**：驗證輸入、解析輸出、`secrets.clean`／`noSecret`、範圍守衛。不論用哪個引擎都不可外包。
+- **工具註冊表**：`contracts/tools/registry.json` 是工具定義的單一來源，欄位包括 name、description、JSON Schema、`side`（server／worker）、`effect`（read／candidate／browser／queue）、單次上限。Go 與 TS 都從同一份檔案載入；內建引擎、MCP 與 adapter 共用。
+- **引擎**：`AgentEngine.run({instructions, context, tools, budget, model, signal, beforeRequest, onEvent})`，回傳 `{finalText, partial?}`。M10 把現有迴圈包成 builtin engine；M12 才加入開源 adapter。
+
+### 資料
+
+- Test 新增 `kind`：test、module、usecase，沿用編輯週期、revision、version、摘要與發佈機制。
+- Module 版本保存 slug、moduleKind、簽章、輸入與回傳說明、harness 腳本。slug 在 Workspace 內唯一。
+- Use Case 的 revision 保存 stages JSON。發佈時寫入 `version_dependencies(version_id, module_version_id)`，引用版本固定且不可變。
+- Plan 屬於 Use Case 的編輯週期，保存 stages、每個 Stage 的狀態、連結的 Module Test 與失敗原因；狀態：draft → confirmed → running → composed → done／stopped。
+- 發佈交易同時核對 Use Case 與本次新 Module 版本的驗證、摘要與 revision；任一項不成立就整批回滾。
+
+### 執行
+
+- Runner 輸入由單一 `script` 擴充為 `files[]`（path、content、origin）。Runner 寫出檔案樹，用 tsconfig paths 對應 `@lib/*`；任一檔案 origin 不是 manual 就套用範圍守衛。舊的單一 `script` 輸入保持相容。
+- Use Case spec 由 Server 以確定性模板產生（每個 Stage 對應一個 `test.step`，綁定值轉成區域常數），不交給 AI 產生。
+- Server 端工具（catalog、module 與 usecase 草稿讀寫、plan、驗證要求）由 Server 實作。Worker 透過 M9 history IPC 泛化而成的「harness tool IPC」呼叫，Manager 核對活躍 attempt；Worker 不持有 Manager token。
+
+### 引擎能力
+
+- 預算來自 skill manifest 快照。剩最後 1 次模型請求或最後 2 次工具呼叫時，注入收尾指示；超過上限時輸出 `partial`，Server 保存自我試跑通過的候選結果並顯示「繼續」。
+- 單一 Run 內只保留最新一份完整 snapshot，舊的壓縮成摘要。
+- Skill 依 manifest 載入；`read_skill_reference` 只能讀已打包、已快照的 references。
+
+### MCP（M11）
+
+- Go Server 使用官方 MCP Go SDK 提供 Streamable HTTP 端點。Agent Token 雜湊保存，綁定單一 Workspace，可撤銷、有速率限制，並寫入稽核紀錄。
+- Server 端工具直接呼叫同一套 handler；Worker 端工具（browser_*、login）透過租用 session 代理：Server → Manager WSS → Worker `session` 模式容器 IPC。session 佔用一個容量名額，閒置或逾時就回收。
+- 接單模式以 attempt 租約承載：claim、心跳、工具呼叫、submit 都必須核對 attempt 與租約；逾時就讓 attempt 失敗；取消會讓後續呼叫一律失效。
+
+### Adapter（M12）
+
+- 開源引擎只負責迴圈、供應商、重試與 compaction，工具一律來自註冊表。依賴版本鎖定在 Worker 的 lockfile，並更新 tech-stack。
+- `runtimes/agent-bridge/` 是參考外部 Worker，以 MCP 接單模式連線，不能直接存取 DB 或 Manager。

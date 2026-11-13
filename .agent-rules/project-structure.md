@@ -32,7 +32,9 @@
 | services/server/ | Go API、資料層、排程與連線管理 |
 | services/manager/ | Go Worker 生命週期與 Docker 管理 |
 | runtimes/worker/ | Node.js Agent 與 Playwright 執行 |
-| contracts/ | 版本化 HTTP／WS／Worker 訊息格式與範例 |
+| contracts/ | 版本化 HTTP／WS／Worker 訊息格式與範例；`contracts/tools/` 為工具註冊表單一來源（M10） |
+| runtimes/agent-bridge/ | M12 參考外部 Worker（MCP 接單客戶端） |
+| scripts/test/golden/ | M10 起的黃金任務集，供各階段完整驗證與引擎比較 |
 | deploy/ | Compose、映像與設定範本 |
 
 上述程式目錄是預定位置，本輪不產生空程式框架。docs/research、guides、devlog、handoff 有實際內容時才加檔案。

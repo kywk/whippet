@@ -21,6 +21,7 @@ Self-hosted Playwright 平台。使用繁體中文與台灣用語；優先交付
 ## 需求與任務入口
 
 - 修改功能或判斷範圍：讀 [MVP 規格](docs/requirements/mvp.md)。
+- Use Case、模組庫、MCP 或 Agent adapter：讀 [Use Case 與 Agent 平台化規格](docs/requirements/usecase-agent-platform.md)。
 - 修改資料、API、Worker 或通訊：讀 [架構與協定](docs/architecture/design.md)。
 - 開始開發或選擇下一項：讀 [實作計畫](docs/tracking/implementation.md)。
 - 派工、並行或變更共同介面：讀 [分工計畫](docs/tracking/delegation.md)。

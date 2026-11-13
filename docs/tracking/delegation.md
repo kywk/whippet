@@ -147,3 +147,25 @@ M8 依相同方式先固定 proposal／機密／網路政策再並行；Runtime 
 2026-11-12 使用者要求本波提交後全部換新對話：PM與後續owner/QA均不得續用舊長對話；沿新PM→t36的parent鏈、crew=1與既有space/tab維持同一Herdr RPG session。禁止opencode mini。精確啟動/環境/未驗事項以handoff/ui-ux-pm.md為新對話入口，舊owner只作歷史證據。
 
 最新更正：新 PM 要用 --no-parent 成為獨立 RPG 根，舊 t36 可以關閉；所有新派工 parent 鏈歸新 PM，不再歸 t36。t3q/t3r 錯誤鏈已停止，未開新 Run。
+
+
+## M10–M12 分工（2026-11-13）
+
+任務與狀態只在 [implementation.md](implementation.md) 的 M10–M12 章節維護。角色與寫入範圍沿用「M7–M9 當前分工」；模型路由與啟動方式依 handoff 的最新指定，不默默替換。所有 Agent 不自行 commit／push、不重啟共享服務、不讀取或印出 deploy/.env.ai；依賴安裝只限該階段契約明列的項目。
+
+| Owner | 寫入範圍 | M10 | M11 | M12 |
+| --- | --- | --- | --- | --- |
+| PM | docs、contracts（含 `contracts/tools/`）、deploy、根建置設定、Git 分支與 tag | v10 契約、整合 smoke、M10.Z | v11、接入指南、M11.Z、merge | 裁定引擎、M12.Z、merge |
+| t30 Web | apps/web | Module、Use Case、Plan、partial 卡 | Token、authorEngine、稽核 | engine／provider 設定 |
+| t31 Server | services/server | Test.kind、依賴、Catalog、tool IPC、Plan 調度、原子發佈 | MCP 端點、Token、接單租約 | engine 設定快照 |
+| t32 Runtime | services/manager、runtimes/worker、runtimes/agent-bridge | AgentEngine、G1–G6、skills、多檔 runner、新工具 | session 模式與代理 | spike、adapter、agent-bridge |
+| t33 QA | scripts/test/golden、scripts/test/m10-*、m11-*、m12-* | 黃金任務集、M10.Z 黑箱 | M11.Z 黑箱 | 引擎比較、M12.Z |
+
+### 首波（M10）派工
+
+1. PM 請 t31／t32 各回覆一次最小差異（只盤點，不改共同介面），之後固定 v10。
+2. 契約固定前就可以開始、不依賴新介面的工作：t32 做 M10.1（內部重構，wire 不變）；t33 做 M10.8 黃金任務集；t30 用標示清楚的合成資料先做 M10.7 畫面結構。
+3. v10 固定後：t31 做 M10.3 → M10.5；t32 做 M10.2、M10.4 → M10.6；t30 接真 API。
+4. 每位 owner 回報修改檔案、介面、最小驗證與剩餘限制；PM 整合後做 M10.9，再派 t33 執行 M10.Z。
+
+M11、M12 依相同方式進行：先固定契約，再並行開發，最後做 Z 項完整驗證。分支只由 PM 建立與 merge；owner 在 PM 指定的分支上工作。

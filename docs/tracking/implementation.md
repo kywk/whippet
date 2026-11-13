@@ -1,6 +1,6 @@
 # MVP 實作計畫
 
-規格已寫入；M1 三個模組首批程式已交付；M1 已完成本機真實端到端驗收：成功、斷言失敗及兩份 HTML 報告顯示皆通過。M2、M3 已完成本機驗收；M4 已完成本機驗收；M5／M6 本機功能已通過，部署與開源缺口獨立追蹤；目前優先 M7–M9 對話工作區。需求以 [MVP 規格](../requirements/mvp.md) 為準，技術邊界見 [架構設計](../architecture/design.md)，負責範圍見 [分工計畫](delegation.md)。
+規格已寫入；M1 三個模組首批程式已交付；M1 已完成本機真實端到端驗收：成功、斷言失敗及兩份 HTML 報告顯示皆通過。M2、M3 已完成本機驗收；M4 已完成本機驗收；M5／M6 本機功能已通過，部署與開源缺口獨立追蹤；M7–M9 對話工作區已完成本機驗收；目前優先 M10–M12 Use Case 與 Agent 平台化（見文末章節）。需求以 [MVP 規格](../requirements/mvp.md) 為準，技術邊界見 [架構設計](../architecture/design.md)，負責範圍見 [分工計畫](delegation.md)。
 
 ## 開發原則
 
@@ -321,3 +321,77 @@ M9歷史失敗已定位（81352430診斷回合）：模型將首次cursor輸出�
 測試對話與 Workspace 設定對話已共用語音輸入按鈕；僅瀏覽器提供 SpeechRecognition／webkitSpeechRecognition 時顯示。使用者點擊後才啟動，辨識完成把文字附加於草稿，由使用者確認送出；辨識錯誤顯示在輸入區，切換頁面會停止錄音。不使用 Server STT 或新增依賴。Web build/typecheck PASS；本機瀏覽器以模擬原生 STT 驗證兩處輸入、原文保留及不自動送出，無 STT 介面時按鈕隱藏。真麥克風與各瀏覽器辨識服務可用性仍依使用者設備與權限決定。新Web dist已於2026-11-12 copy-only套用至現有18087 Web容器，原靜態檔備份於/private/tmp/whippet-stt-web-backup；18087真UI再驗測試對話語音填字PASS，未送出訊息。未提交。
 
 語音輸入中斷修復（2026-11-12）：原 `continuous=false` 且每次瀏覽器 `onend` 即結束聆聽，真語音停頓後無法接續。改為持續模式，正常 `onend` 於短暫間隔後自動重啟；手動停止、送出停用、權限或辨識錯誤會終止重啟。18087 瀏覽器模擬 STT 回歸先紅（首句後 starts=1、麥克風停止），修後綠（starts=2、麥克風保持聆聽），第二句接續、手動停止及權限拒絕不重啟皆 PASS。Web build/typecheck PASS，已 copy-only 更新現有Web容器，更新前靜態檔備份 `/private/tmp/whippet-stt-before-continuous`。未實測實體麥克風與瀏覽器語音服務，未提交。
+
+
+## M10–M12：Use Case 與 Agent 平台化（2026-11-13 使用者同意）
+
+規格見 [Use Case 與 Agent 平台化規格](../requirements/usecase-agent-platform.md)，架構見 [design.md M10–M12](../architecture/design.md)，分工見 [delegation.md](delegation.md)。開發期間每項只做「最小驗證」，通過就推進；每個階段收尾時執行一次 Z 項完整驗證。Z 項通過才能標記 tag 或 merge。
+
+### M10 階段一：自研引擎與 Use Case（`main`）
+
+狀態：待辦。依賴：M9 已完成。
+
+| 項目 | Owner | 內容 | 最小驗證 | 狀態 |
+| --- | --- | --- | --- | --- |
+| M10.0 | PM | 先收 t31／t32 的最小差異，再固定 v10 契約：工具註冊表 schema、harness tool IPC、Test.kind／Module／stages／依賴、runner `files[]`、author `partial` 輸出、skill manifest | owner 確認無衝突 | 待辦 |
+| M10.1 | t32 | 抽出 `AgentEngine` 並把現有迴圈包成 builtin；工具註冊表分派（G4）；checkpoint 與 `partial`（G1）；snapshot 修剪（G5） | 既有 author 測試全部通過；新增預算耗盡回傳 partial 的單元測試 | 待辦 |
+| M10.2 | t32 | skill manifest 與 `read_skill_reference`、依 skill 設定預算（G3／G6）；四個新 skill 與 playwright-authoring 補強 | skill 載入與大小上限測試 | 待辦 |
+| M10.3 | t31 | Test.kind、Module 欄位與 slug、版本依賴、Catalog 查詢、harness tool IPC 端點（由 history IPC 泛化） | Go 測試：依賴固定版本、跨 Workspace 拒絕、IPC attempt 核對 | 待辦 |
+| M10.4 | t32 | Runner `files[]`、`@lib` 對應、依來源套用範圍；Manager 傳遞 | 人工 Module＋Use Case 成功與失敗各一，報告看得出失敗的 Stage | 待辦 |
+| M10.5 | t31 | Plan 狀態機、Stage 依序排入、Use Case spec 模板產生、原子發佈 | 單元測試：Stage 失敗即停止、取消、批次發佈回滾 | 待辦 |
+| M10.6 | t32 | catalog／module／usecase／plan 工具接上註冊表與 IPC | 單元測試加一次真模型「搜尋並複用」 | 待辦 |
+| M10.7 | t30 | Module 列表與詳情（簽章、引用者）、Use Case Stage 檢視、Plan 確認卡、Stage 進度、partial「繼續」卡 | build 加目視 | 待辦 |
+| M10.8 | t33 | 黃金任務集 v1（10–15 題，含新建、修復、複用、拆解、越界、注入頁、預算耗盡），放在 `scripts/test/golden/` | 用 builtin 跑一次並記錄基準 | 待辦 |
+| M10.9 | PM | 整合 smoke：用真模型把「登入 → 搜尋 → 下單 → 驗證」拆成 4 段並發佈 | 一條主流程 | 待辦 |
+| **M10.Z** | PM＋t33 | **階段一完整驗證**（見下方） | 全部通過後標記 `phase1-verified` | 待辦 |
+
+M10.Z 清單：
+1. 三個模組全部建置、型別檢查與測試（含 Postgres 整合測試）。
+2. M1–M9 主流程回歸一次（AI 對話工作區規格的最小驗收，加第二 Workspace 隔離）。
+3. Use Case 全流程（真模型）：Plan 確認 → 至少複用 1 個、新建 2 個 Module → Compose → 真實驗證 → 摘要 → 原子發佈 → 正式執行。
+4. Stage 失敗的停止與修復；Plan 執行途中取消後，名額正確回收。
+5. Module 升版不影響已固定版本的 Use Case；跨 Workspace 搜尋 Catalog 被拒。
+6. AI 來源 Module 套用範圍守衛；manual Module 不套用。
+7. 預算耗盡時保留 partial，按「繼續」能完成。
+8. 黃金任務集 builtin 成績不低於 M10.8 基準。
+
+### M11 階段二：MCP（`feat/mcp`，自 `phase1-verified` 分出）
+
+狀態：待辦。依賴：M10.Z。
+
+| 項目 | Owner | 內容 | 最小驗證 | 狀態 |
+| --- | --- | --- | --- | --- |
+| M11.0 | PM | v11 契約：MCP 工具如何對應註冊表、Agent Token、session 租約、claim／submit；tech-stack 加入 MCP Go SDK | owner 確認 | 待辦 |
+| M11.1 | t31 | MCP 端點、Token 雜湊與撤銷、速率限制、Server 端工具、稽核、prompts／resources 提供 skill | Go 測試：列出工具、撤銷後立即拒絕、跨 Workspace 拒絕 | 待辦 |
+| M11.2 | t32 | Worker `session` 模式、Manager 租約與閒置回收、browser／login 工具代理 | 建立、閒置逾時、回收後釋放名額 | 待辦 |
+| M11.3 | t31 | 接單模式：`authorEngine` 設定、claim／心跳／submit、逾時與取消收斂 | 單元測試：重複 submit、逾時、取消 | 待辦 |
+| M11.4 | t30 | Token 管理（只顯示一次）、authorEngine 設定、來源徽章、稽核列表 | build 加目視 | 待辦 |
+| M11.5 | PM | `docs/guides/mcp-agent.md` 接入指南；用一個現成 Agent 跑一次互動模式 | 外部 Agent 產出 Use Case 草稿 | 待辦 |
+| **M11.Z** | PM＋t33 | **階段二完整驗證** | 通過後 merge 回 main，標記 `phase2-verified` | 待辦 |
+
+M11.Z 清單：
+1. M10.Z 第 1、2 項回歸，並用 builtin 跑一次黃金任務集。
+2. 互動模式端到端：外部 Agent 建立 Module 與 Use Case 草稿 → 真實驗證 → 人在 UI 發佈；MCP 沒有任何發佈路徑。
+3. 接單模式：UI 對話交給外部 Agent 完成；逾時、取消、重複 submit 都不重複寫入。
+4. 撤銷 Token 後立即拒絕；跨 Workspace 拒絕；session 回收後名額恢復。
+5. 檢查稽核紀錄與 log，確認沒有憑證或金鑰；用注入頁確認權限沒有被放大。
+
+### M12 階段三：Agent Adapter（`feat/agent-adapter`，自 `phase2-verified` 分出）
+
+狀態：待辦。依賴：M11.Z。M12.0 spike 可在 M11 期間於拋棄式分支先做。
+
+| 項目 | Owner | 內容 | 最小驗證 | 狀態 |
+| --- | --- | --- | --- | --- |
+| M12.0 | t32 | 2 天 spike：pi-agent-core＋pi-ai 與 Vercel AI SDK，依規格的淘汰條件與黃金子集比較；PM 裁定並更新 tech-stack | 結論文件放在 `docs/research/` | 待辦 |
+| M12.1 | t32 | 開源引擎 adapter（只用註冊表工具）、多供應商 provider 設定、`beforeRequest` 遮蔽 | adapter 單元測試：遮蔽 hook、取消 1 秒內停止、沒有內建工具 | 待辦 |
+| M12.2 | t31／t30 | 依 Workspace 或 skill 設定 engine、provider、model，並快照進 Run；UI 設定 | Go 測試加目視 | 待辦 |
+| M12.3 | t32 | `runtimes/agent-bridge/` 參考外部 Worker（MCP 接單模式客戶端） | 完成一筆接單任務 | 待辦 |
+| M12.4 | t33＋PM | 兩個引擎跑黃金任務集；PM 依成功率、工具呼叫數、token、延遲決定預設引擎 | 比較紀錄放在 devlog | 待辦 |
+| **M12.Z** | PM＋t33 | **階段三完整驗證** | 通過後 merge 回 main，標記 `phase3-verified` | 待辦 |
+
+M12.Z 清單：
+1. M10.Z 第 1、2 項回歸，並重跑 M11.Z 第 2、3 項。
+2. 新引擎通過全部淘汰條件測試；黃金任務集的成績與決策紀錄。
+3. 新引擎跑一次 Use Case 全流程（M10.Z 第 3 項）。
+4. 至少兩個 provider 各跑一次（金鑰不可用時註明未驗證）。
+5. agent-bridge 經 MCP 完成一筆接單任務。
