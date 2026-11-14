@@ -63,7 +63,7 @@ browser session採10分鐘閒置／30分鐘硬期限，共用Worker容量且回�
 
 ## macOS 本機安裝（獨立環境）
 
-`deploy/install-local-mcp.py --server-binary <已驗證的原生Server> --manager-binary <原生Manager>` 建立全新安裝；已有同名服務、DB或Codex設定時拒絕覆寫。Worker映像先以本repo建置為 `whippet-worker:m11w3`。安裝使用 `~/.local/share/whippet-mcp`、loopback Server19587、Postgres19589與獨立 `whippet-mcp-local-db` volume，不使用19287現場。launchd使用者服務為 `io.whippet.mcp.local.server` 與 `io.whippet.mcp.local.manager`，需本機Docker可用。
+`deploy/install-local-mcp.py --server-binary <已驗證的原生Server> --manager-binary <原生Manager>` 建立全新安裝；已有同名服務、DB或Codex設定時拒絕覆寫。Worker映像先以本repo建置為 `whippet-worker:m11-final`。安裝使用 `~/.local/share/whippet-mcp`、loopback Server19587、Postgres19589與獨立 `whippet-mcp-local-db` volume，不使用19287現場。launchd使用者服務為 `io.whippet.mcp.local.server` 與 `io.whippet.mcp.local.manager`，需本機Docker可用。
 
 Codex MCP名稱為 `whippet`，以 stdio bridge 連到本機 `/mcp`；啟動新的Codex對話載入設定。新Workspace起初沒有確認scope，只可讀已接線Catalog與封裝resources；不能把工具列出等同已授權browser操作，也不能跳過Workspace確認。
 
@@ -77,7 +77,7 @@ Codex MCP名稱為 `whippet`，以 stdio bridge 連到本機 `/mcp`；啟動新�
 
 Agent依序使用task_claim（requestId冪等）、task_heartbeat、task_tool_call及task_submit。task_tool_call把runId/attemptId/leaseId/callId放在控制工具本身的arguments，nested工具的arguments維持原registry schema。只用contextBundle實際allowedTools。短租120秒，硬期限沿原skill budget（普通test-author目前180秒）；heartbeat不能延長硬期限。先讀 `whippet://skill/test-author/references/external-mcp`。
 
-以同一submitId與同一output提交完整message/script/requestValidation/conversationSummary；busy可待回收後原樣重試，unknown_result不能用新callId重做副作用。直接提交只是尚未自試的AI候選；requestValidation=true讓平台另外排正式keyless Playwright Run。submit成功不等於驗證通過，需由UI看目前revision驗證成功與報告。發佈仍由人在UI操作。
+送出前先在客戶端記憶體保留完整submit request，再以同一submitId與同一output提交完整message/script/requestValidation/conversationSummary；busy可待回收後原樣重試，unknown_result不能用新callId重做副作用。直接提交只是尚未自試的AI候選；requestValidation=true讓平台另外排正式keyless Playwright Run。submit成功不等於驗證通過，需由UI看目前revision驗證成功與報告。發佈仍由人在UI操作。
 
 本機bridge另會替獨立browser session的原四工具補入ready lease metadata；已有顯式metadata不覆寫，close或未知結果清除隱式綁定。接單主線仍用task_tool_call明示身份。
 
@@ -86,7 +86,7 @@ Agent依序使用task_claim（requestId冪等）、task_heartbeat、task_tool_ca
 
 ## Wave4–5 外部平台作者
 
-程式碼已完成三類驗收摘要（普通 Test／Module／Plan batch）與 Module、Use Case planner、Workspace 訪談接單，核心必要測試通過。本機19587目前部署仍是Wave3；後續集中驗收後更新，不以原始碼進度冒稱已部署。
+程式碼已完成三類驗收摘要（普通 Test／Module／Plan batch）與 Module、Use Case planner、Workspace 訪談接單，核心必要測試通過。本機19587已同步至含Module ABI修補的版本；全新Terra QA實測19工具可見、Catalog與Module main/harness/external資源可讀。
 
 | 作者 | 外部提交 | 成功的意義 |
 | --- | --- | --- |
@@ -104,7 +104,7 @@ registry11.2 新增 draft_create、draft_get、author_start、validation_request
 
 validation_request只能排正式驗證；Use Case未人工確認回awaiting_human_plan_confirmation，確認後重新讀目前revision再續請。同requestId等待時不留永久完成紀錄，真正排程後同鍵同body回原結果。validation_report返回綁定目前Test/revision/Run的狀態、統計與安全錯誤數，不回原始log。所有寫入ai，scope/Token/CAS及人工發佈門檻不變。
 
-Wave6必要真MCP/隔離PG檢查已通過；使用合成validation artifact，不等於本次真Docker或完整UI驗收。本機部署仍待集中更新。
+Wave6必要真MCP/隔離PG檢查已通過；使用合成validation artifact，不等於本次真Docker或完整UI驗收。本機已更新；此段核心測試仍只代表合成狀態機證據。
 
 
 ## Wave7 登入與監看
@@ -113,4 +113,4 @@ browser_login沿原schema只傳roleId與三個selector；username/password只經
 
 管理者在Workspace設定「瀏覽器 session」清單只會看到當下有效opening/ready租約，ready可開始監看。關閉監看或離頁只停媒體，不關browser；租約逾時、撤銷、scope/epoch失效則終止監看。敏感輸入期間沿原遮蔽/暫停，viewer心跳不延長browser期限。使用同源管理cookie與精確Origin，不在URL放Token。
 
-原始碼已完成上述核心檢查；本機19587仍待最後完整驗收後更新，不能用此頁宣稱已部署19工具。
+本機19587已部署19工具並經全新對話實際唯讀驗收。原Workspace仍未確認scope，沒有繞過人工授權；本機HTTP入口不提供可信HTTPS登入resolver，browser_login需另行配置TLS與有效scope/role。真TLS登入與LiveView已在隔離環境驗證，不能等同本機HTTP服務已具備該設定。

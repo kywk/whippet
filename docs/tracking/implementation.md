@@ -362,19 +362,19 @@ M10.Z 清單：
 
 ### M11 階段二：MCP（`feat/mcp`，基線 `ded0364`）
 
-狀態：進行中。2026-11-14 使用者明確授權直接開發，覆蓋原 M10.Z 開發順序門檻；M10.Z 尚未完成，未建立 phase1-verified。既有驗收現場19287保留，新工作先隔離驗證。
+狀態：完成（M11 限定範圍及本次集中驗收；未 merge/tag）。2026-11-14 使用者明確授權直接開發，覆蓋原 M10.Z 開發順序門檻；M10.Z 尚未完成，未建立 phase1-verified。既有驗收現場19287保留，新工作先隔離驗證。
 
 獨立 PM t52（parent=null、gpt-6-astra low）接手；Server t53、Runtime t54 為全新 gpt-6-sol high 對話，parent=t52，各自新 tab，crew=1、keep/outlive-parent、明確 repo cwd、no-daemon 與 YOLO 均已 hc 實核 working。PM 唯一 docs/contracts/Git owner；首波兩 owner 盤點最小接縫，v11 固定後實作。
 
 | 項目 | Owner | 內容 | 最小驗證 | 狀態 |
 | --- | --- | --- | --- | --- |
-| M11.0 | t52 PM | v11 契約：MCP 工具如何對應註冊表、Agent Token、session 租約、claim／submit；tech-stack 加入 MCP Go SDK | owner 確認 | 進行中 |
-| M11.1 | t58（首波t53） | MCP 端點、Token 雜湊與撤銷、速率限制、Server 端工具、稽核、prompts／resources 提供 skill | Go 測試：列出工具、撤銷後立即拒絕、跨 Workspace 拒絕 | 進行中 |
-| M11.2 | t59（首波t54） | Worker `session` 模式、Manager 租約與閒置回收、browser／login 工具代理 | 建立、閒置逾時、回收後釋放名額 | 進行中 |
-| M11.3 | t5g | 接單模式：`authorEngine` 設定、claim／心跳／submit、逾時與取消收斂 | 單元測試：重複 submit、逾時、取消 | 進行中 |
-| M11.4 | t55 | Token 管理（只顯示一次）、authorEngine 設定、來源徽章、稽核列表 | build 加目視 | 進行中 |
-| M11.5 | PM | `docs/guides/mcp-agent.md` 接入指南；用一個現成 Agent 跑一次互動模式 | 外部 Agent 產出 Use Case 草稿 | 進行中 |
-| **M11.Z** | PM＋t33 | **階段二完整驗證** | 通過後 merge 回 main，標記 `phase2-verified` | 待辦 |
+| M11.0 | t52 PM | v11 契約：MCP 工具如何對應註冊表、Agent Token、session 租約、claim／submit；tech-stack 加入 MCP Go SDK | owner 確認 | 完成 |
+| M11.1 | t53/t58/t63 | MCP 端點、Token 雜湊與撤銷、速率限制、Server 端工具、稽核、prompts／resources 提供 skill | Go 測試：列出工具、撤銷後立即拒絕、跨 Workspace 拒絕 | 完成 |
+| M11.2 | t54/t59/t62 | Worker `session` 模式、Manager 租約與閒置回收、browser／login 工具代理 | 建立、閒置逾時、回收後釋放名額 | 完成 |
+| M11.3 | t5g/t5w/t60/t63 | 接單模式：`authorEngine` 設定、claim／心跳／submit、逾時與取消收斂 | 單元測試：重複 submit、逾時、取消 | 完成 |
+| M11.4 | t55/t5j/t5s/t5y/t64 | Token 管理（只顯示一次）、authorEngine 設定、來源徽章、稽核列表 | build 加目視 | 完成 |
+| M11.5 | t52＋t6c/t6d/t6f | `docs/guides/mcp-agent.md` 接入指南；用一個現成 Agent 跑一次互動模式 | 外部 Agent 產出 Use Case 草稿 | 完成 |
+| **M11.Z** | t52＋t66/t67/t68 | **階段二完整驗證** | 本次僅授權 commit/push；merge/tag 另待指示 | 完成 |
 
 2026-11-14 首波v11已固定並派實作：t53為Token／管理gate／唯讀MCP與skill resources；t54為獨立browser session核心、IPC及共用容量回收。claim/submit、互動寫入與Server session代理尚待後切片，M11.0不提前列完成。MCP啟用時管理API必須同步受保護，避免既有開發身分入口繞過Token邊界；既有19287不改。
 
@@ -405,7 +405,10 @@ M11.Z 清單：
 2. 互動模式端到端：外部 Agent 建立 Module 與 Use Case 草稿 → 真實驗證 → 人在 UI 發佈；MCP 沒有任何發佈路徑。
 3. 接單模式：UI 對話交給外部 Agent 完成；逾時、取消、重複 submit 都不重複寫入。
 4. 撤銷 Token 後立即拒絕；跨 Workspace 拒絕；session 回收後名額恢復。
-5. 檢查稽核紀錄與 log，確認沒有憑證或金鑰；用注入頁確認權限沒有被放大。
+5. 以合成秘密、公開回應／稽核投影及固定 enum 診斷檢查遮蔽；依使用者限制不讀原始對話、憑證或自由 log，不宣稱實際 log 全面掃描。用注入頁確認權限沒有被放大。
+
+
+2026-11-14 最終結果：M11 各 wave 與本次集中驗收完成。普通 Test 真 UI→外部 Agent→正式驗證／摘要／報告成功；Module 經 ABI 真 red→green 後 revision4 正式2/0/0/0、UI發佈；Use Case 經頁面前提與可執行斷言修正，Plan11四Stage ready，兩新Module正式各2/0/0/0、整體正式1/0/0/0、外部批次摘要與真UI整批發佈成功。UseCase版本 fc9f75b4-f619-4595-9b5d-2d48fcc856ef；兩候選版本 f3039cc8-9d7f-48f7-8af2-61440a08235a、d9eb63ee-353a-417a-af1e-d1302fb20f94。最後DB active/occupied/unreclaimed皆0，按Manager精確label核Docker容器為0。API31項＋ABI獨立定向與session/TLS/Live/撤銷證據及限制見[集中驗收紀錄](handoff/m11-final-20261114.md)。本機MCP19587已更新、全新Terra實測19工具及Catalog/resources；保留DB、憑證、artifact、journal與隔離現場，不動19287。未重跑M1–M9或舊M10全套，M10.Z仍待辦，未merge/tag。
 
 ### M12 階段三：Agent Adapter（`feat/agent-adapter`，自 `phase2-verified` 分出）
 

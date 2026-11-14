@@ -43,7 +43,7 @@ def main():
             'SERVER_URL': 'http://127.0.0.1:19587',
             'MANAGER_ID': 'whippet-mcp-local',
             'WORK_DIR': str(root / 'work'),
-            'WORKER_IMAGE': 'whippet-worker:m11w3', 'MAX_WORKERS': '1',
+            'WORKER_IMAGE': 'whippet-worker:m11-final', 'MAX_WORKERS': '1',
         })
         result = subprocess.run(
             [shutil.which('docker', path=env['PATH']), 'context', 'inspect', '--format',

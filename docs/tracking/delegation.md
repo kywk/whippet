@@ -222,3 +222,14 @@ W7新Runtime t62、Server t63（皆Sol high）目前僅唯讀login/LiveView最�
 
 
 Wave6 ccbf9c3已push、t60停寫後，W7 t62 Runtime與t63 Server開始實作；新增t64 Web Sol high與t65安全QA Terra xhigh。兩位metadata已核，tab tbb4f6446418da840f89a34493383ab12e、tbbd9627d8277aee5783a3bb037e0500c4，在指定space命名。Runtime額外owner scripts/local-mcp，Server services/server，Web apps/web，QA僅scripts/test/m11w7-security-*。v11 Wave7固定session credential HTTPS/private IPC與LiveViewer權威；Manager新增SERVER_CA_FILE只載入公開CA，不改系統信任。PG32777隔離schema，PM準備deploy/m11-final-e2e-env.py但功能完成前不啟完整驗收。
+
+
+## M11 集中驗收與定向修復
+
+t66 UI、t67 session/security、t68 API 均全新 Terra xhigh；parent=t52、repo cwd、crew=1、keep/outlive-parent、no-daemon/YOLO 已核。獨立 tab 依序 tb4fb2b1cdc04599bb4646d019537b705a、tb8466e44e01b4e9940979aae092e7463a、tb71358f999da101d62f37a17322d5b58b，指定 space 命名，未傳 herdr.tab。各自只寫 scripts/test/m11-final-ui-*、session-*、api-*，PM 控制隔離環境與 Git。
+
+實際 MCP 作者為全新 Sol high：t69 普通 Test（tab tbab855418e8bc8cd730bb499bc9a4cb94）、t6b 初次 Module、t6c 修正環境後 Module（tb8fcf62d615f220f91df648f4122c094c）、t6d Use Case（tb508b04f2613835b8d23360f200614ca0）。相同 parent/cwd/keep/outlive/no-daemon/YOLO 已核；僅私有 MCP broker，Token 留記憶體，QA 不代產腳本。t6b 因資源缺口停止，產品修復後才交新 Agent；其參數錯誤獨立記錄，不算產品通過。
+
+集中驗收發現 Module harness 與 Compose ABI 不合後，由原 owner t63 Server、t62 Manager/Worker 定向修補，未改 QA 原斷言。c40b6e2 已推送；同 R5 資料保留原失敗，UI 續編原稿 formal RED，再由 t6c 修稿 formal GREEN／摘要／UI 發佈新版本，t6d 接續原 Use Case 更新固定版本。無 merge/tag，未操作19287。
+
+本機安裝最終唯讀 QA t6f 為全新 gpt-6.1-terra xhigh，parent=t52、cwd/keep/outlive/no-daemon/YOLO/working 已核；新 tab tbf042c83e594fad91a2f80db903117f52 命名 Whippet M11 Local Final QA，未傳 herdr.tab。實際 MCP 19 工具／Catalog／Module main、harness、external resources 全 PASS；不做寫入，原 Workspace 未確認 scope。
