@@ -1,4 +1,4 @@
-import type { SelfTestFailureClass } from './module-diagnostics.js';
+import {failedStepCategories, type FailedStepCategory, type MainFrameNavigation, type SelfTestFailureClass, type SelfTestObservation} from './module-diagnostics.js';
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
@@ -47,7 +47,7 @@ export interface ExplorationBrowser {
   click(selector: string): Promise<unknown>;
   fill(selector: string, value: string): Promise<unknown>;
   login?(roleId:string,usernameSelector:string,passwordSelector:string,submitSelector:string,callId?:string):Promise<unknown>;
-  verifyDraft?(script: string, options?: { signal?: AbortSignal; moduleFile?: ModuleABI & {content:string}; onSelfTestFailure?: (value:SelfTestFailureClass)=>void }): Promise<DraftSelfTestResult>;
+  verifyDraft?(script: string, options?: { signal?: AbortSignal; moduleFile?: ModuleABI & {content:string}; onSelfTestFailure?: (value:SelfTestFailureClass)=>void; onSelfTestObservation?: (value:SelfTestObservation)=>void }): Promise<DraftSelfTestResult>;
   close(): Promise<void>;
 }
 
@@ -160,9 +160,12 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
     },
     async verifyDraft(script, runOptions = {}) {
       const failure=(value:SelfTestFailureClass)=>{try{runOptions.onSelfTestFailure?.(value);}catch{/* Diagnostic observers never change execution. */}};
-      if (closed || runOptions.signal?.aborted) { failure('CANCELLED'); throw new AuthorError("cancelled"); }
+      const observe=(value:SelfTestObservation)=>{try{runOptions.onSelfTestObservation?.(value);}catch{/* Diagnostic observers never change execution. */}};
+      const unobserved:SelfTestObservation={failedStepCategory:'UNOBSERVED',mainFrameNavigation:'UNOBSERVED'};
+      if (closed || runOptions.signal?.aborted) { failure('CANCELLED');observe(unobserved); throw new AuthorError("cancelled"); }
       if (!isValidPlaywrightSpec(script)) {
         failure('INVALID_SPEC');
+        observe(unobserved);
         return {
           passed: false,
           category: "invalid_spec",
@@ -172,6 +175,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
       }
       if (options.scope && options.scope.targets.length === 0) {
         failure('GUARD');
+        observe(unobserved);
         return {
           passed: false,
           category: "environment",
@@ -194,6 +198,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
           await writeFile(join(taskDir,"lib",runOptions.moduleFile.slug+".ts"),runOptions.moduleFile.content,{flag:"wx"});
           await installModuleABI(taskDir,{slug:runOptions.moduleFile.slug,exportName:runOptions.moduleFile.exportName});
         }
+        const navigationObservationPath=runOptions.onSelfTestObservation?join(taskDir,"navigation-observation.json"):undefined;
         const bridgePath = join(taskDir, "live-fixture.cjs");
         await writeFile(
           bridgePath,
@@ -201,6 +206,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
             scopeURL: new URL("./scope.js", import.meta.url).href,
             scope: options.scope ?? null,
             privacyURL: new URL("../login/privacy.js", import.meta.url).href,
+            navigationObservationPath,
           }),
           "utf8",
         );
@@ -233,7 +239,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
           timeout: selfTestTimeout,
           globalTimeout: selfTestTimeout,
           reporter: [
-            [reporterPath, { summaryPath }],
+            [reporterPath, { summaryPath, diagnostics: !!runOptions.onSelfTestObservation }],
             ["json", { outputFile: resultsPath }],
           ],
           projects: [{
@@ -314,6 +320,18 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
         const count=(value:unknown)=>typeof value==='number'&&Number.isSafeInteger(value)&&value>0;
         failure(watchdogExpired || summary?.status==='timedout' || count(summary?.timedOut) ? 'TIMEOUT' :
           summary?.status==='failed' && count(summary?.failed) ? 'TEST_FAILED' : 'UNKNOWN');
+        let failedStepCategory:FailedStepCategory='UNOBSERVED';
+        const reported=(summary as RuntimeSummary & {failedStepCategory?:unknown}|undefined)?.failedStepCategory;
+        if(failedStepCategories.includes(reported as FailedStepCategory))failedStepCategory=reported as FailedStepCategory;
+        let mainFrameNavigation:MainFrameNavigation='UNOBSERVED';
+        if(navigationObservationPath && !watchdogExpired && !runOptions.signal?.aborted){
+          try{
+            const raw=await readFile(navigationObservationPath,'utf8');
+            if(raw==='{"mainFrameNavigation":"OBSERVED"}')mainFrameNavigation='OBSERVED';
+            else if(raw==='{"mainFrameNavigation":"NOT_OBSERVED"}')mainFrameNavigation='NOT_OBSERVED';
+          }catch{/* Missing or malformed producer evidence remains UNOBSERVED. */}
+        }
+        observe({failedStepCategory,mainFrameNavigation});
         const rawErr = redact(
           summary?.errors?.[0] ??
           json?.errors?.[0]?.message ??

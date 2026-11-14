@@ -215,11 +215,12 @@ export async function runAuthor(
             noSecret(next,config.apiKey);
             if(options.secrets && JSON.stringify(options.secrets.clean(next))!==JSON.stringify(next))throw new AuthorError("sensitive_output");
             let selfTestFailure:unknown='UNKNOWN';
+            let selfTestObservation:unknown={failedStepCategory:'UNOBSERVED',mainFrameNavigation:'UNOBSERVED'};
             let check;
             try {
-              check=await withHeartbeat(browser.verifyDraft(next.module.harness,{signal:toolSignal,moduleFile:{slug:next.module.slug,exportName:next.module.exportName,content:next.script},...(options.moduleDiagnostics?{onSelfTestFailure:(value:unknown)=>{selfTestFailure=value;}}:{})}), `author:tool:${toolCount}:${safeToolName}:heartbeat`,toolSignal);
+              check=await withHeartbeat(browser.verifyDraft(next.module.harness,{signal:toolSignal,moduleFile:{slug:next.module.slug,exportName:next.module.exportName,content:next.script},...(options.moduleDiagnostics?{onSelfTestFailure:(value:unknown)=>{selfTestFailure=value;},onSelfTestObservation:(value:unknown)=>{selfTestObservation=value;}}:{})}), `author:tool:${toolCount}:${safeToolName}:heartbeat`,toolSignal);
             } finally {
-              if(!check?.passed)options.moduleDiagnostics?.selfTestFailure(selfTestFailure);
+              if(!check?.passed){options.moduleDiagnostics?.selfTestFailure(selfTestFailure);options.moduleDiagnostics?.selfTestObservation(selfTestObservation);}
             }
             if (toolSignal.aborted) throw new AuthorError("cancelled");
             options.moduleDiagnostics?.selfTest(check.passed);

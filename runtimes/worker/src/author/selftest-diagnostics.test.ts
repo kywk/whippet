@@ -26,7 +26,8 @@ test('M109 v2 actual self-test branches, off equivalence, safe fixed evidence',a
    }catch(e:any){results.push({error:e.code});}finally{await browser.close();}
    assert.deepEqual(seen,enabled?[expected]:[]);
    if(enabled){
-    let count=0;d.failure('LIMIT');d.finish('UNKNOWN',value=>{count++;const v=value as any;assert.equal(v.schemaVersion,3);assert.equal(v.lastSelfTestFailureClass,expected);assert.equal(v.terminalClass,'LIMIT');assert(!JSON.stringify(value).includes('SECRET_SENTINEL'));});
+    let count=0,emitted:any;d.failure('LIMIT');d.finish('UNKNOWN',value=>{count++;emitted=value;});
+    assert.equal(emitted.schemaVersion,4);assert.equal(emitted.lastSelfTestFailureClass,expected);assert.equal(emitted.terminalClass,'LIMIT');assert(!JSON.stringify(emitted).includes('SECRET_SENTINEL'));
     d.finish('UNKNOWN',()=>count++);assert.equal(count,1);
    }
   }
@@ -35,10 +36,10 @@ test('M109 v2 actual self-test branches, off equivalence, safe fixed evidence',a
 });
 test('M109 v2 malicious failure classes cannot enter summary; success retains last failure',()=>{
  for(const value of ['PARSE','TIMEOUT SECRET_SENTINEL',null,{},['GUARD']]){
-  const d=new ModuleDiagnostics();d.selfTestFailure(value);d.finish('COMPLETED',v=>assert.equal((v as any).lastSelfTestFailureClass,'UNKNOWN'));
+  const d=new ModuleDiagnostics();d.selfTestFailure(value);let emitted:any;d.finish('COMPLETED',v=>{emitted=v});assert.equal(emitted.lastSelfTestFailureClass,'UNKNOWN');
  }
  const d=new ModuleDiagnostics();d.selfTestFailure('TEST_FAILED');d.selfTest(false);d.selfTest(true);
- d.finish('COMPLETED',v=>{assert.equal((v as any).lastSelfTestFailureClass,'TEST_FAILED');assert.equal((v as any).terminalClass,'COMPLETED');});
+ let emitted:any;d.finish('COMPLETED',v=>{emitted=v});assert.equal(emitted.lastSelfTestFailureClass,'TEST_FAILED');assert.equal(emitted.terminalClass,'COMPLETED');
 });
 test('M109 v2 observer failure cannot change real invalid-spec result',async()=>{
  const b=explorationBrowser({});

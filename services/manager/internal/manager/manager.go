@@ -42,6 +42,7 @@ type Manager struct {
 	events                     chan Envelope
 	liveMu                     sync.Mutex
 	diagnosticsMu              sync.Mutex
+	transport                  *managerTransportDiagnostic
 	live                       map[string]*liveSession
 	secrets                    map[string][]string // attempt-local memory only, never journaled
 }
@@ -69,6 +70,9 @@ func New(cfg Config) (*Manager, error) {
 		return nil, err
 	}
 	m := &Manager{cfg: cfg, http: newHTTPClientWithTLS(tlsConfig), tlsConfig: tlsConfig, lock: lock, records: records, controls: make(map[string]context.CancelFunc), sessions: sessions, sessionControls: make(map[string]context.CancelFunc), sessionWorking: make(map[string]*sessionWorkingState), sessionIdleTimeout: 10 * time.Minute, events: make(chan Envelope, 64), secrets: make(map[string][]string)}
+	if m109Enabled() {
+		m.transport = newManagerTransportDiagnostic(cfg.WorkDir)
+	}
 	m.docker = dockerCLI{cfg: cfg, client: m.http, remember: m.rememberCredentials}
 	sessionRuntime := newDockerSessionRuntime(cfg)
 	sessionRuntime.client = m.http
@@ -125,9 +129,11 @@ func (m *Manager) Run(ctx context.Context) error {
 }
 
 func (m *Manager) session(ctx context.Context) error {
+	connectionAttempt := m.transport.connection("DIAL_START")
 	wsURL := "ws" + strings.TrimPrefix(m.cfg.ServerURL, "http") + "/api/manager/connect"
 	cfg, err := websocket.NewConfig(wsURL, m.cfg.ServerURL)
 	if err != nil {
+		m.transport.connection("DIAL_FAILED", connectionAttempt)
 		return err
 	}
 	cfg.TlsConfig = m.tlsConfig
@@ -136,8 +142,10 @@ func (m *Manager) session(ctx context.Context) error {
 	conn, err := cfg.DialContext(dialCtx)
 	cancel()
 	if err != nil {
+		m.transport.connection("DIAL_FAILED", connectionAttempt)
 		return err
 	}
+	defer m.transport.connection("DISCONNECTED", connectionAttempt)
 	// JSON escapes can expand each script byte to six bytes.
 	conn.MaxPayloadBytes = maxWorkerInputBytes
 	// Publish the connection only after hello, so a concurrent completion cannot
@@ -150,19 +158,23 @@ func (m *Manager) session(ctx context.Context) error {
 		conn.Close()
 		return err
 	}
+	m.transport.connection("HELLO_SENT", connectionAttempt)
 	m.setConn(conn)
 	defer m.setConn(nil)
 	if err := m.heartbeat(); err != nil {
 		return err
 	}
+	m.transport.connection("HEARTBEAT_SENT", connectionAttempt)
 	// v1 has no result receipt ACK. Stable terminal message IDs allow safe replay.
+	m.transport.connection("REPLAY_START", connectionAttempt)
 	for _, r := range m.snapshot() {
 		if r.Phase == "complete" {
-			if err := m.sendResult(r); err != nil {
+			if err := m.sendResultWithReplay(r, true); err != nil {
 				return err
 			}
 		}
 	}
+	m.transport.connection("READ_LOOP", connectionAttempt)
 	slog.Info("Manager connected", "managerId", m.cfg.ManagerID, "capacity", m.cfg.MaxWorkers)
 	done := make(chan struct{})
 	defer close(done)
@@ -181,6 +193,7 @@ func (m *Manager) session(ctx context.Context) error {
 					conn.Close()
 					return
 				}
+				m.transport.connection("HEARTBEAT_SENT", connectionAttempt)
 			}
 		}
 	}()
@@ -536,9 +549,20 @@ func (m *Manager) emit(r record, kind, text string) {
 }
 
 func (m *Manager) sendResult(r record) error {
+	return m.sendResultWithReplay(r, false)
+}
+
+func (m *Manager) sendResultWithReplay(r record, replay bool) error {
 	env := message(m.cfg.ManagerID, "result", r.RunID, r.AttemptID, r.Result)
 	env.MessageID = r.ResultMessageID
-	return m.send(env)
+	m.transport.result("ATTEMPTED", replay)
+	err := m.send(env)
+	if err != nil {
+		m.transport.result("FAILED", false)
+	} else {
+		m.transport.result("SENT", false)
+	}
+	return err
 }
 
 func (m *Manager) snapshot() []record {

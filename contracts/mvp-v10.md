@@ -260,6 +260,27 @@ incomplete類別僅限status精確incomplete；incomplete_details必須為非nul
 
 Worker payload v3為version＋八摘要欄（共九）；sidecar外層version3、worker八欄不重複version。Manager/reader嚴格支援v1/v2/v3，未知欄位/混版/null/duplicate/未知enum拒絕。舊版與未觀測投影UNKNOWN、保留原值不回填。既有2048-byte payload／4KiB sidecar與exclusive/no-follow不變；Manager/Worker須同批切換，不單換Worker。
 
+### M10.Z Wave3 自試結構觀測 v4（2026-11-15）
+
+沿原M109 default-off開關，v4保留v3全部欄位，新增以下兩個必填enum；Worker payload為version＋十摘要欄（共十一），Manager sidecar外層version4、worker十欄不重複version。只增加觀測，不更改自試、正式驗證、取消、預算或發佈結果。
+
+- `lastSelfTestFailedStepCategory`：`EXPECT`／`PW_API`／`TEST_STEP`／`OTHER`／`UNOBSERVED`。只依真Playwright Reporter `onStepEnd` 的error存在與category結構：expect→EXPECT、pw:api→PW_API、test.step→TEST_STEP；已知hook／fixture／test.attach→OTHER，其他不明值→UNOBSERVED。優先失敗葉節點，父test.step不得覆蓋較精確葉觀測；無法唯一對應時UNOBSERVED。這是Reporter分類，不是assertion或locator根因。
+- `lastSelfTestMainFrameNavigation`：`OBSERVED`／`NOT_OBSERVED`／`UNOBSERVED`。只依本次自試真page/framenavigated主框架事件的布林觀測，不輸出URL或頁面內容；只有觀測生命週期完整才可記NOT_OBSERVED，未啟動／中斷／缺資料為UNOBSERVED。未觀測導航不等於缺導航造成失敗，亦不把baseURL當自動導航。
+
+兩欄與`lastSelfTestFailureClass`對應同一最近失敗自試；後續成功不覆蓋失敗觀測。無失敗／無可信觀測時均UNOBSERVED，不能假造通過。Worker內部可選`onSelfTestObservation({failedStepCategory,mainFrameNavigation})`回呼以精確結構交付，observer例外吞掉且不改原結果。原Reporter正常errors／真實驗證證據保留；新增固定觀測不包含error文字、名稱、title、selector、URL、content、ID或hash，不能以自由字串regex猜分類。
+
+Manager／新reader保留v1-v3原精確shape及語意，不在舊sidecar補新欄位；v4拒絕未知欄位、混版、null、duplicate與未知enum。舊資料的新欄只在唯讀投影呈UNOBSERVED，不改歷史檔。Worker2048-byte／sidecar4KiB、exclusive/no-follow與單次輸出不變。先完成診斷off/on等價、敏感sentinel與正負producer/decoder驗證，再考慮部署；本wave不因此自動重跑真模型。
+
+### M10.Z Wave3 Manager 傳輸階段觀測（2026-11-15）
+
+沿M109 opt-in，獨立`diagnostics/manager-transport.json`快照，不混入per-attempt v1-v4 sidecar。精確欄位為`schemaVersion:1`、`connectionStage`、`resultSendStage`、`connectionAttemptCount`、`resultSendCount`、`replayCount`、`elapsedMs`。
+
+- connectionStage：`DIAL_START`／`DIAL_FAILED`／`HELLO_SENT`／`HEARTBEAT_SENT`／`REPLAY_START`／`READ_LOOP`／`DISCONNECTED`／`UNOBSERVED`，僅實際來源分支記錄，不讀錯誤文字猜遠端原因。
+- resultSendStage：`NOT_ATTEMPTED`／`ATTEMPTED`／`SENT`／`FAILED`／`UNOBSERVED`。SENT只表示本地send返回成功，不是Server收件或業務接受ACK。
+- 三個計數為0..1000000整數飽和；connectionAttemptCount在dial開始增加，resultSendCount計每次傳送嘗試，replayCount計session啟動時重播complete record的嘗試，不代表新執行。elapsedMs為當前程序內單調經過毫秒，限制0..2147483647，重啟不跨程序累加。
+
+不含ID、messageId、URL、地址、token、env、journal內容或自由error。目錄0700／檔案0600、大小≤4KiB、NOFOLLOW，快照以受控原子替換更新；per-attempt sidecar的O_EXCL規則維持。觀測writer不得在持有m.mu或connMu時取得另一把鎖，不反向呼叫既有狀態鎖；觀測失敗不得改Run／重連／回收語意。缺檔是UNOBSERVED，不當成0次嘗試。此功能不宣稱修復Wave2停滯；須以fake WS/Runtime驗證同ResultMessageID重播、Execute=1及心跳，不能把模擬重連PASS當原事件定因。
+
 
 ### G6 單次輸出預算（2026-11-14 使用者明確授權）
 

@@ -1,6 +1,9 @@
 import { writeFile } from "node:fs/promises";
 import type { FullConfig, FullResult, Reporter, Suite, TestCase, TestError, TestResult, TestStep } from "@playwright/test/reporter";
 import type { RuntimeSummary } from "./result.js";
+import type { FailedStepCategory } from "./author/module-diagnostics.js";
+
+type DiagnosticSummary = RuntimeSummary & { failedStepCategory?: FailedStepCategory };
 
 function log(message: string): void {
   process.stdout.write(`${JSON.stringify({ kind: "log", message: message.slice(0, 8192) })}\n`);
@@ -8,10 +11,15 @@ function log(message: string): void {
 
 export default class NDJSONReporter implements Reporter {
   private summaryPath: string;
-  private summary: RuntimeSummary = { status: "unknown", passed: 0, failed: 0, timedOut: 0, interrupted: 0, errors: [] };
+  private summary: DiagnosticSummary = { status: "unknown", passed: 0, failed: 0, timedOut: 0, interrupted: 0, errors: [] };
+  private diagnostics: boolean;
+  private failedLeaf?: FailedStepCategory;
+  private failedParent = false;
+  private ambiguous = false;
 
-  constructor(options: { summaryPath: string }) {
+  constructor(options: { summaryPath: string; diagnostics?: boolean }) {
     this.summaryPath = options.summaryPath;
+    this.diagnostics = options.diagnostics === true;
   }
 
   printsToStdio(): boolean { return true; }
@@ -38,12 +46,20 @@ export default class NDJSONReporter implements Reporter {
 
   onStepEnd(_test: TestCase, _result: TestResult, step: TestStep): void {
     if (step.category === "test.step" && step.error) log(`Stage failed: ${step.title}`);
+    if (!this.diagnostics || !step.error) return;
+    if (step.category === "test.step") { this.failedParent = true; return; }
+    const category: FailedStepCategory = step.category === "expect" ? "EXPECT" :
+      step.category === "pw:api" ? "PW_API" :
+      step.category === "hook" || step.category === "fixture" || step.category === "test.attach" ? "OTHER" : "UNOBSERVED";
+    if (category === "UNOBSERVED" || this.failedLeaf && this.failedLeaf !== category) this.ambiguous = true;
+    else this.failedLeaf = category;
   }
 
   onError(error: TestError): void { this.addError(error); }
 
   async onEnd(result: FullResult): Promise<void> {
     this.summary.status = result.status;
+    if (this.diagnostics) this.summary.failedStepCategory = this.ambiguous ? "UNOBSERVED" : this.failedLeaf ?? (this.failedParent ? "TEST_STEP" : "UNOBSERVED");
     await writeFile(this.summaryPath, JSON.stringify(this.summary), "utf8");
     log(`Playwright finished: ${result.status}`);
   }
