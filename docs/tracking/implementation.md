@@ -348,7 +348,7 @@ M9歷史失敗已定位（81352430診斷回合）：模型將首次cursor輸出�
 | M10.8 | PM＋t4p | 黃金任務集 v1（10–15 題，含新建、修復、複用、拆解、越界、注入頁、預算耗盡），放在 `scripts/test/golden/` | 用 builtin 跑一次並記錄基準 | 完成（首次真基準與離線覆核已保存：4 PASS／2 FAIL／8 UNVERIFIED；不是完整驗收通過） |
 | M10.9 | PM t4s＋Server t50＋Runtime t4z | 整合 smoke：用真模型把「登入 → 搜尋 → 下單 → 驗證」拆成 4 段並發佈 | 一條主流程 | 進行中（Plan composed/r18四Stage ready；3 author＋3 Module驗證＋整體Use Case驗證共7 Run成功並回收，待批次摘要／發佈） |
 | M10.10 | PM t4s＋t4z＋t50 | 有界Module兩段暫存／commit真自試，timeout清理與安全階段觀測 | 正負真自試、三端回收／正式驗證、一次受控真模型 | 完成（分段工具／診斷、journal與Module遮蔽修補已部署；retry7三Module自試1/0、parser/upload與正式驗證及Compose成功，秘密負向守衛保持） |
-| **M10.Z** | PM＋t33 | **階段一完整驗證**（見下方） | 全部通過後標記 `phase1-verified` | 待辦 |
+| **M10.Z** | 獨立 QA Leader t6g＋新 QA t6j／t6k；修復 t6m | **階段一完整驗證**（見下方） | 八項矩陣全部通過才具備標記條件；本次不自行 tag | 受阻（2026-11-14 本輪八項已實跑與判定：核心建置／PG、隔離、固定版本與scope通過；builtin Use Case／Stage修復／continue任務完成仍FAIL。黃金覆核4 PASS／1 FAIL／9 UNVERIFIED，非完整通過。詳見 [驗收報告](m10z-acceptance-20261114.md)；未merge／push／tag） |
 
 M10.Z 清單：
 1. 三個模組全部建置、型別檢查與測試（含 Postgres 整合測試）。
@@ -359,6 +359,10 @@ M10.Z 清單：
 6. AI 來源 Module 套用範圍守衛；manual Module 不套用。
 7. 預算耗盡時保留 partial，按「繼續」能完成。
 8. 黃金任務集 builtin 成績不低於 M10.8 基準。
+
+2026-11-14 M10.Z 本輪收尾：本機與遠端仍為 `feat/mcp`／`89a741b`，各修補批次dirty manifest與binary／image／skill pins另存。Server unit128、隔離PG226、Worker133（5 opt-in另驗）、最後Manager212 PASS（14 opt-in SKIP中5同名nested PASS、9 NOT RUN），Web／Worker建置及型別檢查通過；fixture／legacy skill大小回歸均有red→green。真builtin Module Stage重試仍停止、正式continue三Run仍partial無完成候選；先做固定安全觀測與離線最小回路，不再刷模型／增加預算。真UI Live補到同epoch兩個解碼影格，但持續串流及失敗精確分支仍UNVERIFIED，關閉／終態時間戳限制保留。黃金原14題單批執行，14/14模型／effort／預算相同、registry／skill不同，保住舊四題PASS，不能把FAIL轉UNVERIFIED稱修復。舊M10.9摘要／發佈未補；19287／19587／19787未動，收尾本次active／occupied／unreclaimed與精確Manager容器均0，保留所有資料。M10.Z不具備`phase1-verified`條件；可獨立推進下一項為Module自試固定類別與continue候選交付的離線診斷，M11既有完成狀態不變。
+
+2026-11-15 Wave2 限縮修復／驗證完成，M10.Z仍受阻（使用者要求建議並推進下一波）：Leader t6g（parent=null）保留前波成績；全新 owner t6t＝gpt-6-sol/xhigh、QA t6v／t6w＝gpt-6-sol/high，獨立tab／parent／crew／keep／cwd／no-daemon／YOLO均核實。基線`89a741b`與交接57檔SHA無漂移；本波Worker guard-confirmed commit PASS後收尾、無checkpoint文案修正均有離線red→green及獨立QA；既有Module partial仍LIMIT，未弱化ABI／驗證門檻。定向43 PASS；Worker typecheck及全144＝139 PASS／0 FAIL／5 opt-in SKIP。來源Worker113／Manager68檔、真image producer與實際557-byte安全sidecar准入皆通過，模型／effort／8-12-180000／registry／skills不變。唯一官方retry Run99904…仍FAIL，v3已證自試0PASS/1FAIL、TEST_FAILED／LIMIT，無checkpoint，Plan stopped/r7、s3 pending，後續驗證／Compose／摘要／發佈BLOCKED。Manager曾停止回報，journal安全投影證complete/reclaimed/failed後，只重連本次owned Manager重播既有結果；62 Run僅原+1、slot／精確容器全0，停滯根因UNDETERMINED。#7舊partial文案不溯及，本波不重送；黃金／Live不重跑，舊部署與資料保留，不Git／tag。詳見 [Wave2結果與下一回路](handoff/m10z-wave2-20261115.md)；後續先做自試失敗／Manager連線階段的安全分類與離線red，不刷模型。
 
 ### M11 階段二：MCP（`feat/mcp`，基線 `ded0364`）
 
