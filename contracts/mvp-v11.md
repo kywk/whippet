@@ -166,3 +166,5 @@ GET /api/workspaces/{id}/browser-sessions → {items:[{sessionId,leaseId,state,c
 
 
 集中驗收修補：ExternalTask.testId 必由同 Run/attempt/Workspace 的 runs.test_id 提供，Workspace 作者明示 null，讓外部接單者可讀正式驗證報告而不靠管理API。module-authoring/usecase-planner/workspace-author 的 main 與 external-mcp reference 必在實際 resources/list/read 安全allowlist，不能只在claim回不可讀URI；manifest與其餘未審reference仍拒絕。Manager session Live診斷只在自有WorkDir/diagnostics保存固定stage/error/時間與租約識別，不保存raw錯誤/URL/header/畫面/秘密；用於定位媒體失敗，不當成影格成功證據。
+
+ExternalTask.contextBundle.toolDefinitions 必包含該claim allowedTools的原registry定義（含inputSchema/description/limits），順序沿allowedTools；與Run的registry版本/SHA一致才可回傳，摘要為空陣列。task_tool_call是通用入口，不能只給名稱而要求外部Agent猜nested參數，也不將未允許工具加入回應。

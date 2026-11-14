@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -60,6 +61,7 @@ func TestM11ExternalAuthorClaimAndImmutableSnapshot(t *testing.T) {
 		t.Fatalf("external claim: %+v %v", task, err)
 	}
 	assertExternalTaskTestID(t, *task, &test.ID)
+	assertExternalTaskToolDefinitions(t, *task)
 	for _, name := range task.ContextBundle.Author.AllowedTools {
 		if name == "update_draft" || name == "request_validation" {
 			t.Fatalf("unwired tool disclosed: %s", name)
@@ -145,6 +147,28 @@ func TestM11ExternalWorkspaceTaskHasNullTestID(t *testing.T) {
 		t.Fatalf("workspace claim: %+v %v", task, err)
 	}
 	assertExternalTaskTestID(t, *task, nil)
+	assertExternalTaskToolDefinitions(t, *task)
+}
+
+func assertExternalTaskToolDefinitions(t *testing.T, task ExternalTask) {
+	t.Helper()
+	registry, err := loadToolRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.ContextBundle.Author.ToolRegistryVersion != registry.Version || task.ContextBundle.Author.ToolRegistrySHA256 != registry.SHA256 {
+		t.Fatal("task registry pin differs from the packaged registry")
+	}
+	definitions := task.ContextBundle.ToolDefinitions
+	if len(definitions) != len(task.ContextBundle.Author.AllowedTools) {
+		t.Fatalf("task has %d definitions for %d allowed tools", len(definitions), len(task.ContextBundle.Author.AllowedTools))
+	}
+	for i, name := range task.ContextBundle.Author.AllowedTools {
+		original, found := registry.tool(name)
+		if !found || !reflect.DeepEqual(definitions[i], original) {
+			t.Fatalf("task definition %d differs from pinned registry tool %s", i, name)
+		}
+	}
 }
 
 func assertExternalTaskTestID(t *testing.T, task ExternalTask, expected *string) {

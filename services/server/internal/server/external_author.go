@@ -20,6 +20,7 @@ var externalConnectedTools = []string{"read_draft", "read_validation_report", "r
 
 type ExternalTaskBundle struct {
 	Author               AuthorInput        `json:"author"`
+	ToolDefinitions      []ToolDefinition   `json:"toolDefinitions"`
 	Script               string             `json:"script"`
 	WorkspaceSettings    *WorkspaceSettings `json:"workspaceSettings"`
 	WorkspaceContext     *WorkspaceContext  `json:"workspaceContext"`
@@ -83,6 +84,36 @@ func externalTools(input AuthorInput) []string {
 	return out
 }
 
+func externalTaskDefinitions(input AuthorInput, claimTools []string, registry *ToolRegistry) ([]string, []ToolDefinition, error) {
+	if registry == nil || input.ToolRegistryVersion != registry.Version || input.ToolRegistrySHA256 != registry.SHA256 {
+		return nil, nil, ErrHistoryUnavailable
+	}
+	connected := make(map[string]bool, len(externalConnectedTools))
+	for _, name := range externalConnectedTools {
+		connected[name] = true
+	}
+	fromRun := make(map[string]bool, len(input.AllowedTools))
+	for _, name := range input.AllowedTools {
+		fromRun[name] = true
+	}
+	allowed := []string{}
+	definitions := []ToolDefinition{}
+	seen := map[string]bool{}
+	for _, name := range claimTools {
+		if !connected[name] || !fromRun[name] || seen[name] {
+			continue
+		}
+		definition, ok := registry.tool(name)
+		if !ok {
+			return nil, nil, ErrHistoryUnavailable
+		}
+		allowed = append(allowed, name)
+		definitions = append(definitions, definition)
+		seen[name] = true
+	}
+	return allowed, definitions, nil
+}
+
 func scrubExternalContext(c *WorkspaceContext) *WorkspaceContext {
 	if c == nil {
 		return nil
@@ -111,7 +142,15 @@ func (p *Postgres) externalTask(ctx context.Context, q queryDB, c externalClaim)
 	if len(input.Skills) == 0 || input.Skills[0].ID != input.SkillID || input.Skills[0].ReferenceHashes["external-mcp"] == "" {
 		return ExternalTask{}, ErrInvalid
 	}
-	input.AllowedTools = c.AllowedTools
+	registry, err := loadToolRegistry()
+	if err != nil {
+		return ExternalTask{}, ErrHistoryUnavailable
+	}
+	allowed, definitions, err := externalTaskDefinitions(input, c.AllowedTools, registry)
+	if err != nil {
+		return ExternalTask{}, err
+	}
+	input.AllowedTools = allowed
 	settings, err := decodeSettings(rawSettings)
 	if err != nil {
 		return ExternalTask{}, err
@@ -120,7 +159,7 @@ func (p *Postgres) externalTask(ctx context.Context, q queryDB, c externalClaim)
 	if err != nil {
 		return ExternalTask{}, err
 	}
-	bundle := ExternalTaskBundle{Author: input, Script: script, WorkspaceSettings: settings, WorkspaceContext: scrubExternalContext(wc), SkillURI: "whippet://skill/" + input.SkillID + "/main"}
+	bundle := ExternalTaskBundle{Author: input, ToolDefinitions: definitions, Script: script, WorkspaceSettings: settings, WorkspaceContext: scrubExternalContext(wc), SkillURI: "whippet://skill/" + input.SkillID + "/main"}
 	if input.SkillID == "acceptance-summary" {
 		if len(c.AllowedTools) != 0 || len(input.Skills) == 0 || input.Skills[0].ReferenceHashes["external-mcp"] == "" {
 			return ExternalTask{}, ErrInvalid
