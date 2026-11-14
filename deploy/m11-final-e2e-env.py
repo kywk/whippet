@@ -100,9 +100,10 @@ def main():
               'WHIPPET_SKILLS_PATH': str(REPO / 'runtimes/worker/skills')}
         server = start([args.server_binary], server_env)
         wait_http(api + '/readyz')
-        start([args.manager_binary], {**docker_env, 'SERVER_URL': api, 'MANAGER_TOKEN': manager_key, 'SERVER_CA_FILE': str(cert),
+        manager_env = {**docker_env, 'SERVER_URL': api, 'MANAGER_TOKEN': manager_key, 'SERVER_CA_FILE': str(cert),
               'MANAGER_ID': manager_id, 'WORKER_IMAGE': args.worker_image, 'WORK_DIR': str(root / 'work'),
-              'MAX_WORKERS': '2', 'WHIPPET_TOOL_REGISTRY_PATH': str(REPO / 'contracts/tools/registry.json')})
+              'MAX_WORKERS': '2', 'WHIPPET_TOOL_REGISTRY_PATH': str(REPO / 'contracts/tools/registry.json')}
+        manager_process = start([args.manager_binary], manager_env)
         role_id = str(uuid.uuid4())
         login_username, login_password, login_cookie = [secrets.token_urlsafe(32) for _ in range(3)]
         target_spec = importlib.util.spec_from_file_location('order_fixture', REPO / 'scripts/test/m11w3-ui-target.py')
@@ -118,7 +119,7 @@ def main():
                     body = '<!doctype html><h1>Authenticated</h1><p>Ready</p>' if self.headers.get('Cookie') == 'session=' + login_cookie else '<h1>Denied</h1>'
                 else:
                     body = target_module.PAGE
-                self.send_response(200); self.send_header('Content-Type', 'text/html; charset=utf-8'); self.end_headers(); self.wfile.write(body.encode())
+                self.send_response(200); self.send_header('Content-Type', 'text/html; charset=utf-8'); self.end_headers(); self.wfile.write(body if isinstance(body, bytes) else body.encode())
             def do_POST(self):
                 try:
                     length = int(self.headers.get('Content-Length', '0'))
@@ -132,10 +133,12 @@ def main():
                     if valid: self.send_header('Set-Cookie', 'session=' + login_cookie + '; HttpOnly; SameSite=Strict')
                     self.end_headers()
                     body = '<h1>Authenticated</h1><p>Ready</p>' if valid else '<h1>Denied</h1>'
-                    self.wfile.write(body.encode())
+                    self.wfile.write(body if isinstance(body, bytes) else body.encode())
                 except Exception:
                     self.send_error(400)
-        target_server = ThreadingHTTPServer(('0.0.0.0', 19788), Target)
+        class QuietServer(ThreadingHTTPServer):
+            def handle_error(self, *_): pass
+        target_server = QuietServer(('0.0.0.0', 19788), Target)
         threading.Thread(target=target_server.serve_forever, daemon=True).start()
         start(['node', 'node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '19787'],
               {**base, 'WHIPPET_API_PROXY_TARGET': api, 'NODE_EXTRA_CA_CERTS': str(cert)}, REPO / 'apps/web')
@@ -148,17 +151,22 @@ def main():
             with opener.open(request, timeout=10) as response:
                 return json.load(response)
         workspace_name = 'M11 Final MCP E2E'
+        stage = 'fixture_workspace'
         workspace = post('/api/workspaces', {'name': workspace_name})
         config = {'name': workspace_name, 'purpose': 'Isolated external author E2E',
                   'backgroundSummary': 'Synthetic order lookup fixture',
                   'targets': [{'name': 'Order lookup', 'purpose': 'Order lookup verification', 'origin': target}],
                   'dependencies': [], 'excludedOrigins': [], 'exclusions': '', 'loginRoles': [{'roleId': role_id, 'name': 'Synthetic member', 'loginMethod': 'form', 'loginOrigin': target}],
                   'defaultTestUrl': target, 'timeoutMs': 60000}
+        stage = 'fixture_scope'
         encoded = json.dumps(config, separators=(',', ':')).replace("'", "''")
         sql = f"UPDATE workspaces SET canonical_config='{encoded}'::jsonb,lifecycle='active',scope_status='confirmed',authorization_revision=authorization_revision+1 WHERE id='{workspace['id']}'::uuid;"
+        sql += f"INSERT INTO workspace_roles(id,workspace_id) VALUES('{role_id}'::uuid,'{workspace['id']}'::uuid);"
         command([docker, 'exec', '-i', db_name, 'psql', '-X', '-q', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1'],
                 env=docker_env, input=sql.encode())
+        stage = 'fixture_credentials'
         post(f"/api/workspaces/{workspace['id']}/roles/{role_id}/credentials", {'expectedSecretVersion': 0, 'username': login_username, 'password': login_password}, 'PUT')
+        stage = 'fixture_token'
         token = post(f"/api/workspaces/{workspace['id']}/agent-tokens", {'name': 'Isolated MCP author'})['token']
         session_token = post(f"/api/workspaces/{workspace['id']}/agent-tokens", {'name': 'Isolated session QA'})['token']
         stage = 'broker'
@@ -230,7 +238,15 @@ def main():
             page.get_by_label('管理 key（管理 gate 啟用時必填）').fill(admin_key)
             page.get_by_role('button', name='以開發管理員登入').click()
             page.get_by_role('button', name='以開發管理員登入').wait_for(state='hidden')
-            # Keep this CDP connection/context alive while QA operates the same page.
+            page.evaluate("window.name = 'm11-main-qa-t66'")
+            session_page = context.new_page()
+            session_page.goto(web)
+            session_page.wait_for_load_state('networkidle')
+            session_page.get_by_label('管理 key（管理 gate 啟用時必填）').fill(admin_key)
+            session_page.get_by_role('button', name='以開發管理員登入').click()
+            session_page.get_by_role('button', name='以開發管理員登入').wait_for(state='hidden')
+            session_page.evaluate("window.name = 'm11-session-qa-t67'")
+            # Keep both authenticated pages alive; UI identity is memory-only.
             public = {'ready': True, 'webURL': web, 'apiURL': api, 'cdpURL': 'http://127.0.0.1:19790',
                       'workspaceName': workspace_name, 'workspaceId': workspace['id'], 'targetURL': target, 'roleId': role_id, 'mcpURL': web + '/mcp',
                       'tokenSocket': token_socket, 'sessionRPCSocket': rpc_socket, 'databaseContainer': db_name, 'databasePort': int(port)}
@@ -238,6 +254,16 @@ def main():
             print('E2E_ENV_READY=true', flush=True)
             stage = 'waiting'
             while not (root / 'stop').exists():
+                if (root / 'reset-login').exists():
+                    (root / 'reset-login').unlink()
+                    login_state['success'] = 0
+                if (root / 'restart-manager').exists():
+                    (root / 'restart-manager').unlink()
+                    manager_process.terminate()
+                    manager_process.wait(timeout=15)
+                    manager_process = start([args.manager_binary], manager_env)
+                    (root / 'manager-restarted').write_text('true\n')
+                    print('E2E_MANAGER_RESTARTED=true', flush=True)
                 if (root / 'restart-server').exists():
                     (root / 'restart-server').unlink()
                     server.terminate()
@@ -253,11 +279,12 @@ def main():
                         login.wait_for(state='hidden')
                     (root / 'server-restarted').write_text('true\n')
                     print('E2E_SERVER_RESTARTED=true', flush=True)
-                (root / 'target-state.json').write_text(json.dumps({'loginSucceeded': login_state['success'] > 0}))
+                (root / 'target-state.json').write_text(json.dumps({'loginSucceeded': login_state['success'] > 0, 'loginCount': login_state['success']}))
                 page.wait_for_timeout(500)
             browser.close()
-    except Exception:
-        print('E2E_ENV_READY=false STAGE=' + stage, flush=True)
+    except Exception as error:
+        code = str(error.code) if isinstance(error, urllib.error.HTTPError) else type(error).__name__
+        print('E2E_ENV_READY=false STAGE=' + stage + ' ERROR=' + code, flush=True)
         raise SystemExit(1)
     finally:
         if 'target_server' in locals(): target_server.shutdown()

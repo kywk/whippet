@@ -27,9 +27,10 @@ type liveSession struct {
 	done     chan struct{}
 }
 type liveMediaSource struct {
-	url    string
-	dir    string
-	active func() bool
+	url      string
+	dir      string
+	active   func() bool
+	diagnose func(stage, code string)
 }
 type liveControl struct {
 	ViewerID      string          `json:"viewerId"`
@@ -234,7 +235,19 @@ func (m *Manager) mediaSession(ctx context.Context, r record, start liveStart) e
 	return m.mediaSessionFor(ctx, source, start)
 }
 
-func (m *Manager) mediaSessionFor(ctx context.Context, source liveMediaSource, start liveStart) error {
+func (m *Manager) mediaSessionFor(ctx context.Context, source liveMediaSource, start liveStart) (failure error) {
+	report := func(stage, code string) {
+		if source.diagnose != nil {
+			source.diagnose(stage, code)
+		}
+	}
+	failureCode := "media_connect_failed"
+	report("media_connecting", "none")
+	defer func() {
+		if failure != nil && ctx.Err() == nil {
+			report("media_failed", failureCode)
+		}
+	}()
 	cfg, err := websocket.NewConfig(source.url, m.cfg.ServerURL)
 	if err != nil {
 		return err
@@ -247,6 +260,8 @@ func (m *Manager) mediaSessionFor(ctx context.Context, source liveMediaSource, s
 	if err != nil {
 		return err
 	}
+	failureCode = "media_stream_failed"
+	report("media_connected", "none")
 	defer conn.Close()
 	conn.MaxPayloadBytes = maxLiveJSON
 	done := make(chan struct{})
@@ -296,6 +311,7 @@ func (m *Manager) mediaSessionFor(ctx context.Context, source liveMediaSource, s
 	lastState := ""
 	binding := liveOfferBinding{}
 	var lastFrameMod time.Time
+	controlReported, frameReported := false, false
 	for {
 		select {
 		case <-ctx.Done():
@@ -360,7 +376,12 @@ func (m *Manager) mediaSessionFor(ctx context.Context, source liveMediaSource, s
 			if !now.Before(nextLease) {
 				control.Expires = now.Add(30 * time.Second).UnixMilli()
 				if err := writeLiveControl(root, control); err != nil {
+					failureCode = "control_write_failed"
 					return err
+				}
+				if !controlReported {
+					report("control_written", "none")
+					controlReported = true
 				}
 				nextLease = now.Add(5 * time.Second)
 			}
@@ -379,6 +400,7 @@ func (m *Manager) mediaSessionFor(ctx context.Context, source liveMediaSource, s
 				if dirty {
 					control.Expires = now.Add(30 * time.Second).UnixMilli()
 					if err := writeLiveControl(root, control); err != nil {
+						failureCode = "control_write_failed"
 						return err
 					}
 					nextLease = now.Add(5 * time.Second)
@@ -402,7 +424,12 @@ func (m *Manager) mediaSessionFor(ctx context.Context, source liveMediaSource, s
 				}
 				_ = conn.SetWriteDeadline(time.Now().Add(3 * time.Second))
 				if err := websocket.Message.Send(conn, frame); err != nil {
+					failureCode = "frame_send_failed"
 					return err
+				}
+				if !frameReported {
+					report("frame_forwarded", "none")
+					frameReported = true
 				}
 				lastFrameMod = info.ModTime()
 			}

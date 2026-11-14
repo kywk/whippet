@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -26,7 +27,12 @@ func (m *Manager) startSessionLive(ctx context.Context, env Envelope) error {
 	}
 	var start sessionLiveStart
 	if json.Unmarshal(env.Payload, &start) != nil || !uuidPattern.MatchString(start.SessionID) ||
-		!uuidPattern.MatchString(start.LeaseID) || !uuidPattern.MatchString(start.ViewerID) || !validLiveICE(start.ICE) {
+		!uuidPattern.MatchString(start.LeaseID) || !uuidPattern.MatchString(start.ViewerID) {
+		return errors.New("invalid session.live.start")
+	}
+	m.recordSessionLiveDiagnostic(start.SessionID, start.LeaseID, start.ViewerID, "command_received", "none")
+	if !validLiveICE(start.ICE) {
+		m.recordSessionLiveDiagnostic(start.SessionID, start.LeaseID, start.ViewerID, "command_rejected", "invalid_command")
 		return errors.New("invalid session.live.start")
 	}
 	m.mu.Lock()
@@ -34,6 +40,7 @@ func (m *Manager) startSessionLive(ctx context.Context, env Envelope) error {
 	active := ok && r.LeaseID == start.LeaseID && r.State == "ready" && !r.Reclaimed && time.Now().UnixMilli() < r.DeadlineAt
 	m.mu.Unlock()
 	if !active {
+		m.recordSessionLiveDiagnostic(start.SessionID, start.LeaseID, start.ViewerID, "command_rejected", "lease_unavailable")
 		return errors.New("session live lease unavailable")
 	}
 	key := sessionLiveKey(start.SessionID)
@@ -73,13 +80,20 @@ func (m *Manager) startSessionLive(ctx context.Context, env Envelope) error {
 			}
 		}
 		wsURL := "ws" + strings.TrimPrefix(m.cfg.ServerURL, "http") + "/api/manager/browser-sessions/" + r.SessionID + "/leases/" + r.LeaseID + "/live?viewerId=" + url.QueryEscape(start.ViewerID)
-		source := liveMediaSource{url: wsURL, dir: filepath.Join(m.cfg.WorkDir, "runs", "session-"+r.SessionID), active: func() bool {
+		source := liveMediaSource{url: wsURL, dir: filepath.Join(m.cfg.WorkDir, "runs", "session-"+r.SessionID), diagnose: func(stage, code string) {
+			m.recordSessionLiveDiagnostic(r.SessionID, r.LeaseID, start.ViewerID, stage, code)
+		}, active: func() bool {
 			m.mu.Lock()
 			defer m.mu.Unlock()
 			current, found := m.sessions[r.SessionID]
 			return found && current.LeaseID == r.LeaseID && current.State == "ready" && !current.Reclaimed && time.Now().UnixMilli() < current.DeadlineAt
 		}}
-		_ = m.mediaSessionFor(liveCtx, source, liveStart{ViewerID: start.ViewerID, ICE: start.ICE})
+		if err := m.mediaSessionFor(liveCtx, source, liveStart{ViewerID: start.ViewerID, ICE: start.ICE}); err != nil {
+			if liveCtx.Err() == nil {
+				slog.Warn("session live media failed", "code", "media_failed")
+			}
+			return // mediaSessionFor persisted a fixed failure stage.
+		}
 	}()
 	return nil
 }
@@ -102,6 +116,7 @@ func (m *Manager) stopSessionLive(env Envelope) error {
 	m.liveMu.Lock()
 	if session := m.live[sessionLiveKey(stop.SessionID)]; session != nil && session.viewerID == stop.ViewerID {
 		session.cancel()
+		m.recordSessionLiveDiagnostic(stop.SessionID, stop.LeaseID, stop.ViewerID, "closed", "none")
 	}
 	m.liveMu.Unlock()
 	return nil
@@ -109,8 +124,16 @@ func (m *Manager) stopSessionLive(env Envelope) error {
 
 func (m *Manager) stopSessionLiveByID(id string) {
 	m.liveMu.Lock()
+	viewerID := ""
 	if session := m.live[sessionLiveKey(id)]; session != nil {
+		viewerID = session.viewerID
 		session.cancel()
 	}
 	m.liveMu.Unlock()
+	if viewerID != "" {
+		m.mu.Lock()
+		r := m.sessions[id]
+		m.mu.Unlock()
+		m.recordSessionLiveDiagnostic(id, r.LeaseID, viewerID, "closed", "none")
+	}
 }

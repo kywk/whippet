@@ -29,6 +29,7 @@ type ExternalTaskBundle struct {
 }
 type ExternalTask struct {
 	RunID         string             `json:"runId"`
+	TestID        *string            `json:"testId"`
 	AttemptID     string             `json:"attemptId"`
 	LeaseID       string             `json:"leaseId"`
 	State         string             `json:"state"`
@@ -98,7 +99,8 @@ func scrubExternalContext(c *WorkspaceContext) *WorkspaceContext {
 func (p *Postgres) externalTask(ctx context.Context, q queryDB, c externalClaim) (ExternalTask, error) {
 	var rawAuthor, rawSettings, rawContext []byte
 	var script string
-	err := q.QueryRowContext(ctx, `SELECT author_payload,script_snapshot,workspace_settings,workspace_context FROM runs WHERE id=$1 AND attempt_id=$2 AND workspace_id=$3`, c.RunID, c.AttemptID, c.WorkspaceID).Scan(&rawAuthor, &script, &rawSettings, &rawContext)
+	var testID sql.NullString
+	err := q.QueryRowContext(ctx, `SELECT test_id,author_payload,script_snapshot,workspace_settings,workspace_context FROM runs WHERE id=$1 AND attempt_id=$2 AND workspace_id=$3`, c.RunID, c.AttemptID, c.WorkspaceID).Scan(&testID, &rawAuthor, &script, &rawSettings, &rawContext)
 	if err != nil {
 		return ExternalTask{}, dbError(err)
 	}
@@ -138,7 +140,11 @@ func (p *Postgres) externalTask(ctx context.Context, q queryDB, c externalClaim)
 		bundle.ExternalReferenceURI = "whippet://skill/test-author/references/external-mcp"
 		bundle.Instructions = externalAdapterInstructions
 	}
-	return ExternalTask{RunID: c.RunID, AttemptID: c.AttemptID, LeaseID: c.LeaseID, State: c.State, ExpiresAt: c.ExpiresAt, DeadlineAt: c.DeadlineAt, ContextBundle: bundle}, nil
+	var ownedTestID *string
+	if testID.Valid {
+		ownedTestID = &testID.String
+	}
+	return ExternalTask{RunID: c.RunID, TestID: ownedTestID, AttemptID: c.AttemptID, LeaseID: c.LeaseID, State: c.State, ExpiresAt: c.ExpiresAt, DeadlineAt: c.DeadlineAt, ContextBundle: bundle}, nil
 }
 
 func (p *Postgres) ClaimExternalAuthor(ctx context.Context, token AgentToken, requestID string) (*ExternalTask, error) {

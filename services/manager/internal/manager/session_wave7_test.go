@@ -198,3 +198,140 @@ func TestSessionLiveControlMatchesLeaseAndViewer(t *testing.T) {
 		t.Fatal("current viewer not stopped")
 	}
 }
+
+func TestSessionLiveStartSendsFirstJPEGThroughSessionMediaPath(t *testing.T) {
+	sessionID, leaseID, workspaceID, viewerID := newID(), newID(), newID(), newID()
+	firstFrame := make(chan struct{}, 1)
+	server := httptest.NewUnstartedServer(websocket.Handler(func(conn *websocket.Conn) {
+		defer conn.Close()
+		request := conn.Request()
+		if request.URL.Path != "/api/manager/browser-sessions/"+sessionID+"/leases/"+leaseID+"/live" ||
+			request.URL.Query().Get("viewerId") != viewerID || request.Header.Get("Authorization") != "Bearer fixture-token" {
+			t.Error("session media URL or authorization mismatch")
+			return
+		}
+		for {
+			var data []byte
+			if websocket.Message.Receive(conn, &data) != nil {
+				return
+			}
+			if len(data) >= 4 && data[0] == 0xff && data[1] == 0xd8 {
+				firstFrame <- struct{}{}
+				return
+			}
+			var wire liveWire
+			if json.Unmarshal(data, &wire) == nil && wire.Type == "ping" {
+				_ = websocket.JSON.Send(conn, liveWire{Type: "pong"})
+				_ = websocket.JSON.Send(conn, liveWire{Type: "mode", Mode: "jpeg"})
+			}
+		}
+	}))
+	server.Config.ErrorLog = log.New(io.Discard, "", 0)
+	server.StartTLS()
+	defer server.Close()
+	ca := filepath.Join(t.TempDir(), "server-ca.pem")
+	if err := os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw}), 0600); err != nil {
+		t.Fatal(err)
+	}
+	work := t.TempDir()
+	m, err := New(Config{ServerURL: server.URL, ServerCAFile: ca, Token: "fixture-token", ManagerID: "fixture", WorkDir: work, MaxWorkers: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	m.sessions[sessionID] = sessionRecord{SessionID: sessionID, LeaseID: leaseID, WorkspaceID: workspaceID, DeadlineAt: time.Now().Add(time.Minute).UnixMilli(), State: "ready"}
+	liveDir := filepath.Join(work, "runs", "session-"+sessionID, "live")
+	if err := os.MkdirAll(liveDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	state, _ := json.Marshal(liveState{ViewerID: viewerID, State: "streaming", Transport: "jpeg"})
+	if err := os.WriteFile(filepath.Join(liveDir, "state.json"), state, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(liveDir, viewerID+".jpg"), []byte{0xff, 0xd8, 0xff, 0xd9}, 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	command := message("fixture", "session.live.start", "", "", sessionLiveStart{SessionID: sessionID, LeaseID: leaseID, ViewerID: viewerID, ICE: json.RawMessage(`[]`)})
+	if err := m.startSessionLive(ctx, command); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-firstFrame:
+	case <-ctx.Done():
+		t.Fatal("session LiveView did not deliver a first JPEG frame")
+	}
+	m.wg.Wait()
+	diagnosticBytes, err := os.ReadFile(filepath.Join(work, "diagnostics", sessionID+".json"))
+	if err != nil {
+		t.Fatal("session Live diagnostic missing")
+	}
+	var diagnostic sessionLiveDiagnostic
+	if json.Unmarshal(diagnosticBytes, &diagnostic) != nil {
+		t.Fatal("invalid session Live diagnostic")
+	}
+	stages := map[string]bool{}
+	for _, event := range diagnostic.Events {
+		stages[event.Stage] = true
+	}
+	for _, stage := range []string{"command_received", "media_connecting", "media_connected", "control_written", "frame_forwarded"} {
+		if !stages[stage] {
+			t.Fatal("missing fixed session Live stage", stage)
+		}
+	}
+}
+
+func TestSessionLiveDiagnosticKeepsOnlyFixedEnumsOnMediaFailure(t *testing.T) {
+	sessionID, leaseID, workspaceID, viewerID := newID(), newID(), newID(), newID()
+	work := t.TempDir()
+	m, err := New(Config{ServerURL: "https://127.0.0.1:1", Token: "private-marker", ManagerID: "fixture", WorkDir: work, MaxWorkers: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	m.sessions[sessionID] = sessionRecord{SessionID: sessionID, LeaseID: leaseID, WorkspaceID: workspaceID, DeadlineAt: time.Now().Add(time.Minute).UnixMilli(), State: "ready"}
+	command := message("fixture", "session.live.start", "", "", sessionLiveStart{SessionID: sessionID, LeaseID: leaseID, ViewerID: viewerID, ICE: json.RawMessage(`[]`)})
+	if err := m.startSessionLive(context.Background(), command); err != nil {
+		t.Fatal(err)
+	}
+	m.wg.Wait()
+	path := filepath.Join(work, "diagnostics", sessionID+".json")
+	info, err := os.Stat(path)
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatal("diagnostic permissions invalid")
+	}
+	dir, err := os.Stat(filepath.Dir(path))
+	if err != nil || dir.Mode().Perm() != 0700 {
+		t.Fatal("diagnostic directory permissions invalid")
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal("diagnostic unavailable")
+	}
+	if bytes.Contains(raw, []byte("private-marker")) || bytes.Contains(raw, []byte("127.0.0.1")) || bytes.Contains(raw, []byte("connection refused")) || bytes.Contains(raw, []byte("https:")) {
+		t.Fatal("diagnostic included raw transport data")
+	}
+	var shape map[string]json.RawMessage
+	if json.Unmarshal(raw, &shape) != nil || len(shape) != 4 {
+		t.Fatal("diagnostic included unexpected fields")
+	}
+	for _, field := range []string{"sessionId", "leaseId", "viewerId", "events"} {
+		if _, ok := shape[field]; !ok {
+			t.Fatal("diagnostic missing fixed field")
+		}
+	}
+	var diagnostic sessionLiveDiagnostic
+	if json.Unmarshal(raw, &diagnostic) != nil || diagnostic.SessionID != sessionID || diagnostic.LeaseID != leaseID || diagnostic.ViewerID != viewerID {
+		t.Fatal("diagnostic identity mismatch")
+	}
+	if len(diagnostic.Events) != 3 || diagnostic.Events[0].Stage != "command_received" || diagnostic.Events[1].Stage != "media_connecting" ||
+		diagnostic.Events[2].Stage != "media_failed" || diagnostic.Events[2].Error != "media_connect_failed" {
+		t.Fatal("diagnostic stages incorrect")
+	}
+	for _, event := range diagnostic.Events {
+		if !sessionLiveStages[event.Stage] || !sessionLiveErrors[event.Error] || event.At.IsZero() {
+			t.Fatal("diagnostic event not bounded")
+		}
+	}
+}

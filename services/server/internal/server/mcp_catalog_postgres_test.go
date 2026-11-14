@@ -89,6 +89,59 @@ func TestM11MCPRegistryReadScopeAndRevocation(t *testing.T) {
 	if readReference.Code != http.StatusOK || !bytes.Contains(readReference.Body.Bytes(), []byte("selection")) {
 		t.Fatal("allowlisted skill reference was not readable")
 	}
+	for _, skillID := range []string{"module-authoring", "usecase-planner", "workspace-author"} {
+		_, resourceToken, err := p.CreateAgentToken(ctx, a.ID, "reader")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, suffix := range []string{"main", "references/external-mcp"} {
+			uri := "whippet://skill/" + skillID + "/" + suffix
+			if !bytes.Contains(resources.Body.Bytes(), []byte(uri)) {
+				t.Fatalf("external author resource %s was not listed", uri)
+			}
+			payload, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 11, "method": "resources/read", "params": map[string]string{"uri": uri}})
+			read := post("", resourceToken, string(payload))
+			var reply struct {
+				Result struct {
+					Contents []struct {
+						URI  string `json:"uri"`
+						Text string `json:"text"`
+					} `json:"contents"`
+				} `json:"result"`
+			}
+			parseErr := json.Unmarshal(read.Body.Bytes(), &reply)
+			if read.Code != http.StatusOK || parseErr != nil || len(reply.Result.Contents) != 1 ||
+				reply.Result.Contents[0].URI != uri || reply.Result.Contents[0].Text == "" {
+				t.Fatalf("external author resource %s was not readable (status=%d parse=%v contents=%d)", uri, read.Code, parseErr, len(reply.Result.Contents))
+			}
+		}
+	}
+	if bytes.Contains(resources.Body.Bytes(), []byte("manifest")) || bytes.Contains(resources.Body.Bytes(), []byte("references/harness")) || bytes.Contains(resources.Body.Bytes(), []byte("references/stages")) {
+		t.Fatal("internal skill resource was listed")
+	}
+	for _, uri := range []string{
+		"whippet://skill/module-authoring/manifest",
+		"whippet://skill/usecase-planner/manifest",
+		"whippet://skill/workspace-author/manifest",
+		"whippet://skill/module-authoring/references/harness",
+		"whippet://skill/usecase-planner/references/stages",
+	} {
+		_, deniedToken, err := p.CreateAgentToken(ctx, a.ID, "reader")
+		if err != nil {
+			t.Fatal(err)
+		}
+		payload, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 12, "method": "resources/read", "params": map[string]string{"uri": uri}})
+		read := post("", deniedToken, string(payload))
+		var reply struct {
+			Result struct {
+				Contents []json.RawMessage `json:"contents"`
+			} `json:"result"`
+			Error json.RawMessage `json:"error"`
+		}
+		if read.Code != http.StatusOK || json.Unmarshal(read.Body.Bytes(), &reply) != nil || len(reply.Result.Contents) != 0 || len(reply.Error) == 0 {
+			t.Fatalf("internal skill resource %s was readable", uri)
+		}
+	}
 	get := post("", secret, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"catalog_get","arguments":{"moduleVersionId":"`+version+`"}}}`)
 	if get.Code != http.StatusOK || bytes.Contains(get.Body.Bytes(), []byte("fixture module content")) || bytes.Contains(get.Body.Bytes(), []byte(version)) {
 		t.Fatal("cross-workspace Module was disclosed")

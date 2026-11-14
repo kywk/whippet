@@ -59,6 +59,7 @@ func TestM11ExternalAuthorClaimAndImmutableSnapshot(t *testing.T) {
 	if err != nil || task == nil || task.RunID != sub.Run.ID || task.ContextBundle.Author.SkillID != "test-author" {
 		t.Fatalf("external claim: %+v %v", task, err)
 	}
+	assertExternalTaskTestID(t, *task, &test.ID)
 	for _, name := range task.ContextBundle.Author.AllowedTools {
 		if name == "update_draft" || name == "request_validation" {
 			t.Fatalf("unwired tool disclosed: %s", name)
@@ -112,6 +113,63 @@ func TestM11ExternalAuthorClaimAndImmutableSnapshot(t *testing.T) {
 		if e == nil || !strings.Contains(e.Error(), "run snapshot cannot be changed") {
 			t.Fatalf("immutable %s was not guarded: %v", column, e)
 		}
+	}
+}
+
+func TestM11ExternalWorkspaceTaskHasNullTestID(t *testing.T) {
+	p, ctx := workspaceTestDB(t)
+	if err := p.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	w, err := p.CreateWorkspace(ctx, "external workspace author")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err = p.SetAuthorEngine(ctx, w.ID, w.Revision, "external")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := p.WorkspaceConversation(ctx, w.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.CreateWorkspaceAuthor(ctx, w.ID, "請整理設定", w.Revision, c.ContextRevision); err != nil {
+		t.Fatal(err)
+	}
+	token, _, err := p.CreateAgentToken(ctx, w.ID, "workspace author")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := p.ClaimExternalAuthor(ctx, token, NewID())
+	if err != nil || task == nil || task.ContextBundle.Author.SkillID != "workspace-author" {
+		t.Fatalf("workspace claim: %+v %v", task, err)
+	}
+	assertExternalTaskTestID(t, *task, nil)
+}
+
+func assertExternalTaskTestID(t *testing.T, task ExternalTask, expected *string) {
+	t.Helper()
+	raw, err := json.Marshal(task)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil {
+		t.Fatal("invalid external task JSON")
+	}
+	gotRaw, ok := fields["testId"]
+	if !ok {
+		t.Fatal("external task omitted testId")
+	}
+	if expected == nil {
+		if !bytes.Equal(gotRaw, []byte("null")) {
+			t.Fatal("Workspace task must have null testId")
+		}
+		return
+	}
+	var got string
+	if json.Unmarshal(gotRaw, &got) != nil || got != *expected {
+		t.Fatalf("external task testId = %q; want authoritative Test ID", got)
 	}
 }
 
@@ -173,6 +231,7 @@ func TestM11ExternalBrowserBusyRetrySameCallIDMCP(t *testing.T) {
 		t.Fatal("MCP task_claim failed")
 	}
 	task := claim.Result.Structured.Task
+	assertExternalTaskTestID(t, task, &test.ID)
 	allowed := false
 	for _, name := range task.ContextBundle.Author.AllowedTools {
 		if name == "browser_snapshot" {

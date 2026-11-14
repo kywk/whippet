@@ -41,6 +41,7 @@ type Manager struct {
 	conn                       *websocket.Conn
 	events                     chan Envelope
 	liveMu                     sync.Mutex
+	diagnosticsMu              sync.Mutex
 	live                       map[string]*liveSession
 	secrets                    map[string][]string // attempt-local memory only, never journaled
 }
@@ -228,7 +229,9 @@ func (m *Manager) session(ctx context.Context) error {
 		case "session.close":
 			_ = m.closeSession(env)
 		case "session.live.start":
-			_ = m.startSessionLive(ctx, env)
+			if err := m.startSessionLive(ctx, env); err != nil {
+				slog.Warn("session live start rejected", "code", "invalid_command")
+			}
 		case "session.live.stop":
 			_ = m.stopSessionLive(env)
 		}
