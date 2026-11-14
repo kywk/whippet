@@ -66,7 +66,7 @@ func (p *Postgres) completePlanner(ctx context.Context, tx *sql.Tx, run, attempt
 	if err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO plans(id,test_id,editing_session_id,revision,base_revision,context_revision,status,stages) VALUES($1,$2,$3,$4,$5,$6,'draft',$7) ON CONFLICT(editing_session_id) DO UPDATE SET revision=EXCLUDED.revision,base_revision=EXCLUDED.base_revision,context_revision=EXCLUDED.context_revision,status='draft',stages=EXCLUDED.stages,validation_run_id=NULL,error=NULL`, id, d.TestID, session.ID, revision, d.Revision, session.ContextRevision+1, jsonText(prepared)); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO plans(id,test_id,editing_session_id,revision,base_revision,context_revision,status,stages,script_origin) VALUES($1,$2,$3,$4,$5,$6,'draft',$7,'ai') ON CONFLICT(editing_session_id) DO UPDATE SET revision=EXCLUDED.revision,base_revision=EXCLUDED.base_revision,context_revision=EXCLUDED.context_revision,status='draft',stages=EXCLUDED.stages,validation_run_id=NULL,error=NULL,script_origin='ai'`, id, d.TestID, session.ID, revision, d.Revision, session.ContextRevision+1, jsonText(prepared)); err != nil {
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO messages(id,conversation_id,role,content,run_id,base_revision) VALUES($1,$2,'assistant',$3,$4,$5)`, NewID(), session.ConversationID, *out.Message, run, input.BaseRevision); err != nil {

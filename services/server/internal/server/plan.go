@@ -232,7 +232,7 @@ func (p *Postgres) SavePlan(ctx context.Context, test, session string, revision,
 		return nil, err
 	}
 	plan, err := scanPlan(tx.QueryRowContext(ctx, `INSERT INTO plans(id,test_id,editing_session_id,revision,base_revision,context_revision,status,stages) VALUES($1,$2,$3,$4,$5,$6,'draft',$7)
- ON CONFLICT(editing_session_id) DO UPDATE SET revision=EXCLUDED.revision,base_revision=EXCLUDED.base_revision,context_revision=EXCLUDED.context_revision,status='draft',stages=EXCLUDED.stages,validation_run_id=NULL,error=NULL RETURNING `+planColumns, id, test, session, planRevision+1, d.Revision, s.ContextRevision+1, jsonText(stages)))
+ ON CONFLICT(editing_session_id) DO UPDATE SET revision=EXCLUDED.revision,base_revision=EXCLUDED.base_revision,context_revision=EXCLUDED.context_revision,status='draft',stages=EXCLUDED.stages,validation_run_id=NULL,error=NULL,script_origin='manual' RETURNING `+planColumns, id, test, session, planRevision+1, d.Revision, s.ContextRevision+1, jsonText(stages)))
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "11.1",
+  "version": "11.2",
   "tools": [
     {
       "name": "read_conversation_history",
@@ -1215,6 +1215,201 @@
         "timeoutMs": 30000,
         "maxInputBytes": 1048576,
         "maxOutputBytes": 8192
+      }
+    },
+    {
+      "name": "draft_create",
+      "description": "建立此 Token Workspace 的 AI Module 或 Use Case 草稿，不發佈。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "module",
+              "usecase"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 16384
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "requestId",
+          "kind",
+          "name",
+          "description"
+        ],
+        "additionalProperties": false
+      },
+      "side": "server",
+      "effect": "queue",
+      "limits": {
+        "timeoutMs": 30000,
+        "maxInputBytes": 32768,
+        "maxOutputBytes": 8192
+      }
+    },
+    {
+      "name": "draft_get",
+      "description": "讀取此 Workspace 草稿、Plan 與正式驗證狀態。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "testId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        },
+        "required": [
+          "testId"
+        ],
+        "additionalProperties": false
+      },
+      "side": "server",
+      "effect": "read",
+      "limits": {
+        "timeoutMs": 30000,
+        "maxInputBytes": 16384,
+        "maxOutputBytes": 131072
+      }
+    },
+    {
+      "name": "author_start",
+      "description": "依目前草稿 CAS 建立並領取本 Token 的外部作者任務，不更動 Workspace 引擎。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "testId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "editingSessionId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "contextRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "instruction": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16384
+          }
+        },
+        "required": [
+          "requestId",
+          "testId",
+          "editingSessionId",
+          "revision",
+          "contextRevision",
+          "instruction"
+        ],
+        "additionalProperties": false
+      },
+      "side": "server",
+      "effect": "queue",
+      "limits": {
+        "timeoutMs": 30000,
+        "maxInputBytes": 32768,
+        "maxOutputBytes": 131072
+      }
+    },
+    {
+      "name": "validation_request",
+      "description": "要求目前 AI 草稿的獨立正式驗證；未人工確認的 Use Case Plan 不執行。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "testId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "editingSessionId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "requestId",
+          "testId",
+          "editingSessionId",
+          "revision"
+        ],
+        "additionalProperties": false
+      },
+      "side": "server",
+      "effect": "queue",
+      "limits": {
+        "timeoutMs": 30000,
+        "maxInputBytes": 16384,
+        "maxOutputBytes": 8192
+      }
+    },
+    {
+      "name": "validation_report",
+      "description": "讀取綁定草稿 revision 的有界正式驗證報告，不產造成功證據。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "testId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "runId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        },
+        "required": [
+          "testId",
+          "revision",
+          "runId"
+        ],
+        "additionalProperties": false
+      },
+      "side": "server",
+      "effect": "read",
+      "limits": {
+        "timeoutMs": 30000,
+        "maxInputBytes": 16384,
+        "maxOutputBytes": 131072
       }
     }
   ]

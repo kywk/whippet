@@ -133,3 +133,18 @@ submit 按權威 skillId 分派，嚴格拒未知/重複欄位、partial、自�
 HarnessPlatform 共用 schema/budget/scope/platform_tool_calls/candidateRef 核心，但權威明確區分 Manager epoch 與 external Token/claim lease，不假冒 Manager。workspace-author 的 test_id=NULL、無 editing_session 路徑需保持獨立權威與完成交易，不偽造 Test。所有分支保留原取消/撤銷/短租/硬期限/submit 冪等與 revision CAS；原狀態結果形狀不變，appliedRevision/validationRunId 無適用值則 null。人工 Plan/scope 確認及 publish 永不由 MCP 代做。
 
 必要驗證限本波三種作者正向、候選/ref 權威、schema/proof 拒絕、CAS/冪等與無人工確認旁路。合成 validation 僅證明狀態機，真 Docker/UI/模型集中最後完整驗收。
+
+
+## Wave6：互動 MCP 草稿與正式驗證
+
+registry11.2 僅追加五項 server 控制工具，原工具 schema 不改；原 skill allowedTools 不自動增加控制工具。Workspace 由 Token 推導，active/confirmed scope 與原 AI scope 守衛不可略過。所有寫入保存 ai 來源與 Token 稽核，不經 manual handler；無 delete/confirm/publish。
+
+- draft_create({requestId,kind:module|usecase,name,description,slug?}) → {testId,editingSessionId,revision,contextRevision}。Module 必有合法 slug，Use Case 禁 slug；原子建立 Test 與編輯中 AI 草稿。
+- draft_get({testId}) → 有界 {test,draft,editingSession,plan,validation}；nullable 欄位明示 null，僅 Token Workspace，不回機密/ref/未遮蔽自由log，無適用Plan回null。
+- author_start({requestId,testId,editingSessionId,revision,contextRevision,instruction}) → 原 task_claim 的 {task:{runId,attemptId,leaseId,state,expiresAt,deadlineAt,contextBundle}}。同交易建立 external author Run 並定向綁呼叫 Token；不改 Workspace authorEngine、不領別人的 queued Run。沿原訊息/快照、skill/parser/CAS；Agent後續使用原 task_tool_call/task_submit 真產稿。
+- validation_request({requestId,testId,editingSessionId,revision}) → {state,runId:null|UUID}。Module 走原獨立 harness validation；Use Case 走原 Compose/validation 資格，未人工確認回 state=awaiting_human_plan_confirmation、runId=null，不自動confirm。成功排程 state=queued（已完成的重送也回原結果）。
+- validation_report({testId,revision,runId}) → 有界正式驗證狀態與既有安全報告資料；必核同 Test/revision/Workspace，未完成不能冒充成功；不回原始 log/憑證。精確結果沿現有正式報告結構，由 Server owner 定義安全投影。
+
+requestId 以 Token/tool/requestId 與 canonical body hash 持久去重；同鍵同body回原結果，異body拒絕，成功寫入與tombstone同交易。未確認Plan的無副作用等待結果不可永久阻止人工確認後同鍵續請；只有已排程結果才固定為完成。author_start 同 Token active claim 衝突回 busy，不建立孤兒任務。每個寫入交易重驗 Token/Workspace、原 revision/context CAS；原 task lease/短租/取消/撤銷與不知道結果不重作規則保留。UI 人工修改不能被 Agent 舊稿覆寫。
+
+核心驗證以真 MCP/隔離 PG 驗 create→get→author_start→task工具/submit→validation_request/report、Use Case 人工確認邊界、跨Workspace/撤銷、冪等/CAS。合成報告只算狀態機；真 Module/UseCase Agent+Docker+UI集中最後驗收。

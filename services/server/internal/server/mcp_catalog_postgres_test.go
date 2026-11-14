@@ -68,7 +68,7 @@ func TestM11MCPRegistryReadScopeAndRevocation(t *testing.T) {
 	if json.Unmarshal(tools.Body.Bytes(), &listed) != nil {
 		t.Fatal("invalid MCP tools/list response")
 	}
-	wantTools := []string{"browser_click", "browser_fill", "browser_navigate", "browser_session_close", "browser_session_open", "browser_session_status", "browser_snapshot", "catalog_get", "catalog_search", "task_claim", "task_heartbeat", "task_submit", "task_tool_call"}
+	wantTools := []string{"author_start", "browser_click", "browser_fill", "browser_navigate", "browser_session_close", "browser_session_open", "browser_session_status", "browser_snapshot", "catalog_get", "catalog_search", "draft_create", "draft_get", "task_claim", "task_heartbeat", "task_submit", "task_tool_call", "validation_report", "validation_request"}
 	if len(listed.Result.Tools) != len(wantTools) {
 		t.Fatalf("MCP exposed %d tools; want exactly %d", len(listed.Result.Tools), len(wantTools))
 	}

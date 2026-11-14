@@ -1,6 +1,6 @@
 # MCP Agent 接入（M11 開發中）
 
-本頁對應 [v11 契約](../../contracts/mvp-v11.md)。目前首波已交付 Token、唯讀 Catalog、skill resources 與 browser session 核心，並完成定向隔離驗證；不代表互動產稿、接單或階段驗收已完成。不得將此設定套用到既有19287驗收現場。
+本頁對應 [v11 契約](../../contracts/mvp-v11.md)。目前已交付 Token、Catalog、匿名 browser session、外部接單及平台作者切片；普通 Test 已通過真 UI→MCP Agent→正式驗證。各功能的部署與驗證範圍如下，M11 整階段仍未完成。不得將此設定套用到既有19287驗收現場。
 
 ## 部署與管理
 
@@ -49,7 +49,7 @@ schema直接來自工具註冊表；catalog_search不接受cursor。首波尚未
 
 registry11.0 另公開 `browser_session_open({requestId})`、`browser_session_status({sessionId,leaseId})`、`browser_session_close({sessionId,leaseId})` 與原 schema 的 `browser_navigate`、`browser_snapshot`、`browser_click`、`browser_fill`。所有識別為 UUID；open 的 requestId 重送會回原租約，關閉後也不重新開啟。
 
-browser 工具呼叫須在 JSON-RPC `params._meta.whippet` 放 `{sessionId,leaseId,callId}`，不得加入工具 arguments；客戶端需支援傳送這項 metadata。相同 callId/參數只回原結果，忙碌回 busy，結果遺失回 unknown_result，不能自動產生新 callId 重做副作用。Codex 本機驗收目前證明 Catalog/resources 接入；尚未驗證 Codex 的 browser metadata 傳送能力。
+browser 工具呼叫須在 JSON-RPC `params._meta.whippet` 放 `{sessionId,leaseId,callId}`，不得加入工具 arguments；客戶端需支援傳送這項 metadata。相同 callId/參數只回原結果，忙碌回 busy，結果遺失回 unknown_result，不能自動產生新 callId 重做副作用。本機 stdio bridge 可為唯一 ready lease 補 metadata；接單工具以明示識別的 task_tool_call 使用瀏覽器，已於 Wave3 真 Agent 流程驗證。
 
 兩路隔離 QA 已通過租約異常與真 Docker 全鏈；真 browser 測試使用獨立 schema 的已確認 scope fixture，不代表 Workspace 設定 UI 已驗。close 只有 status.reclaimed=true 才代表已釋容量；heartbeat 未列出 session 不算回收證據。
 
@@ -57,7 +57,7 @@ browser 工具呼叫須在 JSON-RPC `params._meta.whippet` 放 `{sessionId,lease
 
 browser session採10分鐘閒置／30分鐘硬期限，共用Worker容量且回收後才釋放名額。Server匿名租約入口與真Docker已接通；登入與LiveView仍未接通，未有可信credential resolver時登入必須拒絕。
 
-`authorEngine=external`、task_claim／心跳／task_submit、互動Module/Use Case寫入與外部Agent端到端仍待後續切片。不要提前開啟設定或以本頁示意宣稱可完成產稿。
+外部接單已支援下列作者。互動 Module/Use Case 建稿與驗證工具已完成 Wave6 核心檢查；登入與 LiveView 仍待後波，尚未完成整階段驗收。
 
 官方協定參考：[Streamable HTTP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)、[本專案固定的Go SDK v1.3.1](https://github.com/modelcontextprotocol/go-sdk/tree/v1.3.1)。
 
@@ -73,7 +73,7 @@ Codex MCP名稱為 `whippet`，以 stdio bridge 連到本機 `/mcp`；啟動新�
 
 ## Wave3 外部接單（普通 Test）
 
-管理者在 Workspace「正式設定與能力」選外部 Agent；設定僅影響新普通 Test 撰寫任務，Module／Use Case／Workspace訪談／驗收摘要仍為builtin。底層管理API是 `PATCH /api/workspaces/{id}/author-engine`，以revision CAS保存。Run.authorEngine是建立時快照。
+管理者在 Workspace「正式設定與能力」選外部 Agent；設定影響新 Run；Wave3 僅普通 Test，Wave4 擴充驗收摘要，Wave5 擴充 Module／Use Case planner（含 Stage 原 skill）／Workspace 訪談。既有 Run 快照不變。底層管理API是 `PATCH /api/workspaces/{id}/author-engine`，以revision CAS保存。Run.authorEngine是建立時快照。
 
 Agent依序使用task_claim（requestId冪等）、task_heartbeat、task_tool_call及task_submit。task_tool_call把runId/attemptId/leaseId/callId放在控制工具本身的arguments，nested工具的arguments維持原registry schema。只用contextBundle實際allowedTools。短租120秒，硬期限沿原skill budget（普通test-author目前180秒）；heartbeat不能延長硬期限。先讀 `whippet://skill/test-author/references/external-mcp`。
 
@@ -82,3 +82,26 @@ Agent依序使用task_claim（requestId冪等）、task_heartbeat、task_tool_ca
 本機bridge另會替獨立browser session的原四工具補入ready lease metadata；已有顯式metadata不覆寫，close或未知結果清除隱式綁定。接單主線仍用task_tool_call明示身份。
 
 2026-11-14實測：真網頁送單，全新Codex透過MCP探索／產稿／提交，revision2來源ai，正式validation為succeeded且expected=1/unexpected=0/flaky=0/skipped=0，報告可開啟。QA沒有代寫腳本或攔API。驗收摘要仍走builtin，本次附帶summary Run failed，未驗發佈，不能據此宣稱整個M11已完成。
+
+
+## Wave4–5 外部平台作者
+
+程式碼已完成三類驗收摘要（普通 Test／Module／Plan batch）與 Module、Use Case planner、Workspace 訪談接單，核心必要測試通過。本機19587目前部署仍是Wave3；後續集中驗收後更新，不以原始碼進度冒稱已部署。
+
+| 作者 | 外部提交 | 成功的意義 |
+| --- | --- | --- |
+| acceptance-summary | message、description、backgroundSummary、可選name | 原驗證證據與revision/batchHash仍有效；不新增驗證或發佈資格 |
+| module-authoring | message、完整script、module八項metadata加harness、requestValidation | 未自試AI草稿；獨立正式harness validation才產生驗證證據 |
+| usecase-planner | message、planCandidate.candidateRef | ref須先由同Run/attempt的propose_plan發行；Plan仍待人工確認 |
+| workspace-author | message、可選proposal/conversationSummary | 待人工確認的Workspace提案；不能自動擴大網站scope |
+
+各作者先讀claim指定的skill與external-mcp reference，只呼叫實際allowedTools；不能用外部自報selfTestPassed/partial/proof取代平台證據。摘要allowedTools為空。Workspace scope未確認時可文字訪談，browser仍拒絕。所有新寫入沿原CAS與重複提交守衛，MCP不提供確認或發佈。
+
+
+## Wave6 互動模式
+
+registry11.2 新增 draft_create、draft_get、author_start、validation_request、validation_report。先 draft_create 建立 Module（含slug）或 Use Case，再 draft_get 取得編輯session與revision/contextRevision；author_start以CAS建立並直接領取本Token的外部任務，不改Workspace引擎，回應task供原task工具繼續產稿。Module submit是未自試候選；Use Case先propose_plan再submit同attempt的candidateRef。
+
+validation_request只能排正式驗證；Use Case未人工確認回awaiting_human_plan_confirmation，確認後重新讀目前revision再續請。同requestId等待時不留永久完成紀錄，真正排程後同鍵同body回原結果。validation_report返回綁定目前Test/revision/Run的狀態、統計與安全錯誤數，不回原始log。所有寫入ai，scope/Token/CAS及人工發佈門檻不變。
+
+Wave6必要真MCP/隔離PG檢查已通過；使用合成validation artifact，不等於本次真Docker或完整UI驗收。本機部署仍待集中更新。

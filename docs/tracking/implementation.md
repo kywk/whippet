@@ -392,6 +392,8 @@ Wave4外部摘要切片完成：普通Test/Module/Plan batch沿原parser/CAS與�
 
 Wave5核心切片已完成：t5w/t5x/t5y接外部module-authoring、usecase-planner（含Plan Stage原skill）、workspace-author；t5z Terra真in-process MCP＋隔離PG的三作者權威/CAS/冪等測試PASS。Workspace正向失敗經snapshot守衛修復後red→green；Module候選仍未自試，正式validation另排，Planner ref仍由同attempt Server發行。Web typecheck/UI/build、三skill SHA載入與Worker typecheck PASS。合成證據不當真Docker/UI，完整驗收仍待全部wave。互動create/edit/validate/report與session login/LiveView仍後波。
 
+Wave6核心切片完成：t60 Server、t61 Terra QA，registry11.2追加draft_create/get、author_start、validation_request/report；registry-manifest10測試、Server定向MCP/build、Terra真MCP＋PG四項24.967s PASS，安全報告投影追加定向PASS。修Compose保留AI來源、交易鎖序與author_start最小tombstone。合成證據非Docker/UI，W7 login/LiveView後集中完整驗收。
+
 M11.Z 清單：
 1. 依使用者最新限制，不重跑 M1–M9 或舊 M10 全套／模型刷測；本次集中驗證 M11 受影響主流程，不把歷史證據算成本次通過。
 2. 互動模式端到端：外部 Agent 建立 Module 與 Use Case 草稿 → 真實驗證 → 人在 UI 發佈；MCP 沒有任何發佈路徑。

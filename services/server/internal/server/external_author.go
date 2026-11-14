@@ -175,8 +175,6 @@ func (p *Postgres) ClaimExternalAuthor(ctx context.Context, token AgentToken, re
 	}
 	var runID string
 	var raw []byte
-	var contextRevision int64
-	var maxDuration int
 	err = tx.QueryRowContext(ctx, `SELECT r.id,r.author_payload FROM runs r WHERE r.workspace_id=$1 AND r.kind='author' AND r.author_engine='external' AND r.status='queued' AND r.author_payload->>'skillId' IN ('test-author','acceptance-summary','module-authoring','usecase-planner','workspace-author') ORDER BY r.queue_seq FOR UPDATE OF r SKIP LOCKED LIMIT 1`, token.WorkspaceID).Scan(&runID, &raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, tx.Commit()
@@ -184,24 +182,36 @@ func (p *Postgres) ClaimExternalAuthor(ctx context.Context, token AgentToken, re
 	if err != nil {
 		return nil, err
 	}
+	task, err := p.claimExternalRunInTx(ctx, tx, token, requestID, runID, raw)
+	if err != nil {
+		return nil, err
+	}
+	return task, tx.Commit()
+}
+
+// The caller holds the Agent Token row lock and has selected exactly this Run.
+func (p *Postgres) claimExternalRunInTx(ctx context.Context, tx *sql.Tx, token AgentToken, requestID, runID string, raw []byte) (*ExternalTask, error) {
 	var input AuthorInput
 	if json.Unmarshal(raw, &input) != nil || input.Budget == nil || (input.EditingSessionID == "" && input.SkillID != "workspace-author") {
 		return nil, ErrInvalid
 	}
-	contextRevision = input.ContextRevision
-	maxDuration = input.Budget.MaxDurationMS
+	contextRevision := input.ContextRevision
+	maxDuration := input.Budget.MaxDurationMS
 	if maxDuration < 1 || maxDuration > 1800000 {
 		return nil, ErrInvalid
 	}
 	var current int64
 	var sessionStatus string
 	if input.SkillID == "workspace-author" {
-		err = tx.QueryRowContext(ctx, `SELECT c.context_revision,w.lifecycle FROM conversations c JOIN workspaces w ON w.id=c.workspace_id WHERE c.id=$1 AND c.workspace_id=$2 AND c.owner_type='workspace'`, input.ConversationID, token.WorkspaceID).Scan(&current, &sessionStatus)
+		err := tx.QueryRowContext(ctx, `SELECT c.context_revision,w.lifecycle FROM conversations c JOIN workspaces w ON w.id=c.workspace_id WHERE c.id=$1 AND c.workspace_id=$2 AND c.owner_type='workspace'`, input.ConversationID, token.WorkspaceID).Scan(&current, &sessionStatus)
+		if err != nil {
+			return nil, dbError(err)
+		}
 	} else {
-		err = tx.QueryRowContext(ctx, `SELECT e.context_revision,e.status FROM editing_sessions e JOIN tests t ON t.id=e.test_id WHERE e.id=$1 AND t.workspace_id=$2`, input.EditingSessionID, token.WorkspaceID).Scan(&current, &sessionStatus)
-	}
-	if err != nil {
-		return nil, dbError(err)
+		err := tx.QueryRowContext(ctx, `SELECT e.context_revision,e.status FROM editing_sessions e JOIN tests t ON t.id=e.test_id WHERE e.id=$1 AND t.workspace_id=$2`, input.EditingSessionID, token.WorkspaceID).Scan(&current, &sessionStatus)
+		if err != nil {
+			return nil, dbError(err)
+		}
 	}
 	if current != contextRevision || (input.SkillID != "workspace-author" && sessionStatus != "active") || (input.SkillID == "workspace-author" && sessionStatus == "archived") {
 		return nil, ErrConflict
@@ -212,9 +222,13 @@ func (p *Postgres) ClaimExternalAuthor(ctx context.Context, token AgentToken, re
 	if expires.After(deadline) {
 		expires = deadline
 	}
-	c = externalClaim{RunID: runID, AttemptID: NewID(), LeaseID: NewID(), TokenID: token.ID, WorkspaceID: token.WorkspaceID, State: "active", ExpiresAt: expires, DeadlineAt: deadline, ContextRevision: contextRevision, AllowedTools: externalTools(input)}
-	if _, err = tx.ExecContext(ctx, `UPDATE runs SET status='running',attempt_id=$2,started_at=now() WHERE id=$1 AND status='queued'`, runID, c.AttemptID); err != nil {
+	c := externalClaim{RunID: runID, AttemptID: NewID(), LeaseID: NewID(), TokenID: token.ID, WorkspaceID: token.WorkspaceID, State: "active", ExpiresAt: expires, DeadlineAt: deadline, ContextRevision: contextRevision, AllowedTools: externalTools(input)}
+	result, err := tx.ExecContext(ctx, `UPDATE runs SET status='running',attempt_id=$2,started_at=now() WHERE id=$1 AND status='queued' AND author_engine='external' AND workspace_id=$3`, runID, c.AttemptID, token.WorkspaceID)
+	if err != nil {
 		return nil, err
+	}
+	if n, err := result.RowsAffected(); err != nil || n != 1 {
+		return nil, ErrConflict
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO external_author_claims(run_id,attempt_id,lease_id,token_id,workspace_id,request_id,state,expires_at,deadline_at,context_revision,allowed_tools) VALUES($1,$2,$3,$4,$5,$6,'active',$7,$8,$9,$10)`, c.RunID, c.AttemptID, c.LeaseID, c.TokenID, c.WorkspaceID, requestID, c.ExpiresAt, c.DeadlineAt, c.ContextRevision, jsonText(c.AllowedTools)); err != nil {
 		return nil, err
@@ -223,7 +237,7 @@ func (p *Postgres) ClaimExternalAuthor(ctx context.Context, token AgentToken, re
 	if err != nil {
 		return nil, err
 	}
-	return &task, tx.Commit()
+	return &task, nil
 }
 
 func (p *Postgres) lockExternalClaim(ctx context.Context, tx *sql.Tx, token AgentToken, runID, attemptID, leaseID string) (externalClaim, error) {

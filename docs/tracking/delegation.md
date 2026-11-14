@@ -212,3 +212,10 @@ Wave4 t5q Server/services/server、t5r Runtime/worker skills與transport、t5s W
 ## Wave5
 
 新實作 t5w Server、t5x Runtime、t5y Web 均 Sol high，QA t5z Terra xhigh；parent=t52、crew=1、keep/outlive-parent、no-daemon/YOLO、repo cwd已核。獨立 tab 依序 tb106e20312785a09ebe4481a01a452a04、tb8e6c826b368b07bce73071f277ffc78f、tbb9e26e4617dccb69a79112d7055151d3、tb8ede8a0e66998d0b63725194c41e64fe，指定space命名且未傳herdr.tab。owner依序 services/server、runtimes/worker與transport、apps/web、scripts/test/m11w5-platform-*。v11固定三種平台作者，互動控制另波；隔離tmpfs PG32775各用獨立schema，核心必要測試後commit/push。
+
+
+## Wave6 與 Wave7 唯讀預備
+
+Wave6 新Server t60（Sol high，services/server）及 QA t61（Terra xhigh，scripts/test/m11w6-interactive-*）皆parent=t52/no-daemon/YOLO/keep/outlive-parent/cwd已核；獨立tab為tb7d1756b22c7f2bb6ba8fab08104632fe與tbb93464a40023f1bb0b31f7e32189c2e8，指定space命名、無herdr.tab。W5 4c0eebb已push且原owner停寫後才交Server。registry11.2與v11 Wave6固定五互動控制，PG32776各自schema。
+
+W7新Runtime t62、Server t63（皆Sol high）目前僅唯讀login/LiveView最小wire提案，W6提交前不寫產品；tab tb4a8b0d84dae0ebb3ddccac59bdd4759e、tbed859cdd2c600137efd99482f19d6e9a，parent/argv/cwd/keep/outlive/working已核。PM仍sole docs/contracts/registry/Git/deploy。
