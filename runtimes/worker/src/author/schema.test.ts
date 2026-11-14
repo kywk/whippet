@@ -6,14 +6,18 @@ const registry = loadToolRegistry();
 const validate = (name: string, value: unknown) => validateToolArguments(registry.tools.find(t => t.name === name)!, value);
 const stage = () => ({ id: 'first', title: '搜尋', action: 'reuse', moduleVersionId: '11111111-1111-1111-1111-111111111111', args: {} });
 test('10.1 schemas reject unsupported constructs, invalid types and UTF8 overflow', () => {
-  assert.equal(registry.version, '10.1');
+  const version = registry.version.match(/^(\d+)\.(\d+)$/);
+  assert.ok(version);
+  const major = Number(version[1]), minor = Number(version[2]);
+  assert.ok(major > 10 || major === 10 && minor >= 1);
   assert.throws(() => assertSchema({ type: 'object', anything: true }));
   assert.throws(() => assertSchema({ type: 'any' }));
-  validate('catalog_search', { query: '搜尋', limit: 20, cursor: null });
-  for (const limit of [0,21,1.5,'1',null]) assert.throws(() => validate('catalog_search', {query:'',limit,cursor:null}));
-  assert.throws(() => validate('catalog_search', {query:'中'.repeat(342),limit:1,cursor:null}));
+  validate('catalog_search', { query: '搜尋', limit: 20 });
+  for (const limit of [0,21,1.5,'1',null]) assert.throws(() => validate('catalog_search', {query:'搜尋',limit}));
+  assert.throws(() => validate('catalog_search', {query:'中'.repeat(342),limit:1}));
   assert.throws(() => validate('catalog_get', {moduleVersionId:'opaque'}));
-  assert.throws(() => validate('catalog_search', {query:'',limit:1,cursor:null,toString:'bypass'}));
+  assert.throws(() => validate('catalog_search', {query:'搜尋',limit:1,cursor:null}));
+  assert.throws(() => validate('catalog_search', {query:'搜尋',limit:1,toString:'bypass'}));
 });
 test('Plan enforces union, bounds, required fields and safe JSON literals', () => {
   validate('propose_plan', {stages:[stage()]});

@@ -18,7 +18,7 @@ function task(v10 = true): AuthorInput {
   if (v10) {
     const root = new URL("../../skills/test-author/", import.meta.url), raw = readFileSync(new URL("manifest.json", root));
     const manifest = JSON.parse(raw.toString()), registry = loadToolRegistry();
-    Object.assign(input.author, { skills: [{ id: "test-author", version: "1", sha256: sha256(readFileSync(new URL("SKILL.md", root))), manifestSha256: sha256(raw), referenceHashes: {} }], budget: { ...manifest.budget, maxModelRequests: 1 }, model: manifest.model, toolRegistryVersion: registry.version, toolRegistrySha256: registry.sha256 });
+    Object.assign(input.author, { skills: [{ id: "test-author", version: "1", sha256: sha256(readFileSync(new URL("SKILL.md", root))), manifestSha256: sha256(raw), referenceHashes: Object.fromEntries(manifest.references.map((ref: { id: string; sha256: string }) => [ref.id, ref.sha256])) }], budget: { ...manifest.budget, maxModelRequests: 1 }, model: manifest.model, toolRegistryVersion: registry.version, toolRegistrySha256: registry.sha256 });
   }
   return input;
 }

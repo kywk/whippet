@@ -17,6 +17,20 @@ import (
 	"testing"
 )
 
+// Production author Runs carry the current tool snapshot. History for those
+// Runs must use the harness tool contract; the v9 /history route is legacy only.
+func snapshotHistory(p *Postgres, ctx context.Context, manager, run, attempt string, cursor *string) (HistoryPage, error) {
+	registry, err := loadToolRegistry()
+	if err != nil {
+		return HistoryPage{}, err
+	}
+	args, _ := json.Marshal(struct {
+		Cursor *string `json:"cursor"`
+	}{cursor})
+	return p.HarnessHistory(ctx, manager, run, attempt,
+		HarnessToolRequest{CallID: NewID(), Name: "read_conversation_history", Arguments: args}, registry)
+}
+
 // Exercise the real API, Engine session and PostgreSQL together. The original
 // M9 tests checked HTTP and persistence separately, missing this call-site seam.
 func TestM9HistoryRealHandlerCancelledFixture(t *testing.T) {
@@ -80,21 +94,25 @@ func TestM9HistoryRealHandlerCancelledFixture(t *testing.T) {
 	var cursor *string
 	found := false
 	for n := 0; n < 2; n++ {
-		r := httptest.NewRequest("POST", "https://server/api/manager/runs/"+a.ID+"/attempts/"+a.AttemptID+"/history", strings.NewReader(jsonText(struct {
+		request := HarnessToolRequest{CallID: NewID(), Name: "read_conversation_history", Arguments: json.RawMessage(jsonText(struct {
 			Cursor *string `json:"cursor"`
-		}{cursor})))
+		}{cursor}))}
+		r := httptest.NewRequest("POST", "https://server/api/manager/runs/"+a.ID+"/attempts/"+a.AttemptID+"/tools", strings.NewReader(jsonText(request)))
 		r.TLS = &tls.ConnectionState{}
 		r.Header.Set("Authorization", "Bearer synthetic-m9-token")
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, r)
-		var page HistoryPage
-		if response.Code != 200 || response.Header().Get("Cache-Control") != "no-store" || json.Unmarshal(response.Body.Bytes(), &page) != nil || page.MaxSequence != a.Author.History.MaxSequence || len(page.Items) != 6 {
+		var envelope struct {
+			RunID, AttemptID, CallID string
+			Result                   HistoryPage
+		}
+		if response.Code != 200 || response.Header().Get("Cache-Control") != "no-store" || json.Unmarshal(response.Body.Bytes(), &envelope) != nil || envelope.RunID != a.ID || envelope.AttemptID != a.AttemptID || envelope.CallID != request.CallID || envelope.Result.MaxSequence != a.Author.History.MaxSequence || len(envelope.Result.Items) != 6 {
 			t.Fatalf("real handler page %d status=%d body=%s", n, response.Code, response.Body.String())
 		}
-		for _, item := range page.Items {
+		for _, item := range envelope.Result.Items {
 			found = found || item.Content == "M9-handler-synthetic-marker"
 		}
-		cursor = page.NextCursor
+		cursor = envelope.Result.NextCursor
 	}
 	if !found || cursor != nil {
 		t.Fatal("real handler failed to recover the marker in two pages")
@@ -156,7 +174,7 @@ func TestM9HistoryOwnersAndCutoff(t *testing.T) {
 	if err := p.RegisterManager(ctx, manager, 1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.ConversationHistory(ctx, manager, submitted.Run.ID, NewID(), nil); !errors.Is(err, ErrHistoryUnavailable) {
+	if _, err := snapshotHistory(p, ctx, manager, submitted.Run.ID, NewID(), nil); !errors.Is(err, ErrHistoryUnavailable) {
 		t.Fatal("queued run read history", err)
 	}
 	a, err := p.Claim(ctx, manager, 1)
@@ -172,7 +190,7 @@ func TestM9HistoryOwnersAndCutoff(t *testing.T) {
 	var cursor *string
 	contents := map[string]string{}
 	for n := 0; n < 4; n++ {
-		page, err := p.ConversationHistory(ctx, manager, a.ID, a.AttemptID, cursor)
+		page, err := snapshotHistory(p, ctx, manager, a.ID, a.AttemptID, cursor)
 		if err != nil || page.WorkspaceID != w.ID || stringValue(page.TestID) != test.ID || stringValue(page.EditingSessionID) != s.ID || page.ConversationID != s.ConversationID || page.MaxSequence != strconv.FormatInt(last, 10) || len(page.Items) > 6 {
 			t.Fatalf("bound page: %+v %v", page, err)
 		}
@@ -193,22 +211,27 @@ func TestM9HistoryOwnersAndCutoff(t *testing.T) {
 	if cursor != nil || contents[strconv.FormatInt(first, 10)] != "old decision outside recent window" || contents[strconv.FormatInt(last, 10)] != long {
 		t.Fatal("bounded pagination lost old decision or UTF-8 content")
 	}
+	// The complete pagination consumes this attempt's four-call tool quota.
+	// Reset only the fixture's call ledger before independent cursor probes.
+	if _, err := p.DB.ExecContext(ctx, `DELETE FROM harness_history_calls WHERE run_id=$1 AND attempt_id=$2`, a.ID, a.AttemptID); err != nil {
+		t.Fatal(err)
+	}
 	for _, seq := range []int64{foreignSeq, foreignWorkspaceSeq} {
-		page, err := p.ConversationHistory(ctx, manager, a.ID, a.AttemptID, historyPosition(seq, 0))
+		page, err := snapshotHistory(p, ctx, manager, a.ID, a.AttemptID, historyPosition(seq, 0))
 		if err != nil || len(page.Items) != 1 || page.Items[0].Sequence != strconv.FormatInt(first, 10) {
 			t.Fatal("foreign cursor widened scope", err)
 		}
-		if _, err := p.ConversationHistory(ctx, manager, a.ID, a.AttemptID, historyPosition(seq, 1)); !errors.Is(err, ErrInvalid) {
+		if _, err := snapshotHistory(p, ctx, manager, a.ID, a.AttemptID, historyPosition(seq, 1)); !errors.Is(err, ErrInvalid) {
 			t.Fatal("offset entered foreign sequence", err)
 		}
 	}
 	for _, cursor := range []*string{historyPosition(late, 0), historyPosition(last, 1), historyPosition(last, int64(len(long)+1))} {
-		if _, err := p.ConversationHistory(ctx, manager, a.ID, a.AttemptID, cursor); !errors.Is(err, ErrInvalid) {
+		if _, err := snapshotHistory(p, ctx, manager, a.ID, a.AttemptID, cursor); !errors.Is(err, ErrInvalid) {
 			t.Fatal("future/misaligned/outside cursor accepted", err)
 		}
 	}
 	for _, identity := range [][2]string{{"wrong", a.AttemptID}, {manager, NewID()}} {
-		if _, err := p.ConversationHistory(ctx, identity[0], a.ID, identity[1], nil); !errors.Is(err, ErrHistoryUnavailable) {
+		if _, err := snapshotHistory(p, ctx, identity[0], a.ID, identity[1], nil); !errors.Is(err, ErrHistoryUnavailable) {
 			t.Fatal("wrong Manager/attempt read history", err)
 		}
 	}
@@ -216,7 +239,7 @@ func TestM9HistoryOwnersAndCutoff(t *testing.T) {
 		if _, err := p.DB.ExecContext(ctx, `UPDATE runs SET status=$2 WHERE id=$1`, a.ID, status); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := p.ConversationHistory(ctx, manager, a.ID, a.AttemptID, nil); !errors.Is(err, ErrHistoryUnavailable) {
+		if _, err := snapshotHistory(p, ctx, manager, a.ID, a.AttemptID, nil); !errors.Is(err, ErrHistoryUnavailable) {
 			t.Fatalf("%s read history: %v", status, err)
 		}
 	}
@@ -226,7 +249,7 @@ func TestM9HistoryOwnersAndCutoff(t *testing.T) {
 	if _, err := p.DB.ExecContext(ctx, `UPDATE runs SET slot_released=true WHERE id=$1`, a.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.ConversationHistory(ctx, manager, a.ID, a.AttemptID, nil); !errors.Is(err, ErrHistoryUnavailable) {
+	if _, err := snapshotHistory(p, ctx, manager, a.ID, a.AttemptID, nil); !errors.Is(err, ErrHistoryUnavailable) {
 		t.Fatal("released slot read history", err)
 	}
 	if _, err := p.DB.ExecContext(ctx, `UPDATE runs SET slot_released=false WHERE id=$1`, a.ID); err != nil {
@@ -236,14 +259,14 @@ func TestM9HistoryOwnersAndCutoff(t *testing.T) {
 		if _, err := p.DB.ExecContext(ctx, `UPDATE editing_sessions SET status=$2 WHERE id=$1`, s.ID, status); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := p.ConversationHistory(ctx, manager, a.ID, a.AttemptID, nil); !errors.Is(err, ErrHistoryUnavailable) {
+		if _, err := snapshotHistory(p, ctx, manager, a.ID, a.AttemptID, nil); !errors.Is(err, ErrHistoryUnavailable) {
 			t.Fatal("closed session read history", err)
 		}
 	}
 	if _, err := p.DB.ExecContext(ctx, `UPDATE editing_sessions SET status='active',context_revision=context_revision+1 WHERE id=$1`, s.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.ConversationHistory(ctx, manager, a.ID, a.AttemptID, nil); !errors.Is(err, ErrHistoryUnavailable) {
+	if _, err := snapshotHistory(p, ctx, manager, a.ID, a.AttemptID, nil); !errors.Is(err, ErrHistoryUnavailable) {
 		t.Fatal("stale context read history", err)
 	}
 	if _, err := p.DB.ExecContext(ctx, `UPDATE editing_sessions SET context_revision=context_revision-1 WHERE id=$1`, s.ID); err != nil {
@@ -252,7 +275,7 @@ func TestM9HistoryOwnersAndCutoff(t *testing.T) {
 	if _, err := p.SaveDraft(ctx, test.ID, s.ID, s.Draft.Revision, "new manual script"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.ConversationHistory(ctx, manager, a.ID, a.AttemptID, nil); !errors.Is(err, ErrHistoryUnavailable) {
+	if _, err := snapshotHistory(p, ctx, manager, a.ID, a.AttemptID, nil); !errors.Is(err, ErrHistoryUnavailable) {
 		t.Fatal("stale draft read history", err)
 	}
 	if _, err := p.DB.ExecContext(ctx, `UPDATE runs SET status='cancelled',slot_released=true WHERE id=$1`, a.ID); err != nil {
@@ -265,7 +288,7 @@ func TestM9HistoryOwnersAndCutoff(t *testing.T) {
  SELECT $1,workspace_id,test_id,'author',draft_revision,editing_session_id,script_snapshot,script_hash,timeout_ms,$2,workspace_settings,workspace_context,'running',manager_id,$3,false FROM runs WHERE id=$4`, summary, jsonText(input), summaryAttempt, a.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.ConversationHistory(ctx, manager, summary, summaryAttempt, nil); !errors.Is(err, ErrHistoryUnavailable) {
+	if _, err := snapshotHistory(p, ctx, manager, summary, summaryAttempt, nil); !errors.Is(err, ErrHistoryUnavailable) {
 		t.Fatal("summary obtained history even with a forged allowed tool", err)
 	}
 }
@@ -291,7 +314,7 @@ func TestM9WorkspaceHistoryAndLegacyDenial(t *testing.T) {
 	if err != nil || a == nil || a.ID != s.Run.ID || a.Author.History == nil || a.Author.History.MaxSequence != "0" || !workspaceAuthorToolsValid(a.Author.AllowedTools) {
 		t.Fatal("empty Workspace cutoff", err)
 	}
-	page, err := p.ConversationHistory(ctx, manager, a.ID, a.AttemptID, nil)
+	page, err := snapshotHistory(p, ctx, manager, a.ID, a.AttemptID, nil)
 	if err != nil || page.TestID != nil || page.EditingSessionID != nil || page.Items == nil || len(page.Items) != 0 || page.NextCursor != nil {
 		t.Fatal("workspace owner/empty page", err)
 	}
@@ -307,14 +330,14 @@ func TestM9WorkspaceHistoryAndLegacyDenial(t *testing.T) {
 	if err != nil || a == nil || a.ID != s.Run.ID || a.Author.History.MaxSequence != strconv.FormatInt(old, 10) {
 		t.Fatal("follow-up bound", err)
 	}
-	page, err = p.ConversationHistory(ctx, manager, a.ID, a.AttemptID, nil)
+	page, err = snapshotHistory(p, ctx, manager, a.ID, a.AttemptID, nil)
 	if err != nil || len(page.Items) != 2 || page.Items[0].Content != "old workspace decision" || page.Items[1].Content != "first turn" {
 		t.Fatal("Workspace history contents", err)
 	}
 	if _, err := p.DB.ExecContext(ctx, `UPDATE conversations SET context_revision=context_revision+1 WHERE id=$1`, w.ConversationID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.ConversationHistory(ctx, manager, a.ID, a.AttemptID, nil); !errors.Is(err, ErrHistoryUnavailable) {
+	if _, err := snapshotHistory(p, ctx, manager, a.ID, a.AttemptID, nil); !errors.Is(err, ErrHistoryUnavailable) {
 		t.Fatal("Workspace stale context read history", err)
 	}
 	if _, err := p.DB.ExecContext(ctx, `UPDATE conversations SET context_revision=context_revision-1 WHERE id=$1`, w.ConversationID); err != nil {
@@ -323,7 +346,7 @@ func TestM9WorkspaceHistoryAndLegacyDenial(t *testing.T) {
 	if _, err := p.DB.ExecContext(ctx, `UPDATE workspaces SET settings=jsonb_set(settings,'{revision}',to_jsonb($2::integer)) WHERE id=$1`, w.ID, w.Revision+1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.ConversationHistory(ctx, manager, a.ID, a.AttemptID, nil); !errors.Is(err, ErrHistoryUnavailable) {
+	if _, err := snapshotHistory(p, ctx, manager, a.ID, a.AttemptID, nil); !errors.Is(err, ErrHistoryUnavailable) {
 		t.Fatal("Workspace stale revision read history", err)
 	}
 	if _, err := p.DB.ExecContext(ctx, `UPDATE workspaces SET settings=jsonb_set(settings,'{revision}',to_jsonb($2::integer)) WHERE id=$1`, w.ID, w.Revision); err != nil {
@@ -349,7 +372,7 @@ func TestM9WorkspaceHistoryAndLegacyDenial(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := p.ConversationHistory(ctx, manager, id, attempt, nil); !errors.Is(err, ErrHistoryUnavailable) {
+		if _, err := snapshotHistory(p, ctx, manager, id, attempt, nil); !errors.Is(err, ErrHistoryUnavailable) {
 			t.Fatal("legacy/summary/foreign owner read history", err)
 		}
 		if _, err := p.DB.ExecContext(ctx, `UPDATE runs SET status='cancelled',slot_released=true WHERE id=$1`, id); err != nil {
@@ -448,7 +471,7 @@ func TestM9SettingsResumeAndRevocation(t *testing.T) {
 	if _, err := p.ResolveWorkspaceCredentials(ctx, "m7-test", a.ID, a.AttemptID, request); !errors.Is(err, ErrCredentialUnavailable) {
 		t.Fatal("revoked role resolved", err)
 	}
-	if _, err := p.ConversationHistory(ctx, "m7-test", a.ID, a.AttemptID, nil); !errors.Is(err, ErrHistoryUnavailable) {
+	if _, err := snapshotHistory(p, ctx, "m7-test", a.ID, a.AttemptID, nil); !errors.Is(err, ErrHistoryUnavailable) {
 		t.Fatal("revoked/stale attempt read history", err)
 	}
 	run, err := p.Run(ctx, a.ID)

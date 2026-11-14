@@ -89,7 +89,8 @@ func TestM10PostgresModuleCatalogAndDependencies(t *testing.T) {
 	}
 	stages[0].ModuleTestID = foreign.ID
 	stages[0].ModuleVersionID = foreignVersion
-	if _, err := resolveModuleDependencies(ctx, p.DB, w.ID, stages); !errors.Is(err, ErrInvalid) {
+	// A foreign module is hidden as not found, without exposing its existence.
+	if _, err := resolveModuleDependencies(ctx, p.DB, w.ID, stages); !errors.Is(err, ErrNotFound) {
 		t.Fatal("cross Workspace dependency accepted", err)
 	}
 	usecase, err := p.CreatePlatformTest(ctx, w.ID, "flow", "", "usecase", nil)

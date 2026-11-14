@@ -55,6 +55,7 @@ func TestM7EditingLifecycle(t *testing.T) {
 	if err := p.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
+	manualSeedVersions(t, p, ctx)
 	files, err := NewLocalArtifacts(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -63,6 +64,10 @@ func TestM7EditingLifecycle(t *testing.T) {
 	h := m7DBHarness{t, p, ctx, files}
 	const testID = "10000000-0000-4000-8000-000000000001"
 	const otherID = "10000000-0000-4000-8000-000000000002"
+	var initialReadRows int
+	if err := p.DB.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM drafts)+(SELECT count(*) FROM editing_sessions)+(SELECT count(*) FROM conversations)`).Scan(&initialReadRows); err != nil {
+		t.Fatal(err)
+	}
 	item, err := p.Test(ctx, testID)
 	if err != nil || item.ActiveEditingSession != nil {
 		t.Fatalf("test pure read: %+v %v", item, err)
@@ -77,7 +82,7 @@ func TestM7EditingLifecycle(t *testing.T) {
 		t.Fatal("GET conversation created data")
 	}
 	var count int
-	if err := p.DB.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM drafts)+(SELECT count(*) FROM editing_sessions)+(SELECT count(*) FROM conversations)`).Scan(&count); err != nil || count != 0 {
+	if err := p.DB.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM drafts)+(SELECT count(*) FROM editing_sessions)+(SELECT count(*) FROM conversations)`).Scan(&count); err != nil || count != initialReadRows {
 		t.Fatalf("reads added data: %d %v", count, err)
 	}
 	versions, err := p.Versions(ctx, testID)
@@ -172,7 +177,7 @@ func TestM7EditingLifecycle(t *testing.T) {
 		t.Fatal("old context summary published")
 	}
 	a = h.claim(edit.Run.ID)
-	if a.Author.SkillID != "test-author" || a.Author.ContextRevision != 1 || len(a.Author.AllowedTools) != 9 || !containsHistoryTool(a.Author.AllowedTools) || a.Author.History == nil {
+	if a.Author.SkillID != "test-author" || a.Author.ContextRevision != 1 || !p.CanDispatch(*a) || hasBrowserTools(a.Author) || !containsHistoryTool(a.Author.AllowedTools) || a.Author.History == nil {
 		t.Fatalf("wrong edit input: %+v", a.Author)
 	}
 	h.upload(a, "author.json", `{"message":"已理解新目的","requestValidation":false,"conversationSummary":"新目的與原檢查保持不變"}`)

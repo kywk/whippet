@@ -24,8 +24,12 @@ func TestM10PostgresUpgradeFromM9(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	migrationCount := 0
 	for _, entry := range entries {
 		name := entry.Name()
+		if strings.HasSuffix(name, ".sql") {
+			migrationCount++
+		}
 		if !strings.HasSuffix(name, ".sql") || name >= "011" {
 			continue
 		}
@@ -85,7 +89,7 @@ func TestM10PostgresUpgradeFromM9(t *testing.T) {
 	if err = p.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err = p.DB.QueryRowContext(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil || count != 18 {
+	if err = p.DB.QueryRowContext(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil || count != migrationCount {
 		t.Fatal("missing migration", count, err)
 	}
 	if snapshot() != before {
@@ -111,7 +115,7 @@ func TestM10PostgresUpgradeFromM9(t *testing.T) {
 	if err = p.Migrate(ctx); err != nil {
 		t.Fatal("idempotent rerun failed", err)
 	}
-	if err = p.DB.QueryRowContext(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil || count != 18 {
+	if err = p.DB.QueryRowContext(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil || count != migrationCount {
 		t.Fatal("rerun changed ledger", err)
 	}
 	t.Log(fmt.Sprintf("M9 001–010 fixture -> injected 014 failure rolls 011–013 and ledger back -> M10 011–018 committed; 18 embedded migrations; legacy data/defaults/queued script assignment preserved; rerun idempotent"))

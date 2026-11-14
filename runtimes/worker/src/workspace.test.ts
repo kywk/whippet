@@ -42,7 +42,7 @@ test("M5 real Worker runner uses snapshot baseURL and accepts legacy input", {
     const work = await mkdtemp(join(evidence, `${name}-`));
     const script = await readFile(join(fixtures, `${name}.spec.ts`), "utf8");
     const input = { runId: "11111111-1111-4111-8111-111111111111", attemptId: "22222222-2222-4222-8222-222222222222", script, timeoutMs: 20000,
-      ...(name === "workspace-relative" ? { workspaceSettings: { revision: 7, sites: [{ name: "固定站", url: "http://127.0.0.1:18765/base/" }], defaultTestUrl: "http://127.0.0.1:18765/base/", timeoutMs: 20000 } } : {}),
+      ...(name === "workspace-relative" ? { scriptOrigin: "manual", workspaceSettings: { revision: 7, sites: [{ name: "固定站", url: "http://127.0.0.1:18765/base/" }], defaultTestUrl: "http://127.0.0.1:18765/base/", timeoutMs: 20000 } } : {}),
     };
     await writeFile(join(work, "input.json"), JSON.stringify(input));
     await promisify(execFile)(process.execPath, [fileURLToPath(new URL("./runner.js", import.meta.url))], {

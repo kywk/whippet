@@ -151,7 +151,7 @@ func runHarnessAuthorBridge(t *testing.T, input WorkerInput, url, token string, 
 					if item.Type == "function_call_output" && item.CallID == fmt.Sprintf("provider:opaque/platform-%d", n-1) {
 						var output map[string]json.RawMessage
 						if json.Unmarshal([]byte(item.Output), &output) != nil || output["error"] != nil {
-							t.Error("platform tool failed")
+							t.Errorf("platform tool failed at ordinal %d", n-1)
 						}
 						found = true
 					}
