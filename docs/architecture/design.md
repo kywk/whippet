@@ -70,6 +70,8 @@ hello 宣告 capacity 與協定版本；reconcile 比對活躍任務、終態與
 
 Transport 只負責收送與連線；業務任務處理共用 handler。未來 Polling、HTTP Push 接相同 envelope，本輪只保留介面與設計。
 
+2026-11-15 M10.Z Wave3：沿既有 default-off M109 開關，Manager 增加獨立 `diagnostics/manager-transport.json` 有界快照，記錄固定連線／結果傳送階段、飽和計數及程序內經過時間；不含任務身分或訊息內容。觀測只持自身鎖，在既有 Manager 狀態鎖與連線鎖外記錄，檔案錯誤不改傳送結果。`SENT` 代表本地傳送返回成功，v1 仍沒有 Server 收件 ACK；結果重播沿用原 `ResultMessageID`，不重新執行 Worker。精確七欄、檔案保護與限制見 [v10 契約](../../contracts/mvp-v10.md#m10z-wave3-manager-傳輸階段觀測2026-11-15)。
+
 ## Worker 執行契約
 
 輸入：工作種類、run／attempt、腳本或草稿快照、URL／設定、timeout、模型設定引用。
@@ -77,6 +79,8 @@ Transport 只負責收送與連線；業務任務處理共用 handler。未來 P
 Manager 管理容器 CPU／記憶體限制、逾時與取消；停止寬限時間後強制終止容器，清理程序及暫存目錄。清理失敗則保留 slot、回報錯誤，其他可用 slot 可繼續。
 Playwright 內部 workers 預設 1，避免與 Manager 併發上限相乘。
 完成後由 Manager 透過 HTTP 上傳附件，確認 Server 保存後清本機檔；上傳失敗可補送，不重新執行測試。
+
+M10.Z Wave3 自試觀測 v4 只從 Reporter 結構與自試 page 主框架事件產生固定分類及導覽 enum，對應同一最近失敗自試；資料不足為 `UNOBSERVED`，成功不覆蓋先前失敗觀測。保留原錯誤與報告，不從自由文字猜根因，也不把未導覽判定為失敗原因。Worker 與 Manager 須成批切換；Manager 保留 v1–v3 精確 decoder，相容處理不改歷史 sidecar。詳見 [v4 契約](../../contracts/mvp-v10.md#m10z-wave3-自試結構觀測-v42026-11-15)。
 
 ## AI 編輯
 
