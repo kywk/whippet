@@ -398,6 +398,8 @@ Wave7核心切片完成：t62 Runtime/transport、t63 Server、t64 Web，t65 Ter
 
 M11.Z進行中：固定34cf5ea的集中API/權限29頂層測試全PASS/0skip（合成fixture，非Docker/UI）。真UI→新MCP Agent→普通Test revision2正式validation與外部摘要成功、報告可開；claim缺testId由PM補metadata後發現並定向修復。互動Module遇W5 skill resources未公開真缺口，已資源list/read red→green；Agent兩個參數schema錯誤另列客戶端問題。session真TLS登入站成功、快照private/close容器已移除，但LiveView無首幀未過；加固定enum診斷準備新隔離probe，尚不宣稱M11.Z完成。
 
+2026-11-14 集中驗收續報：R4 真 TLS／Docker session 已驗 WebRTC 解碼前進、JPEG、roleId 登入（站端計數 +1）、敏感暫停隱藏與恢復、快照遮蔽、關閉後工具與 viewer 拒絕；PM 獨立核容器不存在、未回收租約與占用 Run 為 0。R5 UI 撤銷專用 Token 後下次 RPC 401。暫停證據僅涵蓋觀測時點，不擴稱每一影格；R3 無首幀根因仍未知。Module 真正式驗證／摘要／UI 發佈通過後，Use Case 重用正式驗證發現雙參數 Module 與 Compose 單物件 ABI 不合。保留原失敗證據，三端新增可信 moduleAbi 與私有執行 façade，定向舊形式失敗／單物件成功；正準備同一 Module 續編修復與 Use Case 再驗，M11.Z 尚未完成。
+
 M11.Z 清單：
 1. 依使用者最新限制，不重跑 M1–M9 或舊 M10 全套／模型刷測；本次集中驗證 M11 受影響主流程，不把歷史證據算成本次通過。
 2. 互動模式端到端：外部 Agent 建立 Module 與 Use Case 草稿 → 真實驗證 → 人在 UI 發佈；MCP 沒有任何發佈路徑。

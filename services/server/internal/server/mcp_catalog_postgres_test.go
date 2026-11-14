@@ -116,14 +116,33 @@ func TestM11MCPRegistryReadScopeAndRevocation(t *testing.T) {
 			}
 		}
 	}
-	if bytes.Contains(resources.Body.Bytes(), []byte("manifest")) || bytes.Contains(resources.Body.Bytes(), []byte("references/harness")) || bytes.Contains(resources.Body.Bytes(), []byte("references/stages")) {
+	if bytes.Contains(resources.Body.Bytes(), []byte("manifest")) || bytes.Contains(resources.Body.Bytes(), []byte("references/stages")) {
 		t.Fatal("internal skill resource was listed")
+	}
+	harnessURI := "whippet://skill/module-authoring/references/harness"
+	if !bytes.Contains(resources.Body.Bytes(), []byte(harnessURI)) {
+		t.Fatal("module harness reference was not listed")
+	}
+	_, harnessToken, err := p.CreateAgentToken(ctx, a.ID, "reader")
+	if err != nil {
+		t.Fatal(err)
+	}
+	harnessRead := post("", harnessToken, `{"jsonrpc":"2.0","id":13,"method":"resources/read","params":{"uri":"`+harnessURI+`"}}`)
+	var harnessReply struct {
+		Result struct {
+			Contents []struct {
+				URI  string `json:"uri"`
+				Text string `json:"text"`
+			} `json:"contents"`
+		} `json:"result"`
+	}
+	if harnessRead.Code != http.StatusOK || json.Unmarshal(harnessRead.Body.Bytes(), &harnessReply) != nil || len(harnessReply.Result.Contents) != 1 || harnessReply.Result.Contents[0].URI != harnessURI || harnessReply.Result.Contents[0].Text == "" {
+		t.Fatal("module harness reference was not readable")
 	}
 	for _, uri := range []string{
 		"whippet://skill/module-authoring/manifest",
 		"whippet://skill/usecase-planner/manifest",
 		"whippet://skill/workspace-author/manifest",
-		"whippet://skill/module-authoring/references/harness",
 		"whippet://skill/usecase-planner/references/stages",
 	} {
 		_, deniedToken, err := p.CreateAgentToken(ctx, a.ID, "reader")

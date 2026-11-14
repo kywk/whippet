@@ -27,7 +27,7 @@ func addMCPResources(server *mcp.Server, registry *ToolRegistry, api *API, store
 		addMCPResource(server, api, store, "whippet://skill/"+id+"/main", id, main)
 		added = true
 		for _, ref := range manifest.References {
-			if id != "catalog-reuse" && ref.ID != "external-mcp" {
+			if id != "catalog-reuse" && ref.ID != "external-mcp" && !(id == "module-authoring" && ref.ID == "harness") {
 				continue
 			}
 			data, err := readSkillFile(root, id+"/"+ref.Path, 128<<10)

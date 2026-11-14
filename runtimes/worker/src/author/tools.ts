@@ -16,6 +16,7 @@ import {loginBroker} from '../login/broker.js';
 import {submitLogin} from '../login/helper.js';
 import {installLoginPrivacy} from '../login/privacy.js';
 import type { RuntimeSummary } from "../result.js";
+import { installModuleABI, type ModuleABI } from "../module-abi.js";
 
 const require = createRequire(import.meta.url);
 
@@ -46,7 +47,7 @@ export interface ExplorationBrowser {
   click(selector: string): Promise<unknown>;
   fill(selector: string, value: string): Promise<unknown>;
   login?(roleId:string,usernameSelector:string,passwordSelector:string,submitSelector:string,callId?:string):Promise<unknown>;
-  verifyDraft?(script: string, options?: { signal?: AbortSignal; moduleFile?: {slug:string;content:string}; onSelfTestFailure?: (value:SelfTestFailureClass)=>void }): Promise<DraftSelfTestResult>;
+  verifyDraft?(script: string, options?: { signal?: AbortSignal; moduleFile?: ModuleABI & {content:string}; onSelfTestFailure?: (value:SelfTestFailureClass)=>void }): Promise<DraftSelfTestResult>;
   close(): Promise<void>;
 }
 
@@ -191,6 +192,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
           if(!/^[a-z][a-z0-9-]{0,63}$/.test(runOptions.moduleFile.slug))throw new AuthorError("invalid_input");
           await mkdir(join(taskDir,"lib"));
           await writeFile(join(taskDir,"lib",runOptions.moduleFile.slug+".ts"),runOptions.moduleFile.content,{flag:"wx"});
+          await installModuleABI(taskDir,{slug:runOptions.moduleFile.slug,exportName:runOptions.moduleFile.exportName});
         }
         const bridgePath = join(taskDir, "live-fixture.cjs");
         await writeFile(

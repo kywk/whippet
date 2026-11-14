@@ -310,6 +310,9 @@ func (p *Postgres) Assignments(ctx context.Context, managerID string) ([]Assignm
 		}
 		if bundle != nil {
 			a.Files = bundle.Files
+			if bundle.Module != nil && (a.Kind == "run" || a.Kind == "validation") {
+				a.ModuleABI = &ModuleABI{Slug: bundle.Module.Slug, ExportName: bundle.Module.ExportName}
+			}
 		}
 		if err := decodeAssignmentAuthor(&a, authorPayload); err != nil {
 			return nil, err
@@ -385,6 +388,9 @@ func (p *Postgres) Claim(ctx context.Context, managerID string, capacity int) (*
 	}
 	if bundle != nil {
 		a.Files = bundle.Files
+		if bundle.Module != nil && (a.Kind == "run" || a.Kind == "validation") {
+			a.ModuleABI = &ModuleABI{Slug: bundle.Module.Slug, ExportName: bundle.Module.ExportName}
+		}
 	}
 	if err := decodeAssignmentAuthor(&a, authorPayload); err != nil {
 		return nil, err

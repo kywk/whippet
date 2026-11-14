@@ -27,7 +27,7 @@ const stage=(part:string,content:string,stagingRevision:number)=>({part,content,
 test('staged candidate uses real engine/fetch tool sequence and never IPC; commit alone creates final',async()=>{
  const sequence=[['stage_module_candidate_part',stage('script',script,0)],['stage_module_candidate_part',stage('harness',harness,1)],['commit_module_candidate',{stagingRevision:2,metadata}],['request_module_validation',{}]] as const;
  let n=0,verified=0;const v=input();
- const result=await runAuthor(v,cfg,browser(async(h,o)=>{assert.equal(h,harness);assert.deepEqual(o?.moduleFile,{slug:'search',content:script});verified++;return {passed:true,summary:'synthetic'};}),{harness:{call:async()=>assert.fail('local tools must not use IPC')},fetcher:async(_url,init)=>{
+ const result=await runAuthor(v,cfg,browser(async(h,o)=>{assert.equal(h,harness);assert.deepEqual(o?.moduleFile,{slug:'search',exportName:'search',content:script});verified++;return {passed:true,summary:'synthetic'};}),{harness:{call:async()=>assert.fail('local tools must not use IPC')},fetcher:async(_url,init)=>{
   const body=JSON.parse(init!.body as string);assert.equal(body.stream,false);assert.equal(body.max_output_tokens,16384);
   if(n){const previous=JSON.parse(body.input.filter((x:any)=>x.type==='function_call_output').at(-1).output);if(n<=2)assert.deepEqual(previous,{staged:true,revision:n,part:n===1?'script':'harness',contentHash:sha256(Buffer.from(n===1?script:harness))});}
   const item=sequence[n++];return Response.json({status:'completed',output:item?[{type:'function_call',call_id:String(n),name:item[0],arguments:JSON.stringify(item[1])}]:[],...(!item?{output_text:final.finalText}:{})});

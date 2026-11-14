@@ -168,3 +168,6 @@ GET /api/workspaces/{id}/browser-sessions → {items:[{sessionId,leaseId,state,c
 集中驗收修補：ExternalTask.testId 必由同 Run/attempt/Workspace 的 runs.test_id 提供，Workspace 作者明示 null，讓外部接單者可讀正式驗證報告而不靠管理API。module-authoring/usecase-planner/workspace-author 的 main 與 external-mcp reference 必在實際 resources/list/read 安全allowlist，不能只在claim回不可讀URI；manifest與其餘未審reference仍拒絕。Manager session Live診斷只在自有WorkDir/diagnostics保存固定stage/error/時間與租約識別，不保存raw錯誤/URL/header/畫面/秘密；用於定位媒體失敗，不當成影格成功證據。
 
 ExternalTask.contextBundle.toolDefinitions 必包含該claim allowedTools的原registry定義（含inputSchema/description/limits），順序沿allowedTools；與Run的registry版本/SHA一致才可回傳，摘要為空陣列。task_tool_call是通用入口，不能只給名稱而要求外部Agent猜nested參數，也不將未允許工具加入回應。
+
+
+集中驗收 Module ABI 修補：正式 Module validation 的 dispatch/WorkerInput 增加可信 moduleAbi={slug,exportName}，只由 Server 已核 hash 的 immutable RunBundle.module 推導，Agent/MCP不得指定；新部署須同步Server/Manager/Worker。Manager驗合法slug/exportName與對應bundle檔，再轉交。Worker保留原module body/harness與Server bundle hash，在私有執行目錄以 façade 對該export加平台呼叫守衛：恰一個非陣列object且含page，再將該單一object傳原export；其他exports沿原檔重匯出。原harness與assertions不可修改，錯參數固定ABI錯誤。Module作者自試共用相同守衛，避免獨立harness驗了兩參數API卻無法Compose。安全module-authoring/harness reference納入MCP SHA pin allowlist；external指引明示exportName({page,...namedInputs})。

@@ -211,7 +211,7 @@ export async function runAuthor(
             let selfTestFailure:unknown='UNKNOWN';
             let check;
             try {
-              check=await withHeartbeat(browser.verifyDraft(next.module.harness,{signal:toolSignal,moduleFile:{slug:next.module.slug,content:next.script},...(options.moduleDiagnostics?{onSelfTestFailure:(value:unknown)=>{selfTestFailure=value;}}:{})}), `author:tool:${toolCount}:${safeToolName}:heartbeat`,toolSignal);
+              check=await withHeartbeat(browser.verifyDraft(next.module.harness,{signal:toolSignal,moduleFile:{slug:next.module.slug,exportName:next.module.exportName,content:next.script},...(options.moduleDiagnostics?{onSelfTestFailure:(value:unknown)=>{selfTestFailure=value;}}:{})}), `author:tool:${toolCount}:${safeToolName}:heartbeat`,toolSignal);
             } finally {
               if(!check?.passed)options.moduleDiagnostics?.selfTestFailure(selfTestFailure);
             }

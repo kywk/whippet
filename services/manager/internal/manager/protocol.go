@@ -26,6 +26,7 @@ type Envelope struct {
 
 type Dispatch struct {
 	Files             []RunFile       `json:"files,omitempty"`
+	ModuleABI         *ModuleABI      `json:"moduleAbi,omitempty"`
 	ScriptOrigin      string          `json:"scriptOrigin,omitempty"`
 	Kind              string          `json:"kind"`
 	Script            string          `json:"script"`
@@ -215,6 +216,7 @@ type AuthorValidation struct {
 
 type WorkerInput struct {
 	Files             []RunFile       `json:"files,omitempty"`
+	ModuleABI         *ModuleABI      `json:"moduleAbi,omitempty"`
 	ScriptOrigin      string          `json:"scriptOrigin,omitempty"`
 	RunID             string          `json:"runId"`
 	AttemptID         string          `json:"attemptId"`

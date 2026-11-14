@@ -65,6 +65,7 @@ def main():
     try:
         for port in (19787, 19788, 19789, 19790):
             with socket.socket() as probe:
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 probe.bind(('127.0.0.1', port))
         docker_host = command([docker, 'context', 'inspect', '--format', '{{.Endpoints.docker.Host}}'], env=base).decode().strip()
         if not docker_host.startswith('unix:///'):

@@ -69,10 +69,32 @@ test('only authoritative Module primary gets 25MiB final and pending IDs select 
 test('real Module self-test executes both files through @lib and rejects a failing harness',async()=>{
  const browser=explorationBrowser({PATH:process.env.PATH,HOME:process.env.HOME,TMPDIR:process.env.TMPDIR});
  try {
-  const passed=await browser.verifyDraft!(metadata.harness,{moduleFile:{slug:'search',content:'export function search(){return 1}'}});
+  const harness="import {test,expect} from '@playwright/test';import {search} from '@lib/search';test('intent',async({page})=>{expect(await search({page})).toBe(1)});";
+  const passed=await browser.verifyDraft!(harness,{moduleFile:{slug:'search',exportName:'search',content:'export function search({page}){return 1}'}});
   assert.equal(passed.passed,true,passed.error);
-  const failed=await browser.verifyDraft!(metadata.harness,{moduleFile:{slug:'search',content:'export function search(){return 2}'}});
+  const failed=await browser.verifyDraft!(harness,{moduleFile:{slug:'search',exportName:'search',content:'export function search({page}){return 2}'}});
   assert.equal(failed.passed,false);
+ }finally{await browser.close();}
+});
+
+test('Module harness rejects two arguments and accepts the Compose object ABI',async()=>{
+ const browser=explorationBrowser({});
+ const legacyHarness="import {test,expect} from '@playwright/test';import {run} from '@lib/search';test('legacy',async({page})=>{expect(await run(page,{term:'ok'})).toBe('ok')});";
+ const objectHarness="import {test,expect} from '@playwright/test';import {run} from '@lib/search';test('object',async({page})=>{expect(await run({page,term:'ok'})).toBe('ok')});";
+ try{
+  const legacy=await browser.verifyDraft!(legacyHarness,{moduleFile:{slug:'search',exportName:'run',content:'export async function run(page,input){return input.term}'}});
+  assert.equal(legacy.passed,false,'two-argument harness must not validate a Module');
+  const object=await browser.verifyDraft!(objectHarness,{moduleFile:{slug:'search',exportName:'run',content:'export async function run({page,term}){return term}'}});
+  assert.equal(object.passed,true,object.error);
+ }finally{await browser.close();}
+});
+
+test('Module harness cannot import the execution-only ABI source directly',async()=>{
+ const browser=explorationBrowser({});
+ const bypass="import {test,expect} from '@playwright/test';import {run} from '@lib/.whippet-abi-source-search';test('bypass',async({page})=>{expect(await run(page,{term:'ok'})).toBe('ok')});";
+ try{
+  const result=await browser.verifyDraft!(bypass,{moduleFile:{slug:'search',exportName:'run',content:'export async function run(page,input){return input.term}'}});
+  assert.equal(result.passed,false,'direct source import must not bypass the ABI facade');
  }finally{await browser.close();}
 });
 

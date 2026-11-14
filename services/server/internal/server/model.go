@@ -176,7 +176,8 @@ func Terminal(status string) bool {
 }
 
 type Assignment struct {
-	Files []RunFile
+	Files     []RunFile
+	ModuleABI *ModuleABI
 	Run
 	ManagerID string
 	AttemptID string
@@ -184,6 +185,11 @@ type Assignment struct {
 	TimeoutMS int
 	Acked     bool
 	Author    *AuthorInput
+}
+
+type ModuleABI struct {
+	Slug       string `json:"slug"`
+	ExportName string `json:"exportName"`
 }
 
 func stringPointer(value string) *string { return &value }

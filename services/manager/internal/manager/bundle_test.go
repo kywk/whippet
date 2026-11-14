@@ -87,3 +87,39 @@ func TestV10BundleWireAndWorkerInput(t *testing.T) {
 		t.Fatal("bundle lost on Manager forwarding")
 	}
 }
+
+func TestModuleABIDispatchForwardsOnlyMatchingModule(t *testing.T) {
+	m, _, _ := lifecycleManager(t, 1)
+	d := bundleDispatch()
+	d.ModuleABI = &ModuleABI{Slug: "setup", ExportName: "run"}
+	if err := normalizeBundle(&d); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded Dispatch
+	if err = json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	r := record{RunID: newID(), AttemptID: newID(), Kind: "run", Phase: "accepted", TimeoutMS: 20000}
+	if err = m.prepare(r, decoded); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(filepath.Join(m.taskDir(r), "input.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var input WorkerInput
+	if err = json.Unmarshal(body, &input); err != nil || input.ModuleABI == nil || *input.ModuleABI != *d.ModuleABI {
+		t.Fatal("module ABI lost on Manager forwarding", err)
+	}
+	for _, bad := range []*ModuleABI{{Slug: "other", ExportName: "run"}, {Slug: "setup", ExportName: "return"}} {
+		invalid := bundleDispatch()
+		invalid.ModuleABI = bad
+		if validDispatch(invalid) == nil {
+			t.Fatal("accepted invalid Module ABI")
+		}
+	}
+}

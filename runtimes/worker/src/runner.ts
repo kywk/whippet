@@ -16,6 +16,7 @@ import {CredentialClient} from './login/client.js';
 import {loginBroker} from './login/broker.js';
 import {sanitizeLoginOutputs} from './login/artifacts.js';
 import {unconfirmedBrowserScope} from './author/scope.js';
+import { installModuleABI, validModuleABI, type ModuleABI } from './module-abi.js';
 
 interface Input {
   workspaceId?:string;testId?:string|null;workspaceContext?:WorkspaceContext|null;scriptOrigin?:'ai'|'manual'|'legacy';
@@ -23,6 +24,7 @@ interface Input {
   attemptId: string;
   script: string;
   files?: RunFile[];
+  moduleAbi?: ModuleABI;
   timeoutMs: number;
   workspaceSettings?: WorkspaceSettings;
 }
@@ -64,6 +66,8 @@ function validateInput(value: unknown): Input {
     typeof input.timeoutMs !== "number" || !Number.isInteger(input.timeoutMs) || input.timeoutMs < 1 || input.timeoutMs > 3600000
   ) throw new Error("input.json requires UUID runId/attemptId, a script <=2MiB and timeoutMs in 1..3600000");
   const bundle = runBundle(input);
+  if (input.moduleAbi !== undefined && (!validModuleABI(input.moduleAbi) || !bundle.files || bundle.files.length !== 2 ||
+      !bundle.files.some(file => file.path === `lib/${input.moduleAbi!.slug}.ts`))) throw new Error('invalid_module_abi');
   if (bundle.files && bundle.origin === "ai" && (!input.workspaceId || !input.workspaceContext?.config?.targets.length)) throw new Error("scope_confirmation_required");
   validateWorkspaceSettings(input.workspaceSettings);
   if(input.scriptOrigin!==undefined&&!['ai','manual','legacy'].includes(input.scriptOrigin))throw new Error('invalid_script_origin');
@@ -107,6 +111,7 @@ async function execute(input: Input, taskDir: string): Promise<WorkerResult> {
   await writeFile(join(taskDir, "package.json"), '{"type":"commonjs"}\n', "utf8");
   if (input.files) await writeRunFiles(taskDir, input.files);
   else await writeFile(join(taskDir, "run.spec.ts"), input.script, "utf8");
+  if (input.moduleAbi) await installModuleABI(taskDir, input.moduleAbi);
   const bridgePath = join(taskDir, "live-fixture.cjs");
   await writeFile(bridgePath, fixtureBridge(new URL("./live/observer.js", import.meta.url).href,{scopeURL:new URL('./author/scope.js',import.meta.url).href,scope:input.scriptOrigin!=='manual'?input.workspaceContext?.config??unconfirmedBrowserScope():null,privacyURL:new URL('./login/privacy.js',import.meta.url).href}), "utf8");
   const loginShim=join(taskDir,'login.cjs');await writeFile(loginShim,`exports.loginAs=async(...args)=>(await import(${JSON.stringify(new URL('./login/helper.js',import.meta.url).href)})).loginAs(...args);\n`,'utf8');
