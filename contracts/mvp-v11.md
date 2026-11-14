@@ -120,3 +120,16 @@ claim沿原AuthorInput/ValidationEvidence/ModuleSummary/Batch、Workspace與budg
 task_submit.output按權威Run skillId判別；摘要精確`{message,description,backgroundSummary,name?}`，使用decodeSummaryOutput與duplicate/未知欄位守衛，拒script/requestValidation/partial/自報proof。完成共用原交易與summaryBindingMatches/validationProof、Module harness與回收、Plan buildPlanBatch/batchHash CAS，不能因從MCP提交而跳過任一守衛。成功仍回`{state:"submitted",appliedRevision:null,validationRunId:null}`；摘要不能產造驗證或發佈資格。原submit冪等/取消/撤銷/期限守衛沿用。
 
 Web沿既有摘要API與Run.authorEngine/EditingSession.summary狀態，設定文案明列普通Test編修與三種驗收摘要支援external，Module/UseCase/Workspace訪談本體尚未支援。必要驗證：各摘要分支有可信驗證fixture時成功、失效證據/CAS/重複提交不越權；本wave不重跑完整UI/真模型，最後集中完整驗收。
+
+
+## Wave5：外部平台作者
+
+沿 registry11.1 與原 task 四控制工具，無新增 top-level MCP 工具。新 module-authoring、usecase-planner、workspace-author Run 依 Workspace authorEngine 固定快照；Plan Stage 的既有 author skill 也依相同規則，沒有另造 usecase-author 格式。普通 Test 與摘要維持前波行為。Manager 不領 external。互動 MCP create/edit/validate/report 留下一波。
+
+claim 沿原 AuthorInput 與 SHA pin 的 skill/main、references/external-mcp。實際 allowedTools 是原快照與已接線工具交集：Module read_module_draft/read_validation_report/read_conversation_history；Planner read_usecase_draft/read_plan/catalog_search/catalog_get/propose_plan/read_conversation_history；Workspace read_conversation_history。匿名四項 browser 僅原快照允許且 scope 有效才可呼叫；catalog_next_page 僅原快照允許且有同 attempt 發行證據才可用。Worker-local stage/commit/update/request validation 不列可呼叫工具，browser_login 留後波。scope 未確認的 Workspace 訪談仍可文字接單，不因此獲得 browser 授權。
+
+submit 按權威 skillId 分派，嚴格拒未知/重複欄位、partial、自報 selfTest/proof：Module `{message,script,module,requestValidation,conversationSummary?}`，module 沿原八項 metadata 加 harness（共九鍵）schema，完整候選標 ai 且未自試；共用原 Module 完成交易與正式 harness validation 排程。Planner `{message,planCandidate:{candidateRef},conversationSummary?}`，ref 必須由同 Run/attempt 經 task_tool_call(propose_plan) 的原 preparePlanStages/CAS 發行，完成只接受最後 canonical candidate；不能直接提交 stages 或偽造 ref。Workspace `{message,proposal?,conversationSummary?}`，沿原 normalizeConfig/proposal/CAS，proposal 只待人工 scope 確認。
+
+HarnessPlatform 共用 schema/budget/scope/platform_tool_calls/candidateRef 核心，但權威明確區分 Manager epoch 與 external Token/claim lease，不假冒 Manager。workspace-author 的 test_id=NULL、無 editing_session 路徑需保持獨立權威與完成交易，不偽造 Test。所有分支保留原取消/撤銷/短租/硬期限/submit 冪等與 revision CAS；原狀態結果形狀不變，appliedRevision/validationRunId 無適用值則 null。人工 Plan/scope 確認及 publish 永不由 MCP 代做。
+
+必要驗證限本波三種作者正向、候選/ref 權威、schema/proof 拒絕、CAS/冪等與無人工確認旁路。合成 validation 僅證明狀態機，真 Docker/UI/模型集中最後完整驗收。

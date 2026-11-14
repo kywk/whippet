@@ -184,9 +184,9 @@ func (p *Postgres) completeAuthorWith(ctx context.Context, testID, runID, attemp
 						}
 						var completionErr error
 						if input.SkillID == "module-authoring" {
-							completionErr = p.completeModule(ctx, tx, runID, attemptID, input, d, session)
+							completionErr = p.completeModule(ctx, tx, runID, attemptID, input, d, session, externalOutput)
 						} else {
-							completionErr = p.completePlanner(ctx, tx, runID, attemptID, input, d, session)
+							completionErr = p.completePlanner(ctx, tx, runID, attemptID, input, d, session, externalOutput)
 						}
 						if completionErr != nil {
 							if _, err = tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT platform_completion"); err != nil {

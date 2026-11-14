@@ -12,8 +12,11 @@ import (
 const externalLeaseDuration = 120 * time.Second
 const externalAdapterInstructions = "External MCP adapter: submit a complete Test script with task_submit. This candidate has NOT passed Worker self-test. requestValidation only schedules an independent formal validation Run; inspect its result before treating the draft as validated. Do not send partial, selfTestPassed, validated, or proof."
 const externalSummaryInstructions = "External MCP adapter: summarize only the pinned validation evidence with task_submit. Return message, description, backgroundSummary, and optional name. Do not claim untested behavior, supply proof, run tools, request validation, or publish. Server checks current evidence and revision before accepting the summary."
+const externalModuleInstructions = "External MCP adapter: submit a complete Module script and module metadata as an untested AI candidate. requestValidation queues independent platform validation and harness evidence; do not claim Worker self-test or supply proof."
+const externalPlannerInstructions = "External MCP adapter: call task_tool_call(propose_plan) first, then submit only the Server-issued candidateRef from this Run and attempt. Never submit stages directly or claim validation."
+const externalWorkspaceInstructions = "External MCP adapter: submit an interview message and optional Workspace proposal. The proposal needs human scope confirmation; no browser access without an already confirmed scope."
 
-var externalConnectedTools = []string{"read_draft", "read_validation_report", "read_conversation_history", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill"}
+var externalConnectedTools = []string{"read_draft", "read_validation_report", "read_module_draft", "read_usecase_draft", "read_plan", "catalog_search", "catalog_next_page", "catalog_get", "propose_plan", "read_conversation_history", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill"}
 
 type ExternalTaskBundle struct {
 	Author               AuthorInput        `json:"author"`
@@ -100,7 +103,10 @@ func (p *Postgres) externalTask(ctx context.Context, q queryDB, c externalClaim)
 		return ExternalTask{}, dbError(err)
 	}
 	var input AuthorInput
-	if json.Unmarshal(rawAuthor, &input) != nil || (input.SkillID != "test-author" && input.SkillID != "acceptance-summary") || input.Budget == nil {
+	if json.Unmarshal(rawAuthor, &input) != nil || (input.SkillID != "test-author" && input.SkillID != "acceptance-summary" && input.SkillID != "module-authoring" && input.SkillID != "usecase-planner" && input.SkillID != "workspace-author") || input.Budget == nil {
+		return ExternalTask{}, ErrInvalid
+	}
+	if len(input.Skills) == 0 || input.Skills[0].ID != input.SkillID || input.Skills[0].ReferenceHashes["external-mcp"] == "" {
 		return ExternalTask{}, ErrInvalid
 	}
 	input.AllowedTools = c.AllowedTools
@@ -119,6 +125,15 @@ func (p *Postgres) externalTask(ctx context.Context, q queryDB, c externalClaim)
 		}
 		bundle.ExternalReferenceURI = "whippet://skill/acceptance-summary/references/external-mcp"
 		bundle.Instructions = externalSummaryInstructions
+	} else if input.SkillID == "module-authoring" {
+		bundle.ExternalReferenceURI = "whippet://skill/module-authoring/references/external-mcp"
+		bundle.Instructions = externalModuleInstructions
+	} else if input.SkillID == "usecase-planner" {
+		bundle.ExternalReferenceURI = "whippet://skill/usecase-planner/references/external-mcp"
+		bundle.Instructions = externalPlannerInstructions
+	} else if input.SkillID == "workspace-author" {
+		bundle.ExternalReferenceURI = "whippet://skill/workspace-author/references/external-mcp"
+		bundle.Instructions = externalWorkspaceInstructions
 	} else {
 		bundle.ExternalReferenceURI = "whippet://skill/test-author/references/external-mcp"
 		bundle.Instructions = externalAdapterInstructions
@@ -162,7 +177,7 @@ func (p *Postgres) ClaimExternalAuthor(ctx context.Context, token AgentToken, re
 	var raw []byte
 	var contextRevision int64
 	var maxDuration int
-	err = tx.QueryRowContext(ctx, `SELECT r.id,r.author_payload FROM runs r WHERE r.workspace_id=$1 AND r.kind='author' AND r.author_engine='external' AND r.status='queued' AND r.test_id IS NOT NULL AND r.author_payload->>'skillId' IN ('test-author','acceptance-summary') ORDER BY r.queue_seq FOR UPDATE OF r SKIP LOCKED LIMIT 1`, token.WorkspaceID).Scan(&runID, &raw)
+	err = tx.QueryRowContext(ctx, `SELECT r.id,r.author_payload FROM runs r WHERE r.workspace_id=$1 AND r.kind='author' AND r.author_engine='external' AND r.status='queued' AND r.author_payload->>'skillId' IN ('test-author','acceptance-summary','module-authoring','usecase-planner','workspace-author') ORDER BY r.queue_seq FOR UPDATE OF r SKIP LOCKED LIMIT 1`, token.WorkspaceID).Scan(&runID, &raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, tx.Commit()
 	}
@@ -170,7 +185,7 @@ func (p *Postgres) ClaimExternalAuthor(ctx context.Context, token AgentToken, re
 		return nil, err
 	}
 	var input AuthorInput
-	if json.Unmarshal(raw, &input) != nil || input.Budget == nil || input.EditingSessionID == "" {
+	if json.Unmarshal(raw, &input) != nil || input.Budget == nil || (input.EditingSessionID == "" && input.SkillID != "workspace-author") {
 		return nil, ErrInvalid
 	}
 	contextRevision = input.ContextRevision
@@ -180,10 +195,15 @@ func (p *Postgres) ClaimExternalAuthor(ctx context.Context, token AgentToken, re
 	}
 	var current int64
 	var sessionStatus string
-	if err = tx.QueryRowContext(ctx, `SELECT e.context_revision,e.status FROM editing_sessions e JOIN tests t ON t.id=e.test_id WHERE e.id=$1 AND t.workspace_id=$2`, input.EditingSessionID, token.WorkspaceID).Scan(&current, &sessionStatus); err != nil {
+	if input.SkillID == "workspace-author" {
+		err = tx.QueryRowContext(ctx, `SELECT c.context_revision,w.lifecycle FROM conversations c JOIN workspaces w ON w.id=c.workspace_id WHERE c.id=$1 AND c.workspace_id=$2 AND c.owner_type='workspace'`, input.ConversationID, token.WorkspaceID).Scan(&current, &sessionStatus)
+	} else {
+		err = tx.QueryRowContext(ctx, `SELECT e.context_revision,e.status FROM editing_sessions e JOIN tests t ON t.id=e.test_id WHERE e.id=$1 AND t.workspace_id=$2`, input.EditingSessionID, token.WorkspaceID).Scan(&current, &sessionStatus)
+	}
+	if err != nil {
 		return nil, dbError(err)
 	}
-	if current != contextRevision || sessionStatus != "active" {
+	if current != contextRevision || (input.SkillID != "workspace-author" && sessionStatus != "active") || (input.SkillID == "workspace-author" && sessionStatus == "archived") {
 		return nil, ErrConflict
 	}
 	now := time.Now().UTC()
@@ -222,10 +242,42 @@ func (p *Postgres) externalLive(ctx context.Context, tx *sql.Tx, c externalClaim
 	if c.State != "active" || !time.Now().Before(c.ExpiresAt) || !time.Now().Before(c.DeadlineAt) {
 		return ErrConflict
 	}
+	var raw []byte
+	if err := tx.QueryRowContext(ctx, `SELECT author_payload FROM runs WHERE id=$1 AND workspace_id=$2`, c.RunID, c.WorkspaceID).Scan(&raw); err != nil {
+		return dbError(err)
+	}
+	var input AuthorInput
+	if json.Unmarshal(raw, &input) != nil {
+		return ErrInvalid
+	}
+	if input.SkillID == "workspace-author" {
+		var status, engine string
+		var attempt *string
+		var revision int
+		var contextRevision int64
+		err := tx.QueryRowContext(ctx, `SELECT r.status,r.attempt_id,r.author_engine,(w.settings->>'revision')::integer,c.context_revision FROM runs r JOIN workspaces w ON w.id=r.workspace_id JOIN conversations c ON c.id=(r.author_payload->>'conversationId')::uuid AND c.workspace_id=w.id AND c.owner_type='workspace' WHERE r.id=$1 AND r.workspace_id=$2 AND r.test_id IS NULL FOR UPDATE OF r`, c.RunID, c.WorkspaceID).Scan(&status, &attempt, &engine, &revision, &contextRevision)
+		if err != nil {
+			return dbError(err)
+		}
+		if status != "running" || engine != "external" || attempt == nil || *attempt != c.AttemptID || revision != input.BaseRevision || contextRevision != c.ContextRevision {
+			return ErrConflict
+		}
+		if hasBrowserTools(&input) {
+			w, pid, e := readWorkspaceCore(ctx, tx, c.WorkspaceID, false)
+			if e != nil {
+				return e
+			}
+			w, e = fillWorkspace(ctx, tx, w, pid, false)
+			if e != nil || !workspaceRunScopeValid(ctx, tx, w, c.RunID) {
+				return ErrConflict
+			}
+		}
+		return nil
+	}
 	var status, sessionStatus, origin string
 	var attempt *string
 	var revision int64
-	err := tx.QueryRowContext(ctx, `SELECT r.status,r.attempt_id,e.status,e.context_revision,r.script_origin FROM runs r JOIN editing_sessions e ON e.id=r.editing_session_id WHERE r.id=$1 AND r.workspace_id=$2 FOR UPDATE OF r`, c.RunID, c.WorkspaceID).Scan(&status, &attempt, &sessionStatus, &revision, &origin)
+	err := tx.QueryRowContext(ctx, `SELECT r.status,r.attempt_id,e.status,e.context_revision,r.script_origin FROM runs r JOIN editing_sessions e ON e.id=r.editing_session_id WHERE r.id=$1 AND r.workspace_id=$2 AND r.author_engine='external' FOR UPDATE OF r`, c.RunID, c.WorkspaceID).Scan(&status, &attempt, &sessionStatus, &revision, &origin)
 	if err != nil {
 		return dbError(err)
 	}
@@ -271,7 +323,8 @@ func externalOutputHash(data []byte) ([32]byte, error) {
 }
 
 func (p *Postgres) validateExternalAuthorSubmission(ctx context.Context, token AgentToken, runID string, raw []byte) (string, error) {
-	var testID, skillID string
+	var testID sql.NullString
+	var skillID string
 	err := p.DB.QueryRowContext(ctx, `SELECT test_id,author_payload->>'skillId' FROM runs WHERE id=$1 AND workspace_id=$2 AND author_engine='external' AND kind='author'`, runID, token.WorkspaceID).Scan(&testID, &skillID)
 	if err != nil {
 		return "", dbError(err)
@@ -284,10 +337,32 @@ func (p *Postgres) validateExternalAuthorSubmission(ctx context.Context, token A
 		_, err = decodeExternalAuthorOutput(raw)
 	case "acceptance-summary":
 		_, err = decodeExternalSummaryOutput(raw)
+	case "module-authoring", "usecase-planner":
+		var inputRaw []byte
+		if err = p.DB.QueryRowContext(ctx, `SELECT author_payload FROM runs WHERE id=$1 AND workspace_id=$2`, runID, token.WorkspaceID).Scan(&inputRaw); err != nil {
+			break
+		}
+		var input AuthorInput
+		if json.Unmarshal(inputRaw, &input) != nil {
+			err = ErrInvalid
+			break
+		}
+		registry, e := loadToolRegistry()
+		if e != nil {
+			err = e
+			break
+		}
+		if skillID == "module-authoring" {
+			_, err = decodeModuleAuthorOutput(raw, input, registry)
+		} else {
+			_, err = decodePlannerAuthorOutput(raw, input, registry)
+		}
+	case "workspace-author":
+		_, err = decodeWorkspaceAuthorOutput(raw)
 	default:
 		err = ErrInvalid
 	}
-	return testID, err
+	return testID.String, err
 }
 
 func (p *Postgres) SubmitExternalAuthor(ctx context.Context, token AgentToken, runID, attemptID, leaseID, submitID string, raw []byte) (ExternalSubmitResult, error) {
@@ -303,7 +378,7 @@ func (p *Postgres) SubmitExternalAuthor(ctx context.Context, token AgentToken, r
 		return ExternalSubmitResult{}, err
 	}
 	var result ExternalSubmitResult
-	err = p.completeAuthorWith(ctx, testID, runID, attemptID, Result{Status: "succeeded"}, func(tx *sql.Tx) (string, error) {
+	lock := func(tx *sql.Tx) (string, error) {
 		c, e := p.lockExternalClaim(ctx, tx, token, runID, attemptID, leaseID)
 		if e != nil {
 			return "", e
@@ -328,7 +403,8 @@ func (p *Postgres) SubmitExternalAuthor(ctx context.Context, token AgentToken, r
 			}
 		}
 		return "running", nil
-	}, raw, func(tx *sql.Tx) error {
+	}
+	finish := func(tx *sql.Tx) error {
 		result.State = "submitted"
 		var applied sql.NullInt64
 		var validation *string
@@ -343,7 +419,12 @@ func (p *Postgres) SubmitExternalAuthor(ctx context.Context, token AgentToken, r
 		result.ValidationRunID = validation
 		_, e = tx.ExecContext(ctx, `UPDATE external_author_claims SET state='submitted',submit_id=$2,submit_hash=$3,result=$4 WHERE run_id=$1 AND state='active'`, runID, submitID, hash[:], jsonText(result))
 		return e
-	})
+	}
+	if testID == "" {
+		err = p.completeWorkspaceAuthorWith(ctx, token.WorkspaceID, runID, attemptID, Result{Status: "succeeded"}, lock, raw, finish)
+	} else {
+		err = p.completeAuthorWith(ctx, testID, runID, attemptID, Result{Status: "succeeded"}, lock, raw, finish)
+	}
 	return result, err
 }
 

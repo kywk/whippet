@@ -361,7 +361,7 @@ func cancelRoleRuns(ctx context.Context, tx *sql.Tx, workspace, role string) err
 
 func workspaceAuthorToolsValid(tools []string) bool {
 	for _, tool := range tools {
-		found := tool == "browser_login" || tool == "read_conversation_history"
+		found := tool == "browser_login" || tool == "read_conversation_history" || tool == "read_skill_reference"
 		for _, allowed := range browserTools {
 			found = found || tool == allowed
 		}

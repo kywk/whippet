@@ -157,6 +157,20 @@ func externalToolMCPResult(receipt externalToolReceipt, limit int) *mcp.CallTool
 
 func (a *API) executeExternalTool(ctx context.Context, p *Postgres, token AgentToken, c externalClaim, tool ToolDefinition, callID string, canonical []byte) externalToolReceipt {
 	switch tool.Name {
+	case "read_module_draft", "read_usecase_draft", "read_plan", "catalog_search", "catalog_next_page", "catalog_get", "propose_plan":
+		registry, err := loadToolRegistry()
+		if err != nil {
+			return externalToolReceipt{Error: "tool_unavailable"}
+		}
+		value, err := p.HarnessPlatformExternal(ctx, token, c, HarnessToolRequest{CallID: callID, Name: tool.Name, Arguments: canonical}, registry)
+		if err != nil {
+			return externalToolReceipt{Error: "tool_unavailable"}
+		}
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return externalToolReceipt{Error: "tool_unavailable"}
+		}
+		return externalToolReceipt{Value: raw}
 	case "read_draft":
 		task, err := p.externalTask(ctx, p.DB, c)
 		if err != nil {

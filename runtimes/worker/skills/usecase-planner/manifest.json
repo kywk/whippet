@@ -26,6 +26,11 @@
       "id": "stages",
       "path": "references/stages.md",
       "sha256": "89ea485132367c2e53048bbc9c235753d97ad365d24fc225a8a6b24db779ea23"
+    },
+    {
+      "id": "external-mcp",
+      "path": "references/external-mcp.md",
+      "sha256": "84413ccd38508e6cad4528af3c627b419adc700a2eee2edd2ce2cdae83f3a9ff"
     }
   ]
 }

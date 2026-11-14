@@ -115,7 +115,8 @@ export function parseAuthorProgress(events?: string[], mode: 'edit' | 'workspace
 }
 
 export function AuthorLiveStatus({ run, mode = 'edit' }: { run?: Run; mode?: 'edit' | 'workspace' }) {
-  const { headline, steps } = parseAuthorProgress(run?.progressEvents, mode);
+  const external = run?.authorEngine === 'external';
+  const { headline, steps } = external ? { headline: '', steps: [] } : parseAuthorProgress(run?.progressEvents, mode);
   const [elapsedSec, setElapsedSec] = useState(0);
   const startIso = run?.startedAt ?? run?.createdAt;
   useEffect(() => {
@@ -131,21 +132,19 @@ export function AuthorLiveStatus({ run, mode = 'edit' }: { run?: Run; mode?: 'ed
     return () => clearInterval(id);
   }, [startIso]);
 
-  const statusText = run?.authorEngine === 'external' && (run.status === 'queued' || run.status === 'dispatched')
-    ? '等待外部 Agent 接單…'
-    : run?.authorEngine === 'external' && steps.length === 0 && (run.status === 'running' || run.status === 'collecting')
-      ? '外部 Agent 正在處理需求…'
-      : !run || run.status === 'queued'
-        ? '已在佇列中等待 Worker 啟動…'
-        : run.status === 'dispatched' && steps.length === 0
-          ? '正在啟動隔離 Worker 容器與執行環境…'
+  const statusText = !run ? '正在同步任務狀態…'
+    : external ? run.status === 'queued' || run.status === 'dispatched' ? '等待外部 Agent 接單…'
+      : run.status === 'running' || run.status === 'collecting' ? '外部 Agent 正在處理需求…'
+        : '正在同步任務狀態…'
+      : run.status === 'queued' ? '已在佇列中等待 Worker 啟動…'
+        : run.status === 'dispatched' && steps.length === 0 ? '正在啟動隔離 Worker 容器與執行環境…'
           : headline;
 
   return <div className="author-live-status" role="status" aria-live="polite">
     <div className="author-live-head">
       <span className="pending-line"><TypingDots /><strong>{statusText}</strong></span>
       <span className="author-live-meta">
-        <span className="live-conn-dot" aria-hidden="true" />連線保持中{elapsedSec > 0 ? ` · ${elapsedSec}s` : ''}
+        <span className="live-conn-dot" aria-hidden="true" />{external ? '任務經過' : '連線保持中'}{elapsedSec > 0 ? ` · ${elapsedSec}s` : ''}
       </span>
     </div>
     {steps.length > 0 ? <ol className="author-live-steps" aria-label="AI 執行與分析步驟">
@@ -192,12 +191,15 @@ export function trailFromRuns(runs: Run[], session: { id?: string; draftRevision
   const sState = validation?.status === 'succeeded' ? stateOf(summary) : 'todo';
   const publishReady = sState === 'done';
   const conversationalReply = session.latestTurnChangedDraft === false && aState === 'done';
-  const activeAuthorProgress = aState === 'active' ? parseAuthorProgress(author?.progressEvents, 'edit').headline : undefined;
+  const activeAuthorProgress = aState === 'active' && author?.authorEngine !== 'external' ? parseAuthorProgress(author?.progressEvents, 'edit').headline : undefined;
+  const externalAuthorDetail = author?.status === 'queued' || author?.status === 'dispatched' ? '等待外部 Agent 接單'
+    : author?.status === 'running' || author?.status === 'collecting' ? '外部 Agent 正在處理需求'
+      : author?.status === 'cancelling' ? '取消中' : undefined;
   const stages: Stage[] = [
-    { key: 'author', label: '改稿', state: author ? aState : 'done', detail: !author ? '腳本已儲存' : aState === 'active' ? (activeAuthorProgress ?? 'AI 分析與試跑中') : aState === 'done' ? (conversationalReply ? 'AI 已回覆，草稿維持原樣' : '試跑完成，已套用草稿') : '處理未成功', at: stamp(author), runId: author?.id },
+    { key: 'author', label: '改稿', state: author ? aState : 'done', detail: !author ? '腳本已儲存' : aState === 'active' ? (externalAuthorDetail ?? activeAuthorProgress ?? 'AI 分析與試跑中') : aState === 'done' ? (conversationalReply ? 'AI 已回覆，草稿維持原樣' : author.authorEngine === 'external' ? '外部 Agent 已完成，請檢視草稿與正式驗證' : '試跑完成，已套用草稿') : '處理未成功', at: stamp(author), runId: author?.id },
     { key: 'validate', label: '驗證', state: vState, detail: !validation ? '尚未驗證目前 revision' : vState === 'active' ? '正在真實執行腳本' : vState === 'done' ? '驗證通過，報告已保存' : '驗證未通過', at: stamp(validation), runId: validation?.id },
-    { key: 'summary', label: '摘要', state: sState, detail: sState === 'todo' ? '驗證通過後自動產生' : sState === 'active' ? 'AI 撰寫驗收摘要' : sState === 'done' ? '版本說明已就緒' : '摘要未成功，可重試', at: stamp(summary), runId: summary?.id },
-    { key: 'publish', label: '發佈', state: publishReady ? 'active' : 'todo', detail: publishReady ? '等你檢視後確認發佈' : 'AI 不會自動發佈', at: undefined },
+    { key: 'summary', label: '摘要', state: sState, detail: sState === 'todo' ? '驗證通過後自動產生' : sState === 'active' ? summary?.authorEngine === 'external' ? summary.status === 'queued' || summary.status === 'dispatched' ? '等待外部 Agent 接單' : '外部 Agent 正在撰寫摘要' : 'AI 撰寫驗收摘要' : sState === 'done' ? '版本說明已就緒' : '摘要未成功，可重試', at: stamp(summary), runId: summary?.id },
+    { key: 'publish', label: '發佈', state: publishReady ? 'active' : 'todo', detail: publishReady ? '請檢視 Server 發佈資格後確認' : 'AI 不會自動發佈', at: undefined },
   ];
   // 若改稿正在進行，後面各站都屬於舊 revision，一律退回待辦。
   if (aState === 'active') for (const stage of stages.slice(1)) { stage.state = 'todo'; stage.at = undefined; stage.runId = undefined; stage.detail = stage.key === 'publish' ? 'AI 不會自動發佈' : stage.key === 'summary' ? '驗證通過後自動產生' : '改稿完成後驗證'; }
@@ -206,7 +208,7 @@ export function trailFromRuns(runs: Run[], session: { id?: string; draftRevision
   const nextIndex = stages.findIndex((stage) => stage.state === 'todo');
   const step = failedStage ? stages.indexOf(failedStage) + 1 : activeIndex >= 0 ? activeIndex + 1 : nextIndex >= 0 ? nextIndex + 1 : 4;
   const running = stages.some((stage) => stage.state === 'active' && stage.key !== 'publish');
-  const headline = failedStage ? `${failedStage.label}未成功` : running ? `${stages[activeIndex].label}進行中` : publishReady ? '摘要完成，等你確認發佈' : validation?.status === 'succeeded' ? '驗證通過，產生摘要中' : conversationalReply ? 'AI 已回覆' : author ? '改稿完成，待驗證' : '草稿進行中';
+  const headline = failedStage ? `${failedStage.label}未成功` : running ? `${stages[activeIndex].label}進行中` : publishReady ? '摘要完成，請檢視發佈資格' : validation?.status === 'succeeded' ? '驗證通過，產生摘要中' : conversationalReply ? 'AI 已回覆' : author ? '改稿完成，待驗證' : '草稿進行中';
   return { stages, headline, step, running, failed: Boolean(failedStage), awaitingPublish: publishReady && !failedStage };
 }
 

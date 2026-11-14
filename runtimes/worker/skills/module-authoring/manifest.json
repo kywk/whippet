@@ -31,6 +31,11 @@
       "id": "harness",
       "path": "references/harness.md",
       "sha256": "ae533685a533addb5b11315c5d00cc8f1e90ef10f386c730422358e65f65e2f6"
+    },
+    {
+      "id": "external-mcp",
+      "path": "references/external-mcp.md",
+      "sha256": "5440494d16403274f3faef27c66ec88c60abebe8f8d53dcddcfa0d1a690d754a"
     }
   ]
 }

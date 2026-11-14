@@ -390,8 +390,10 @@ M10.Z 清單：
 
 Wave4外部摘要切片完成：普通Test/Module/Plan batch沿原parser/CAS與權威驗證快照，Core Server測試/build、Web build/合成檢查、Worker15測試PASS；Terra t5t overlay真MCP/PG三分支current/stale共6 case PASS（20.358s）。validation artifact為合成證據，不算真Playwright；最後集中完整驗收。另owner誤跑舊TestM7出現未歸因line81失敗，已停止，不假稱舊baseline已知問題。
 
+Wave5核心切片已完成：t5w/t5x/t5y接外部module-authoring、usecase-planner（含Plan Stage原skill）、workspace-author；t5z Terra真in-process MCP＋隔離PG的三作者權威/CAS/冪等測試PASS。Workspace正向失敗經snapshot守衛修復後red→green；Module候選仍未自試，正式validation另排，Planner ref仍由同attempt Server發行。Web typecheck/UI/build、三skill SHA載入與Worker typecheck PASS。合成證據不當真Docker/UI，完整驗收仍待全部wave。互動create/edit/validate/report與session login/LiveView仍後波。
+
 M11.Z 清單：
-1. M10.Z 第 1、2 項回歸，並用 builtin 跑一次黃金任務集。
+1. 依使用者最新限制，不重跑 M1–M9 或舊 M10 全套／模型刷測；本次集中驗證 M11 受影響主流程，不把歷史證據算成本次通過。
 2. 互動模式端到端：外部 Agent 建立 Module 與 Use Case 草稿 → 真實驗證 → 人在 UI 發佈；MCP 沒有任何發佈路徑。
 3. 接單模式：UI 對話交給外部 Agent 完成；逾時、取消、重複 submit 都不重複寫入。
 4. 撤銷 Token 後立即拒絕；跨 Workspace 拒絕；session 回收後名額恢復。

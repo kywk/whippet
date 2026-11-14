@@ -9,7 +9,7 @@ import (
 
 // Called inside the author completion transaction, after the live attempt lock.
 // Only saved canonical stages are used; the artifact supplies no editable Plan.
-func (p *Postgres) completePlanner(ctx context.Context, tx *sql.Tx, run, attempt string, input AuthorInput, d draftState, session EditingSession) error {
+func (p *Postgres) completePlanner(ctx context.Context, tx *sql.Tx, run, attempt string, input AuthorInput, d draftState, session EditingSession, externalOutput []byte) error {
 	var kind string
 	if err := tx.QueryRowContext(ctx, `SELECT kind FROM tests WHERE id=$1`, d.TestID).Scan(&kind); err != nil {
 		return err
@@ -21,9 +21,12 @@ func (p *Postgres) completePlanner(ctx context.Context, tx *sql.Tx, run, attempt
 	if err != nil {
 		return err
 	}
-	data, err := p.readArtifactBytes(ctx, tx, run, attempt, "author.json", MaxAuthorArtifactBytes)
-	if err != nil {
-		return err
+	data := externalOutput
+	if data == nil {
+		data, err = p.readArtifactBytes(ctx, tx, run, attempt, "author.json", MaxAuthorArtifactBytes)
+		if err != nil {
+			return err
+		}
 	}
 	out, err := decodePlannerAuthorOutput(data, input, registry)
 	if err != nil {

@@ -11,6 +11,7 @@ import { WorkspaceProposalCard } from './WorkspaceProposal';
 import { WorkspaceCredentials } from './WorkspaceCredentials';
 import { WorkspaceAgentAccess } from './WorkspaceAgentAccess';
 import { AuthorEngineSettings } from './AuthorEngineSettings';
+import { AuthorEngineStatus } from './AuthorEngineStatus';
 import { isActiveRun } from './types';
 import { ArrowRightIcon, CloseIcon, EyeIcon, PanelIcon, RefreshIcon } from './icons';
 import type { AuthorEngine, Run, WhippetApi, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal } from './types';
@@ -157,7 +158,7 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
       const result = await api.sendWorkspaceMessage(workspace.id, { content: content.trim(), revision: current.revision, contextRevision: conversation.contextRevision }, request.signal);
       if (request.signal.aborted) return;
       if (result.conversationId !== conversation.id) throw new ApiError('回應的設定對話不符。', 'WORKSPACE_CONFLICT');
-      setContent(''); setRun(result.run); setConversation((previous) => previous ? { ...previous, activeRunId: result.run.id } : previous); setCurrent((previous) => ({ ...previous, activeRunId: result.run.id })); setNote('訊息已保存並排入設定任務。AI 只能依 Server 已確認範圍與工具許可探索；未取得許可時只進行訪談，不會自動套用提案。');
+      setContent(''); setRun(result.run); setConversation((previous) => previous ? { ...previous, activeRunId: result.run.id } : previous); setCurrent((previous) => ({ ...previous, activeRunId: result.run.id })); setNote(`訊息已保存並排入${result.run.authorEngine === 'external' ? '外部 Agent 接單' : '內建引擎'}設定任務。未確認網站範圍時只能文字訪談；設定提案仍須人工確認。`);
       try { await refresh(); } catch { setSendError('訊息已送出，但對話同步失敗。請先重新載入，不要直接重送。'); }
     } catch (cause) {
       if (!request.signal.aborted) { setSendError(`${errorMessage(cause)} 輸入已保留；請先重新載入對話與任務狀態，不會自動重送。`); void refresh().catch(() => undefined); }
@@ -173,7 +174,7 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
       if (request.signal.aborted) return;
       lastEngine.current = next.authorEngine;
       setCurrent(next); setEngineSelection(next.authorEngine); onWorkspaceUpdated(next);
-      setEngineNote(`AI 撰寫引擎已更新為${next.authorEngine === 'external' ? '外部 Agent' : '內建引擎'}；僅影響後續一般 Test 的新任務。`);
+      setEngineNote(`AI 撰寫引擎已更新為${next.authorEngine === 'external' ? '外部 Agent' : '內建引擎'}；只影響後續新 Run，既有任務沿建立時的快照。`);
       try { await refresh(); } catch { setEngineError('引擎設定已保存，但 Workspace 同步失敗；請重新載入確認。'); }
     } catch (cause) {
       if (!request.signal.aborted) {
@@ -228,6 +229,7 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
         <div className="test-chips">
           <span className={`chip ${current.lifecycle === 'active' ? 'ok' : 'warm'}`}>{lifecycleLabel}</span>
           <span className="chip neutral">設定 revision <span className="mono">{current.revision}</span></span>
+          <span className="chip neutral">新訪談任務：{current.authorEngine === 'external' ? '外部 Agent' : '內建引擎'}</span>
         </div>
       </div>
       <div className="test-actions">
@@ -260,7 +262,7 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
           {trackedId ? <section className={`artifact trail-card ${run && isActiveRun(run) ? 'is-running' : run?.status === 'failed' ? 'is-failed' : ''}`} aria-live="polite" aria-label="設定訪談狀態">
             <header className="artifact-head">
               <strong>設定訪談狀態</strong>
-              {run?.id === trackedId ? <RunStatusBadge run={run} /> : <span className="muted">讀取中…</span>}
+              {run?.id === trackedId ? <><RunStatusBadge run={run} /><AuthorEngineStatus engine={run.authorEngine ?? 'builtin'} status={run.status} /></> : <span className="muted">讀取中…</span>}
             </header>
             <div className="artifact-body">
               <p className="run-id">Run <span className="identifier">{trackedId}</span></p>

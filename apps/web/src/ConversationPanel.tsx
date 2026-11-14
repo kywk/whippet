@@ -48,7 +48,7 @@ const STARTERS = [
 ];
 
 export function ConversationPanel({ api, apiBase, testId, editingSessionId, draft, draftDirty, draftBusy, runs, onRun, onRefreshRuns, onSynchronized, onUseCandidate, onOpenManual, onGuardChange, onConversationChanged, onRefreshSession, onShowTab, sideOpen, onToggleSide, aiExploration, authorEngine = 'builtin', testKind, publishReady, planMode = false }: Props) {
-  const nextEngine = testKind === 'module' || testKind === 'usecase' ? 'builtin' : authorEngine;
+  const nextEngine = authorEngine;
   const [conversation, setConversation] = useState<Conversation>();
   const [content, setContent] = useStoredText(editingSessionId);
   const [loading, setLoading] = useState(true);
@@ -167,7 +167,9 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
       if (overrideText === undefined) setContent('');
       onConversationChanged();
       setNote(result.run.authorEngine === 'external'
-        ? `訊息已送出，使用已儲存 revision ${revision}。等待外部 Agent 接單；候選腳本仍需獨立正式驗證與人工確認發佈。`
+        ? testKind === 'usecase'
+          ? `訊息已送出，使用已儲存 revision ${revision}。等待外部 Agent 接單提出 Plan；仍須由你確認 Plan，完成驗證與摘要後才能人工發佈。`
+          : `訊息已送出，使用已儲存 revision ${revision}。等待外部 Agent 接單；候選${testKind === 'module' ? ' Module' : '腳本'}仍需獨立正式驗證與人工確認發佈。`
         : `訊息已送出，使用已儲存 revision ${revision}。AI 會先試跑驗證草稿，不會自動發佈。`);
       setRefreshRevision((value) => value + 1);
     } catch (cause) {
@@ -250,10 +252,13 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
   const showTrail = !planMode && ((trail.running && !pendingTurn) || (!authorActive && (trail.failed || lastTurnTouchedPipeline)) || (messages.length === 0 && runs.length > 0 && !pendingTurn));
   const activeRun = runs.find(isActiveRun);
   const scrollWatch = `${messages.length}:${pendingTurn}:${trackedRun?.progressEvents?.length ?? 0}:${trail.step}:${trail.running}:${loading}`;
-  const repairPrompt = '請根據最新驗證失敗原因排查問題，先在瀏覽器試跑確認修正後再更新草稿；若是目標環境連線問題請直接回報。';
+  const repairPrompt = nextEngine === 'external'
+    ? planMode ? '請根據目前 Plan 與失敗原因提出修訂建議；新的 Plan 仍須由我確認。'
+      : '請根據最新正式驗證失敗原因排查，提出修正候選並要求獨立正式驗證；若是目標環境連線問題請直接回報。'
+    : '請根據最新驗證失敗原因排查問題，先在瀏覽器試跑確認修正後再更新草稿；若是目標環境連線問題請直接回報。';
 
   const trailFooter = <>
-    <span className="foot-note">{trail.running ? '可以離開，任務在背景繼續；完成後左欄會亮燈。' : trail.failed ? '此輪未成功。可點選「請 AI 排查並修正」或送出新訊息重試。' : trail.awaitingPublish ? '條件已就緒，等你檢視後確認發佈。' : '驗證與發佈在右側「驗證與發佈」進行。'}</span>
+    <span className="foot-note">{trail.running ? '可以離開，任務在背景繼續；完成後左欄會亮燈。' : trail.failed ? '此輪未成功。可點選「請 AI 排查並修正」或送出新訊息重試。' : trail.awaitingPublish ? '摘要已完成；請在右側檢視發佈資格。' : '驗證與發佈在右側「驗證與發佈」進行。'}</span>
     <span className="foot-actions">
       {activeRun ? <CancelRunButton api={api} run={activeRun} onUpdated={onRun} /> : null}
       {trail.failed && !trail.running ? <button className="button primary compact" disabled={blocked} onClick={() => { void send(repairPrompt); }}>請 AI 排查並修正</button> : null}
@@ -266,7 +271,7 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
   return <div className="chat">
     <div className="chat-bar">
       <span className={`chip ${aiExploration?.available === true ? 'ok' : 'neutral'}`} title={capabilityReason(aiExploration)}>AI 探索：{aiExploration ? aiExploration.available ? '可用' : '尚未就緒' : '未知'}</span>
-      <span className="chip neutral" title={testKind === 'module' || testKind === 'usecase' ? 'Module／Use Case 本體仍由內建引擎處理；驗收摘要依 Workspace 設定選擇引擎' : '依目前 Workspace 設定，實際來源仍以新建 Run 快照為準'}>新對話任務：{nextEngine === 'external' ? '外部 Agent' : '內建引擎'}</span>
+      <span className="chip neutral" title="依目前 Workspace 設定顯示；實際來源以新建 Run 快照為準">新對話任務：{nextEngine === 'external' ? '外部 Agent' : '內建引擎'}</span>
       {lastAuthor ? <AuthorEngineStatus engine={lastAuthor.authorEngine ?? 'builtin'} status={lastAuthor.status} /> : null}
       <span className="chat-bar-spacer" />
       <button className="button quiet compact" disabled={draftBusy || submitting || synchronizing} onClick={onOpenManual}><ScriptIcon />工程師手動修改</button>
@@ -279,7 +284,7 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
       {syncError ? <Notice message={syncError} /> : null}
       {conversation && messages.length === 0 && !pendingTurn ? <div className="chat-empty">
         <h2>要驗證什麼流程？</h2>
-        <p>{planMode ? '描述 Use Case 的步驟與預期結果。AI 提出 Plan 後，由你在「驗證與發佈」確認，再逐階段產稿、驗證與檢視整批摘要。' : nextEngine === 'external' ? '用一般的話描述步驟與預期結果。外部 Agent 接單後可提出候選腳本；是否通過以獨立正式驗證為準，你看過報告後才會發佈。' : '用一般的話描述步驟與預期結果。AI 會先與你確認需求、在瀏覽器自我試跑並排除問題後才更新草稿；你看過報告後才會發佈。'}</p>
+        <p>{planMode ? nextEngine === 'external' ? '描述 Use Case 的步驟與預期結果。外部 Agent 可提出 Plan；由你確認後才逐階段產稿並正式驗證，檢視整批摘要後才能人工發佈。' : '描述 Use Case 的步驟與預期結果。AI 提出 Plan 後，由你在「驗證與發佈」確認，再逐階段產稿、驗證與檢視整批摘要。' : nextEngine === 'external' ? `用一般的話描述${testKind === 'module' ? ' Module' : '測試'}步驟與預期結果。外部 Agent 接單後可提出完整候選；是否通過以獨立正式驗證為準，你看過報告後才會發佈。` : '用一般的話描述步驟與預期結果。AI 會先與你確認需求、在瀏覽器自我試跑並排除問題後才更新草稿；你看過報告後才會發佈。'}</p>
         {aiExploration?.available !== true ? <p className="inline-hint">AI 探索尚未確認可用，仍可送出離線訪談與改稿需求；不代表已造訪網站。</p> : null}
         <ul className="starters" aria-label="可用的開場">{STARTERS.map((text) => <li key={text}><button className="starter" onClick={() => setContent(text)}>{text}</button></li>)}</ul>
       </div> : null}

@@ -13,10 +13,16 @@ const AUTHOR_STATUS: Record<RunStatus, string> = {
   interrupted: '失敗',
 };
 
+const BUILTIN_WAITING: Partial<Record<RunStatus, string>> = {
+  queued: '等待執行',
+  dispatched: '準備中',
+};
+
 export function AuthorEngineStatus({ engine, status }: { engine: AuthorEngine; status: RunStatus }) {
   const source = engine === 'external' ? '外部 Agent' : '內建引擎';
-  return <span className="author-engine-status" role="status" aria-label={`AI 來源：${source}，${AUTHOR_STATUS[status]}`}>
+  const label = engine === 'external' ? AUTHOR_STATUS[status] : BUILTIN_WAITING[status] ?? AUTHOR_STATUS[status];
+  return <span className="author-engine-status" role="status" aria-label={`AI 來源：${source}，${label}`}>
     <span className="chip neutral">AI 來源：{source}</span>
-    <span className="chip neutral">{AUTHOR_STATUS[status]}</span>
+    <span className="chip neutral">{label}</span>
   </span>;
 }

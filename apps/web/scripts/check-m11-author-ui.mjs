@@ -5,8 +5,8 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
-const buildDir = await mkdtemp(path.join(scriptsDir, '.m11-author-ui-'));
-const outfile = path.join(buildDir, 'check.mjs');
+const buildDir = await mkdtemp('/private/tmp/whippet-m11-author-ui-');
+const outfile = path.join(buildDir, 'check.cjs');
 const source = `
   import assert from 'node:assert/strict';
   import React from 'react';
@@ -14,7 +14,7 @@ const source = `
   import { AuthorEngineStatus } from '../src/AuthorEngineStatus.tsx';
   import { AuthorEngineSettings } from '../src/AuthorEngineSettings.tsx';
   import { WorkspaceConversation } from '../src/WorkspaceConversation.tsx';
-  import { AuthorLiveStatus } from '../src/trail.tsx';
+  import { AuthorLiveStatus, trailFromRuns } from '../src/trail.tsx';
   import { ConversationPanel } from '../src/ConversationPanel.tsx';
   import { RunHistory } from '../src/RunHistory.tsx';
 
@@ -65,7 +65,9 @@ const source = `
   }));
   assert.match(page, /AI 撰寫引擎設定/);
   assert.match(page, /value="external"/);
-  assert.match(page, /一般 Test、Module、Use Case Plan 整批的驗收摘要/);
+  assert.match(page, /Module 產稿、Use Case Plan 提案/);
+  assert.match(page, /新訪談任務：外部 Agent/);
+  assert.match(page, /未確認範圍的訪談只能處理文字/);
 
   const waiting = renderToStaticMarkup(React.createElement(AuthorLiveStatus, {
     run: { id: 'run-fixture', testId: 'test-fixture', kind: 'author', status: 'queued', authorEngine: 'external', createdAt: '2026-11-14T00:00:00Z' },
@@ -73,9 +75,14 @@ const source = `
   assert.match(waiting, /等待外部 Agent 接單/);
   assert.doesNotMatch(waiting, /Worker 啟動/);
   const working = renderToStaticMarkup(React.createElement(AuthorLiveStatus, {
-    run: { id: 'run-fixture', testId: 'test-fixture', kind: 'author', status: 'running', authorEngine: 'external', createdAt: '2026-11-14T00:00:00Z' },
+    run: { id: 'run-fixture', testId: 'test-fixture', kind: 'author', status: 'running', authorEngine: 'external', progressEvents: ['author:tool:1:update_draft:succeeded'], createdAt: '2026-11-14T00:00:00Z' },
   }));
   assert.match(working, /外部 Agent 正在處理/);
+  assert.doesNotMatch(working, /自我試跑/);
+
+  const trail = trailFromRuns([{ id: 'run-fixture', testId: 'test-fixture', editingSessionId: 'session-fixture', kind: 'author', authorMode: 'edit', status: 'succeeded', authorEngine: 'external', createdAt: '2026-11-14T00:00:00Z' }], { id: 'session-fixture', draftRevision: 2, latestTurnChangedDraft: true });
+  assert.match(trail.stages[0].detail, /外部 Agent 已完成/);
+  assert.doesNotMatch(trail.stages[0].detail, /試跑完成/);
 
   const conversation = renderToStaticMarkup(React.createElement(ConversationPanel, {
     api: {}, apiBase: '/api', testId: 'test-fixture', editingSessionId: 'session-fixture',
@@ -98,6 +105,18 @@ const source = `
     async onRefreshSession() { return undefined; }, onShowTab() {}, publishReady: false,
   }));
   assert.match(nextTask, /新對話任務：外部 Agent/);
+  for (const kind of ['module', 'usecase']) {
+    const scoped = renderToStaticMarkup(React.createElement(ConversationPanel, {
+      api: {}, apiBase: '/api', testId: 'test-fixture', editingSessionId: 'session-fixture',
+      authorEngine: 'external', testKind: kind, planMode: kind === 'usecase',
+      draft: { testId: 'test-fixture', revision: 1, script: '', updatedAt: '2026-11-14T00:00:00Z' },
+      draftDirty: false, draftBusy: false, runs: [],
+      onRun() {}, onRefreshRuns() {}, onSynchronized() {}, onUseCandidate() { return false; },
+      onOpenManual() {}, onGuardChange() {}, onConversationChanged() {},
+      async onRefreshSession() { return undefined; }, onShowTab() {}, publishReady: false,
+    }));
+    assert.match(scoped, /新對話任務：外部 Agent/);
+  }
 
   const history = renderToStaticMarkup(React.createElement(RunHistory, {
     api: {}, apiBase: '/api', group: 'editing', loading: false, polling: false,
@@ -118,9 +137,8 @@ try {
   await build({
     stdin: { contents: source, resolveDir: scriptsDir, sourcefile: 'check-m11-author-ui.tsx', loader: 'tsx' },
     bundle: true,
-    packages: 'external',
     platform: 'node',
-    format: 'esm',
+    format: 'cjs',
     outfile,
     logLevel: 'silent',
   });

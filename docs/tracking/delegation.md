@@ -207,3 +207,8 @@ Web首切片交付停寫後，新增QA t56（全新gpt-6-sol high、parent=t52�
 使用者於2026-11-14明確授權逐wave核心檢查後commit/push，最後集中完整驗收；QA可Terra xhigh並行。本機model metadata精確ID gpt-6.1-terra、支援xhigh，已向使用者明示，不默默替換。實作仍Sol high。
 
 Wave4 t5q Server/services/server、t5r Runtime/worker skills與transport、t5s Web/apps/web；Terra t5t只寫scripts/test/m11w4-summary-*，t5v唯讀最終規格審查且僅可寫scripts/test/m11-final-audit-*。五位皆全新對話parent=t52、crew=1、keep/outlive-parent、repo cwd、no-daemon/YOLO/working已核。指定space獨立tab依序tb763e9eeb24f24794e56afd71164bb269、tb0cb449c3fd060242a666ce253193e9aa、tbfb784a0496c51db4b9b9c44353489861、tbd70ddb90cdac5daee7ed8f858197abb2、tbe09b6bdb193fff5911fa39977fd12918，均已命名。PM仍sole docs/contracts/deploy/Git owner。
+
+
+## Wave5
+
+新實作 t5w Server、t5x Runtime、t5y Web 均 Sol high，QA t5z Terra xhigh；parent=t52、crew=1、keep/outlive-parent、no-daemon/YOLO、repo cwd已核。獨立 tab 依序 tb106e20312785a09ebe4481a01a452a04、tb8e6c826b368b07bce73071f277ffc78f、tbb9e26e4617dccb69a79112d7055151d3、tb8ede8a0e66998d0b63725194c41e64fe，指定space命名且未傳herdr.tab。owner依序 services/server、runtimes/worker與transport、apps/web、scripts/test/m11w5-platform-*。v11固定三種平台作者，互動控制另波；隔離tmpfs PG32775各用獨立schema，核心必要測試後commit/push。

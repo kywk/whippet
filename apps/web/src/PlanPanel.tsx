@@ -5,9 +5,10 @@ import { batchPublishReady, editableStage, parseStageEditor } from './plan';
 import type { AuthorEngine, Draft, EditingSession, Plan, PlanSummary, StageRetryInput, Run, Version, WhippetApi } from './types';
 import './platform-preview.css';
 import { StageRetryForm } from './StageRetryForm';
+import { AuthorEngineStatus } from './AuthorEngineStatus';
 
 const planLabels = { draft: '待確認', confirmed: '已確認', running: '逐階段執行中', composed: '已組合，等待驗證／摘要', done: '整批已發佈', stopped: '已停止' };
-const stageLabels = { pending: '等待前一階段', authoring: '產稿中', validating: '驗證中', ready: '就緒', failed: '失敗' };
+const stageLabels = { pending: '等待前一階段', authoring: '作者任務中', validating: '驗證中', ready: '就緒', failed: '失敗' };
 const actionLabels = { reuse: '複用', modify: '修改', create: '新建' };
 interface Props {
   api: WhippetApi; testId: string; session: EditingSession; draft: Draft; runs: Run[]; authorEngine: AuthorEngine; blocked: boolean;
@@ -18,6 +19,7 @@ export function PlanPanel({ api, testId, session, draft, runs, authorEngine, blo
   const [plan, setPlan] = useState<Plan | null>();
   const [summary, setSummary] = useState<PlanSummary | null>();
   const [validation, setValidation] = useState<Run>();
+  const [activeStageRun, setActiveStageRun] = useState<Run>();
   const [fresh, setFresh] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -45,17 +47,21 @@ export function PlanPanel({ api, testId, session, draft, runs, authorEngine, blo
       setPlan(next); setFresh(true); setError(undefined);
       if (explicit) { setConflict(false); setConfirmation(''); setNote('已重新讀取 Server 狀態，請重新檢視後操作；沒有重送任何寫入。'); }
       if (next) {
+        const activeStageRunId = next.stages.find((stage) => stage.status === 'authoring' && stage.authorRunId)?.authorRunId;
         const results = await Promise.allSettled([
           api.getPlanSummary ? api.getPlanSummary(next.id, signal) : Promise.reject(new Error('批次摘要讀取尚未提供。')),
           next.validationRunId ? api.getRun(next.validationRunId, signal) : Promise.resolve(undefined),
+          activeStageRunId ? api.getRun(activeStageRunId, signal) : Promise.resolve(undefined),
         ]);
         if (!current()) return;
-        const [summaryResult, validationResult] = results;
+        const [summaryResult, validationResult, stageRunResult] = results;
         if (summaryResult.status === 'fulfilled') { setSummary(summaryResult.value); setSummaryError(undefined); }
         else { setSummary(undefined); setSummaryError(`批次摘要不可用：${errorMessage(summaryResult.reason)}`); }
         if (validationResult.status === 'fulfilled' && (!validationResult.value || (validationResult.value.testId === testId && validationResult.value.editingSessionId === session.id))) setValidation(validationResult.value);
         else { setValidation(undefined); setSummaryError((previous) => `${previous ?? ''} Use Case 驗證結果尚未確認。`); }
-      } else { setSummary(null); setValidation(undefined); setSummaryError(undefined); }
+        const stageRun = stageRunResult.status === 'fulfilled' ? stageRunResult.value : undefined;
+        setActiveStageRun(stageRun?.id === activeStageRunId && stageRun?.kind === 'author' ? stageRun : undefined);
+      } else { setSummary(null); setValidation(undefined); setActiveStageRun(undefined); setSummaryError(undefined); }
     } catch (cause) { if (current()) { setFresh(false); setError(`Plan 尚未確認可用：${errorMessage(cause)}`); } }
     finally { if (current()) setLoading(false); }
   }, [api, testId, session.id]);
@@ -156,13 +162,13 @@ export function PlanPanel({ api, testId, session, draft, runs, authorEngine, blo
     {plan ? <><p className="identifier">{planLabels[plan.status]} · Plan r{plan.revision} · 草稿基底 r{plan.baseRevision}</p>
       <p>{plan.stages.filter((stage) => stage.status === 'ready').length} / {plan.stages.length} 階段就緒</p>
       {plan.error ? <Notice message={plan.error} /> : null}
-      <ol className="platform-stages">{plan.stages.map((stage, index) => <li key={stage.id}><div className="platform-heading"><h4>{index + 1}. {stage.title} · {actionLabels[stage.action]}</h4><strong>{stageLabels[stage.status]}</strong></div>
+      <ol className="platform-stages">{plan.stages.map((stage, index) => { const authorRun = stage.authorRunId === activeStageRun?.id ? activeStageRun : runs.find((run) => run.id === stage.authorRunId && run.kind === 'author'); return <li key={stage.id}><div className="platform-heading"><h4>{index + 1}. {stage.title} · {actionLabels[stage.action]}</h4><strong>{stageLabels[stage.status]}</strong></div>
         <p className="identifier">{stage.module?.slug ?? stage.moduleTestId ?? '待建立 Module'} · 固定來源版本 {stage.moduleVersionId ?? '新建'}</p>
         {stage.candidateVersionId ? <p className="identifier">候選版本 {stage.candidateVersionId}（尚未發佈）</p> : null}
         <details><summary>參數與回傳綁定</summary><pre className="plan-json">{JSON.stringify(stage.args, null, 2)}</pre><p>綁定別名：{stage.bind || '未設定'}</p></details>
-        {stage.authorRunId ? <p className="identifier">Author Run {stage.authorRunId}</p> : null}{stage.validationRunId ? <p className="identifier">Validation Run {stage.validationRunId}</p> : null}
+        {stage.authorRunId ? <p className="identifier">Author Run {stage.authorRunId}{authorRun ? <> · <AuthorEngineStatus engine={authorRun.authorEngine ?? 'builtin'} status={authorRun.status} /></> : null}</p> : null}{stage.validationRunId ? <p className="identifier">Validation Run {stage.validationRunId}</p> : null}
         {stage.error ? <Notice message={stage.error} /> : null}
-        {stage.status === 'failed' && stage.action !== 'reuse' ? <StageRetryForm api={api} planId={plan.id} stageId={stage.id} planRevision={plan.revision} blocked={disabled || Boolean(editor) || plan.status !== 'stopped'} onSubmit={retryStage} /> : null}</li>)}</ol>
+        {stage.status === 'failed' && stage.action !== 'reuse' ? <StageRetryForm api={api} planId={plan.id} stageId={stage.id} planRevision={plan.revision} blocked={disabled || Boolean(editor) || plan.status !== 'stopped'} onSubmit={retryStage} /> : null}</li>; })}</ol>
       <div className="action-row"><button className="button primary" disabled={disabled || Boolean(editor) || plan.status !== 'draft' || plan.baseRevision !== draft.revision || !api.confirmPlan} onClick={() => { void mutate('confirm'); }}>確認 Plan 並開始</button>
         <button className="button secondary" disabled={disabled || Boolean(editor) || ['done', 'stopped'].includes(plan.status) || !api.cancelPlan} onClick={() => { void mutate('cancel'); }}>停止 Plan</button></div>
       {plan.status === 'stopped' ? <p className="inline-hint">已停止，不會自動重跑。失敗 Stage 可先查詢人工修復資格；修訂整份 Plan 則須儲存後重新確認。</p> : null}

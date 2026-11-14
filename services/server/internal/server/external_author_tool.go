@@ -154,13 +154,13 @@ func (p *Postgres) ExternalBrowser(ctx context.Context, token AgentToken, runID,
 func (p *Postgres) ExternalConversationHistory(ctx context.Context, c externalClaim, cursor *string) (HistoryPage, error) {
 	page := HistoryPage{RunID: c.RunID, AttemptID: c.AttemptID, WorkspaceID: c.WorkspaceID, Items: []HistoryItem{}}
 	var raw []byte
-	var testID, sessionID string
+	var testID, sessionID *string
 	err := p.DB.QueryRowContext(ctx, `SELECT author_payload,test_id,editing_session_id FROM runs WHERE id=$1 AND attempt_id=$2 AND workspace_id=$3`, c.RunID, c.AttemptID, c.WorkspaceID).Scan(&raw, &testID, &sessionID)
 	if err != nil {
 		return page, dbError(err)
 	}
 	var input AuthorInput
-	if json.Unmarshal(raw, &input) != nil || input.History == nil || input.SkillID != "test-author" {
+	if json.Unmarshal(raw, &input) != nil || input.History == nil || (input.SkillID != "test-author" && input.SkillID != "module-authoring" && input.SkillID != "usecase-planner" && input.SkillID != "workspace-author") {
 		return page, ErrHistoryUnavailable
 	}
 	max, err := historySequence(input.History.MaxSequence)
@@ -171,8 +171,8 @@ func (p *Postgres) ExternalConversationHistory(ctx context.Context, c externalCl
 	if err != nil {
 		return page, err
 	}
-	page.TestID = &testID
-	page.EditingSessionID = &sessionID
+	page.TestID = testID
+	page.EditingSessionID = sessionID
 	page.ConversationID = input.ConversationID
 	page.MaxSequence = input.History.MaxSequence
 	rows, err := p.DB.QueryContext(ctx, `SELECT sequence,role,octet_length(content),substring(convert_to(content,'UTF8')
