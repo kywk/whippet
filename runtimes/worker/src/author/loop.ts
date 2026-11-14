@@ -159,6 +159,12 @@ export async function runAuthor(
         if (/^author:model:\d+:succeeded$/.test(event)) {pendingModel = 0;observation.accepted();}
         options.progress?.(event);
       },
+      ...(module ? { completeAfterTool: (call: Item, result: unknown) => {
+        if (call.name !== "commit_module_candidate" || !moduleCheckpoint || !result || typeof result !== "object") return undefined;
+        const verified = result as { candidate?: unknown; selfTestPassed?: unknown };
+        return verified.candidate === true && verified.selfTestPassed === true
+          ? JSON.stringify({ message: "Module 候選稿已通過自我試跑；仍須正式驗證。" }) : undefined;
+      } } : {}),
       checkpoint: () => checkpoint === undefined ? undefined : { script: checkpoint.script },
       execute: async (call, execution) => {
         toolCount = execution;
@@ -217,7 +223,11 @@ export async function runAuthor(
             }
             if (toolSignal.aborted) throw new AuthorError("cancelled");
             options.moduleDiagnostics?.selfTest(check.passed);
-            if(check.passed){moduleCheckpoint=next;result={candidate:true,selfTestPassed:true};}
+            if(check.passed){
+              moduleCheckpoint=next;
+              if(call.name === "commit_module_candidate" && allowedTools.some(tool => tool.name === "request_module_validation")) validation=true;
+              result={candidate:true,selfTestPassed:true};
+            }
             else result={candidate:false,selfTestPassed:false,error:check.error??check.summary};
           } else if(call.name === "request_module_validation") {
             if(!module)throw new AuthorError("tool_failed");validation=true;result={requested:true};
@@ -339,6 +349,7 @@ export async function runAuthor(
 
       },
     });
+    if (signal.aborted) throw new AuthorError(options.signal?.aborted ? "cancelled" : "timed_out");
     options.moduleDiagnostics?.checkpoint(!!moduleCheckpoint);
     if (engineResult.partial) {
       if (summary || workspace || module || planner) throw new AuthorError("limit");

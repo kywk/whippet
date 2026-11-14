@@ -24,6 +24,24 @@ function calls(r:EngineRun){let n=0;return (name:string,args:object)=>r.execute(
 const browser=(verify:NonNullable<ExplorationBrowser['verifyDraft']>)=>({verifyDraft:verify} as ExplorationBrowser);
 const stage=(part:string,content:string,stagingRevision:number)=>({part,content,stagingRevision});
 
+test('eight successful exploration calls without a Module candidate stop at the pinned model budget',async()=>{
+ const sequence=[
+  ['read_module_draft',{}],['read_skill_reference',{skillId:'module-authoring',referenceId:'harness'}],
+  ['browser_navigate',{url:'https://example.test'}],['browser_fill',{selector:'#query',value:'synthetic'}],
+  ['browser_click',{selector:'#search'}],['browser_snapshot',{}],
+  ['browser_fill',{selector:'#query',value:'synthetic again'}],['browser_click',{selector:'#search'}],
+ ] as const;
+ const v=input();v.author.allowedTools=[...new Set(sequence.map(([name])=>name))];
+ let requests=0,tools=0,selfTests=0,finishWarning=false;
+ const browserMock:ExplorationBrowser={navigate:async()=>({}),snapshot:async()=>({}),fill:async()=>({}),click:async()=>({}),close:async()=>{},verifyDraft:async()=>{selfTests++;return {passed:true,summary:'synthetic'};}};
+ await assert.rejects(runAuthor(v,cfg,browserMock,{harness:{call:async()=>({})},fetcher:async(_url,init)=>{
+  const body=JSON.parse(init!.body as string);if(requests===7)finishWarning=body.instructions.includes('Budget nearly exhausted');
+  const [name,args]=sequence[requests++]!;
+  return Response.json({status:'completed',output:[{type:'function_call',call_id:String(requests),name,arguments:JSON.stringify(args)}]});
+ },progress:event=>{if(/^author:tool:\d+:[a-z_]+:succeeded$/.test(event))tools++;}}),error=>error instanceof AuthorError&&error.code==='limit');
+ assert.equal(requests,8);assert.equal(tools,8);assert.equal(selfTests,0);assert.equal(finishWarning,true);
+});
+
 test('staged candidate uses real engine/fetch tool sequence and never IPC; commit alone creates final',async()=>{
  const sequence=[['stage_module_candidate_part',stage('script',script,0)],['stage_module_candidate_part',stage('harness',harness,1)],['commit_module_candidate',{stagingRevision:2,metadata}],['request_module_validation',{}]] as const;
  let n=0,verified=0;const v=input();

@@ -22,6 +22,7 @@ export interface EngineRun {
   onModelRequestFailure?(stage: ModelRequestFailureStage): void;
   request(body: Record<string, unknown>): Promise<unknown>;
   execute(call: EngineItem, execution: number): Promise<unknown>;
+  completeAfterTool?(call: EngineItem, result: unknown): string | undefined;
   checkpoint(): { script: string } | undefined;
   maxRequestBytes?: number;
   maxToolOutputBytes?: number;
@@ -78,7 +79,11 @@ export const builtinEngine: AgentEngine = {
     const partial = (reason: EnginePartial["reason"]): EngineResult => {
       const checkpoint = input.checkpoint();
       return { finalText: "", partial: {
-        reason, nextStep: "繼續目前任務，先檢查最後通過自我試跑的候選稿，再完成剩餘驗證。",
+        reason, nextStep: checkpoint
+          ? "繼續目前任務，先檢查最後通過自我試跑的候選稿，再完成剩餘驗證。"
+          : input.tools.some(tool => tool.name === "update_draft")
+            ? "目前沒有通過自我試跑的候選稿。若已有足夠的目標與頁面證據，請保留原有斷言並優先呼叫 update_draft 自試；不足時再做必要探索或請使用者確認。"
+            : "目前沒有通過自我試跑的候選稿。請依已提供的目標完成必要工作；資訊不足時向使用者確認。",
         ...(checkpoint ? { checkpoint } : {}),
       } };
     };
@@ -119,6 +124,9 @@ export const builtinEngine: AgentEngine = {
         const serialized = JSON.stringify(result);
         if (serialized === undefined || Buffer.byteLength(serialized) > (input.maxToolOutputBytes ?? 3 * 1024 * 1024)) throw new AuthorError("limit");
         context.push({ type: "function_call_output", call_id: call.call_id, output: serialized });
+        if (signal.aborted) throw new AuthorError("cancelled");
+        const completedText = input.completeAfterTool?.(call, result);
+        if (completedText !== undefined) return { finalText: completedText };
       }
     }
     return partial("model_budget");
