@@ -201,3 +201,9 @@ Web首切片交付停寫後，新增QA t56（全新gpt-6-sol high、parent=t52�
 真接單工作者t5n（Whippet M11 W3 MCP Author）為全新gpt-6-sol high、parent=t52、keep/outlive-parent/no-daemon/YOLO；metadata與working已核，獨立tab tb10442dc5bc91600cd5f997198c895888。本對話停用既有whippet，僅接私有測試whippet_e2e；Token經0700父目錄內0600 UNIX socket留記憶體，非secret argv/config。只用MCP領單/探索/提交，QA不代寫腳本；不Git/部署。
 
 本次真接單初始t5n因PM指定不存在Python executable而MCP啟動失敗，未claim；修正前先以實核Python路徑驗四工具存在，再開全新t5p，並非模型盲重試。t5p為同模型/effort與parent，metadata已核，tab tbdbdb7e50bd6f916da806fb7686a8446d（Whippet M11 W3 MCP Author Fixed）。t5p真MCP接單/探索/提交成功，t5k真UI與formal validation全PASS。
+
+## Wave4與最新驗證路由
+
+使用者於2026-11-14明確授權逐wave核心檢查後commit/push，最後集中完整驗收；QA可Terra xhigh並行。本機model metadata精確ID gpt-6.1-terra、支援xhigh，已向使用者明示，不默默替換。實作仍Sol high。
+
+Wave4 t5q Server/services/server、t5r Runtime/worker skills與transport、t5s Web/apps/web；Terra t5t只寫scripts/test/m11w4-summary-*，t5v唯讀最終規格審查且僅可寫scripts/test/m11-final-audit-*。五位皆全新對話parent=t52、crew=1、keep/outlive-parent、repo cwd、no-daemon/YOLO/working已核。指定space獨立tab依序tb763e9eeb24f24794e56afd71164bb269、tb0cb449c3fd060242a666ce253193e9aa、tbfb784a0496c51db4b9b9c44353489861、tbd70ddb90cdac5daee7ed8f858197abb2、tbe09b6bdb193fff5911fa39977fd12918，均已命名。PM仍sole docs/contracts/deploy/Git owner。

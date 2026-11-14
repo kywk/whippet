@@ -266,7 +266,7 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
   return <div className="chat">
     <div className="chat-bar">
       <span className={`chip ${aiExploration?.available === true ? 'ok' : 'neutral'}`} title={capabilityReason(aiExploration)}>AI 探索：{aiExploration ? aiExploration.available ? '可用' : '尚未就緒' : '未知'}</span>
-      <span className="chip neutral" title={testKind === 'module' || testKind === 'usecase' ? '外部接單本波只適用一般 Test 的 AI 撰寫任務' : '依目前 Workspace 設定，實際來源仍以新建 Run 快照為準'}>新任務：{nextEngine === 'external' ? '外部 Agent' : '內建引擎'}</span>
+      <span className="chip neutral" title={testKind === 'module' || testKind === 'usecase' ? 'Module／Use Case 本體仍由內建引擎處理；驗收摘要依 Workspace 設定選擇引擎' : '依目前 Workspace 設定，實際來源仍以新建 Run 快照為準'}>新對話任務：{nextEngine === 'external' ? '外部 Agent' : '內建引擎'}</span>
       {lastAuthor ? <AuthorEngineStatus engine={lastAuthor.authorEngine ?? 'builtin'} status={lastAuthor.status} /> : null}
       <span className="chat-bar-spacer" />
       <button className="button quiet compact" disabled={draftBusy || submitting || synchronizing} onClick={onOpenManual}><ScriptIcon />工程師手動修改</button>

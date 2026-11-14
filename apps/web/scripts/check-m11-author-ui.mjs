@@ -65,7 +65,7 @@ const source = `
   }));
   assert.match(page, /AI 撰寫引擎設定/);
   assert.match(page, /value="external"/);
-  assert.match(page, /只適用一般 Test 的 AI 撰寫任務/);
+  assert.match(page, /一般 Test、Module、Use Case Plan 整批的驗收摘要/);
 
   const waiting = renderToStaticMarkup(React.createElement(AuthorLiveStatus, {
     run: { id: 'run-fixture', testId: 'test-fixture', kind: 'author', status: 'queued', authorEngine: 'external', createdAt: '2026-11-14T00:00:00Z' },
@@ -97,7 +97,7 @@ const source = `
     onOpenManual() {}, onGuardChange() {}, onConversationChanged() {},
     async onRefreshSession() { return undefined; }, onShowTab() {}, publishReady: false,
   }));
-  assert.match(nextTask, /新任務：外部 Agent/);
+  assert.match(nextTask, /新對話任務：外部 Agent/);
 
   const history = renderToStaticMarkup(React.createElement(RunHistory, {
     api: {}, apiBase: '/api', group: 'editing', loading: false, polling: false,

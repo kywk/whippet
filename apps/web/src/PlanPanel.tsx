@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, errorMessage } from './api';
 import { Notice, RunStatusBadge, StatusBadge } from './components';
 import { batchPublishReady, editableStage, parseStageEditor } from './plan';
-import type { Draft, EditingSession, Plan, PlanSummary, StageRetryInput, Run, Version, WhippetApi } from './types';
+import type { AuthorEngine, Draft, EditingSession, Plan, PlanSummary, StageRetryInput, Run, Version, WhippetApi } from './types';
 import './platform-preview.css';
 import { StageRetryForm } from './StageRetryForm';
 
@@ -10,11 +10,11 @@ const planLabels = { draft: '待確認', confirmed: '已確認', running: '逐�
 const stageLabels = { pending: '等待前一階段', authoring: '產稿中', validating: '驗證中', ready: '就緒', failed: '失敗' };
 const actionLabels = { reuse: '複用', modify: '修改', create: '新建' };
 interface Props {
-  api: WhippetApi; testId: string; session: EditingSession; draft: Draft; blocked: boolean;
+  api: WhippetApi; testId: string; session: EditingSession; draft: Draft; runs: Run[]; authorEngine: AuthorEngine; blocked: boolean;
   onGuardChange: (guarded: boolean) => void; onRun: (run: Run) => void;
   onPublished: (version: Version) => void; onRefresh: () => void;
 }
-export function PlanPanel({ api, testId, session, draft, blocked, onGuardChange, onRun, onPublished, onRefresh }: Props) {
+export function PlanPanel({ api, testId, session, draft, runs, authorEngine, blocked, onGuardChange, onRun, onPublished, onRefresh }: Props) {
   const [plan, setPlan] = useState<Plan | null>();
   const [summary, setSummary] = useState<PlanSummary | null>();
   const [validation, setValidation] = useState<Run>();
@@ -78,6 +78,7 @@ export function PlanPanel({ api, testId, session, draft, blocked, onGuardChange,
   const mayPublish = !disabled && !editor && publishReady && Boolean(api.publishPlan);
   const validationReady = validation?.status === 'succeeded' && validation.id === plan?.validationRunId;
   const maySummarize = !disabled && !editor && plan?.status === 'composed' && plan.stages.every((stage) => stage.status === 'ready') && validationReady && Boolean(api.requestPlanSummary) && !(summary && ['queued', 'dispatched', 'running', 'collecting', 'cancelling'].includes(summary.status));
+  const summaryRun = summary ? runs.find((run) => run.id === summary.runId && run.kind === 'author' && run.authorMode === 'summary') : undefined;
 
   async function retryStage(stageId: string, input: StageRetryInput) {
     if (lock.current || disabled || editor || !plan || !api.retryStage || !api.getPlan) throw new Error('目前無法重試，請重新確認。');
@@ -177,7 +178,7 @@ export function PlanPanel({ api, testId, session, draft, blocked, onGuardChange,
       {validation ? <RunStatusBadge run={validation} /> : <p>尚未取得 Use Case 真實驗證結果。</p>}
       {summaryError ? <Notice message={summaryError} /> : null}
       <button className="button secondary" disabled={!maySummarize} onClick={() => { void mutate('summary'); }}>要求整批摘要</button>
-      <p className="inline-hint">只請求摘要，不重跑驗證；Server 仍核對每個候選與 Worker 回收狀態。</p>
+      <p className="inline-hint">新整批摘要：{authorEngine === 'external' ? '外部 Agent 接單' : '內建引擎'}。{summaryRun ? `此摘要 Run 來源：${summaryRun.authorEngine === 'external' ? '外部 Agent' : '內建引擎'}。` : '實際來源以新建 Run 快照為準。'}只請求摘要，不重跑驗證；Server 仍核對每個候選與 Worker 回收狀態。</p>
       {summary ? <><StatusBadge status={summary.status} /><p className="identifier">摘要 Run {summary.runId} · Plan r{summary.planRevision}</p>
         {summary.stale || summary.planRevision !== plan.revision || summary.planId !== plan.id ? <p className="blocked-hint">此摘要已過期或不屬於目前 Plan，不可發佈。</p> : null}
         <h4>本批次候選 Module（{summary.candidates.length}）</h4>

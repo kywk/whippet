@@ -137,6 +137,26 @@ func TestExternalAuthorOutputCannotAssertSelfTestOrValidation(t *testing.T) {
 	}
 }
 
+func TestExternalSummaryOutputUsesSummaryParser(t *testing.T) {
+	out, err := decodeExternalSummaryOutput([]byte(`{"message":"已摘要","description":"已驗證步驟","backgroundSummary":"非秘密背景","name":"  名稱  "}`))
+	if err != nil || out.Name == nil || *out.Name != "名稱" {
+		t.Fatalf("valid external summary rejected: %+v %v", out, err)
+	}
+	for _, raw := range []string{
+		`{"message":"x","description":"d","backgroundSummary":"b","script":"fake"}`,
+		`{"message":"x","description":"d","backgroundSummary":"b","requestValidation":true}`,
+		`{"message":"x","description":"d","backgroundSummary":"b","partial":null}`,
+		`{"message":"x","description":"d","backgroundSummary":"b","selfTestPassed":true}`,
+		`{"message":"x","description":"d","backgroundSummary":"b","proof":{}}`,
+		`{"message":"x","message":"y","description":"d","backgroundSummary":"b"}`,
+		`{"message":"x","description":"","backgroundSummary":"b"}`,
+	} {
+		if _, err := decodeExternalSummaryOutput([]byte(raw)); err == nil {
+			t.Fatalf("untrusted or invalid summary accepted: %s", raw)
+		}
+	}
+}
+
 func TestExternalToolBusyBeforeDispatchCanRetry(t *testing.T) {
 	if externalToolCallState(externalToolReceipt{Error: "busy", Retryable: true}) != "pending" {
 		t.Fatal("opening browser may return busy without consuming the logical call")

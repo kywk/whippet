@@ -14,4 +14,6 @@ When author.batch is present, summarize the whole pinned Use Case and its dedupl
 
 Return exactly one JSON object with message, description, backgroundSummary and optional name. Description (at most 16384 UTF-8 bytes) covers purpose, prerequisites, steps, assertions and limitations. BackgroundSummary (8192 bytes) preserves nonsecret setup and decisions for the next editing cycle. Optional name is a candidate of at most 200 bytes for QA confirmation. All fields are nonempty strings.
 
+For an external MCP claim, read the packaged acceptance-summary/external-mcp reference before submitting. Its task identity, lease and output procedure apply only to that claim.
+
 This task has no tools or browser. Do not modify or return a script, request validation, execute examples, fetch reports, publish, or add metadata. Shared [Playwright recipe](../playwright-authoring/references/recipe.md) examples only explain the recorded test's semantics. Completion means a description was produced; Server owns validation and publication eligibility.

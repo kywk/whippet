@@ -123,7 +123,7 @@ func (p *Postgres) completeAuthor(ctx context.Context, testID, managerID, runID,
 }
 
 func (p *Postgres) completeAuthorWith(ctx context.Context, testID, runID, attemptID string, incoming Result,
-	lock func(*sql.Tx) (string, error), externalOutput *authorOutput, finish func(*sql.Tx) error) error {
+	lock func(*sql.Tx) (string, error), externalOutput []byte, finish func(*sql.Tx) error) error {
 	tx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -202,17 +202,24 @@ func (p *Postgres) completeAuthorWith(ctx context.Context, testID, runID, attemp
 					if _, err = tx.ExecContext(ctx, "SAVEPOINT batch_summary"); err != nil {
 						return err
 					}
-					if e := p.completePlanSummary(ctx, tx, runID, attemptID, input, d, session); e != nil {
+					if e := p.completePlanSummary(ctx, tx, runID, attemptID, input, d, session, externalOutput); e != nil {
 						if _, err = tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT batch_summary"); err != nil {
 							return err
 						}
 						result = Result{Status: "failed", Error: authorFailureMessage}
 					}
 				} else if input.SkillID == "acceptance-summary" {
-					data, outputErr := p.readArtifactBytes(ctx, tx, runID, attemptID, "author.json", MaxAuthorArtifactBytes)
+					data, outputErr := externalOutput, error(nil)
+					if data == nil {
+						data, outputErr = p.readArtifactBytes(ctx, tx, runID, attemptID, "author.json", MaxAuthorArtifactBytes)
+					}
 					var out summaryOutput
 					if outputErr == nil {
-						out, outputErr = decodeSummaryOutput(data)
+						if externalOutput != nil {
+							out, outputErr = decodeExternalSummaryOutput(data)
+						} else {
+							out, outputErr = decodeSummaryOutput(data)
+						}
 					}
 					if outputErr != nil {
 						result = Result{Status: "failed", Error: authorFailureMessage}
@@ -230,7 +237,7 @@ func (p *Postgres) completeAuthorWith(ctx context.Context, testID, runID, attemp
 				} else {
 					output, outputErr := authorOutput{}, error(nil)
 					if externalOutput != nil {
-						output = *externalOutput
+						output, outputErr = decodeExternalAuthorOutput(externalOutput)
 					} else {
 						output, outputErr = p.readAuthorOutput(ctx, tx, runID, attemptID)
 					}

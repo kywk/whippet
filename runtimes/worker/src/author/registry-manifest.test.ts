@@ -242,6 +242,10 @@ test("packaged primary skills and auxiliary recipe satisfy real manifest/hash sn
     assert.ok(bundle.instructions.includes("# " + (primary.id === "test-author" ? "Test author" : primary.id === "workspace-author" ? "Workspace author" : "Acceptance summary")));
     assert.ok(bundle.references.some(ref => ref.skillId === "playwright-authoring" && ref.referenceId === "recipe"));
     assert.match(bundle.readReference("playwright-authoring", "recipe").content, /# Playwright recipe/);
+    if (primary.id === "acceptance-summary") {
+      assert.ok(bundle.references.some(ref => ref.skillId === "acceptance-summary" && ref.referenceId === "external-mcp"));
+      assert.match(bundle.readReference("acceptance-summary", "external-mcp").content, /# External MCP acceptance summary/);
+    }
   }
 });
 

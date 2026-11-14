@@ -110,3 +110,13 @@ claim/context指令必說明external adapter採直接提交完整候選而非Wor
 本機bridge可在成功open/status後記唯一ready session並為原四browser工具補 `_meta.whippet` 三UUID；明示metadata不覆寫，close/terminal清除綁定，未知結果不自動重送。接單以task_tool_call身份args為主，不依賴此bridge隱式session。
 
 驗收：真網頁選external、建立Test並送需求；全新Codex只經MCP claim/工具/submit產生腳本；網頁觀測AI草稿與獨立正式validation succeeded。另真HTTP異常驗取消/逾時/撤銷/跨Token與Workspace、競爭claim、submit冪等/CAS。合成站與scope初始化限新隔離環境，不攔截產品API、不讓QA代模型產稿。
+
+## Wave4：外部驗收摘要
+
+不新增MCP工具、控制schema或registry版本。Workspace authorEngine=external時，後續新acceptance-summary（普通Test、Module、Plan batch）也固定external；module-authoring/usecase-planner/workspace-author本體仍待後波。舊Run引擎快照不變。
+
+claim沿原AuthorInput/ValidationEvidence/ModuleSummary/Batch、Workspace與budget政策快照；allowedTools=[]，不允許browser或其他nested工具。skillUri=`whippet://skill/acceptance-summary/main`，externalReferenceUri=`whippet://skill/acceptance-summary/references/external-mcp`，僅提供已打包且SHA pin的內容，不暴露憑證或模型key。原非秘密policy/model快照不因adapter任意改寫，不用它啟動外部模型。
+
+task_submit.output按權威Run skillId判別；摘要精確`{message,description,backgroundSummary,name?}`，使用decodeSummaryOutput與duplicate/未知欄位守衛，拒script/requestValidation/partial/自報proof。完成共用原交易與summaryBindingMatches/validationProof、Module harness與回收、Plan buildPlanBatch/batchHash CAS，不能因從MCP提交而跳過任一守衛。成功仍回`{state:"submitted",appliedRevision:null,validationRunId:null}`；摘要不能產造驗證或發佈資格。原submit冪等/取消/撤銷/期限守衛沿用。
+
+Web沿既有摘要API與Run.authorEngine/EditingSession.summary狀態，設定文案明列普通Test編修與三種驗收摘要支援external，Module/UseCase/Workspace訪談本體尚未支援。必要驗證：各摘要分支有可信驗證fixture時成功、失效證據/CAS/重複提交不越權；本wave不重跑完整UI/真模型，最後集中完整驗收。

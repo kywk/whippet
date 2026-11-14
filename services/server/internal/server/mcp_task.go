@@ -63,7 +63,7 @@ func (a *API) callMCPTask(ctx context.Context, p *Postgres, tool ToolDefinition,
 		if json.Unmarshal(canonical, &args) != nil || !validExternalIDs(args.RunID, args.AttemptID, args.LeaseID) || !ValidID(args.SubmitID) {
 			return mcpToolError()
 		}
-		if _, err := decodeExternalAuthorOutput(args.Output); err != nil {
+		if _, err := p.validateExternalAuthorSubmission(ctx, token, args.RunID, args.Output); err != nil {
 			return mcpToolError()
 		}
 		// A task-owned anonymous browser is closed before the formal validation can run.

@@ -386,6 +386,10 @@ M10.Z 清單：
 
 2026-11-14 Wave3 已固定test-author外部接單契約並開工：t5g Server task_claim/heartbeat/tool_call/submit與authorEngine CAS，t5h bridge metadata及external adapter說明，t5j Web引擎切換與Run狀態。t5m固定snapshot2真MCP租約異常QA已PASS，Server TestM11及external race PASS、Web build/API/UI與transport17項PASS；t5k真UI→全新Codex t5p→MCP接單/探索/提交→AI revision2→正式validation succeeded與可開啟報告全鏈PASS（1 passed，0 failed/flaky/skipped）。本機MCP已更新13工具，隔離環境已回收，腳本與正式報告保留於專用tmp證據。附帶builtin acceptance-summary Run failed，未驗摘要或發佈；詳見 [Wave3交接](handoff/m11-wave3-20261114.md)。，不以自報selfTest替代。module/usecase互動寫入、login/LiveView仍另波處理。
 
+2026-11-14 最新執行節奏：使用者授權每wave核心必要驗證後commit/push，全部功能完成後才集中完整驗收；9eb337c已推送。實作owner維持全新Sol high，QA改用本機可用gpt-6.1-terra xhigh（使用者指定Terra）。Wave4先補普通Test/Module/Plan batch外部acceptance-summary；Wave5平台化產稿/互動寫入，後續session登入/LiveView，再M11.Z。不將M10.Z或尚未實作項提前列完成。
+
+Wave4外部摘要切片完成：普通Test/Module/Plan batch沿原parser/CAS與權威驗證快照，Core Server測試/build、Web build/合成檢查、Worker15測試PASS；Terra t5t overlay真MCP/PG三分支current/stale共6 case PASS（20.358s）。validation artifact為合成證據，不算真Playwright；最後集中完整驗收。另owner誤跑舊TestM7出現未歸因line81失敗，已停止，不假稱舊baseline已知問題。
+
 M11.Z 清單：
 1. M10.Z 第 1、2 項回歸，並用 builtin 跑一次黃金任務集。
 2. 互動模式端到端：外部 Agent 建立 Module 與 Use Case 草稿 → 真實驗證 → 人在 UI 發佈；MCP 沒有任何發佈路徑。

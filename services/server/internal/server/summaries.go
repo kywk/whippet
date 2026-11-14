@@ -54,6 +54,13 @@ func decodeSummaryOutput(data []byte) (summaryOutput, error) {
 	return out, nil
 }
 
+func decodeExternalSummaryOutput(data []byte) (summaryOutput, error) {
+	if strictJSONNoDuplicates(data) != nil {
+		return summaryOutput{}, ErrInvalid
+	}
+	return decodeSummaryOutput(data)
+}
+
 func editingAuthorInput(s EditingSession, d draftState, skill string, messages []ChatMessage) AuthorInput {
 	tools := []string{}
 	if skill == "test-author" {
@@ -82,7 +89,7 @@ func enqueueAuthorSnapshot(ctx context.Context, tx *sql.Tx, d draftState, input 
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO runs(id,test_id,kind,draft_revision,script_snapshot,script_hash,timeout_ms,author_payload,workspace_settings,editing_session_id,workspace_id,workspace_context,script_origin,authorization_revision,scope_proposal_id,author_engine)
  SELECT $1,$2,'author',$3,$4,$5,$6,$7,$8,$9,t.workspace_id,$10,$11,$12,$13,
- CASE WHEN $14='test-author' THEN w.author_engine ELSE 'builtin' END FROM tests t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=$2`, id, d.TestID, d.Revision, d.Script, d.hash, input.Budget.MaxDurationMS, string(payload), settingsJSON(d.WorkspaceSettings), d.EditingSessionID, jsonText(d.WorkspaceContext), d.ScriptOrigin, binding.authorizationRevision, binding.scopeProposalID, input.SkillID); err != nil {
+ CASE WHEN $14 IN ('test-author','acceptance-summary') THEN w.author_engine ELSE 'builtin' END FROM tests t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=$2`, id, d.TestID, d.Revision, d.Script, d.hash, input.Budget.MaxDurationMS, string(payload), settingsJSON(d.WorkspaceSettings), d.EditingSessionID, jsonText(d.WorkspaceContext), d.ScriptOrigin, binding.authorizationRevision, binding.scopeProposalID, input.SkillID); err != nil {
 		return Run{}, err
 	}
 	return scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs r WHERE r.id=$1`, id))
