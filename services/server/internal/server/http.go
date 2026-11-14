@@ -27,6 +27,8 @@ type API struct {
 	log           *slog.Logger
 	liveViewer    http.Handler
 	liveMedia     http.Handler
+	sessionViewer http.Handler
+	sessionMedia  http.Handler
 }
 
 func NewAPI(store Store, artifacts ArtifactStorage, engine *Engine, token string, log *slog.Logger) *API {
@@ -42,6 +44,11 @@ func (a *API) WithAdminAccess(token, publicOrigin string) *API {
 // Configure once before serving; long-lived live sockets have their own lease.
 func (a *API) WithLiveHandlers(viewer, media http.Handler) *API {
 	a.liveViewer, a.liveMedia = viewer, media
+	return a
+}
+
+func (a *API) WithSessionLiveHandlers(viewer, media http.Handler) *API {
+	a.sessionViewer, a.sessionMedia = viewer, media
 	return a
 }
 
@@ -68,6 +75,7 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	mux.HandleFunc("GET /api/workspaces/{id}/agent-tokens", a.listAgentTokens)
 	mux.HandleFunc("DELETE /api/workspaces/{id}/agent-tokens/{tokenId}", a.revokeAgentToken)
 	mux.HandleFunc("GET /api/workspaces/{id}/agent-tool-audit", a.listAgentAudit)
+	mux.HandleFunc("GET /api/workspaces/{id}/browser-sessions", a.listBrowserSessions)
 	mux.HandleFunc("GET /api/workspaces/{id}/conversation", a.workspaceConversation)
 	mux.HandleFunc("POST /api/workspaces/{id}/messages", a.workspaceMessage)
 	mux.HandleFunc("GET /api/workspaces/{id}/proposals/{proposalId}", a.workspaceProposal)
@@ -110,6 +118,7 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	mux.HandleFunc("POST /api/runs/{id}/continue", a.continueAuthor)
 	mux.HandleFunc("POST /api/manager/runs/{id}/artifacts/{name...}", a.upload)
 	mux.Handle("POST /api/manager/runs/{id}/attempts/{attemptId}/credentials/resolve", a.ManagerAuth(http.HandlerFunc(a.resolveCredentials)))
+	mux.Handle("POST /api/manager/browser-sessions/{sessionId}/leases/{leaseId}/credentials/resolve", a.ManagerAuth(http.HandlerFunc(a.resolveBrowserSessionCredentials)))
 	mux.Handle("POST /api/manager/runs/{id}/attempts/{attemptId}/tools", a.ManagerAuth(http.HandlerFunc(a.harnessTool)))
 	mux.Handle("POST /api/manager/runs/{id}/attempts/{attemptId}/history", a.ManagerAuth(http.HandlerFunc(a.conversationHistory)))
 	mux.HandleFunc("GET /api/runs/{id}/artifacts/{name...}", a.artifact)
@@ -121,6 +130,12 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	}
 	if a.liveMedia != nil {
 		mux.Handle("GET /api/manager/runs/{id}/live", a.ManagerAuth(a.liveMedia))
+	}
+	if a.sessionViewer != nil {
+		mux.Handle("GET /api/browser-sessions/{sessionId}/leases/{leaseId}/live", a.sessionViewerAuth(a.sessionViewer))
+	}
+	if a.sessionMedia != nil {
+		mux.Handle("GET /api/manager/browser-sessions/{sessionId}/leases/{leaseId}/live", a.ManagerAuth(a.sessionMedia))
 	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { writeError(w, 404, "not_found", "route not found") })
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -149,7 +164,7 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 			return
 		}
 		// A bounded context protects database operations, without limiting a WS session.
-		livePath := strings.HasSuffix(r.URL.Path, "/live") && (strings.HasPrefix(r.URL.Path, "/api/runs/") || strings.HasPrefix(r.URL.Path, "/api/manager/runs/"))
+		livePath := sessionLivePath(r.URL.Path) || strings.HasSuffix(r.URL.Path, "/live") && (strings.HasPrefix(r.URL.Path, "/api/runs/") || strings.HasPrefix(r.URL.Path, "/api/manager/runs/"))
 		if r.URL.Path != "/api/manager/connect" && !livePath {
 			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 			defer cancel()
@@ -159,6 +174,10 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 			return
 		}
 		mux.ServeHTTP(w, r)
+		if a.engine != nil && strings.HasPrefix(r.URL.Path, "/api/workspaces/") &&
+			(strings.Contains(r.URL.Path, "/proposals/") || strings.Contains(r.URL.Path, "/roles/") || r.Method == http.MethodPatch) {
+			a.engine.refreshLive(r.Context())
+		}
 	})
 }
 

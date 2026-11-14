@@ -29,7 +29,7 @@ ERRORS = frozenset({
     "upstream_protocol_error", "upstream_response_too_large",
     "secret_file_unavailable",
 })
-BROWSER_TOOLS = frozenset({"browser_navigate", "browser_snapshot", "browser_click", "browser_fill"})
+BROWSER_TOOLS = frozenset({"browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login"})
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
 

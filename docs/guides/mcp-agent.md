@@ -55,9 +55,9 @@ browser 工具呼叫須在 JSON-RPC `params._meta.whippet` 放 `{sessionId,lease
 
 ## 尚未完成的整合
 
-browser session採10分鐘閒置／30分鐘硬期限，共用Worker容量且回收後才釋放名額。Server匿名租約入口與真Docker已接通；登入與LiveView仍未接通，未有可信credential resolver時登入必須拒絕。
+browser session採10分鐘閒置／30分鐘硬期限，共用Worker容量且回收後才釋放名額。Server匿名租約入口與真Docker已接通；Wave7已接可信登入與LiveView；未配置TLS/有效role/lease時登入仍拒絕，真跨端驗收待集中確認。
 
-外部接單已支援下列作者。互動 Module/Use Case 建稿與驗證工具已完成 Wave6 核心檢查；登入與 LiveView 仍待後波，尚未完成整階段驗收。
+外部接單已支援下列作者。互動 Module/Use Case 建稿與驗證工具已完成 Wave6 核心檢查；登入與 LiveView 已完成 Wave7 核心檢查，尚未完成整階段驗收。
 
 官方協定參考：[Streamable HTTP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)、[本專案固定的Go SDK v1.3.1](https://github.com/modelcontextprotocol/go-sdk/tree/v1.3.1)。
 
@@ -105,3 +105,12 @@ registry11.2 新增 draft_create、draft_get、author_start、validation_request
 validation_request只能排正式驗證；Use Case未人工確認回awaiting_human_plan_confirmation，確認後重新讀目前revision再續請。同requestId等待時不留永久完成紀錄，真正排程後同鍵同body回原結果。validation_report返回綁定目前Test/revision/Run的狀態、統計與安全錯誤數，不回原始log。所有寫入ai，scope/Token/CAS及人工發佈門檻不變。
 
 Wave6必要真MCP/隔離PG檢查已通過；使用合成validation artifact，不等於本次真Docker或完整UI驗收。本機部署仍待集中更新。
+
+
+## Wave7 登入與監看
+
+browser_login沿原schema只傳roleId與三個selector；username/password只經Manager可信HTTPS resolver與Worker私有IPC，成功回submitted不表示網站已登入。Manager連線自簽Server時設定SERVER_CA_FILE指向公開CA，控制WSS、credential與live連線均驗證憑證，不能關TLS驗證。
+
+管理者在Workspace設定「瀏覽器 session」清單只會看到當下有效opening/ready租約，ready可開始監看。關閉監看或離頁只停媒體，不關browser；租約逾時、撤銷、scope/epoch失效則終止監看。敏感輸入期間沿原遮蔽/暫停，viewer心跳不延長browser期限。使用同源管理cookie與精確Origin，不在URL放Token。
+
+原始碼已完成上述核心檢查；本機19587仍待最後完整驗收後更新，不能用此頁宣稱已部署19工具。

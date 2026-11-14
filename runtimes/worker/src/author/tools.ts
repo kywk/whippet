@@ -11,7 +11,7 @@ import { LiveObserver } from "../live/observer.js";
 import { fixtureBridge } from "../live/fixture-bridge.js";
 import {AIOriginGate,installAIOriginGate} from "./scope.js";
 import type {WorkspaceConfig} from "../workspace-context.js";
-import {CredentialClient,KnownSecrets} from '../login/client.js';
+import {CredentialClient,KnownSecrets,type CredentialResolver} from '../login/client.js';
 import {loginBroker} from '../login/broker.js';
 import {submitLogin} from '../login/helper.js';
 import {installLoginPrivacy} from '../login/privacy.js';
@@ -45,12 +45,12 @@ export interface ExplorationBrowser {
   snapshot(): Promise<unknown>;
   click(selector: string): Promise<unknown>;
   fill(selector: string, value: string): Promise<unknown>;
-  login?(roleId:string,usernameSelector:string,passwordSelector:string,submitSelector:string):Promise<unknown>;
+  login?(roleId:string,usernameSelector:string,passwordSelector:string,submitSelector:string,callId?:string):Promise<unknown>;
   verifyDraft?(script: string, options?: { signal?: AbortSignal; moduleFile?: {slug:string;content:string}; onSelfTestFailure?: (value:SelfTestFailureClass)=>void }): Promise<DraftSelfTestResult>;
   close(): Promise<void>;
 }
 
-export function explorationBrowser(env: Readonly<Record<string, string | undefined>>,options:{scope?:WorkspaceConfig;executablePath?:string;credentials?:CredentialClient;knownSecrets?:Pick<KnownSecrets,"add"|"clean">;defaultTestUrl?:string;timeoutMs?:number}={}): ExplorationBrowser {
+export function explorationBrowser(env: Readonly<Record<string, string | undefined>>,options:{scope?:WorkspaceConfig;executablePath?:string;credentials?:CredentialResolver;knownSecrets?:Pick<KnownSecrets,"add"|"clean">;defaultTestUrl?:string;timeoutMs?:number}={}): ExplorationBrowser {
   let browser: Browser | undefined;
   let context:BrowserContext|undefined;
   let page: Page | undefined;
@@ -151,9 +151,9 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
       if(await input.getAttribute('type')==='password')throw new AuthorError('tool_failed');
       await input.fill(value);return {ok:true};
     },
-    async login(roleId,usernameSelector,passwordSelector,submitSelector){
+    async login(roleId,usernameSelector,passwordSelector,submitSelector,callId){
       if(!options.credentials||!gate)throw new AuthorError('tool_failed');
-      const values=await options.credentials.resolve(roleId);
+      const values=await options.credentials.resolve(roleId,callId);
       try{return await gate.duringLogin(values.loginOrigin,async()=>{const p=await getPage();if(new URL(p.url()).origin!==new URL(values.loginOrigin).origin)await p.goto(values.loginOrigin,{waitUntil:'domcontentloaded'});const result=await submitLogin(p,values,usernameSelector,passwordSelector,submitSelector);return {...result,page:await snapshot()};});}
       finally{values.username='';values.password='';}
     },
@@ -249,7 +249,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
         };
         const configPath = join(taskDir, "playwright.config.cjs");
         await writeFile(configPath, `module.exports = ${JSON.stringify(config, null, 2)};\n`, "utf8");
-        if (options.credentials) {
+        if (options.credentials instanceof CredentialClient) {
           broker = await loginBroker(options.credentials);
         }
         const stderrLines: string[] = [];
@@ -332,6 +332,6 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
         if (taskDir) await rm(taskDir, { recursive: true, force: true }).catch(() => undefined);
       }
     },
-    async close() { closed = true;privacy?.close();await live.close().catch(() => undefined); await browser?.close(); },
+    async close() { closed = true;options.credentials?.close();privacy?.close();await live.close().catch(() => undefined); await browser?.close(); },
   };
 }

@@ -16,7 +16,7 @@ const externalModuleInstructions = "External MCP adapter: submit a complete Modu
 const externalPlannerInstructions = "External MCP adapter: call task_tool_call(propose_plan) first, then submit only the Server-issued candidateRef from this Run and attempt. Never submit stages directly or claim validation."
 const externalWorkspaceInstructions = "External MCP adapter: submit an interview message and optional Workspace proposal. The proposal needs human scope confirmation; no browser access without an already confirmed scope."
 
-var externalConnectedTools = []string{"read_draft", "read_validation_report", "read_module_draft", "read_usecase_draft", "read_plan", "catalog_search", "catalog_next_page", "catalog_get", "propose_plan", "read_conversation_history", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill"}
+var externalConnectedTools = []string{"read_draft", "read_validation_report", "read_module_draft", "read_usecase_draft", "read_plan", "catalog_search", "catalog_next_page", "catalog_get", "propose_plan", "read_conversation_history", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login"}
 
 type ExternalTaskBundle struct {
 	Author               AuthorInput        `json:"author"`

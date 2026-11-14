@@ -1,14 +1,14 @@
 import {createConnection} from 'node:net';
 import type {Page} from '@playwright/test';
 import {origin} from '../workspace-context.js';
-import {CredentialError,MAX_CREDENTIAL_FRAME,type Credentials} from './client.js';
+import {CredentialError,MAX_CREDENTIAL_FRAME,type Credentials,type LoginValues} from './client.js';
 import {maskKnownInputs} from './privacy.js';
 
 export const LOGIN_HOOK=Symbol.for('whippet.login.hook');
 export interface LoginHook {pause():Promise<void>;resume():Promise<void>|void;remember(values:string[]):void;}
 export type LoginHooks=typeof globalThis&{[LOGIN_HOOK]?:LoginHook};
 
-export async function submitLogin(page:Page,values:Credentials,usernameSelector:string,passwordSelector:string,submitSelector:string):Promise<{submitted:true}> {
+export async function submitLogin(page:Page,values:LoginValues,usernameSelector:string,passwordSelector:string,submitSelector:string):Promise<{submitted:true}> {
   if([usernameSelector,passwordSelector,submitSelector].some((s)=>!s||s.length>1000)||origin(new URL(page.url()).origin)!==origin(values.loginOrigin))throw new CredentialError();
   // Check form.action and any submit button override before giving it values.
   const target=await page.locator(submitSelector).evaluate((node)=>{

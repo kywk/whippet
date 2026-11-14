@@ -26,7 +26,7 @@ const maxMCPHTTPBodyBytes = 1100 << 10
 var mcpExposedTools = []string{
 	"catalog_search", "catalog_get",
 	"browser_session_open", "browser_session_status", "browser_session_close",
-	"browser_navigate", "browser_snapshot", "browser_click", "browser_fill",
+	"browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login",
 	"task_claim", "task_heartbeat", "task_tool_call", "task_submit",
 	"draft_create", "draft_get", "author_start", "validation_request", "validation_report",
 }
@@ -37,7 +37,7 @@ func mcpToolConnected(tool ToolDefinition) bool {
 		return tool.Side == "server" && tool.Effect == "read"
 	case "browser_session_open", "browser_session_close":
 		return tool.Side == "server" && tool.Effect == "queue"
-	case "browser_navigate", "browser_snapshot", "browser_click", "browser_fill":
+	case "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login":
 		return tool.Side == "worker" && tool.Effect == "browser"
 	case "task_claim", "task_heartbeat", "task_tool_call", "task_submit":
 		return tool.Side == "server" && tool.Effect == "queue"

@@ -394,6 +394,8 @@ Wave5核心切片已完成：t5w/t5x/t5y接外部module-authoring、usecase-plan
 
 Wave6核心切片完成：t60 Server、t61 Terra QA，registry11.2追加draft_create/get、author_start、validation_request/report；registry-manifest10測試、Server定向MCP/build、Terra真MCP＋PG四項24.967s PASS，安全報告投影追加定向PASS。修Compose保留AI來源、交易鎖序與author_start最小tombstone。合成證據非Docker/UI，W7 login/LiveView後集中完整驗收。
 
+Wave7核心切片完成：t62 Runtime/transport、t63 Server、t64 Web，t65 Terra安全QA；可信browser_login、session LiveView/管理入口與SERVER_CA_FILE接通。Worker12測試/typecheck/build、Manager credential/CA/session live定向/build、bridge、Web typecheck/遮蔽15項/build、Server精確19工具隔離PG/core/build、Terra resolver/Hub/loopbackWS皆PASS。尚未真TLS/Docker/Agent/UI全鏈；提交後開始M11.Z集中驗收。
+
 M11.Z 清單：
 1. 依使用者最新限制，不重跑 M1–M9 或舊 M10 全套／模型刷測；本次集中驗證 M11 受影響主流程，不把歷史證據算成本次通過。
 2. 互動模式端到端：外部 Agent 建立 Module 與 Use Case 草稿 → 真實驗證 → 人在 UI 發佈；MCP 沒有任何發佈路徑。

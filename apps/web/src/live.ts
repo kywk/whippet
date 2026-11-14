@@ -24,7 +24,8 @@ export function createLiveOfferHistory(): LiveOfferHistory {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 interface Options {
-  runId: string;
+  runId?: string;
+  browserSession?: { sessionId: string; leaseId: string };
   apiBase: string;
   video: HTMLVideoElement;
   image: HTMLImageElement;
@@ -35,8 +36,17 @@ interface Options {
 }
 
 export function liveSocketUrl(apiBase: string, runId: string, pageUrl: string): string {
+  return sameOriginLiveSocketUrl(apiBase, `/runs/${encodeURIComponent(runId)}/live`, pageUrl);
+}
+
+export function sessionLiveSocketUrl(apiBase: string, sessionId: string, leaseId: string, pageUrl: string): string {
+  if (!UUID.test(sessionId) || !UUID.test(leaseId)) throw new Error('瀏覽器 session 識別格式不符。');
+  return sameOriginLiveSocketUrl(apiBase, `/browser-sessions/${encodeURIComponent(sessionId)}/leases/${encodeURIComponent(leaseId)}/live`, pageUrl);
+}
+
+function sameOriginLiveSocketUrl(apiBase: string, path: string, pageUrl: string): string {
   const page = new URL(pageUrl);
-  const url = new URL(`${apiBase.replace(/\/+$/, '')}/runs/${encodeURIComponent(runId)}/live`, page);
+  const url = new URL(`${apiBase.replace(/\/+$/, '')}${path}`, page);
   if (!['http:', 'https:'].includes(url.protocol) || url.origin !== page.origin) {
     throw new Error('即時監看需要同源 API，請使用 /api 代理。');
   }
@@ -69,7 +79,7 @@ function waitForIce(peer: RTCPeerConnection, signal: AbortSignal): Promise<void>
   });
 }
 
-// 一個 controller 只屬於一個被使用者選定的 Run；沒有任何 Run 建立／取消操作。
+// 一個 controller 只屬於一個被使用者選定的 Run 或 browser session；不操作其生命週期。
 export function createLiveSession(options: Options) {
   const { video, image } = options;
   const offerHistory = options.offerHistory ?? createLiveOfferHistory();
@@ -324,7 +334,7 @@ export function createLiveSession(options: Options) {
       case 'state': {
         const reason = typeof message.reason === 'string' ? message.reason : undefined;
         if (message.state === 'waiting' && reason === 'sensitive_input') { pauseSensitive(); return; }
-        if (message.state === 'ended') { finish('ended', reason || '此次監看已結束，測試結果請查看執行紀錄。'); return; }
+        if (message.state === 'ended') { finish('ended', options.browserSession ? '瀏覽器 session 監看已結束。' : reason || '此次監看已結束，測試結果請查看執行紀錄。'); return; }
         if (sensitivePaused) {
           if (message.state === 'waiting' && reason === 'sensitive_input_complete' && message.viewerId === viewerId && ready && message.transport === mode) {
             if (message.offerId !== undefined) {
@@ -348,12 +358,12 @@ export function createLiveSession(options: Options) {
         }
         if (message.state === 'unavailable') {
           if (options.waitingForAttempt()) retryConnection(reason || '正在等待作用中的 attempt。', true);
-          else finish('unavailable', reason || '目前沒有可監看的瀏覽器畫面，可稍後重新連線。');
+          else finish('unavailable', options.browserSession ? '目前沒有可監看的瀏覽器畫面，可重新載入清單確認。' : reason || '目前沒有可監看的瀏覽器畫面，可稍後重新連線。');
           return;
         }
         if (message.transport && message.transport !== mode) return;
         // Server streaming 只代表上游狀態；必須由 video/圖片實際播放事件確認成功。
-        if (state.phase !== 'streaming') emit(message.state === 'connecting' ? 'connecting' : 'waiting', reason || '正在等待可顯示畫面。');
+        if (state.phase !== 'streaming') emit(message.state === 'connecting' ? 'connecting' : 'waiting', options.browserSession ? '正在等待可顯示畫面。' : reason || '正在等待可顯示畫面。');
         break;
       }
       case 'error': {
@@ -361,7 +371,8 @@ export function createLiveSession(options: Options) {
         const code = typeof message.code === 'string' ? message.code : 'LIVE_ERROR';
         const detail = typeof message.message === 'string' ? message.message : '監看通道發生錯誤。';
         const normalized = code.toLowerCase().replace(/[^a-z]/g, '');
-        if (normalized.includes('busy')) { finish('unavailable', `此 Run 已有其他觀看者，請稍後重新連線。（${code}）`); return; }
+        if (normalized.includes('busy')) { finish('unavailable', '此監看目標已有其他觀看者，請稍後重新連線。'); return; }
+        if (options.browserSession) { finish('unavailable', '瀏覽器 session 監看暫時不可用，請重新載入清單確認。'); return; }
         if (options.waitingForAttempt() || normalized.includes('noactiveattempt') || normalized.includes('noattempt') || normalized.includes('notready') || normalized.includes('nomanager')) {
           retryConnection(detail, true); return;
         }
@@ -377,7 +388,12 @@ export function createLiveSession(options: Options) {
     emit(sensitivePaused ? 'paused' : retryCount ? 'reconnecting' : 'connecting', sensitivePaused ? '敏感輸入期間已清除監看畫面，等待執行端確認恢復。' : '正在連接唯讀監看通道。', { viewerId: undefined, needsPlay: false });
     const currentGeneration = generation;
     let currentSocket: WebSocket;
-    try { currentSocket = new WebSocket(liveSocketUrl(options.apiBase, options.runId, window.location.href)); }
+    try {
+      const url = options.browserSession
+        ? sessionLiveSocketUrl(options.apiBase, options.browserSession.sessionId, options.browserSession.leaseId, window.location.href)
+        : liveSocketUrl(options.apiBase, options.runId!, window.location.href);
+      currentSocket = new WebSocket(url);
+    }
     catch { finish('error', '無法建立監看連線，請確認同源 /api 代理與瀏覽器 WebSocket 支援。'); return; }
     socket = currentSocket; currentSocket.binaryType = 'blob';
     const valid = () => !disposed && !suspended && socket === currentSocket && generation === currentGeneration;

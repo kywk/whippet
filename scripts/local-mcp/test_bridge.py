@@ -102,6 +102,15 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(meta["leaseId"], lease_id)
         self.assertEqual(str(uuid.UUID(meta["callId"])), meta["callId"])
 
+        login_args = {"roleId": "55555555-5555-4555-8555-555555555555",
+                      "usernameSelector": "#u", "passwordSelector": "#p", "submitSelector": "button"}
+        call(6, "browser_login", login_args)
+        login_sent = json.loads(self.sent[-1][0].data)
+        self.assertEqual(login_sent["params"]["arguments"], login_args)
+        self.assertEqual(login_sent["params"]["_meta"]["whippet"]["sessionId"], session_id)
+        self.assertEqual(login_sent["params"]["_meta"]["whippet"]["leaseId"], lease_id)
+        self.assertEqual(str(uuid.UUID(login_sent["params"]["_meta"]["whippet"]["callId"])), login_sent["params"]["_meta"]["whippet"]["callId"])
+
         explicit = {"whippet": {"sessionId": session_id, "leaseId": lease_id,
                                 "callId": "44444444-4444-4444-8444-444444444444"}}
         request = {"jsonrpc": "2.0", "id": 3, "method": "tools/call",

@@ -119,7 +119,7 @@ export class SessionWorker {
         if (!this.authorizeLogin || !this.browser.login) return Promise.reject(new Error("login_unavailable"));
         return this.authorizeLogin(args.roleId!).then(allowed => {
           if (!allowed) throw new Error("login_unavailable");
-          return this.browser.login!(args.roleId!, args.usernameSelector!, args.passwordSelector!, args.submitSelector!);
+          return this.browser.login!(args.roleId!, args.usernameSelector!, args.passwordSelector!, args.submitSelector!, frame.callId);
         });
       default: return Promise.reject(new Error("tool_unavailable"));
     }

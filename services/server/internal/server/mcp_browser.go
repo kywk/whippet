@@ -118,6 +118,7 @@ func (a *API) callMCPBrowser(ctx context.Context, p *Postgres, tool ToolDefiniti
 		} else {
 			lease, err = p.CloseBrowserLease(ctx, token, args.SessionID, args.LeaseID)
 			if err == nil && a.engine != nil {
+				a.engine.endLiveBrowserSession(args.SessionID)
 				a.engine.Wake()
 			}
 		}
@@ -125,7 +126,7 @@ func (a *API) callMCPBrowser(ctx context.Context, p *Postgres, tool ToolDefiniti
 			return mcpToolError()
 		}
 		return mcpBrowserResult(lease, tool.Limits.MaxOutputBytes)
-	case "browser_navigate", "browser_snapshot", "browser_click", "browser_fill":
+	case "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login":
 		return a.callMCPBrowserAction(ctx, p, tool, token, req, canonical)
 	default:
 		return mcpToolError()
@@ -152,6 +153,7 @@ func (a *API) callMCPBrowserActionOwned(ctx context.Context, p *Postgres, tool T
 	if err != nil {
 		if errors.Is(err, errBrowserScopeInvalid) {
 			_, _ = p.CloseBrowserLease(ctx, token, sessionID, leaseID)
+			a.engine.endLiveBrowserSession(sessionID)
 			a.engine.Wake()
 		}
 		if errors.Is(err, errBrowserBusy) {

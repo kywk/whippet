@@ -2,6 +2,7 @@ package manager
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +25,7 @@ type Manager struct {
 	cfg                        Config
 	docker                     containerRuntime
 	http                       *http.Client
+	tlsConfig                  *tls.Config
 	lock                       *os.File
 	mu                         sync.Mutex // records and admission
 	records                    map[string]record
@@ -47,6 +49,10 @@ func New(cfg Config) (*Manager, error) {
 	if cfg.MaxWorkers < 1 {
 		return nil, errors.New("MAX_WORKERS must be a positive integer")
 	}
+	tlsConfig, err := serverTLSConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
 	lock, err := lockWorkDir(cfg)
 	if err != nil {
 		return nil, err
@@ -61,9 +67,12 @@ func New(cfg Config) (*Manager, error) {
 		lock.Close()
 		return nil, err
 	}
-	m := &Manager{cfg: cfg, http: newHTTPClient(), lock: lock, records: records, controls: make(map[string]context.CancelFunc), sessions: sessions, sessionControls: make(map[string]context.CancelFunc), sessionWorking: make(map[string]*sessionWorkingState), sessionIdleTimeout: 10 * time.Minute, events: make(chan Envelope, 64), secrets: make(map[string][]string)}
-	m.docker = dockerCLI{cfg: cfg, remember: m.rememberCredentials}
-	m.sessionsRuntime = newDockerSessionRuntime(cfg)
+	m := &Manager{cfg: cfg, http: newHTTPClientWithTLS(tlsConfig), tlsConfig: tlsConfig, lock: lock, records: records, controls: make(map[string]context.CancelFunc), sessions: sessions, sessionControls: make(map[string]context.CancelFunc), sessionWorking: make(map[string]*sessionWorkingState), sessionIdleTimeout: 10 * time.Minute, events: make(chan Envelope, 64), secrets: make(map[string][]string)}
+	m.docker = dockerCLI{cfg: cfg, client: m.http, remember: m.rememberCredentials}
+	sessionRuntime := newDockerSessionRuntime(cfg)
+	sessionRuntime.client = m.http
+	sessionRuntime.credential = m.handleSessionCredential
+	m.sessionsRuntime = sessionRuntime
 	return m, nil
 }
 
@@ -120,6 +129,7 @@ func (m *Manager) session(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	cfg.TlsConfig = m.tlsConfig
 	cfg.Header.Set("Authorization", "Bearer "+m.cfg.Token)
 	dialCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	conn, err := cfg.DialContext(dialCtx)
@@ -217,6 +227,10 @@ func (m *Manager) session(ctx context.Context) error {
 			}
 		case "session.close":
 			_ = m.closeSession(env)
+		case "session.live.start":
+			_ = m.startSessionLive(ctx, env)
+		case "session.live.stop":
+			_ = m.stopSessionLive(env)
 		}
 	}
 }

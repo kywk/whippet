@@ -148,3 +148,18 @@ registry11.2 僅追加五項 server 控制工具，原工具 schema 不改；原
 requestId 以 Token/tool/requestId 與 canonical body hash 持久去重；同鍵同body回原結果，異body拒絕，成功寫入與tombstone同交易。未確認Plan的無副作用等待結果不可永久阻止人工確認後同鍵續請；只有已排程結果才固定為完成。author_start 同 Token active claim 衝突回 busy，不建立孤兒任務。每個寫入交易重驗 Token/Workspace、原 revision/context CAS；原 task lease/短租/取消/撤銷與不知道結果不重作規則保留。UI 人工修改不能被 Agent 舊稿覆寫。
 
 核心驗證以真 MCP/隔離 PG 驗 create→get→author_start→task工具/submit→validation_request/report、Use Case 人工確認邊界、跨Workspace/撤銷、冪等/CAS。合成報告只算狀態機；真 Module/UseCase Agent+Docker+UI集中最後驗收。
+
+
+## Wave7：session 可信登入與 LiveView
+
+沿 registry11.2，公開原 browser_login schema（獨立session及task_tool_call的原snapshot交集），不增控制工具、不改原arguments。session.open allowedTools可包含browser_login；只傳roleId/selector與安全submitted結果，WSS session.call/reply絕不傳username/password/secretRef/version。
+
+Worker stdout新增 credential_request={kind,sessionId,leaseId,callId,requestId,roleId}；Manager只在同lease ready、未到期、active call是browser_login且roleId相同受理，經HTTPS POST /api/manager/browser-sessions/{sessionId}/leases/{leaseId}/credentials/resolve，body僅{roleId}。Server重驗目前可信Manager epoch、lease/Token未撤銷、Workspace scope與授權版本、角色快照與現行secret版本。成功回{sessionId,leaseId,workspaceId,roleId,loginOrigin,username,password}，Cache-Control:no-store；Manager禁redirect，驗TLS/大小/完整形狀/身份，僅經同容器stdin credential_response（同session/lease/callId/requestId）交值，失敗固定enum。secretRef/version不出此介面，不入Agent/WSS/journal/log。Worker IPC單reader分流tool_call與credential_response、整幀寫鎖，避免登入阻塞自身回覆。
+
+Live控制新增session.live.start={sessionId,leaseId,viewerId,iceServers}、session.live.stop={sessionId,leaseId,viewerId}，Envelope不填runId/attemptId。viewer GET /api/browser-sessions/{sessionId}/leases/{leaseId}/live走管理cookie、精確單一Origin=WHIPPET_PUBLIC_ORIGIN、同源WS/WSS，拒Agent Bearer；media GET /api/manager/browser-sessions/{sessionId}/leases/{leaseId}/live?viewerId=...走原ManagerAuth與可信epoch。viewerId非秘密授權替代，兩端attach均重驗lease權威。共用既有signaling/單viewer/WebRTC+JPEG、Manager pump與Worker LiveObserver，不偽造Run。
+
+GET /api/workspaces/{id}/browser-sessions → {items:[{sessionId,leaseId,state,createdAt,deadlineAt}]}，管理gate下僅列同Workspace未回收opening/ready、Token未撤銷、active/confirmed scope與授權版本一致、deadline未到、Manager在線且epoch相符，createdAt新到舊且容量有界。UI只在ready顯示監看，短ID、不露Token/角色秘密/URL。LiveViewer接獨立session wsURL，不造Run/attempt。
+
+每session最多一viewer，沿原30秒viewer ping lease；viewer ping不延長browser idle/30分鐘硬期限，離開viewer只停媒體、不關browser。close/revoke/scope變更/逾期/Manager epoch失效即關viewer/media，Sweep兜底。Runtime沿KnownSecrets與submitLogin敏感輸入暫停/快照遮蔽，遲到credential/media不得復活；Docker確認移除後才reclaimed=true並清自己live暫存，保留journal與既有artifact。
+
+核心檢查：可信TLS resolver成功/撤銷與錯lease拒、Worker登入submitted與秘密遮蔽、live identity/敏感暫停/close回收、Web入口build。真Docker/TLS/Agent/UI集中於本波提交後完整M11驗收。

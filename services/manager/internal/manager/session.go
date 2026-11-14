@@ -60,18 +60,23 @@ type sessionWireError string
 func (e sessionWireError) Error() string { return string(e) }
 
 type sessionCallState struct {
-	hash  [32]byte
-	tool  registryTool
-	reply *sessionToolResult
-	timer *time.Timer
+	hash   [32]byte
+	tool   registryTool
+	roleID string
+	reply  *sessionToolResult
+	timer  *time.Timer
 }
 type sessionWorkingState struct {
-	allowed         map[string]bool
-	registryVersion string
-	registrySHA256  string
-	calls           map[string]*sessionCallState
-	active          string
-	cachedBytes     int
+	allowed           map[string]bool
+	workspace         *workspaceContext
+	registryVersion   string
+	registrySHA256    string
+	calls             map[string]*sessionCallState
+	active            string
+	cachedBytes       int
+	credentialSeen    map[string]bool
+	credentialPending bool
+	credentialCount   int
 }
 
 const maxSessionCalls = 256
@@ -79,6 +84,12 @@ const maxSessionCachedBytes = 2 << 20
 
 func sessionPath(workDir, id string) string {
 	return filepath.Join(workDir, "journal", "sessions", id+".json")
+}
+func (m *Manager) cleanupSessionFiles(id string) error {
+	if !uuidPattern.MatchString(id) {
+		return errors.New("invalid session id")
+	}
+	return os.RemoveAll(filepath.Join(m.cfg.WorkDir, "runs", "session-"+id))
 }
 func loadSessionRecords(workDir string) (map[string]sessionRecord, error) {
 	dir := filepath.Join(workDir, "journal", "sessions")
@@ -236,10 +247,16 @@ func (m *Manager) openSession(ctx context.Context, env Envelope) error {
 		m.mu.Unlock()
 		return err
 	}
-	m.sessionWorking[r.SessionID] = &sessionWorkingState{allowed: allowed, registryVersion: p.ToolRegistryVersion, registrySHA256: p.ToolRegistrySHA256, calls: make(map[string]*sessionCallState)}
+	m.sessionWorking[r.SessionID] = &sessionWorkingState{allowed: allowed, workspace: workspace, registryVersion: p.ToolRegistryVersion, registrySHA256: p.ToolRegistrySHA256, calls: make(map[string]*sessionCallState), credentialSeen: make(map[string]bool)}
 	m.mu.Unlock()
 	taskDir := filepath.Join(m.cfg.WorkDir, "runs", "session-"+p.SessionID)
 	if err := os.MkdirAll(taskDir, 0700); err != nil {
+		m.requestSessionClose(p.SessionID, "worker_failed")
+		m.wg.Add(1)
+		go func() { defer m.wg.Done(); m.reclaimSession(ctx, p.SessionID) }()
+		return err
+	}
+	if err := os.MkdirAll(filepath.Join(taskDir, "live"), 0700); err != nil {
 		m.requestSessionClose(p.SessionID, "worker_failed")
 		m.wg.Add(1)
 		go func() { defer m.wg.Done(); m.reclaimSession(ctx, p.SessionID) }()
@@ -376,6 +393,7 @@ func (m *Manager) requestSessionClose(id, reason string) {
 	if cancel != nil {
 		cancel()
 	}
+	m.stopSessionLiveByID(id)
 }
 func (m *Manager) closeSession(env Envelope) error {
 	if err := m.validateSessionEnvelope(env); err != nil {
@@ -401,6 +419,9 @@ func (m *Manager) closeSession(env Envelope) error {
 		if err != nil {
 			return err
 		}
+		if err := m.cleanupSessionFiles(p.SessionID); err != nil {
+			return err
+		}
 		_ = m.send(message(m.cfg.ManagerID, "session.closed", "", "", map[string]any{"sessionId": p.SessionID, "leaseId": p.LeaseID, "reason": "closed", "reclaimed": true}))
 		return nil
 	}
@@ -416,6 +437,7 @@ func (m *Manager) closeSession(env Envelope) error {
 	return nil
 }
 func (m *Manager) reclaimSession(ctx context.Context, id string) {
+	m.stopSessionLiveByID(id)
 	m.mu.Lock()
 	r := m.sessions[id]
 	if r.Reclaimed {
@@ -434,13 +456,21 @@ func (m *Manager) reclaimSession(ctx context.Context, id string) {
 		err := m.sessionsRuntime.Remove(cleanupCtx, r)
 		cancel()
 		if err == nil {
+			err = m.cleanupSessionFiles(id)
+		}
+		if err == nil {
 			m.mu.Lock()
 			current := m.sessions[id]
 			current.Reclaimed = true
-			_ = m.saveSessionLocked(current)
+			err = m.saveSessionLocked(current)
+			if err == nil {
+				delete(m.sessionWorking, id)
+			}
 			m.mu.Unlock()
-			_ = m.send(message(m.cfg.ManagerID, "session.closed", "", "", map[string]any{"sessionId": r.SessionID, "leaseId": r.LeaseID, "reason": r.Reason, "reclaimed": true}))
-			return
+			if err == nil {
+				_ = m.send(message(m.cfg.ManagerID, "session.closed", "", "", map[string]any{"sessionId": r.SessionID, "leaseId": r.LeaseID, "reason": r.Reason, "reclaimed": true}))
+				return
+			}
 		}
 		if !pause(ctx, 3*time.Second) {
 			return
@@ -529,7 +559,18 @@ func (m *Manager) callSession(_ context.Context, env Envelope) error {
 		m.requestSessionClose(p.SessionID, "cancelled")
 		return sessionWireError("cancelled")
 	}
-	work.calls[p.CallID] = &sessionCallState{hash: hash, tool: *tool}
+	roleID := ""
+	if p.Name == "browser_login" {
+		var login struct {
+			RoleID string `json:"roleId"`
+		}
+		if json.Unmarshal(p.Arguments, &login) != nil || !uuidPattern.MatchString(login.RoleID) {
+			m.mu.Unlock()
+			return sessionWireError("invalid_request")
+		}
+		roleID = login.RoleID
+	}
+	work.calls[p.CallID] = &sessionCallState{hash: hash, tool: *tool, roleID: roleID}
 	work.active = p.CallID
 	m.mu.Unlock()
 	timeout := time.Duration(tool.Limits.TimeoutMS)*time.Millisecond + time.Second

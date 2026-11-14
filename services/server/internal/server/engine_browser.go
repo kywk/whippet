@@ -219,6 +219,9 @@ func (e *Engine) handleBrowserMessageLocked(ctx context.Context, s *Session, m E
 			if err := p.BrowserClosed(ctx, s.managerID, event.SessionID, event.LeaseID, event.Reclaimed); err != nil {
 				return err
 			}
+			if e.liveHub != nil {
+				e.liveHub.EndBrowserSession(event.SessionID)
+			}
 			if event.Reclaimed {
 				e.failBrowserLeaseCallsLocked(event.SessionID, "unknown_result")
 			}

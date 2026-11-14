@@ -26,6 +26,11 @@ type liveSession struct {
 	cancel   context.CancelFunc
 	done     chan struct{}
 }
+type liveMediaSource struct {
+	url    string
+	dir    string
+	active func() bool
+}
 type liveControl struct {
 	ViewerID      string          `json:"viewerId"`
 	Mode          string          `json:"mode"`
@@ -220,10 +225,21 @@ func writeLiveControl(root *os.Root, control liveControl) error {
 
 func (m *Manager) mediaSession(ctx context.Context, r record, start liveStart) error {
 	wsURL := "ws" + strings.TrimPrefix(m.cfg.ServerURL, "http") + "/api/manager/runs/" + r.RunID + "/live?attemptId=" + url.QueryEscape(r.AttemptID) + "&viewerId=" + url.QueryEscape(start.ViewerID)
-	cfg, err := websocket.NewConfig(wsURL, m.cfg.ServerURL)
+	source := liveMediaSource{url: wsURL, dir: m.taskDir(r), active: func() bool {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		current := m.records[r.AttemptID]
+		return current.holdsSlot() && current.Phase != "collecting" && !current.CancelRequested
+	}}
+	return m.mediaSessionFor(ctx, source, start)
+}
+
+func (m *Manager) mediaSessionFor(ctx context.Context, source liveMediaSource, start liveStart) error {
+	cfg, err := websocket.NewConfig(source.url, m.cfg.ServerURL)
 	if err != nil {
 		return err
 	}
+	cfg.TlsConfig = m.tlsConfig
 	cfg.Header.Set("Authorization", "Bearer "+m.cfg.Token)
 	dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	conn, err := cfg.DialContext(dialCtx)
@@ -317,10 +333,7 @@ func (m *Manager) mediaSession(ctx context.Context, r record, start liveStart) e
 				return errors.New("unsupported live media message")
 			}
 		case now := <-ticker.C:
-			m.mu.Lock()
-			current := m.records[r.AttemptID]
-			m.mu.Unlock()
-			if !current.holdsSlot() || current.Phase == "collecting" || current.CancelRequested {
+			if !source.active() {
 				_ = send(liveWire{Type: "state", State: "ended"})
 				return nil
 			}
@@ -331,7 +344,7 @@ func (m *Manager) mediaSession(ctx context.Context, r record, start liveStart) e
 				nextPing = now.Add(10 * time.Second)
 			}
 			if root == nil {
-				taskRoot, err := os.OpenRoot(m.taskDir(r))
+				taskRoot, err := os.OpenRoot(source.dir)
 				if err != nil {
 					continue
 				} // start may arrive just before prepare.

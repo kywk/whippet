@@ -87,6 +87,7 @@ func (a *API) revokeAgentToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if a.engine != nil {
+		a.engine.refreshLive(r.Context())
 		a.engine.Wake()
 	}
 	w.WriteHeader(http.StatusNoContent)

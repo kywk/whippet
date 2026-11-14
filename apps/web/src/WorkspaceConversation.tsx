@@ -10,6 +10,7 @@ import { WorkspaceAvailability, WorkspaceSettings } from './WorkspaceSettings';
 import { WorkspaceProposalCard } from './WorkspaceProposal';
 import { WorkspaceCredentials } from './WorkspaceCredentials';
 import { WorkspaceAgentAccess } from './WorkspaceAgentAccess';
+import { WorkspaceBrowserSessions } from './WorkspaceBrowserSessions';
 import { AuthorEngineSettings } from './AuthorEngineSettings';
 import { AuthorEngineStatus } from './AuthorEngineStatus';
 import { isActiveRun } from './types';
@@ -304,6 +305,7 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
           {engineError ? <Notice message={engineError} /> : null}
           {engineNote ? <p role="status" className="inline-hint">{engineNote}</p> : null}
           <WorkspaceAgentAccess api={api} workspaceId={workspace.id} active={active && sideTab === 'settings'} />
+          <WorkspaceBrowserSessions api={api} apiBase={apiBase} workspaceId={workspace.id} active={active && sideTab === 'settings'} />
           {conversation?.conversationSummary ? <section className="session-background" aria-label="Workspace 對話背景"><h4>Workspace 對話背景</h4><p className="summary-content">{conversation.conversationSummary}</p></section> : null}
         </div>
       </aside>

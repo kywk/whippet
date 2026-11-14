@@ -3,6 +3,7 @@ package manager
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -266,8 +267,15 @@ func collectAttemptResult(r record, taskDir string, outcome execution, observati
 }
 
 func newHTTPClient() *http.Client {
+	return newHTTPClientWithTLS(nil)
+}
+
+func newHTTPClientWithTLS(tlsConfig *tls.Config) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = tlsConfig
 	return &http.Client{
-		Timeout: 45 * time.Second,
+		Timeout:   45 * time.Second,
+		Transport: transport,
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return errors.New("artifact upload redirects are not allowed")
 		},

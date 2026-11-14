@@ -37,6 +37,14 @@ export interface AgentToken {
   lastUsedAt: string | null;
 }
 
+export interface BrowserSession {
+  sessionId: string;
+  leaseId: string;
+  state: 'opening' | 'ready';
+  createdAt: string;
+  deadlineAt: string;
+}
+
 export interface AgentToolAudit {
   id: string;
   tokenId: string;
@@ -362,6 +370,7 @@ export interface WhippetApi {
   setAdminToken?: (token: string) => void;
   logout?: (signal?: AbortSignal) => Promise<void>;
   listAgentTokens?: (workspaceId: string, signal?: AbortSignal) => Promise<AgentToken[]>;
+  listBrowserSessions?: (workspaceId: string, signal?: AbortSignal) => Promise<BrowserSession[]>;
   createAgentToken?: (workspaceId: string, name: string, signal?: AbortSignal) => Promise<{ token: string; agentToken: AgentToken }>;
   revokeAgentToken?: (workspaceId: string, tokenId: string, signal?: AbortSignal) => Promise<void>;
   listAgentToolAudit?: (workspaceId: string, before?: string, signal?: AbortSignal) => Promise<{ items: AgentToolAudit[]; nextCursor: string | null }>;

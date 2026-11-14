@@ -151,6 +151,7 @@ func run(log *slog.Logger) error {
 	ws := &gateway.Gateway{Engine: engine, Log: log}
 	live := &gateway.LiveGateway{Hub: liveHub}
 	api.WithLiveHandlers(http.HandlerFunc(live.Viewer), http.HandlerFunc(live.Media))
+	api.WithSessionLiveHandlers(http.HandlerFunc(live.SessionViewer), http.HandlerFunc(live.SessionMedia))
 	httpServer := &http.Server{
 		TLSConfig: tlsConfig,
 		Addr:      net.JoinHostPort(bindHost, port), Handler: api.Handler(ws),

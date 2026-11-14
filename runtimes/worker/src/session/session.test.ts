@@ -4,7 +4,8 @@ import { loadToolRegistry } from "../author/registry.js";
 import type { ExplorationBrowser } from "../author/tools.js";
 import { SessionWorker, type SessionInput } from "./session.js";
 import { PassThrough } from "node:stream";
-import { runSessionIPC } from "./ipc.js";
+import { runSessionIPC, sessionOutput } from "./ipc.js";
+import { SessionCredentialClient } from "./credentials.js";
 
 const sessionId = "11111111-1111-4111-8111-111111111111";
 const leaseId = "22222222-2222-4222-8222-222222222222";
@@ -50,6 +51,68 @@ test("session login fails closed without a trusted resolver", async () => {
   const reply = await worker.call({ kind: "tool_call", sessionId, leaseId, callId, name: "browser_login", arguments: { roleId: "55555555-5555-4555-8555-555555555555", usernameSelector: "#u", passwordSelector: "#p", submitSelector: "button" } });
   assert.equal(reply.error, "tool_unavailable");
   await worker.close();
+});
+
+test("session login resolves over the same stdin without exposing credentials in tool result", async () => {
+  const roleId = "55555555-5555-4555-8555-555555555555";
+  const sessionInput = input();
+  sessionInput.workspaceContext.roleRefs = [{ roleId, secretRef: "66666666-6666-4666-8666-666666666666", secretVersion: 1, configured: true }];
+  sessionInput.workspaceContext.config!.loginRoles = [{ roleId, name: "fixture", loginMethod: "form", loginOrigin: "https://example.test" }];
+  const inputStream = new PassThrough();
+  const outputStream = new PassThrough();
+  const writer = sessionOutput(outputStream);
+  const credentials = new SessionCredentialClient(sessionInput, frame => writer.send(frame));
+  let observedPassword = "";
+  const browser: ExplorationBrowser = {
+    navigate: async () => ({}), snapshot: async () => ({}), click: async () => ({}), fill: async () => ({}),
+    login: async (role, _user, _pass, _submit, call) => {
+      const values = await credentials.resolve(role, call);
+      observedPassword = values.password;
+      return { submitted: true };
+    },
+    close: async () => {},
+  };
+  const frames: Record<string, any>[] = [];
+  let buffer = "";
+  outputStream.on("data", chunk => {
+    buffer += chunk.toString();
+    for (;;) {
+      const end = buffer.indexOf("\n");
+      if (end < 0) break;
+      const frame = JSON.parse(buffer.slice(0, end)); buffer = buffer.slice(end + 1); frames.push(frame);
+      if (frame.kind === "credential_request") {
+        assert.deepEqual(Object.keys(frame).sort(), ["callId", "kind", "leaseId", "requestId", "roleId", "sessionId"]);
+        inputStream.write(JSON.stringify({ kind: "credential_response", sessionId, leaseId, callId, requestId: frame.requestId,
+          credentials: { sessionId, leaseId, workspaceId, roleId, loginOrigin: "https://example.test", username: "fixture-user", password: "fixture-pass" } }) + "\n");
+      }
+      if (frame.kind === "tool_result") inputStream.end();
+    }
+  });
+  const done = runSessionIPC(new SessionWorker(sessionInput, browser, async () => true), inputStream, outputStream, { writer, credentials });
+  inputStream.write(JSON.stringify({ kind: "tool_call", sessionId, leaseId, callId, name: "browser_login",
+    arguments: { roleId, usernameSelector: "#u", passwordSelector: "#p", submitSelector: "button" } }) + "\n");
+  await done;
+  assert.equal(observedPassword, "fixture-pass");
+  assert.deepEqual(frames.at(-1), { kind: "tool_result", sessionId, leaseId, callId, result: { submitted: true } });
+  assert.equal(JSON.stringify(frames.at(-1)).includes("fixture-pass"), false);
+});
+
+test("session credential client rejects mismatched lease and late reply", async () => {
+  const roleId = "55555555-5555-4555-8555-555555555555";
+  const sessionInput = input();
+  sessionInput.workspaceContext.roleRefs = [{ roleId, secretRef: "66666666-6666-4666-8666-666666666666", secretVersion: 1, configured: true }];
+  sessionInput.workspaceContext.config!.loginRoles = [{ roleId, name: "fixture", loginMethod: "form", loginOrigin: "https://example.test" }];
+  let request: any;
+  const credentials = new SessionCredentialClient(sessionInput, async frame => { request = frame; });
+  const pending = credentials.resolve(roleId, callId);
+  await Promise.resolve();
+  credentials.receive({ kind: "credential_response", sessionId, leaseId: "77777777-7777-4777-8777-777777777777", callId,
+    requestId: request.requestId, credentials: { sessionId, leaseId, workspaceId, roleId, loginOrigin: "https://example.test", username: "fixture-user", password: "fixture-pass" } });
+  await assert.rejects(pending);
+  credentials.close();
+  credentials.receive({ kind: "credential_response", sessionId, leaseId, callId, requestId: request.requestId,
+    credentials: { sessionId, leaseId, workspaceId, roleId, loginOrigin: "https://example.test", username: "fixture-user", password: "fixture-pass" } });
+  assert.deepEqual(credentials.secrets.list(), []);
 });
 
 test("session stdin and stdout carry bounded lease-bound frames", async () => {

@@ -659,6 +659,12 @@ td time { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .agent-token-list, .agent-audit-list { list-style: none; margin: 0; padding: 0; display: grid; }
 .agent-token-list li { display: flex; justify-content: space-between; align-items: start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .agent-token-list li > div { min-width: 0; overflow-wrap: anywhere; }
+.workspace-browser-sessions { display: grid; gap: 10px; padding: 16px 0; border-top: 1px solid var(--line); }
+.workspace-browser-sessions .section-heading h3 { margin: 0; }
+.browser-session-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.browser-session-list li { display: flex; justify-content: space-between; align-items: start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.browser-session-list li > div { min-width: 0; }
+.browser-session-list .settings-meta { margin: 4px 0 0; }
 .agent-token-list .settings-meta { margin: 4px 0 0; }
 .agent-audit-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: .8rem; overflow-wrap: anywhere; }
 .agent-audit-list time, .agent-audit-list small { color: var(--muted); }

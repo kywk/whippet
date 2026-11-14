@@ -1,6 +1,6 @@
 import { validRepairContent, editableStage } from './plan';
 import { RUN_STATUSES } from './types';
-import type { AgentToken, AgentToolAudit, AuthorEngine, StageRetry, ModuleMetadata, Plan, PlanStage, PlanSummary, StageArgument, JsonValue, AuthorPartial, CatalogItem, AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
+import type { AgentToken, AgentToolAudit, AuthorEngine, BrowserSession, StageRetry, ModuleMetadata, Plan, PlanStage, PlanSummary, StageArgument, JsonValue, AuthorPartial, CatalogItem, AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
 
 export class ApiError extends Error {
   readonly code: string;
@@ -388,6 +388,18 @@ function parseAgentToolAudit(value: unknown, workspaceId: string): AgentToolAudi
   return result;
 }
 
+const browserSessionId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function parseBrowserSession(value: unknown): BrowserSession {
+  const data = record(value);
+  const sessionId = string(data.sessionId);
+  const leaseId = string(data.leaseId);
+  if (!browserSessionId.test(sessionId) || !browserSessionId.test(leaseId)) throw new ApiError('瀏覽器 session 識別格式不符。', 'INVALID_RESPONSE');
+  return {
+    sessionId, leaseId, state: choice(data.state, ['opening', 'ready'] as const),
+    createdAt: string(data.createdAt), deadlineAt: string(data.deadlineAt),
+  };
+}
+
 export function createHttpApi(apiBase = '/api'): WhippetApi {
   const base = apiBase.replace(/\/+$/, '');
   let adminToken = '';
@@ -455,6 +467,9 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     async logout(signal) { await request('/dev-logout', 'POST', signal, undefined, false, 204); },
     async listAgentTokens(workspaceId, signal) {
       return items(await request(`/workspaces/${id(workspaceId)}/agent-tokens`, 'GET', signal, undefined, false, 200), (value) => parseAgentToken(value, workspaceId));
+    },
+    async listBrowserSessions(workspaceId, signal) {
+      return items(await request(`/workspaces/${id(workspaceId)}/browser-sessions`, 'GET', signal, undefined, false, 200), parseBrowserSession);
     },
     async createAgentToken(workspaceId, name, signal) {
       const data = record(await request(`/workspaces/${id(workspaceId)}/agent-tokens`, 'POST', signal, { name }, false, 201));

@@ -219,3 +219,6 @@ Wave4 t5q Server/services/server、t5r Runtime/worker skills與transport、t5s W
 Wave6 新Server t60（Sol high，services/server）及 QA t61（Terra xhigh，scripts/test/m11w6-interactive-*）皆parent=t52/no-daemon/YOLO/keep/outlive-parent/cwd已核；獨立tab為tb7d1756b22c7f2bb6ba8fab08104632fe與tbb93464a40023f1bb0b31f7e32189c2e8，指定space命名、無herdr.tab。W5 4c0eebb已push且原owner停寫後才交Server。registry11.2與v11 Wave6固定五互動控制，PG32776各自schema。
 
 W7新Runtime t62、Server t63（皆Sol high）目前僅唯讀login/LiveView最小wire提案，W6提交前不寫產品；tab tb4a8b0d84dae0ebb3ddccac59bdd4759e、tbed859cdd2c600137efd99482f19d6e9a，parent/argv/cwd/keep/outlive/working已核。PM仍sole docs/contracts/registry/Git/deploy。
+
+
+Wave6 ccbf9c3已push、t60停寫後，W7 t62 Runtime與t63 Server開始實作；新增t64 Web Sol high與t65安全QA Terra xhigh。兩位metadata已核，tab tbb4f6446418da840f89a34493383ab12e、tbbd9627d8277aee5783a3bb037e0500c4，在指定space命名。Runtime額外owner scripts/local-mcp，Server services/server，Web apps/web，QA僅scripts/test/m11w7-security-*。v11 Wave7固定session credential HTTPS/private IPC與LiveViewer權威；Manager新增SERVER_CA_FILE只載入公開CA，不改系統信任。PG32777隔離schema，PM準備deploy/m11-final-e2e-env.py但功能完成前不啟完整驗收。

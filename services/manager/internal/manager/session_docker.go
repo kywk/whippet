@@ -9,14 +9,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"sync"
 	"time"
 )
 
 type dockerSessionRuntime struct {
-	cfg     Config
-	mu      sync.Mutex
-	writers map[string]*attemptInputWriter
+	cfg        Config
+	client     *http.Client
+	credential func(context.Context, sessionRecord, sessionCredentialRequest, *attemptInputWriter)
+	mu         sync.Mutex
+	writers    map[string]*attemptInputWriter
 }
 
 func newDockerSessionRuntime(cfg Config) *dockerSessionRuntime {
@@ -99,6 +102,15 @@ func (d *dockerSessionRuntime) Start(ctx context.Context, r sessionRecord, taskD
 				break
 			}
 			result(sessionToolResult{SessionID: r.SessionID, LeaseID: r.LeaseID, CallID: frame.CallID, Result: frame.Result, Error: frame.Error})
+		case "credential_request":
+			var frame sessionCredentialRequest
+			if d.credential == nil || len(line)+1 > credentialFrameLimit || !exactWorkspaceObject(line, "kind", "sessionId", "leaseId", "callId", "requestId", "roleId") ||
+				json.Unmarshal(line, &frame) != nil || frame.Kind != "credential_request" || frame.SessionID != r.SessionID || frame.LeaseID != r.LeaseID ||
+				!uuidPattern.MatchString(frame.CallID) || !uuidPattern.MatchString(frame.RequestID) || !uuidPattern.MatchString(frame.RoleID) {
+				stop()
+				break
+			}
+			d.credential(runCtx, r, frame, writer)
 		default:
 			stop()
 		}

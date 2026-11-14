@@ -13,7 +13,7 @@ import (
 const browserIdleTimeoutMS = 600000
 const browserMaxLifetimeMS = 1800000
 
-var browserAllowedTools = []string{"browser_navigate", "browser_snapshot", "browser_click", "browser_fill"}
+var browserAllowedTools = []string{"browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login"}
 var errBrowserBusy = errors.New("browser call busy")
 var errBrowserScopeInvalid = errors.New("browser scope changed")
 
