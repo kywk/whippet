@@ -63,10 +63,22 @@ browser session採10分鐘閒置／30分鐘硬期限，共用Worker容量且回�
 
 ## macOS 本機安裝（獨立環境）
 
-`deploy/install-local-mcp.py --server-binary <已驗證的原生Server> --manager-binary <原生Manager>` 建立全新安裝；已有同名服務、DB或Codex設定時拒絕覆寫。Worker映像先以本repo建置為 `whippet-worker:m11w2`。安裝使用 `~/.local/share/whippet-mcp`、loopback Server19587、Postgres19589與獨立 `whippet-mcp-local-db` volume，不使用19287現場。launchd使用者服務為 `io.whippet.mcp.local.server` 與 `io.whippet.mcp.local.manager`，需本機Docker可用。
+`deploy/install-local-mcp.py --server-binary <已驗證的原生Server> --manager-binary <原生Manager>` 建立全新安裝；已有同名服務、DB或Codex設定時拒絕覆寫。Worker映像先以本repo建置為 `whippet-worker:m11w3`。安裝使用 `~/.local/share/whippet-mcp`、loopback Server19587、Postgres19589與獨立 `whippet-mcp-local-db` volume，不使用19287現場。launchd使用者服務為 `io.whippet.mcp.local.server` 與 `io.whippet.mcp.local.manager`，需本機Docker可用。
 
 Codex MCP名稱為 `whippet`，以 stdio bridge 連到本機 `/mcp`；啟動新的Codex對話載入設定。新Workspace起初沒有確認scope，只可讀已接線Catalog與封裝resources；不能把工具列出等同已授權browser操作，也不能跳過Workspace確認。
 
 本次執行環境的Keychain新增回-25308（不允許互動），因此安裝改用專用 `secrets/` 目錄0700及每帳號檔0600。bridge只接受本人擁有的regular、單一硬連結檔案，拒絕符號連結與寬鬆權限；Codex設定只存非秘密路徑，不存Token。Keychain模式仍可供允許互動的環境使用。憑證不得貼進終端輸出、對話或Git；備份此安裝時須把憑證視為秘密處理。
 
 本機Server/Manager輸出送至 `/dev/null`；以 `/readyz`、launchd狀態與定向MCP驗收確認，不蒐集原始請求日誌。停止時可對兩個獨立plist執行 `launchctl bootout gui/$(id -u) <plist路徑>`，停止 `whippet-mcp-local-db`；保留volume、artifacts與work，不以刪資料當停止方式。
+
+## Wave3 外部接單（普通 Test）
+
+管理者在 Workspace「正式設定與能力」選外部 Agent；設定僅影響新普通 Test 撰寫任務，Module／Use Case／Workspace訪談／驗收摘要仍為builtin。底層管理API是 `PATCH /api/workspaces/{id}/author-engine`，以revision CAS保存。Run.authorEngine是建立時快照。
+
+Agent依序使用task_claim（requestId冪等）、task_heartbeat、task_tool_call及task_submit。task_tool_call把runId/attemptId/leaseId/callId放在控制工具本身的arguments，nested工具的arguments維持原registry schema。只用contextBundle實際allowedTools。短租120秒，硬期限沿原skill budget（普通test-author目前180秒）；heartbeat不能延長硬期限。先讀 `whippet://skill/test-author/references/external-mcp`。
+
+以同一submitId與同一output提交完整message/script/requestValidation/conversationSummary；busy可待回收後原樣重試，unknown_result不能用新callId重做副作用。直接提交只是尚未自試的AI候選；requestValidation=true讓平台另外排正式keyless Playwright Run。submit成功不等於驗證通過，需由UI看目前revision驗證成功與報告。發佈仍由人在UI操作。
+
+本機bridge另會替獨立browser session的原四工具補入ready lease metadata；已有顯式metadata不覆寫，close或未知結果清除隱式綁定。接單主線仍用task_tool_call明示身份。
+
+2026-11-14實測：真網頁送單，全新Codex透過MCP探索／產稿／提交，revision2來源ai，正式validation為succeeded且expected=1/unexpected=0/flaky=0/skipped=0，報告可開啟。QA沒有代寫腳本或攔API。驗收摘要仍走builtin，本次附帶summary Run failed，未驗發佈，不能據此宣稱整個M11已完成。

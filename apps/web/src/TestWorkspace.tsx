@@ -10,7 +10,7 @@ import { CloseIcon, PlayIcon, PlusIcon, SidebarIcon } from './icons';
 import { VersionHistory } from './TestActions';
 import { CapabilityStatus } from './WorkspaceSettings';
 import { useResource, useRuns } from './hooks';
-import type { ActiveEditingSession, Draft, EditingSession, Run, Test, Version, WhippetApi, WorkspaceCapabilities } from './types';
+import type { ActiveEditingSession, AuthorEngine, Draft, EditingSession, Run, Test, Version, WhippetApi, WorkspaceCapabilities } from './types';
 
 interface Props {
   testId: string;
@@ -27,12 +27,13 @@ interface Props {
   onAddTag: (raw: string) => void;
   onRemoveTag: (tag: string) => void;
   capabilities: WorkspaceCapabilities | undefined;
+  authorEngine: AuthorEngine;
   settingsRefresh: number;
   onDirtyChange: (dirty: boolean) => void;
   onTestUpdated: (test: Test) => void;
 }
 
-export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredMode, onModeChange, railCollapsed, onExpandRail, unreadCount, tags, workspaceTags, onAddTag, onRemoveTag, capabilities, settingsRefresh, onDirtyChange, onTestUpdated }: Props) {
+export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredMode, onModeChange, railCollapsed, onExpandRail, unreadCount, tags, workspaceTags, onAddTag, onRemoveTag, capabilities, authorEngine, settingsRefresh, onDirtyChange, onTestUpdated }: Props) {
   const loadTest = useCallback((signal: AbortSignal) => api.getTest(testId, signal), [api, testId]);
   const loadVersions = useCallback((signal: AbortSignal) => api.listVersions(testId, signal), [api, testId]);
   const test = useResource(loadTest);
@@ -333,7 +334,7 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
         <p className="inline-hint">{session.reclaimPending ? '等待執行節點確認回收，尚未完成放棄。' : '正在確認本週期所有任務已終止。'}待確認任務：{session.pendingRunIds.length}；正式執行不受影響。</p>
         <div className="action-row"><button className="button quiet compact" disabled={sessionRefreshing} onClick={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }}>重新載入週期</button></div></section> : null)
         : sessionBusy ? <Loading text="正在開始或接續編輯週期…" /> : <div className="mode-empty"><p>尚未載入編輯週期。請重試開始或接續修改。</p><button className="button secondary" onClick={() => { void openEditor(); }}>開始或接續修改</button></div>}
-      {session && session.draft && (session.status === 'active' || session.status === 'discarding') ? <DraftEditor key={session.id} api={api} apiBase={apiBase} testId={testId} capabilities={capabilities} session={session} sessionRefreshing={sessionRefreshing} onRefreshSession={refreshSession} runs={editingRuns} onRun={history.addRun} onPublished={published} onDirtyChange={handleEditorGuard} onRefreshRuns={history.refresh} settingsRefresh={settingsRefresh} onDraftChange={setKnownDraft} onDiscard={session.status === 'active' ? () => { void askDiscard(); } : undefined} discardBusy={sessionBusy} onReloadSession={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }} testName={loadedTest.current?.name} testKind={loadedTest.current?.kind} testSlug={loadedTest.current?.slug}>
+      {session && session.draft && (session.status === 'active' || session.status === 'discarding') ? <DraftEditor key={session.id} api={api} apiBase={apiBase} testId={testId} capabilities={capabilities} authorEngine={authorEngine} session={session} sessionRefreshing={sessionRefreshing} onRefreshSession={refreshSession} runs={editingRuns} onRun={history.addRun} onPublished={published} onDirtyChange={handleEditorGuard} onRefreshRuns={history.refresh} settingsRefresh={settingsRefresh} onDraftChange={setKnownDraft} onDiscard={session.status === 'active' ? () => { void askDiscard(); } : undefined} discardBusy={sessionBusy} onReloadSession={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }} testName={loadedTest.current?.name} testKind={loadedTest.current?.kind} testSlug={loadedTest.current?.slug}>
         <RunHistory {...runHistoryProps} runs={editingRuns} group="editing" liveView={mode === 'editing' ? liveView : null} />
       </DraftEditor> : null}
     </div> : null}

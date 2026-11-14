@@ -1,6 +1,6 @@
 import { validRepairContent, editableStage } from './plan';
 import { RUN_STATUSES } from './types';
-import type { AgentToken, AgentToolAudit, StageRetry, ModuleMetadata, Plan, PlanStage, PlanSummary, StageArgument, JsonValue, AuthorPartial, CatalogItem, AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
+import type { AgentToken, AgentToolAudit, AuthorEngine, StageRetry, ModuleMetadata, Plan, PlanStage, PlanSummary, StageArgument, JsonValue, AuthorPartial, CatalogItem, AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
 
 export class ApiError extends Error {
   readonly code: string;
@@ -48,6 +48,10 @@ function parseStatus(value: unknown): RunStatus {
     throw new ApiError(`無法辨識執行狀態：${status}`, 'INVALID_RESPONSE');
   }
   return status as RunStatus;
+}
+
+function parseAuthorEngine(value: unknown): AuthorEngine {
+  return value === undefined ? 'builtin' : choice(value, ['builtin', 'external'] as const);
 }
 
 function parseWorkspaceSnapshot(value: unknown): WorkspaceSettingsSnapshot {
@@ -118,7 +122,7 @@ function parseWorkspaceProposal(value: unknown): WorkspaceProposal {
 function parseWorkspaceDetail(value: unknown): WorkspaceDetail {
   const data = record(value);
   const result: WorkspaceDetail = {
-    ...parseWorkspaceSettings(data), lifecycle: choice(data.lifecycle, ['draft', 'needs_confirmation', 'active'] as const),
+    ...parseWorkspaceSettings(data), authorEngine: parseAuthorEngine(data.authorEngine), lifecycle: choice(data.lifecycle, ['draft', 'needs_confirmation', 'active'] as const),
     authorizationRevision: revision(data.authorizationRevision), scopeStatus: choice(data.scopeStatus, ['unconfirmed', 'confirmed', 'revoking'] as const),
     settings: data.settings === null ? null : parseWorkspaceConfig(data.settings), conversationId: string(data.conversationId), activeRunId: nullableString(data.activeRunId),
     currentProposal: data.currentProposal === null ? null : parseWorkspaceProposal(data.currentProposal), roles: array(data.roles, parseWorkspaceRole),
@@ -260,6 +264,7 @@ function parseRun(value: unknown): Run {
     workspaceSettings: data.workspaceSettings == null ? undefined : parseWorkspaceSnapshot(data.workspaceSettings),
     editingSessionId: optionalString(data.editingSessionId) ?? null,
     authorMode: data.authorMode as Run['authorMode'],
+    authorEngine: parseAuthorEngine(data.authorEngine),
     scriptOrigin: data.scriptOrigin == null ? undefined : choice(data.scriptOrigin, ['ai', 'manual', 'legacy'] as const),
     authorPartial: data.authorPartial == null ? undefined : parseAuthorPartial(data.authorPartial),
     progressEvents: data.progressEvents == null ? undefined : array(data.progressEvents, string),
@@ -603,6 +608,11 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     },
     async getWorkspace(workspaceId, signal) {
       const workspace = parseWorkspaceDetail(await request(`/workspaces/${id(workspaceId)}`, 'GET', signal));
+      if (workspace.id !== workspaceId) throw new ApiError('Workspace 回應不符。', 'WORKSPACE_CONFLICT');
+      return workspace;
+    },
+    async updateWorkspaceAuthorEngine(workspaceId, revision, authorEngine, signal) {
+      const workspace = parseWorkspaceDetail(await request(`/workspaces/${id(workspaceId)}/author-engine`, 'PATCH', signal, { revision, authorEngine }));
       if (workspace.id !== workspaceId) throw new ApiError('Workspace 回應不符。', 'WORKSPACE_CONFLICT');
       return workspace;
     },

@@ -68,7 +68,7 @@ func TestM11MCPRegistryReadScopeAndRevocation(t *testing.T) {
 	if json.Unmarshal(tools.Body.Bytes(), &listed) != nil {
 		t.Fatal("invalid MCP tools/list response")
 	}
-	wantTools := []string{"browser_click", "browser_fill", "browser_navigate", "browser_session_close", "browser_session_open", "browser_session_status", "browser_snapshot", "catalog_get", "catalog_search"}
+	wantTools := []string{"browser_click", "browser_fill", "browser_navigate", "browser_session_close", "browser_session_open", "browser_session_status", "browser_snapshot", "catalog_get", "catalog_search", "task_claim", "task_heartbeat", "task_submit", "task_tool_call"}
 	if len(listed.Result.Tools) != len(wantTools) {
 		t.Fatalf("MCP exposed %d tools; want exactly %d", len(listed.Result.Tools), len(wantTools))
 	}
@@ -266,7 +266,7 @@ func TestM11MCPRejectsDuplicateAndOversizedRawArguments(t *testing.T) {
 			t.Fatalf("unsafe raw arguments accepted: %d", out.Code)
 		}
 	}
-	if out := call(`{"query":"x","limit":1` + strings.Repeat(" ", 65<<10) + `}`); out.Code != http.StatusRequestEntityTooLarge {
+	if out := call(`{"query":"x","limit":1` + strings.Repeat(" ", maxMCPHTTPBodyBytes+1) + `}`); out.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversized MCP HTTP body: %d", out.Code)
 	}
 }

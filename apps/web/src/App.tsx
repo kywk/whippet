@@ -391,6 +391,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
               onAddTag={(raw) => addTagForTest(selected.id, raw)}
               onRemoveTag={(tag) => removeTagForTest(selected.id, tag)}
               capabilities={workspace.capabilities}
+              authorEngine={workspace.authorEngine}
             />
           : tests.loading ? null : <Empty title="選一個測試，或新增測試" text="從左側選擇測試查看版本與報告，或按「新增測試」，用對話描述要驗證的流程。" action={<button className="button primary" disabled={creating} onClick={() => { void createTest(); }}><PlusIcon />新增測試</button>} />) : null}
       </main>

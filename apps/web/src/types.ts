@@ -47,6 +47,7 @@ export interface AgentToolAudit {
 }
 
 export type ScriptOrigin = 'ai' | 'manual' | 'legacy';
+export type AuthorEngine = 'builtin' | 'external';
 export interface WorkspaceCapability { available: boolean; reason: string | null }
 export interface WorkspaceCapabilities {
   aiExploration?: WorkspaceCapability;
@@ -72,6 +73,7 @@ export interface WorkspaceProposal {
 }
 
 export interface WorkspaceDetail extends Workspace, WorkspaceSettingsSnapshot {
+  authorEngine: AuthorEngine;
   lifecycle: 'draft' | 'needs_confirmation' | 'active';
   revision: number;
   authorizationRevision: number;
@@ -246,6 +248,7 @@ export interface Run {
   workspaceSettings?: WorkspaceSettingsSnapshot;
   editingSessionId?: string | null;
   authorMode?: 'edit' | 'summary' | 'workspace';
+  authorEngine?: AuthorEngine;
   scriptOrigin?: ScriptOrigin;
   progressEvents?: string[];
   authorPartial?: AuthorPartial;
@@ -400,6 +403,7 @@ export interface WhippetApi {
   discardEditingSession(testId: string, sessionId: string, revision: number, signal?: AbortSignal): Promise<EditingSession>;
   requestSummary(testId: string, editingSessionId: string, revision: number, validationRunId: string, signal?: AbortSignal): Promise<Run>;
   getWorkspace(workspaceId: string, signal?: AbortSignal): Promise<WorkspaceDetail>;
+  updateWorkspaceAuthorEngine(workspaceId: string, revision: number, authorEngine: AuthorEngine, signal?: AbortSignal): Promise<WorkspaceDetail>;
   createWorkspace(name: string | undefined, signal?: AbortSignal): Promise<WorkspaceDetail>;
   getWorkspaceConversation(workspaceId: string, signal?: AbortSignal): Promise<WorkspaceConversationData>;
   sendWorkspaceMessage(workspaceId: string, input: { content: string; revision: number; contextRevision: number }, signal?: AbortSignal): Promise<{ run: Run; conversationId: string }>;

@@ -646,6 +646,7 @@ td time { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .workspace-snapshot-sites li { padding: 9px 0; border-bottom: 1px solid var(--line); }
 .workspace-config-view h4 { margin: 14px 0 6px; }
 .workspace-proposal, .workspace-credentials, .workspace-snapshot { display: grid; gap: 10px; }
+.author-engine-status { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .admin-login-field { margin: 6px 0; }
 .admin-login-field .inline-hint { display: block; margin-top: 6px; font-weight: 400; }
 .workspace-agent-access { display: grid; gap: 12px; padding: 16px 0; border-top: 1px solid var(--line); }

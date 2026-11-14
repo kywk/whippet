@@ -134,7 +134,14 @@ func (a *API) callMCPBrowser(ctx context.Context, p *Postgres, tool ToolDefiniti
 
 func (a *API) callMCPBrowserAction(ctx context.Context, p *Postgres, tool ToolDefinition, token AgentToken, req *mcp.CallToolRequest, canonical []byte) *mcp.CallToolResult {
 	sessionID, leaseID, callID, ok := mcpBrowserMeta(req)
-	if !ok || a.engine == nil {
+	if !ok {
+		return mcpToolError()
+	}
+	return a.callMCPBrowserActionOwned(ctx, p, tool, token, sessionID, leaseID, callID, canonical)
+}
+
+func (a *API) callMCPBrowserActionOwned(ctx context.Context, p *Postgres, tool ToolDefinition, token AgentToken, sessionID, leaseID, callID string, canonical []byte) *mcp.CallToolResult {
+	if a.engine == nil {
 		return mcpToolError()
 	}
 	lease, err := p.BrowserLeaseOwned(ctx, token, sessionID, leaseID)

@@ -19,3 +19,5 @@ For repair, read_validation_report first; it reads only the supplied saved summa
 Finish with exactly one JSON object: `{ "message": "...", "conversationSummary": "..." }`. Keep message concise. Maintain a nonsecret conversationSummary (at most 8192 UTF-8 bytes) covering the user's goal, known setup, decisions, relevant changes and unresolved questions; preserve relevant prior background. Do not claim validation succeeded without supplied evidence. Script and validation flags come only from tools, never extra final JSON fields.
 
 For locator/assertion examples, read the pinned playwright-authoring/recipe reference when available. Legacy runs receive the recipe automatically.
+
+For an external MCP `task_claim`, read the pinned `external-mcp` reference. Its `task_submit` flow replaces this skill's Worker-local `update_draft` and final JSON steps.

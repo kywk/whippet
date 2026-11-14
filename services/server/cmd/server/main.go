@@ -131,6 +131,9 @@ func run(log *slog.Logger) error {
 	if err := store.RecoverBrowserLeases(startupCtx); err != nil {
 		return fmt.Errorf("browser lease recovery: %w", err)
 	}
+	if err := store.RecoverExternalClaims(startupCtx); err != nil {
+		return fmt.Errorf("external author recovery: %w", err)
+	}
 	artifacts, err := server.NewLocalArtifacts(env("ARTIFACT_DIR", "./data/artifacts"))
 	if err != nil {
 		return fmt.Errorf("artifact directory: %w", err)

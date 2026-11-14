@@ -144,12 +144,12 @@ const runColumns = `r.id,r.test_id,r.status,r.created_at,r.started_at,r.finished
     THEN '/api/runs/' || r.id::text || '/artifacts/report.html' ELSE '' END,
     r.kind,r.draft_revision,r.version_id,r.workspace_settings,r.editing_session_id,r.workspace_id,r.workspace_context,
     CASE WHEN r.kind='author' THEN CASE WHEN r.author_payload->>'skillId'='acceptance-summary' THEN 'summary' WHEN r.author_payload->>'skillId'='workspace-author' THEN 'workspace' ELSE 'edit' END ELSE '' END,r.script_origin,r.authorization_revision,r.scope_proposal_id,
-    CASE WHEN r.kind='author' AND r.attempt_id IS NOT NULL THEN COALESCE((SELECT jsonb_agg(e.message ORDER BY e.created_at) FROM run_events e WHERE e.run_id=r.id AND e.attempt_id=r.attempt_id AND e.kind='log'),'[]'::jsonb) ELSE '[]'::jsonb END,COALESCE(r.author_partial,'null'::jsonb)`
+    CASE WHEN r.kind='author' AND r.attempt_id IS NOT NULL THEN COALESCE((SELECT jsonb_agg(e.message ORDER BY e.created_at) FROM run_events e WHERE e.run_id=r.id AND e.attempt_id=r.attempt_id AND e.kind='log'),'[]'::jsonb) ELSE '[]'::jsonb END,COALESCE(r.author_partial,'null'::jsonb),r.author_engine`
 
 func scanRun(row scanner) (Run, error) {
 	var r Run
 	var settings, workspaceContext, progressEvents, partial []byte
-	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL, &r.Kind, &r.DraftRevision, &r.VersionID, &settings, &r.EditingSessionID, &r.WorkspaceID, &workspaceContext, &r.AuthorMode, &r.ScriptOrigin, &r.authorizationRevision, &r.scopeProposalID, &progressEvents, &partial)
+	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL, &r.Kind, &r.DraftRevision, &r.VersionID, &settings, &r.EditingSessionID, &r.WorkspaceID, &workspaceContext, &r.AuthorMode, &r.ScriptOrigin, &r.authorizationRevision, &r.scopeProposalID, &progressEvents, &partial, &r.AuthorEngine)
 	if err == nil {
 		r.WorkspaceSettings, err = decodeSettings(settings)
 		if err == nil {
@@ -259,10 +259,13 @@ func (p *Postgres) Run(ctx context.Context, id string) (Run, error) {
 
 func (p *Postgres) Cancel(ctx context.Context, id string) (Run, error) {
 	_, err := p.DB.ExecContext(ctx, `UPDATE runs SET
-        status=CASE WHEN status='queued' THEN 'cancelled' ELSE 'cancelling' END,
-        finished_at=CASE WHEN status='queued' THEN now() ELSE finished_at END
+		status=CASE WHEN status='queued' OR author_engine='external' THEN 'cancelled' ELSE 'cancelling' END,
+		finished_at=CASE WHEN status='queued' OR author_engine='external' THEN now() ELSE finished_at END
         WHERE id=$1 AND status IN ('queued','dispatched','running','collecting')`, id)
 	if err != nil {
+		return Run{}, err
+	}
+	if err := p.CancelExternalClaim(ctx, id); err != nil {
 		return Run{}, err
 	}
 	return p.Run(ctx, id)
@@ -362,7 +365,7 @@ func (p *Postgres) Claim(ctx context.Context, managerID string, capacity int) (*
 	var settings, context, files, metadata []byte
 	var bundleHash *string
 	err = tx.QueryRowContext(ctx, `SELECT id,script_snapshot,timeout_ms,kind,COALESCE(author_payload::text,''),workspace_settings,workspace_id,test_id,workspace_context,script_origin,authorization_revision,scope_proposal_id,files_snapshot,bundle_hash,bundle_metadata FROM runs
-        WHERE status='queued' ORDER BY queue_seq FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&a.ID, &a.Script, &a.TimeoutMS, &a.Kind, &authorPayload, &settings, &a.WorkspaceID, &a.TestID, &context, &a.ScriptOrigin, &a.authorizationRevision, &a.scopeProposalID, &files, &bundleHash, &metadata)
+        WHERE status='queued' AND author_engine='builtin' ORDER BY queue_seq FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&a.ID, &a.Script, &a.TimeoutMS, &a.Kind, &authorPayload, &settings, &a.WorkspaceID, &a.TestID, &context, &a.ScriptOrigin, &a.authorizationRevision, &a.scopeProposalID, &files, &bundleHash, &metadata)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

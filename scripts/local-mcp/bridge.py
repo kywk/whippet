@@ -9,11 +9,13 @@ import argparse
 import json
 import math
 import os
+import re
 import stat
 import subprocess
 import sys
 import urllib.error
 import urllib.request
+import uuid
 from urllib.parse import urlsplit
 
 MAX_FRAME = 1024 * 1024
@@ -27,6 +29,8 @@ ERRORS = frozenset({
     "upstream_protocol_error", "upstream_response_too_large",
     "secret_file_unavailable",
 })
+BROWSER_TOOLS = frozenset({"browser_navigate", "browser_snapshot", "browser_click", "browser_fill"})
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
 
 class BridgeError(Exception):
@@ -153,6 +157,58 @@ class Bridge:
         self.token = None
         self.protocol_version = None
         self.session_id = None
+        self.browser_lease = None
+
+    def prepare_browser_call(self, message):
+        params = message.get("params")
+        name = params.get("name") if isinstance(params, dict) else None
+        if (message.get("method") != "tools/call" or not isinstance(params, dict)
+            or not isinstance(name, str) or name not in BROWSER_TOOLS
+            or self.browser_lease is None):
+            return None
+        metadata = params.get("_meta")
+        if metadata is not None and not isinstance(metadata, dict):
+            return None
+        if isinstance(metadata, dict) and "whippet" in metadata:
+            return None
+        session_id, lease_id = self.browser_lease
+        params["_meta"] = {**(metadata or {}), "whippet": {
+            "sessionId": session_id, "leaseId": lease_id, "callId": str(uuid.uuid4()),
+        }}
+        return json.dumps(message, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+    def observe_browser_lease(self, message, reply):
+        if message.get("method") != "tools/call":
+            return
+        params = message.get("params")
+        if not isinstance(params, dict):
+            return
+        name = params.get("name")
+        if not isinstance(name, str):
+            return
+        if name == "browser_session_close":
+            self.browser_lease = None
+            return
+        result = reply.get("result")
+        if name in ("browser_session_open", "browser_session_status"):
+            if not isinstance(result, dict) or result.get("isError") is True:
+                return
+            lease = result.get("structuredContent")
+            if not isinstance(lease, dict) or set(lease) != {"sessionId", "leaseId", "state", "reclaimed"}:
+                return
+            session_id, lease_id = lease["sessionId"], lease["leaseId"]
+            if (not isinstance(session_id, str) or not UUID_RE.fullmatch(session_id)
+                or not isinstance(lease_id, str) or not UUID_RE.fullmatch(lease_id)
+                or type(lease["reclaimed"]) is not bool):
+                return
+            if lease["state"] == "ready" and not lease["reclaimed"]:
+                self.browser_lease = (session_id, lease_id)
+            elif self.browser_lease == (session_id, lease_id):
+                self.browser_lease = None
+        elif name in BROWSER_TOOLS and isinstance(result, dict):
+            error = result.get("structuredContent")
+            if result.get("isError") is True and isinstance(error, dict) and error.get("error") == "unknown_result":
+                self.browser_lease = None
 
     def process(self, frame):
         if len(frame) > MAX_FRAME:
@@ -172,6 +228,13 @@ class Bridge:
         is_request = method is not None and "id" in message
         if method is None and not ("id" in message and ("result" in message or "error" in message)):
             return error_frame("invalid_request", request_id)
+        if method == "tools/call":
+            params = message.get("params")
+            if isinstance(params, dict) and params.get("name") == "browser_session_close":
+                self.browser_lease = None
+            frame = self.prepare_browser_call(message) or frame
+            if len(frame) > MAX_FRAME:
+                return error_frame("frame_too_large", request_id)
         try:
             if self.token is None:
                 self.token = (self.file_reader(self.secret_file) if self.secret_file is not None
@@ -217,6 +280,7 @@ class Bridge:
                     session = response.headers.get("MCP-Session-Id")
                     if session and len(session) <= 256 and all(33 <= ord(c) <= 126 for c in session):
                         self.session_id = session
+                self.observe_browser_lease(message, reply)
                 # Re-encode to exactly one stdio frame; nested _meta stays intact.
                 return json.dumps(reply, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         except BridgeError as exc:

@@ -40,6 +40,23 @@ func decodeAuthorOutput(data []byte) (authorOutput, error) {
 	return result, nil
 }
 
+// External clients cannot supply a trusted Worker self-test checkpoint. Keep
+// the ordinary author parser for draft and validation intent, while excluding
+// partial output and duplicate fields at the MCP boundary.
+func decodeExternalAuthorOutput(data []byte) (authorOutput, error) {
+	if strictJSONNoDuplicates(data) != nil {
+		return authorOutput{}, ErrInvalid
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(data, &fields) != nil {
+		return authorOutput{}, ErrInvalid
+	}
+	if _, present := fields["partial"]; present {
+		return authorOutput{}, ErrInvalid
+	}
+	return decodeAuthorOutput(data)
+}
+
 type authorPlan struct {
 	message           string
 	script            string
@@ -101,6 +118,12 @@ func (p *Postgres) readAuthorOutput(ctx context.Context, tx *sql.Tx, runID, atte
 }
 
 func (p *Postgres) completeAuthor(ctx context.Context, testID, managerID, runID, attemptID string, incoming Result) error {
+	return p.completeAuthorWith(ctx, testID, runID, attemptID, incoming,
+		func(tx *sql.Tx) (string, error) { return lockAttempt(ctx, tx, managerID, runID, attemptID) }, nil, nil)
+}
+
+func (p *Postgres) completeAuthorWith(ctx context.Context, testID, runID, attemptID string, incoming Result,
+	lock func(*sql.Tx) (string, error), externalOutput *authorOutput, finish func(*sql.Tx) error) error {
 	tx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -109,7 +132,7 @@ func (p *Postgres) completeAuthor(ctx context.Context, testID, managerID, runID,
 	if _, err = lockEditingTest(ctx, tx, testID); err != nil {
 		return err
 	}
-	status, err := lockAttempt(ctx, tx, managerID, runID, attemptID)
+	status, err := lock(tx)
 	if err != nil {
 		return err
 	}
@@ -205,7 +228,12 @@ func (p *Postgres) completeAuthor(ctx context.Context, testID, managerID, runID,
 				} else if input.SkillID != "" && (input.SkillID != "test-author" || input.SkillVersion != "1" || input.EditingSessionID != session.ID) {
 					result = Result{Status: "failed", Error: authorFailureMessage}
 				} else {
-					output, outputErr := p.readAuthorOutput(ctx, tx, runID, attemptID)
+					output, outputErr := authorOutput{}, error(nil)
+					if externalOutput != nil {
+						output = *externalOutput
+					} else {
+						output, outputErr = p.readAuthorOutput(ctx, tx, runID, attemptID)
+					}
 					var plan authorPlan
 					if outputErr == nil && output.Partial != nil && output.Partial.Checkpoint != nil && !authorCanUpdateDraft(input) {
 						outputErr = ErrInvalid
@@ -288,6 +316,11 @@ func (p *Postgres) completeAuthor(ctx context.Context, testID, managerID, runID,
 	if _, err = tx.ExecContext(ctx, `UPDATE runs SET status=$2,error=$3,finished_at=now(),author_reported_status=$4,
   acknowledged_at=COALESCE(acknowledged_at,now()) WHERE id=$1`, runID, result.Status, result.Error, incoming.Status); err != nil {
 		return err
+	}
+	if finish != nil {
+		if err = finish(tx); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

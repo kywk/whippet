@@ -6,9 +6,10 @@ import { collapseDiff, diffLines, diffStat } from './diff';
 import { CancelRunButton } from './TestActions';
 import { AuthorLiveStatus, isBadStatus, trailFromRuns, TrailCard } from './trail';
 import { capabilityReason } from './capabilities';
+import { AuthorEngineStatus } from './AuthorEngineStatus';
 import { isActiveRun } from './types';
 import { PanelIcon, RefreshIcon, ScriptIcon } from './icons';
-import type { Conversation, Draft, EditingSession, Message, Run, WhippetApi, WorkspaceCapability } from './types';
+import type { AuthorEngine, Conversation, Draft, EditingSession, Message, Run, WhippetApi, WorkspaceCapability } from './types';
 
 type SideTab = 'script' | 'publish' | 'runs' | 'background';
 
@@ -26,6 +27,8 @@ interface Props {
   onUseCandidate: (script: string) => boolean;
   onOpenManual: () => void;
   aiExploration: WorkspaceCapability | undefined;
+  authorEngine: AuthorEngine;
+  testKind?: 'test' | 'module' | 'usecase';
   onGuardChange: (guarded: boolean) => void;
   editingSessionId: string;
   onConversationChanged: () => void;
@@ -44,7 +47,8 @@ const STARTERS = [
   '搜尋關鍵字，確認結果清單依相關度排序',
 ];
 
-export function ConversationPanel({ api, apiBase, testId, editingSessionId, draft, draftDirty, draftBusy, runs, onRun, onRefreshRuns, onSynchronized, onUseCandidate, onOpenManual, onGuardChange, onConversationChanged, onRefreshSession, onShowTab, sideOpen, onToggleSide, aiExploration, publishReady, planMode = false }: Props) {
+export function ConversationPanel({ api, apiBase, testId, editingSessionId, draft, draftDirty, draftBusy, runs, onRun, onRefreshRuns, onSynchronized, onUseCandidate, onOpenManual, onGuardChange, onConversationChanged, onRefreshSession, onShowTab, sideOpen, onToggleSide, aiExploration, authorEngine = 'builtin', testKind, publishReady, planMode = false }: Props) {
+  const nextEngine = testKind === 'module' || testKind === 'usecase' ? 'builtin' : authorEngine;
   const [conversation, setConversation] = useState<Conversation>();
   const [content, setContent] = useStoredText(editingSessionId);
   const [loading, setLoading] = useState(true);
@@ -162,7 +166,9 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
       onRun(result.run); setSentRunId(result.run.id);
       if (overrideText === undefined) setContent('');
       onConversationChanged();
-      setNote(`訊息已送出，使用已儲存 revision ${revision}。AI 會先試跑驗證草稿，不會自動發佈。`);
+      setNote(result.run.authorEngine === 'external'
+        ? `訊息已送出，使用已儲存 revision ${revision}。等待外部 Agent 接單；候選腳本仍需獨立正式驗證與人工確認發佈。`
+        : `訊息已送出，使用已儲存 revision ${revision}。AI 會先試跑驗證草稿，不會自動發佈。`);
       setRefreshRevision((value) => value + 1);
     } catch (cause) {
       if (controller.signal.aborted) return;
@@ -260,6 +266,8 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
   return <div className="chat">
     <div className="chat-bar">
       <span className={`chip ${aiExploration?.available === true ? 'ok' : 'neutral'}`} title={capabilityReason(aiExploration)}>AI 探索：{aiExploration ? aiExploration.available ? '可用' : '尚未就緒' : '未知'}</span>
+      <span className="chip neutral" title={testKind === 'module' || testKind === 'usecase' ? '外部接單本波只適用一般 Test 的 AI 撰寫任務' : '依目前 Workspace 設定，實際來源仍以新建 Run 快照為準'}>新任務：{nextEngine === 'external' ? '外部 Agent' : '內建引擎'}</span>
+      {lastAuthor ? <AuthorEngineStatus engine={lastAuthor.authorEngine ?? 'builtin'} status={lastAuthor.status} /> : null}
       <span className="chat-bar-spacer" />
       <button className="button quiet compact" disabled={draftBusy || submitting || synchronizing} onClick={onOpenManual}><ScriptIcon />工程師手動修改</button>
       <button className="rail-icon-button light small" aria-label="重新整理對話" title="重新整理對話" disabled={refreshing || submitting || synchronizing} onClick={() => { setRefreshRevision((value) => value + 1); onRefreshRuns(); }}><RefreshIcon /></button>
@@ -271,7 +279,7 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
       {syncError ? <Notice message={syncError} /> : null}
       {conversation && messages.length === 0 && !pendingTurn ? <div className="chat-empty">
         <h2>要驗證什麼流程？</h2>
-        <p>{planMode ? '描述 Use Case 的步驟與預期結果。AI 提出 Plan 後，由你在「驗證與發佈」確認，再逐階段產稿、驗證與檢視整批摘要。' : '用一般的話描述步驟與預期結果。AI 會先與你確認需求、在瀏覽器自我試跑並排除問題後才更新草稿；你看過報告後才會發佈。'}</p>
+        <p>{planMode ? '描述 Use Case 的步驟與預期結果。AI 提出 Plan 後，由你在「驗證與發佈」確認，再逐階段產稿、驗證與檢視整批摘要。' : nextEngine === 'external' ? '用一般的話描述步驟與預期結果。外部 Agent 接單後可提出候選腳本；是否通過以獨立正式驗證為準，你看過報告後才會發佈。' : '用一般的話描述步驟與預期結果。AI 會先與你確認需求、在瀏覽器自我試跑並排除問題後才更新草稿；你看過報告後才會發佈。'}</p>
         {aiExploration?.available !== true ? <p className="inline-hint">AI 探索尚未確認可用，仍可送出離線訪談與改稿需求；不代表已造訪網站。</p> : null}
         <ul className="starters" aria-label="可用的開場">{STARTERS.map((text) => <li key={text}><button className="starter" onClick={() => setContent(text)}>{text}</button></li>)}</ul>
       </div> : null}

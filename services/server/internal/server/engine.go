@@ -273,6 +273,9 @@ func (e *Engine) Tick(ctx context.Context) error {
 		if err := p.ExpireBrowserLeases(ctx); err != nil {
 			return err
 		}
+		if err := p.ExpireExternalClaims(ctx); err != nil {
+			return err
+		}
 	}
 	if finisher, ok := e.store.(interface{ FinalizeDiscardingSessions(context.Context) error }); ok {
 		if err := finisher.FinalizeDiscardingSessions(ctx); err != nil {

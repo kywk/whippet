@@ -18,8 +18,9 @@ var (
 )
 
 type Workspace struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	AuthorEngine string `json:"authorEngine"`
 	WorkspaceSettings
 	Lifecycle             string                `json:"lifecycle"`
 	AuthorizationRevision int64                 `json:"authorizationRevision"`
@@ -47,6 +48,7 @@ type Test struct {
 }
 
 type Run struct {
+	AuthorEngine          string         `json:"authorEngine"`
 	AuthorPartial         *AuthorPartial `json:"authorPartial,omitempty"`
 	ScriptOrigin          string         `json:"scriptOrigin"`
 	authorizationRevision *int64

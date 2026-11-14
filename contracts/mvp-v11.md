@@ -90,3 +90,23 @@ M11.0完整完成仍須固定上述後續接縫；本文件首波已授權Server
 Server：隔離HTTP/DB驗初始化、精確工具列舉、跨Workspace拒絕、撤銷即拒、限流、Origin、管理gate與Bearer不能轉UI/Manager、稽核無敏感內容。Runtime：隔離IPC與容量驗重送不重click、閒置／硬期限、取消遲到結果、回收失敗不放slot、重啟孤兒清理與未知結果不重試。新功能先有失敗案例再實作；不弱化既有斷言、不重跑M1–M9。
 
 官方依據：[Go SDK v1.3.1](https://github.com/modelcontextprotocol/go-sdk/tree/v1.3.1)、[Streamable HTTP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)。
+
+## Wave 3：網頁對話 → 外部 test-author → 正式驗證
+
+本切片固定普通 Test 的 test-author；module/usecase/planner、credential login、session LiveView 不因本切片通過而列完成。
+
+管理端 `PATCH /api/workspaces/{id}/author-engine` body `{revision:integer,authorEngine:"builtin"|"external"}`，沿管理gate與Workspace revision CAS，成功回完整WorkspaceDetail並增加revision；不經網站設定proposal，不修改網站scope。WorkspaceDetail與Run增加authorEngine；舊資料缺省builtin，Run建立時固定且不因後續設定變更而改寫。非test-author仍使用builtin（UI須明說此切片範圍），Manager Claim不得領external author。
+
+新增registry11.1 MCP控制工具（所有額外欄位拒絕）：
+- `task_claim({requestId:UUID})` → `{task:null|{runId,attemptId,leaseId,state,expiresAt,deadlineAt,contextBundle}}`。由Token決定Workspace，同Token至多一active claim；requestId持久去重，重送回原claim狀態，不重開已終止任務；無可領任務回task:null（不留下禁止之後領單的空tombstone）。contextBundle含原AuthorInput/Workspace/草稿/skill與registry快照，加明確external adapter輸出說明；不含任何模型/網站憑證。允許工具以可接線子集回傳，不能列出未接的Worker-local update_draft。
+- `task_heartbeat({runId,attemptId,leaseId})` → `{state,expiresAt,deadlineAt}`。短租120秒、每次續到now+120秒，永不超原AuthorInput budget硬期限（最長30分鐘）；只限原Token與仍有效Workspace/context/attempt。
+- `task_tool_call({runId,attemptId,leaseId,callId:UUID,name:string,arguments:object})` → 原工具結果。至少接read_draft、read_validation_report、read_conversation_history與匿名四項browser；每個nested name必在claim實際allowedTools且按原registry inputSchema/limits驗。browser按claim綁定現有session，lazy open；占Manager slot，close確認回收才釋放。相同callId/body只回同結果；busy/unknown_result可辨且不重做。無法同步ready回busy，不能假成功。身份明示於此控制工具args，原browser arguments不改。
+- `task_submit({runId,attemptId,leaseId,submitId:UUID,output:object})` → `{state,appliedRevision:integer|null,validationRunId:UUID|null}`。output沿既有author.json `{message,script?,requestValidation,conversationSummary?}`，共用decodeAuthorOutput與既有test-author完成核心；外部一律拒partial、自報selfTest/validated/proof、重複JSON key與未知欄位。同submitId+canonical output hash持久冪等，異內容拒絕；Token/Workspace/attempt/lease/context/期限/取消均重驗。人工改稿後沿原CAS保留人工稿、不啟舊revision驗證。提交候選只成scriptOrigin=ai草稿，requestValidation只排獨立keyless正式Run；不宣稱自試成功。外部claim本身不消耗Docker slot，綁定browser清理後才允許正式validation佔位執行。
+
+claim/context指令必說明external adapter採直接提交完整候選而非Worker-local update_draft：候選尚未自試，成功以獨立正式validation證據為準。禁止外部拿Manager身分或上傳偽造artifact。submit須共用既有完成parser/CAS/validation排程，不能另造旁路草稿寫入。
+
+取消、租約逾時、Token撤銷、Server重啟失效會讓claim終止且關閉綁定browser；遲到heartbeat/tool/submit拒絕，不復活、不重作副作用。Run/UI沿queued=接單中、running=作業中與既有terminal狀態，不新增平行UI假狀態。每次已驗Token控制呼叫沿既有安全稽核；不存參數/內容於audit。
+
+本機bridge可在成功open/status後記唯一ready session並為原四browser工具補 `_meta.whippet` 三UUID；明示metadata不覆寫，close/terminal清除綁定，未知結果不自動重送。接單以task_tool_call身份args為主，不依賴此bridge隱式session。
+
+驗收：真網頁選external、建立Test並送需求；全新Codex只經MCP claim/工具/submit產生腳本；網頁觀測AI草稿與獨立正式validation succeeded。另真HTTP異常驗取消/逾時/撤銷/跨Token與Workspace、競爭claim、submit冪等/CAS。合成站與scope初始化限新隔離環境，不攔截產品API、不讓QA代模型產稿。

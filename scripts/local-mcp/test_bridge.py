@@ -4,6 +4,7 @@ import os
 import secrets
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
 from unittest.mock import patch
 
@@ -68,9 +69,58 @@ class BridgeTests(unittest.TestCase):
         self.assertIn("application/json", self.sent[0][0].get_header("Accept"))
         self.assertIn("text/event-stream", self.sent[0][0].get_header("Accept"))
 
+    def test_browser_calls_gain_lease_metadata_without_changing_arguments(self):
+        session_id = "11111111-1111-4111-8111-111111111111"
+        lease_id = "22222222-2222-4222-8222-222222222222"
+
+        def browser_upstream(request, timeout):
+            self.sent.append((request, timeout))
+            payload = json.loads(request.data)
+            if payload["method"] == "tools/call" and payload["params"]["name"] == "browser_session_open":
+                content = {"sessionId": session_id, "leaseId": lease_id,
+                           "state": "ready", "reclaimed": False}
+                result = {"structuredContent": content,
+                          "content": [{"type": "text", "text": json.dumps(content)}]}
+            else:
+                result = {"content": []}
+            body = json.dumps({"jsonrpc": "2.0", "id": payload["id"], "result": result}).encode()
+            return FakeResponse(200, body)
+
+        self.bridge.opener = browser_upstream
+        def call(request_id, name, arguments):
+            return self.bridge.process(json.dumps({"jsonrpc": "2.0", "id": request_id,
+                "method": "tools/call", "params": {"name": name, "arguments": arguments}}).encode())
+
+        call(1, "browser_session_open", {"requestId": "33333333-3333-4333-8333-333333333333"})
+        args = {"url": "https://example.test/path"}
+        call(2, "browser_navigate", args)
+        sent = json.loads(self.sent[-1][0].data)
+        self.assertEqual(sent["params"]["arguments"], args)
+        self.assertEqual(set(sent["params"]["_meta"]), {"whippet"})
+        meta = sent["params"]["_meta"]["whippet"]
+        self.assertEqual(meta["sessionId"], session_id)
+        self.assertEqual(meta["leaseId"], lease_id)
+        self.assertEqual(str(uuid.UUID(meta["callId"])), meta["callId"])
+
+        explicit = {"whippet": {"sessionId": session_id, "leaseId": lease_id,
+                                "callId": "44444444-4444-4444-8444-444444444444"}}
+        request = {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                   "params": {"name": "browser_snapshot", "arguments": {}, "_meta": explicit}}
+        self.bridge.process(json.dumps(request).encode())
+        self.assertEqual(json.loads(self.sent[-1][0].data), request)
+
+        call(4, "browser_session_close", {"sessionId": session_id, "leaseId": lease_id})
+        call(5, "browser_click", {"selector": "text=Go"})
+        self.assertNotIn("_meta", json.loads(self.sent[-1][0].data)["params"])
+
     def test_notification_202_has_no_stdout_frame(self):
         message = {"jsonrpc": "2.0", "method": "notifications/initialized"}
         self.assertIsNone(self.bridge.process(json.dumps(message).encode()))
+
+    def test_malformed_tool_name_does_not_crash_transport(self):
+        frame = b'{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":{},"arguments":{}}}'
+        result = self.bridge.process(frame)
+        self.assertEqual(json.loads(result)["id"], 6)
 
     def test_stdio_emits_only_jsonrpc_for_request(self):
         request = b'{"jsonrpc":"2.0","id":1,"method":"initialize"}\n'

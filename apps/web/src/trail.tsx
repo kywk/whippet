@@ -131,11 +131,15 @@ export function AuthorLiveStatus({ run, mode = 'edit' }: { run?: Run; mode?: 'ed
     return () => clearInterval(id);
   }, [startIso]);
 
-  const statusText = !run || run.status === 'queued'
-    ? '已在佇列中等待 Worker 啟動…'
-    : run.status === 'dispatched' && steps.length === 0
-      ? '正在啟動隔離 Worker 容器與執行環境…'
-      : headline;
+  const statusText = run?.authorEngine === 'external' && (run.status === 'queued' || run.status === 'dispatched')
+    ? '等待外部 Agent 接單…'
+    : run?.authorEngine === 'external' && steps.length === 0 && (run.status === 'running' || run.status === 'collecting')
+      ? '外部 Agent 正在處理需求…'
+      : !run || run.status === 'queued'
+        ? '已在佇列中等待 Worker 啟動…'
+        : run.status === 'dispatched' && steps.length === 0
+          ? '正在啟動隔離 Worker 容器與執行環境…'
+          : headline;
 
   return <div className="author-live-status" role="status" aria-live="polite">
     <div className="author-live-head">

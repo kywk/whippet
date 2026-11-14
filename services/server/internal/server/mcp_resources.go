@@ -15,7 +15,7 @@ func addMCPResources(server *mcp.Server, registry *ToolRegistry, api *API, store
 		root = repositoryFile("runtimes", "worker", "skills")
 	}
 	added := false
-	for _, id := range []string{"catalog-reuse"} {
+	for _, id := range []string{"catalog-reuse", "test-author"} {
 		manifest, pin, err := loadSkill(root, id, registry)
 		if err != nil {
 			return false
@@ -27,6 +27,9 @@ func addMCPResources(server *mcp.Server, registry *ToolRegistry, api *API, store
 		addMCPResource(server, api, store, "whippet://skill/"+id+"/main", id, main)
 		added = true
 		for _, ref := range manifest.References {
+			if id == "test-author" && ref.ID != "external-mcp" {
+				continue
+			}
 			data, err := readSkillFile(root, id+"/"+ref.Path, 128<<10)
 			if err != nil || scriptHash(string(data)) != ref.SHA256 {
 				return false

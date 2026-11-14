@@ -122,6 +122,7 @@ def main():
             check("exact_m11_tools", status == 200 and sorted(t["name"] for t in tools["result"]["tools"]) == sorted([
                 "catalog_get", "catalog_search", "browser_session_open", "browser_session_status",
                 "browser_session_close", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill",
+                "task_claim", "task_heartbeat", "task_tool_call", "task_submit",
             ]))
             status, result, _ = mcp("tools/call", {"name": "catalog_search", "arguments": {"query": "", "limit": 5}})
             check("catalog_read", status == 200 and not result["result"].get("isError", False) and "items" in result["result"]["structuredContent"])

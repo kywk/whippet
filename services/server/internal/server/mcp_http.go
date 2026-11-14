@@ -21,12 +21,13 @@ type agentAuthContext struct {
 type mcpAuditStateKey struct{}
 type mcpAuditState struct{ failed bool }
 
-const maxMCPHTTPBodyBytes = 64 << 10
+const maxMCPHTTPBodyBytes = 1100 << 10
 
 var mcpExposedTools = []string{
 	"catalog_search", "catalog_get",
 	"browser_session_open", "browser_session_status", "browser_session_close",
 	"browser_navigate", "browser_snapshot", "browser_click", "browser_fill",
+	"task_claim", "task_heartbeat", "task_tool_call", "task_submit",
 }
 
 func mcpToolConnected(tool ToolDefinition) bool {
@@ -37,6 +38,8 @@ func mcpToolConnected(tool ToolDefinition) bool {
 		return tool.Side == "server" && tool.Effect == "queue"
 	case "browser_navigate", "browser_snapshot", "browser_click", "browser_fill":
 		return tool.Side == "worker" && tool.Effect == "browser"
+	case "task_claim", "task_heartbeat", "task_tool_call", "task_submit":
+		return tool.Side == "server" && tool.Effect == "queue"
 	}
 	return false
 }
@@ -219,6 +222,9 @@ func (a *API) callMCPTool(ctx context.Context, p *Postgres, tool ToolDefinition,
 	defer cancel()
 	if strings.HasPrefix(tool.Name, "browser_") {
 		return a.callMCPBrowser(ctx, p, tool, token, req, canonical), nil
+	}
+	if strings.HasPrefix(tool.Name, "task_") {
+		return a.callMCPTask(ctx, p, tool, token, canonical), nil
 	}
 	var output any
 	switch tool.Name {

@@ -115,6 +115,9 @@ func (p *Postgres) RevokeAgentToken(ctx context.Context, workspace, id string) e
 		(SELECT session_id FROM agent_browser_leases WHERE token_id=$1 AND workspace_id=$2 AND NOT reclaimed)`, id, workspace); err != nil {
 		return err
 	}
+	if err := p.RevokeExternalClaims(ctx, tx, id); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 

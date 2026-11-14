@@ -37,6 +37,6 @@ export function WorkspaceSettings({ workspace }: { workspace: WorkspaceDetail })
       <dl className="workspace-snapshot-meta"><div><dt>預設 URL</dt><dd>{workspace.defaultTestUrl || '未設定'}</dd></div><div><dt>執行逾時</dt><dd>{workspace.timeoutMs.toLocaleString('zh-TW')} 毫秒</dd></div></dl>
       {workspace.sites.length ? <ul className="workspace-snapshot-sites">{workspace.sites.map((site, index) => <li key={index}><strong>{site.name}</strong><p>{site.url}</p><p className="inline-hint">用途與目標／相依分類尚未提供。</p></li>)}</ul> : <p className="muted">未提供既有網站資料。</p>}
     </>}
-    <p className="settings-impact">修改統一經設定提案與明確確認；待確認提案不會直接改寫此處的正式設定。</p>
+    <p className="settings-impact">網站範圍與背景的修改經設定提案與明確確認；AI 撰寫引擎由下方獨立設定，兩者都只影響後續任務。</p>
   </section>;
 }
