@@ -272,7 +272,11 @@ func newHTTPClient() *http.Client {
 
 func newHTTPClientWithTLS(tlsConfig *tls.Config) *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.TLSClientConfig = tlsConfig
+	if tlsConfig != nil {
+		// HTTP/2 setup mutates ALPN; the WebSocket HTTP/1.1 dialer shares
+		// the original config and must not inherit that mutation.
+		transport.TLSClientConfig = tlsConfig.Clone()
+	}
 	return &http.Client{
 		Timeout:   45 * time.Second,
 		Transport: transport,
