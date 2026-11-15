@@ -130,7 +130,7 @@ test('catalog parameter rejection reaches real loop and model corrects query bef
   return new Response(JSON.stringify({status:'completed',output:op?[{type:'function_call',call_id:`opaque-${n}`,name:op[0],arguments:JSON.stringify(op[1])}]:[{type:'message',content:[{type:'output_text',text:finalText}]}]}),{status:200,headers:{'content-type':'application/json'}});
  }});
  for(const event of ['feedbackFrameAccepted','feedbackQueued','feedbackIncludedAtFetch','toolsIncludedAtFetch','functionCallObserved'])assert(observed.some(e=>e.endsWith(':'+event)));
- assert.deepEqual(cursors,['first','synthetic']);assert.equal(frames,4);assert.equal(requests,5);assert.equal((out as any).planCandidate.candidateRef,id);assert.equal(v.author.budget!.maxModelRequests,8);
+ assert.deepEqual(cursors,['first','synthetic']);assert.equal(frames,4);assert.equal(requests,4);assert.equal((out as any).planCandidate.candidateRef,id);assert.equal(v.author.budget!.maxModelRequests,8);
  }finally{client.close();read.destroy();write.destroy();}
 });
 test('catalog feedback IPC remains scoped to pending tool and exact error frame',async()=>{
@@ -224,7 +224,7 @@ test('registry 10.2 real loop traverses two pages with unchanged opaque cursor t
  try{const out=await runAuthor(v,config,undefined,{harness:client,fetcher:async(_url,init)=>{
   const body=JSON.parse(String(init?.body));const tool=body.tools.find((t:any)=>t.name==='catalog_next_page');assert.equal(tool.strict,false);assert.equal(tool.parameters.properties.cursor.minLength,1);
   const n=requests++,op=operations[n];return Response.json({status:'completed',output:op?[{type:'function_call',call_id:`opaque-${n}`,name:op[0],arguments:JSON.stringify(op[1])}]:[{type:'message',content:[{type:'output_text',text:finalText}]}]});
- }});assert.equal((out as any).planCandidate.candidateRef,id);assert.deepEqual(names,['catalog_search','catalog_next_page','catalog_get','propose_plan']);assert.equal(requests,5);
+ }});assert.equal((out as any).planCandidate.candidateRef,id);assert.deepEqual(names,['catalog_search','catalog_next_page','catalog_get','propose_plan']);assert.equal(requests,4);
  }finally{client.close();read.destroy();write.destroy();}
 });
 test('registry 10.2 search rejects cursor and next-page retains exact schema and Unicode/UTF8 guards',async()=>{
@@ -308,4 +308,18 @@ test('M109 v2 real verifier classification survives loop LIMIT independently',as
   }}}));
   d.finish('UNKNOWN',value=>{const x=value as any;assert.equal(x.selfTestFailedCount,1);assert.equal(x.selfTestPassedCount,0);assert.equal(x.lastSelfTestFailureClass,'INVALID_SPEC');assert.equal(x.terminalClass,'LIMIT');assert(!JSON.stringify(x).includes('SECRET_SENTINEL'));});
  }finally{await browser.close();}
+});
+
+test('planner preserves authoritative proposal without another model call',async()=>{
+ const v=input('usecase-planner');let requests=0;
+ const stages=[{id:'one',title:'reuse',action:'reuse',moduleVersionId:id,args:{}}];
+ const out=await runAuthor(v,config,undefined,{
+  harness:{async call(){return {candidate:true,candidateRef:id,stages};}},
+  fetcher:async()=>{
+   requests++;
+   return Response.json({status:'completed',output:[{type:'function_call',name:'propose_plan',call_id:'proposal-'+requests,arguments:JSON.stringify({stages})}]});
+  }
+ });
+ assert.equal(requests,1,'a successful canonical proposal needs no extra model turn');
+ assert.deepEqual((out as any).planCandidate,{candidateRef:id});
 });

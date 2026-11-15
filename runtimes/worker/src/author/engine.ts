@@ -91,10 +91,17 @@ export const builtinEngine: AgentEngine = {
       if (signal.aborted) throw new AuthorError("cancelled");
       pruneSnapshots(context);
       const finish = request === budget.modelRequests - 1 || budget.toolExecutions - count <= 2;
+      const remaining = budget.modelRequests - request;
+      const delivery = input.tools.some(tool => tool.name === "update_draft") ? "update_draft" :
+        input.tools.some(tool => tool.name === "propose_plan") ? "propose_plan" : undefined;
+      const reserve = delivery && remaining <= 3
+        ? `\nCandidate delivery reserve: ${remaining} model requests remaining, ${budget.toolExecutions - count} tool executions remaining. Use ${delivery} now when the collected evidence is sufficient. Preserve every requested assertion. Reserve the following turns for inspecting self-test feedback and repairing the candidate. Do not repeat exploration already covered by tool results. If essential evidence is missing, obtain only that evidence; never invent it or claim unverified success.` : "";
       const body = {
         input: input.beforeRequest(context),
-        instructions: input.instructions + (finish ? "\nBudget nearly exhausted: finish now with the verified candidate and explain remaining next steps. Do not start new exploration." : ""),
-        tools: input.tools, reasoning: { effort: input.model.reasoningEffort }, parallel_tool_calls: false,
+        instructions: input.instructions + reserve + (finish ? "\nBudget nearly exhausted: finish now with the verified candidate and explain remaining next steps. Do not start new exploration." : ""),
+        tools: delivery && remaining <= 3 && !input.checkpoint()
+          ? input.tools.filter(tool => tool.name === delivery) : input.tools,
+        reasoning: { effort: input.model.reasoningEffort }, parallel_tool_calls: false,
         max_output_tokens: maxOutputTokens, store: false, include: ["reasoning.encrypted_content"],
       };
       if (Buffer.byteLength(JSON.stringify(body)) > (input.maxRequestBytes ?? 4 * 1024 * 1024)) throw new AuthorError("limit");

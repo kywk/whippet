@@ -140,3 +140,16 @@ test('M10Z Module commit on final model request completes without extra request'
  assert.equal(output.script,script);
  assert.equal(output.requestValidation,true);
 });
+
+ test('M10Z verified Test candidate completes without spending remaining model budget',async()=>{
+ let requests=0,selfTests=0;
+ const candidate="import {test,expect} from '@playwright/test';test('goal',()=>expect(1).toBe(1));";
+ const output=await runAuthor(task('test-author'),config,browser(async()=>{selfTests++;return {passed:true,summary:'synthetic PASS'};}),{
+  fetcher:async()=>Response.json({status:'completed',output:[{type:'function_call',call_id:String(++requests),name:'update_draft',arguments:JSON.stringify({script:candidate})}]}),
+ }) as AuthorOutput;
+ assert.equal(requests,1);
+ assert.equal(selfTests,1);
+ assert.equal(output.script,candidate);
+ assert.equal(output.requestValidation,true);
+ assert.equal(output.partial,undefined);
+});

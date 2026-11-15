@@ -164,6 +164,16 @@ export async function runAuthor(
         const verified = result as { candidate?: unknown; selfTestPassed?: unknown };
         return verified.candidate === true && verified.selfTestPassed === true
           ? JSON.stringify({ message: "Module 候選稿已通過自我試跑；仍須正式驗證。" }) : undefined;
+      } } : planner ? { completeAfterTool: (call: Item, result: unknown) => {
+        if (call.name !== "propose_plan" || !planRef || !result || typeof result !== "object") return undefined;
+        const proposal = result as { candidate?: unknown; candidateRef?: unknown };
+        return proposal.candidate === true && proposal.candidateRef === planRef
+          ? JSON.stringify({ message: "Plan 提案已保存，請確認 Stage 後再執行。" }) : undefined;
+      } } : capability && !summary && !workspace ? { completeAfterTool: (call: Item, result: unknown) => {
+        if (call.name !== "update_draft" || !checkpoint || !result || typeof result !== "object") return undefined;
+        const candidate = result as { candidateSaved?: unknown; selfTestStatus?: unknown };
+        return candidate.candidateSaved === true && candidate.selfTestStatus === "passed"
+          ? JSON.stringify({ message: "候選稿已通過自我試跑，接續正式驗證。" }) : undefined;
       } } : {}),
       checkpoint: () => checkpoint === undefined ? undefined : { script: checkpoint.script },
       execute: async (call, execution) => {

@@ -121,3 +121,21 @@ test("author artifact serialization counts UTF8 JSON plus newline at exactly 13M
   assert.ok(Buffer.byteLength(result) > 12 * 1024 * 1024);
   assert.ok(Buffer.byteLength(result) < MAX_AUTHOR_ARTIFACT_BYTES);
 });
+
+test('author reserves model turns for candidate self-test before exploration consumes the budget', async () => {
+ const instructions:string[]=[]; const choices:unknown[]=[];
+ await builtinEngine.run(setup({
+  tools:[{name:'browser_snapshot'},{name:'update_draft'}],
+  budget:{modelRequests:8,toolExecutions:12},
+  request:async body=>{
+   instructions.push(String(body.instructions)); choices.push(body.tools);
+   return {status:'completed',output:[{type:'function_call',name:'browser_snapshot',call_id:String(instructions.length),arguments:'{}'}]};
+  }
+ }));
+ assert.deepEqual(choices[5],[{name:"update_draft"}]);
+ assert.deepEqual(choices[7],[{name:"update_draft"}]);
+ assert.deepEqual(choices[0],[{name:"browser_snapshot"},{name:"update_draft"}]);
+ assert.match(instructions[5]!,/update_draft/);
+ assert.match(instructions[5]!,/3 model requests remaining/);
+ assert.doesNotMatch(instructions[0]!,/Candidate delivery reserve/);
+});

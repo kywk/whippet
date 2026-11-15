@@ -120,6 +120,7 @@ async function execute(input: Input, taskDir: string): Promise<WorkerResult> {
   const summaryPath = join(taskDir, "runtime-summary.json");
   const htmlDir = join(outputDir, "html");
   const reporterPath = fileURLToPath(new URL("./reporter.js", import.meta.url));
+  const baseURL = input.workspaceContext?.config?.defaultTestUrl || input.workspaceSettings?.defaultTestUrl;
   const config = {
     tsconfig: tsconfigPath,
     testDir: taskDir,
@@ -140,7 +141,7 @@ async function execute(input: Input, taskDir: string): Promise<WorkerResult> {
       browserName: "chromium", headless: true,
       ...(process.env.WHIPPET_BROWSER_EXECUTABLE_PATH ? { launchOptions: { executablePath: process.env.WHIPPET_BROWSER_EXECUTABLE_PATH } } : {}),
       trace: "retain-on-failure", screenshot: "only-on-failure", video: "off",
-      ...(input.workspaceSettings?.defaultTestUrl ? { baseURL: input.workspaceSettings.defaultTestUrl } : {}),
+      ...(baseURL ? { baseURL } : {}),
     } }],
   };
   const configPath = join(taskDir, "playwright.config.cjs");
