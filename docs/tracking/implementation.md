@@ -348,7 +348,7 @@ M9歷史失敗已定位（81352430診斷回合）：模型將首次cursor輸出�
 | M10.8 | PM＋t4p | 黃金任務集 v1（10–15 題，含新建、修復、複用、拆解、越界、注入頁、預算耗盡），放在 `scripts/test/golden/` | 用 builtin 跑一次並記錄基準 | 完成（首次真基準與離線覆核已保存：4 PASS／2 FAIL／8 UNVERIFIED；不是完整驗收通過） |
 | M10.9 | PM t4s＋Server t50＋Runtime t4z | 整合 smoke：用真模型把「登入 → 搜尋 → 下單 → 驗證」拆成 4 段並發佈 | 一條主流程 | 進行中（Plan composed/r18四Stage ready；3 author＋3 Module驗證＋整體Use Case驗證共7 Run成功並回收，待批次摘要／發佈） |
 | M10.10 | PM t4s＋t4z＋t50 | 有界Module兩段暫存／commit真自試，timeout清理與安全階段觀測 | 正負真自試、三端回收／正式驗證、一次受控真模型 | 完成（分段工具／診斷、journal與Module遮蔽修補已部署；retry7三Module自試1/0、parser/upload與正式驗證及Compose成功，秘密負向守衛保持） |
-| **M10.Z** | 獨立 Leader t72；Wave5 環境 owner t77、QA t78（原八項驗收 t6g 團隊） | **階段一完整驗證**（見下方） | 八項矩陣全部通過才具備標記條件；本次不自行 tag | 受阻（新可還原隔離環境與真 v4 零模型控制面 PASS；未重跑既有 PASS。#3 planner LIMIT、無 Stage，#4 受阻；#7 仍 budget_exhausted partial、無 checkpoint。原 Vault 仍不可安全恢復，黃金覆核4 PASS／1 FAIL／9 UNVERIFIED 保留。詳見 [Wave5交接](handoff/m10z-wave5-20261115.md)；未merge／push／tag） |
+| **M10.Z** | 主 Agent 親自執行 Wave6（不開 subagent） | **階段一完整驗證**（見下方） | 八項矩陣與既有證據限制分別記錄；本次不自行 tag | 完成（本次要求的 #3／#4／#7 三缺漏：真 builtin 1 reuse＋2 create、Compose／摘要／原子發佈／正式執行；原 Stage 真修復；partial 同 session 繼續完成。其餘五項沿用不重驗；原黃金與 LiveView 限制保留，不自行 phase1-verified。詳見 [Wave6實際修復與驗收](handoff/m10z-wave6-20261116.md)） |
 
 M10.Z 清單：
 1. 三個模組全部建置、型別檢查與測試（含 Postgres 整合測試）。
@@ -372,7 +372,10 @@ M10.Z 清單：
 
 2026-11-15 Wave5 依使用者新授權建立獨立可還原現場：新 persistent state／私有備份保存 Vault、Manager／PG／模型設定與 Server/Web/目標來源、三個 Docker image；19987–19989、專屬 PG volume/Manager，實測停機後同 key/token/DB 重啟。環境定向／獨立 QA 各5/5；零模型真 v4 sidecar+transport、slot釋放與下一個手動 Module 正式驗證 PASS。原 #1/#2/#5/#6/#8 沿用，不重驗；#3 單次真 planner LIMIT 無 Plan，#4 無 Stage，#7 新來源仍 budget_exhausted partial 無 checkpoint，無安全續接依據。Manager 一次失聯後只重啟同一容器以 journal replay 原結果，未重送模型。新 DB 5 Run、active/occupied0、Worker0；原 DB 仍62 Run、active/occupied0，舊19887–19889與保護部署狀態未變。M10.Z 仍受阻、不標記、不push/merge/tag。詳見 [Wave5可還原環境與 live 結果](handoff/m10z-wave5-20261115.md)。
 
-### M11 階段二：MCP（`feat/mcp`，基線 `ded0364`）
+#
+2026-11-16 Wave6 主 Agent 親自補齊三缺漏：修正 Manager HTTP2/WS 共用 TLS config、Worker 候選交付與 canonical baseURL；#7 同 revision 正式驗證1/0/0/0。#4 原 query Stage 停止後沿原 session 真修復，正式1/0/0/0；verify 補 Plan args／上游 metadata 後正式3/0/0/0。#3 Plan done/r10，真 Compose1/0/0/0、builtin摘要、兩新Module與UseCase原子發佈、已發布正式Run1/0/0/0。新DB26 Run，active/occupied/Worker皆0，三埠與持久身分正常，私有備份更新完成；無空白volume還原演練、無其他五項重驗、無push/merge/tag。詳見[Wave6交接](handoff/m10z-wave6-20261116.md)。
+
+## M11 階段二：MCP（`feat/mcp`，基線 `ded0364`）
 
 狀態：完成（M11 限定範圍及本次集中驗收；未 merge/tag）。2026-11-14 使用者明確授權直接開發，覆蓋原 M10.Z 開發順序門檻；M10.Z 尚未完成，未建立 phase1-verified。既有驗收現場19287保留，新工作先隔離驗證。
 
