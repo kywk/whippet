@@ -139,3 +139,18 @@ test('author reserves model turns for candidate self-test before exploration con
  assert.match(instructions[5]!,/3 model requests remaining/);
  assert.doesNotMatch(instructions[0]!,/Candidate delivery reserve/);
 });
+
+test('module delivery reserves both staging calls, commit, and self-test repair', async () => {
+ const choices:unknown[]=[];const instructions:string[]=[];
+ await builtinEngine.run(setup({
+  tools:[{name:'browser_snapshot'},{name:'stage_module_candidate_part'},{name:'commit_module_candidate'}],
+  budget:{modelRequests:8,toolExecutions:12},
+  request:async body=>{
+   choices.push(body.tools);instructions.push(String(body.instructions));
+   return {status:'completed',output:[{type:'function_call',name:'browser_snapshot',call_id:String(choices.length),arguments:'{}'}]};
+  }
+ }));
+ assert.deepEqual(choices[4],[{name:'stage_module_candidate_part'},{name:'commit_module_candidate'}]);
+ assert.match(instructions[4]!,/commit_module_candidate/);
+ assert.match(instructions[4]!,/4 model requests remaining/);
+});
