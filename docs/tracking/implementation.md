@@ -348,7 +348,7 @@ M9歷史失敗已定位（81352430診斷回合）：模型將首次cursor輸出�
 | M10.8 | PM＋t4p | 黃金任務集 v1（10–15 題，含新建、修復、複用、拆解、越界、注入頁、預算耗盡），放在 `scripts/test/golden/` | 用 builtin 跑一次並記錄基準 | 完成（首次真基準與離線覆核已保存：4 PASS／2 FAIL／8 UNVERIFIED；不是完整驗收通過） |
 | M10.9 | PM t4s＋Server t50＋Runtime t4z | 整合 smoke：用真模型把「登入 → 搜尋 → 下單 → 驗證」拆成 4 段並發佈 | 一條主流程 | 進行中（Plan composed/r18四Stage ready；3 author＋3 Module驗證＋整體Use Case驗證共7 Run成功並回收，待批次摘要／發佈） |
 | M10.10 | PM t4s＋t4z＋t50 | 有界Module兩段暫存／commit真自試，timeout清理與安全階段觀測 | 正負真自試、三端回收／正式驗證、一次受控真模型 | 完成（分段工具／診斷、journal與Module遮蔽修補已部署；retry7三Module自試1/0、parser/upload與正式驗證及Compose成功，秘密負向守衛保持） |
-| **M10.Z** | 現任獨立 Leader t72；reader t73、QA t74／t75（原八項驗收 t6g 團隊） | **階段一完整驗證**（見下方） | 八項矩陣全部通過才具備標記條件；本次不自行 tag | 受阻（原八項已實跑：builtin Use Case／Stage修復／continue任務完成仍FAIL，黃金覆核4 PASS／1 FAIL／9 UNVERIFIED；Wave4 reader 離線通過，但同 Vault 安全恢復未證、live 准入 BLOCKED。詳見 [驗收報告](m10z-acceptance-20261114.md)與[Wave4交接](handoff/m10z-wave4-20261115.md)；未merge／push／tag） |
+| **M10.Z** | 獨立 Leader t72；Wave5 環境 owner t77、QA t78（原八項驗收 t6g 團隊） | **階段一完整驗證**（見下方） | 八項矩陣全部通過才具備標記條件；本次不自行 tag | 受阻（新可還原隔離環境與真 v4 零模型控制面 PASS；未重跑既有 PASS。#3 planner LIMIT、無 Stage，#4 受阻；#7 仍 budget_exhausted partial、無 checkpoint。原 Vault 仍不可安全恢復，黃金覆核4 PASS／1 FAIL／9 UNVERIFIED 保留。詳見 [Wave5交接](handoff/m10z-wave5-20261115.md)；未merge／push／tag） |
 
 M10.Z 清單：
 1. 三個模組全部建置、型別檢查與測試（含 Postgres 整合測試）。
@@ -369,6 +369,8 @@ M10.Z 清單：
 2026-11-15 Wave4 已完成嚴格 v1–v4 sidecar／transport 唯讀 reader 與獨立 QA（owner 10/10、奇數 QA 最終119/119 PASS，舊 reader red 5/33）；原 Wave2 真 v3 sidecar 可安全投影，新增欄位維持 UNOBSERVED，缺 transport 檔為 MISSING。Linux arm64 Manager 與 Wave3 QA Worker 候選 image 已固定，來源／registry／skills／容器內 binary SHA 相符，尚未部署。偶數 QA 核原19889 Server PID退出、19887／19888／19889未監聽、Manager心跳逾期；PG 仍62 Run、active／occupied／unreclaimed與精確Worker全0。隔離啟動腳本的原 Vault 主金鑰為程序內隨機值，receipt 未保存，同一金鑰可安全恢復的來源尚未證實，因此同批部署、零模型受控任務與真 Stage 均 BLOCKED／NOT RUN；沒有新模型或 DB 寫入。收尾另見保護埠19787無 listener，歷史容器仍running，原因未知且本波未觸碰。舊#3/#4/#7 FAIL與黃金／Live限制保留，M10.Z仍受阻，未push／merge／tag。詳見 [Wave4安全准入與 reader 驗證](handoff/m10z-wave4-20261115.md)。
 
 2026-11-15 原 Vault 復原覆核：依使用者要求在 `/private/tmp` 的 M10.Z 原場及 Wave2–Wave4 安全結構化檔案搜尋，未找到原主金鑰或可驗證的32-byte Base64候選；原啟動程式每次產生隨機金鑰且收據未保存。sandbox 外唯讀核專屬PG／Manager仍running、三專屬埠拒絕連線、DB 62 Run且名額全0，另有2筆有效加密憑證。無同一金鑰不能安全恢復原 Vault；未以新金鑰／新DB取代，未重啟或寫DB。M10.Z live准入維持BLOCKED，詳見[Wave4復原覆核](handoff/m10z-wave4-20261115.md#2026-11-15-原-vault-復原覆核)。
+
+2026-11-15 Wave5 依使用者新授權建立獨立可還原現場：新 persistent state／私有備份保存 Vault、Manager／PG／模型設定與 Server/Web/目標來源、三個 Docker image；19987–19989、專屬 PG volume/Manager，實測停機後同 key/token/DB 重啟。環境定向／獨立 QA 各5/5；零模型真 v4 sidecar+transport、slot釋放與下一個手動 Module 正式驗證 PASS。原 #1/#2/#5/#6/#8 沿用，不重驗；#3 單次真 planner LIMIT 無 Plan，#4 無 Stage，#7 新來源仍 budget_exhausted partial 無 checkpoint，無安全續接依據。Manager 一次失聯後只重啟同一容器以 journal replay 原結果，未重送模型。新 DB 5 Run、active/occupied0、Worker0；原 DB 仍62 Run、active/occupied0，舊19887–19889與保護部署狀態未變。M10.Z 仍受阻、不標記、不push/merge/tag。詳見 [Wave5可還原環境與 live 結果](handoff/m10z-wave5-20261115.md)。
 
 ### M11 階段二：MCP（`feat/mcp`，基線 `ded0364`）
 
