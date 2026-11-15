@@ -368,6 +368,8 @@ M10.Z 清單：
 
 2026-11-15 Wave4 已完成嚴格 v1–v4 sidecar／transport 唯讀 reader 與獨立 QA（owner 10/10、奇數 QA 最終119/119 PASS，舊 reader red 5/33）；原 Wave2 真 v3 sidecar 可安全投影，新增欄位維持 UNOBSERVED，缺 transport 檔為 MISSING。Linux arm64 Manager 與 Wave3 QA Worker 候選 image 已固定，來源／registry／skills／容器內 binary SHA 相符，尚未部署。偶數 QA 核原19889 Server PID退出、19887／19888／19889未監聽、Manager心跳逾期；PG 仍62 Run、active／occupied／unreclaimed與精確Worker全0。隔離啟動腳本的原 Vault 主金鑰為程序內隨機值，receipt 未保存，同一金鑰可安全恢復的來源尚未證實，因此同批部署、零模型受控任務與真 Stage 均 BLOCKED／NOT RUN；沒有新模型或 DB 寫入。收尾另見保護埠19787無 listener，歷史容器仍running，原因未知且本波未觸碰。舊#3/#4/#7 FAIL與黃金／Live限制保留，M10.Z仍受阻，未push／merge／tag。詳見 [Wave4安全准入與 reader 驗證](handoff/m10z-wave4-20261115.md)。
 
+2026-11-15 原 Vault 復原覆核：依使用者要求在 `/private/tmp` 的 M10.Z 原場及 Wave2–Wave4 安全結構化檔案搜尋，未找到原主金鑰或可驗證的32-byte Base64候選；原啟動程式每次產生隨機金鑰且收據未保存。sandbox 外唯讀核專屬PG／Manager仍running、三專屬埠拒絕連線、DB 62 Run且名額全0，另有2筆有效加密憑證。無同一金鑰不能安全恢復原 Vault；未以新金鑰／新DB取代，未重啟或寫DB。M10.Z live准入維持BLOCKED，詳見[Wave4復原覆核](handoff/m10z-wave4-20261115.md#2026-11-15-原-vault-復原覆核)。
+
 ### M11 階段二：MCP（`feat/mcp`，基線 `ded0364`）
 
 狀態：完成（M11 限定範圍及本次集中驗收；未 merge/tag）。2026-11-14 使用者明確授權直接開發，覆蓋原 M10.Z 開發順序門檻；M10.Z 尚未完成，未建立 phase1-verified。既有驗收現場19287保留，新工作先隔離驗證。
