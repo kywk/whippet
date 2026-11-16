@@ -329,7 +329,7 @@ M9歷史失敗已定位（81352430診斷回合）：模型將首次cursor輸出�
 
 ### M10 階段一：自研引擎與 Use Case（`main`）
 
-狀態：進行中（主流程、M10.9原四段收尾、持續監看與空白還原已實證；黃金v1仍有未完整驗證／前置不一致項，不宣稱階段無條件全過）。依賴：M9 已完成。
+狀態：完成（2026-11-16 Wave8 已補齊已觀測功能缺口與 M10.Z 八項分段驗收；部分黃金補驗包含 fixture／失敗回饋修復，不宣稱原14題無人工介入同批全過。歷史原始成績保留，未 merge/tag）。依賴：M9 已完成。
 
 2026-11-13 首波：PM `t3d`；新對話 Server `t4b`、Runtime `t4c`、Web `t4d`、QA `t4f`，同 space/tab、parent=t3d、crew=1。使用者改指定開發 GPT-6 Astra light（CLI low）；QA 維持 Muse Spark Contributor xhigh。M10.0 待雙方盤點後固定契約；此紀錄不代表驗證通過。
 
