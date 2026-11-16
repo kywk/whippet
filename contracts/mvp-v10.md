@@ -308,3 +308,5 @@ budget 新增可選 `maxOutputTokens`，manifest／author 快照使用同一欄�
 2026-11-16 相容補充：usecase-planner 允許 `{message,conversationSummary?}` 的純訊息阻礙／澄清回覆。僅在同 Run/attempt 沒有成功 plan_candidates 時接受，保存對話但不建立或改寫 Plan，不排入驗證。若已有成功候選，仍須帶最後權威 candidateRef；省略、null、偽造或舊 ref 都拒絕。Worker 從 guard 閉包選 ref，模型 final 仍不得自填 candidateRef／stages／script。Server、Manager、Worker 同批支援；主 skill、工具權限與原候選 CAS 不變。
 
 2026-11-16 Compose 末段修復補充：Plan stopped、末段 create/modify Stage ready，且 Plan 綁定的 Use Case validation 為 failed/timed_out 時，既有 Stage retry 入口可提供人工修復資格。整體 validation 必須同 Workspace/Test/session/draft revision、未取消並已回收；末段原 author/Module validation、候選 hash/revision/context 與所有前序候選仍須通過既有檢查。成功、取消、未回收或其他 Test 的驗證不可開放；目前不開放任意中間 ready Stage 的整合修復。POST 沿原三 CAS、同 body 去重及原 Module session，清除舊 Plan validation 引用；新候選仍經獨立 Module validation、重新 Compose 與新的整體 validation，不得直接沿用舊證據發佈。
+
+Compose 末段 retry 的 author.validation 會綁到同 Plan 的失敗整體驗證（原 Run/session/draft/CAS 檢查後，由 validationSnapshot 保留既有有界錯誤摘要）。read_validation_report 因而回覆真正需修復的失敗，而非該 Module 已通過的獨立報告；不新增跨 Workspace/任意 URL 報告讀取能力。

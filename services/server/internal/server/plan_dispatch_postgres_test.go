@@ -281,6 +281,10 @@ func runM10PlanModuleFlow(t *testing.T, mode string, bridge func(*testing.T, *Po
 		if e != nil || repaired.Status != "running" || repaired.ValidationRunID != nil || repaired.Stages[0].ValidationRunID != nil {
 			t.Fatal("old Compose evidence retained", e)
 		}
+		next, e := p.Claim(ctx, "m10-stage", 1)
+		if e != nil || next == nil || next.Author.Validation == nil || next.Author.Validation.RunID != usecase.ID || next.Author.Validation.Status != "failed" {
+			t.Fatal("Compose failure feedback missing from repair author", e)
+		}
 		replay, e := p.RetryPlanStage(ctx, plan.ID, stage.ID, body)
 		if e != nil || *replay.Stages[0].AuthorRunID != *repaired.Stages[0].AuthorRunID {
 			t.Fatal("retry duplicated", e)
