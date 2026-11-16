@@ -1,0 +1,187 @@
+{
+  "wave": "M12.1 Wave7",
+  "createdAt": "2026-11-16T17:57:58.182168+08:00",
+  "branch": "feat/agent-adapter",
+  "sourceHead": "75c6fb22085c023280ab83cc14fc11cfbdb8209e",
+  "mainHead": "576816622d988049d36453c7b3dabed9feeadd28",
+  "status": "truncation-bugs-fixed",
+  "milestoneM12_1": "in-progress",
+  "rootCauses": [
+    "builtin invalid-envelope path always threw instead of preserving a trusted checkpoint on max_output_tokens",
+    "Vercel truncation flag ignored provider error"
+  ],
+  "fixes": [
+    "shared literal failure classification",
+    "guard-owned checkpoint recovery only for truncation without provider error",
+    "incomplete output is never executed",
+    "actual guarded usage and original nextStep retained"
+  ],
+  "reproductions": [
+    {
+      "file": "truncation-red.tap",
+      "passed": 0,
+      "failed": 1
+    },
+    {
+      "file": "truncation-red2.tap",
+      "passed": 1,
+      "failed": 1
+    },
+    {
+      "file": "truncation-red3.tap",
+      "passed": 2,
+      "failed": 2
+    },
+    {
+      "file": "runtime-red.tap",
+      "passed": 1,
+      "failed": 2
+    }
+  ],
+  "builds": {
+    "workerStrictTypeScriptWithDeclarations": "PASS",
+    "referenceClient": "PASS",
+    "lockfilesChanged": false
+  },
+  "tests": {
+    "newTruncation": 7,
+    "existingWorkerEnginePartialAndReceipt": 18,
+    "adapterHTTP": 8,
+    "referenceClient": 8,
+    "uniquePassed": 41,
+    "failed": 0,
+    "skipped": 0
+  },
+  "representative": {
+    "engines": [
+      "builtin",
+      "vercel"
+    ],
+    "prefixShapes": [
+      "incomplete JSON",
+      "complete JSON tool prefix in incomplete envelope"
+    ],
+    "flows": 4,
+    "perFlow": {
+      "syntheticModelResponses": 3,
+      "toolCalls": 2,
+      "syntheticSelfTestsPassed": 1,
+      "syntheticSelfTestsFailed": 1,
+      "truncatedPrefixExecutions": 0
+    },
+    "lastPassingCheckpointHashRetained": true,
+    "receipt": {
+      "modelRequests": 3,
+      "toolCalls": 2
+    },
+    "originalNextStepAndEvidenceRetained": true,
+    "requestsAutomaticallyRetried": 0,
+    "validationQueued": false
+  },
+  "negativeCases": [
+    "provider error",
+    "content filtering",
+    "unknown incomplete reason",
+    "malformed envelope",
+    "cancellation",
+    "no trusted checkpoint",
+    "failed self-test",
+    "model-forged checkpoint",
+    "secret-invalidated checkpoint"
+  ],
+  "paidProviderCalls": 0,
+  "goProductionChanged": false,
+  "newCandidateServerOrDB": false,
+  "baselineDeployed": false,
+  "baselineHealth": {
+    "builtinStateValid": true,
+    "managerIdentityValid": true,
+    "api": true,
+    "target": true,
+    "web": true,
+    "mcpPinsValid": true,
+    "mcpReady": true,
+    "builtinServerSha256": "f064bd02671c223b7f209bf982e32623d0dc88318ee4b5bcf6f4b1a9f275f35f"
+  },
+  "cleanup": {
+    "newContainers": 0,
+    "newVolumes": 0,
+    "newNetworks": 0,
+    "ownedBackgroundProcesses": 0,
+    "loopbackFixturesClosed": true,
+    "temporaryDebugInstrumentation": false
+  },
+  "remaining": [
+    "large immutable candidate/Stage references and decomposition",
+    "general semantic compaction",
+    "monetary and wider task totals",
+    "second provider live test",
+    "M12.4 formal comparison",
+    "M12.Z"
+  ],
+  "original14TaskUnassistedBatchAllPassProven": false,
+  "historicalEvidencePreserved": true,
+  "artifacts": {
+    "root": "/var/folders/0n/ycjdyc553gx4ywrtpmtnwp2h0000gq/T/whippet-m12-wave7-zno2g9ia",
+    "files": [
+      {
+        "file": "adapter-network-final.tap",
+        "sha256": "7a10f9855ee18bdf8a7932f6fc3f9527884116db2024220d9d362c432861f819"
+      },
+      {
+        "file": "bridge-final.tap",
+        "sha256": "81468786ef623e4ed31d52d8f9baed838a359f9520d1e0233ef9010039c2364c"
+      },
+      {
+        "file": "build-green.txt",
+        "sha256": "15850202dbd24d6da40c717fcfdf110a9e6e3381ecbb17cc6cc44bebef77dfae"
+      },
+      {
+        "file": "build-red.txt",
+        "sha256": "c6161590a087ed13ab5698dfe97a928ecc6b4e821d89d917069829b512da2898"
+      },
+      {
+        "file": "build-red2.txt",
+        "sha256": "c6161590a087ed13ab5698dfe97a928ecc6b4e821d89d917069829b512da2898"
+      },
+      {
+        "file": "build-red3.txt",
+        "sha256": "c6161590a087ed13ab5698dfe97a928ecc6b4e821d89d917069829b512da2898"
+      },
+      {
+        "file": "build-runtime-red.txt",
+        "sha256": "c6161590a087ed13ab5698dfe97a928ecc6b4e821d89d917069829b512da2898"
+      },
+      {
+        "file": "runtime-red.tap",
+        "sha256": "6a4e08f3bdba7746a2dce73f2ca1d4559c18e83c8d64c150e2f21417342750e6"
+      },
+      {
+        "file": "truncation-green.tap",
+        "sha256": "6846bc1a8d79877dd10f4f9e51732248c1aa71edcf02ca3a9af558674a0ff915"
+      },
+      {
+        "file": "truncation-red.tap",
+        "sha256": "c149b4e6b039b3d108faab989c261bee25c61a691455682dfe5ec995e4717353"
+      },
+      {
+        "file": "truncation-red2.tap",
+        "sha256": "1d8e3f83c698f0fdbb643de6f41b7ed7d713f138d7ca435cebc54fcf18262da1"
+      },
+      {
+        "file": "truncation-red3.tap",
+        "sha256": "ea913bf6cdebdcba23827f5a5e7d8db9f02a99ce8c5afb6b57f7de72b51aabef"
+      },
+      {
+        "file": "worker-regression-final.tap",
+        "sha256": "cd170c92774b846583966aa646236ca4a7a98f7e533c7ff9c8044f270ffbe619"
+      }
+    ]
+  },
+  "secretScan": {
+    "filesScanned": 10,
+    "controlledSourcesLoaded": true,
+    "workingTreeFindings": 0,
+    "stagedFindings": 0
+  }
+}

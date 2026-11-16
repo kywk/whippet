@@ -52,6 +52,14 @@ reasoning effort仍使用原設定與skill快照，模型／effort／output cap�
 
 本切片完成有界history壓縮→精確重讀的雙引擎合成驗證；不等同任意長對話語意摘要、超大Stage拆解續接或真模型成功率驗收。M12.1一般大任務、金額計價及正式比較仍待辦；預設builtin、模型／effort與8／12／180000／8192（Module原16384）不變。
 
+## M12.1 Wave7：截斷收尾修復
+
+2026-11-16修復builtin在`status=incomplete`且`incomplete_details.reason=max_output_tokens`時一律丟`invalid_response`的缺口。兩引擎現在共用固定回應分類；只有沒有provider error且Worker guard仍持有通過自試的checkpoint時，才回內部`output_truncated` partial。provider error、content_filter、未知incomplete或其他無效回應仍失敗；取消優先，不轉partial、不自動重試。
+
+整份incomplete output都不執行，即使其中有完整JSON工具前綴亦同。最後通過的候選、剩餘nextStep與證據引用從原guard取得，不採信模型或失敗修復稿；機密守衛使候選失效時，最終輸出不得附script／checkpoint。外部MCP參考客戶端沒有可信自試checkpoint，仍停止，不新增外部partial權限。
+
+Worker wire仍沿用`partial.reason=budget_exhausted`與原usage receipt，message／nextStep明確說明截斷，模型／工具用量計入實際已送出的截斷請求及已執行的工具；不提高output cap或跨Run總額。legacy／Module／Planner／summary的原partial門檻不變，沒有自動continue／validation。未改registry／skill pins、HTTP／WS或runtime digest。
+
 ## M12.2 Wave2：控制面 runtime 快照
 
 2026-11-16 後端切片已實作，UI於同日Wave3完成（見下節）。沿用 WSS envelope protocolVersion=1，author_payload／Worker input 新增選填 `runtime`；沒有修改 author.json、工具 registry 或 skill 套件。

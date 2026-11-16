@@ -1,5 +1,15 @@
 import type { EngineItem, EngineResult, EngineRun, EnginePartial } from "./engine.js";
 import { AuthorError } from "./types.js";
+import type { ModelRequestFailureStage } from "./module-diagnostics.js";
+
+// Only structural values enter diagnostics, never provider text. A truncation
+// classification alone does not authorize recovery (error/checkpoint still gate it).
+export function modelResponseFailureStage(raw: unknown): ModelRequestFailureStage {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || (raw as EngineItem).status !== "incomplete") return "ENVELOPE_INVALID";
+  const details = (raw as EngineItem).incomplete_details;
+  const reason = details && typeof details === "object" && !Array.isArray(details) ? (details as EngineItem).reason : undefined;
+  return reason === "max_output_tokens" ? "INCOMPLETE_MAX_OUTPUT_TOKENS" : reason === "content_filter" ? "INCOMPLETE_CONTENT_FILTER" : "INCOMPLETE_UNKNOWN";
+}
 
 export function outputTokenLimit(input: EngineRun): number {
   const budget = input.budget, limit = budget.maxOutputTokens === undefined ? 8192 : budget.maxOutputTokens;

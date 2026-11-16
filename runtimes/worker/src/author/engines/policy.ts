@@ -4,7 +4,7 @@ import { modelCapacity } from "../../ai/capacity.js";
 import { AuthorError } from "../types.js";
 import { pruneSnapshots, type EngineItem, type EngineResult, type EngineRun } from "../engine.js";
 import { loadToolRegistry, modelTool, validateToolArguments, validateToolResult, type ToolDefinition } from "../registry.js";
-import { guardRequest, outputTokenLimit, partialResult, requestSettings, withAbort } from "../engine-policy.js";
+import { guardRequest, modelResponseFailureStage, outputTokenLimit, partialResult, requestSettings, withAbort } from "../engine-policy.js";
 import { ContextCapacityError, estimateInputTokens, fitContext } from "./context.js";
 
 export class AdapterPolicy {
@@ -90,8 +90,9 @@ export class AdapterPolicy {
   validateEnvelope(raw: unknown) {
     const data = raw as Record<string, any>;
     if (!data || data.status !== "completed" || data.error || !Array.isArray(data.output)) {
-      this.truncated = data?.status === "incomplete" && data.incomplete_details?.reason === "max_output_tokens";
-      try { this.input.onModelRequestFailure?.(this.truncated ? "INCOMPLETE_MAX_OUTPUT_TOKENS" : "ENVELOPE_INVALID"); } catch { /* Diagnostics never change semantics. */ }
+      const stage = modelResponseFailureStage(raw);
+      this.truncated = stage === "INCOMPLETE_MAX_OUTPUT_TOKENS" && !data?.error;
+      try { this.input.onModelRequestFailure?.(stage); } catch { /* Diagnostics never change semantics. */ }
       this.fail("invalid_response");
     }
     if (JSON.stringify(raw).includes(this.config.apiKey)) this.fail("sensitive_output");

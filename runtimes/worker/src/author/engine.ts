@@ -3,7 +3,7 @@ import type { AIConfig } from "../ai/config.js";
 import type { ModelCapacity } from "../ai/capacity.js";
 import type { HistoryPin } from "./history.js";
 import { AuthorError } from "./types.js";
-import { guardRequest, outputTokenLimit, partialResult, requestSettings } from "./engine-policy.js";
+import { guardRequest, modelResponseFailureStage, outputTokenLimit, partialResult, requestSettings } from "./engine-policy.js";
 import { ContextCapacityError, estimateInputTokens, fitContext } from "./engines/context.js";
 
 export type EngineItem = Record<string, unknown>;
@@ -71,15 +71,10 @@ export const builtinEngine: AgentEngine = {
     const maxOutputTokens = outputTokenLimit(input);
     const context = structuredClone(input.context);
     const execute = toolDispatcher(input.tools, input.execute);
-    const invalidEnvelope = (raw: unknown): never => {
-      // Only exact structural values enter diagnostics; no provider text is retained.
-      let stage: ModelRequestFailureStage = 'ENVELOPE_INVALID';
-      if (raw && typeof raw === 'object' && (raw as EngineItem).status === 'incomplete') {
-        const details = (raw as EngineItem).incomplete_details;
-        const reason = details && typeof details === 'object' && !Array.isArray(details) ? (details as EngineItem).reason : undefined;
-        stage = reason === 'max_output_tokens' ? 'INCOMPLETE_MAX_OUTPUT_TOKENS' : reason === 'content_filter' ? 'INCOMPLETE_CONTENT_FILTER' : 'INCOMPLETE_UNKNOWN';
-      }
+    const invalidEnvelope = (raw: unknown): EngineResult => {
+      const stage = modelResponseFailureStage(raw);
       try { input.onModelRequestFailure?.(stage); } catch { /* Evidence never changes engine semantics. */ }
+      if (stage === "INCOMPLETE_MAX_OUTPUT_TOKENS" && !(raw as EngineItem).error && input.checkpoint()) return partialResult(input, "output_truncated");
       throw new AuthorError('invalid_response');
     };
     let count = 0, historyCalls = 0;
@@ -111,11 +106,11 @@ export const builtinEngine: AgentEngine = {
       input.onEvent?.(`author:model:${request + 1}:started`);
       const raw = await input.request(body);
       if (signal.aborted) throw new AuthorError("cancelled");
-      if (!raw || typeof raw !== "object") invalidEnvelope(raw);
+      if (!raw || typeof raw !== "object") return invalidEnvelope(raw);
       const data = raw as EngineItem;
-      if (data.status !== "completed" || data.error || !Array.isArray(data.output)) invalidEnvelope(raw);
+      if (data.status !== "completed" || data.error || !Array.isArray(data.output)) return invalidEnvelope(raw);
       const output = data.output as EngineItem[];
-      if (output.some(item => !item || typeof item !== "object" || typeof item.type !== "string")) invalidEnvelope(raw);
+      if (output.some(item => !item || typeof item !== "object" || typeof item.type !== "string")) return invalidEnvelope(raw);
       input.onEvent?.(`author:model:${request + 1}:succeeded`);
       const calls = output.filter(item => item.type === "function_call");
       if (!calls.length) {
