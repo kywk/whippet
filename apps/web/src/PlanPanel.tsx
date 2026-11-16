@@ -168,10 +168,10 @@ export function PlanPanel({ api, testId, session, draft, runs, authorEngine, blo
         <details><summary>參數與回傳綁定</summary><pre className="plan-json">{JSON.stringify(stage.args, null, 2)}</pre><p>綁定別名：{stage.bind || '未設定'}</p></details>
         {stage.authorRunId ? <p className="identifier">Author Run {stage.authorRunId}{authorRun ? <> · <AuthorEngineStatus engine={authorRun.authorEngine ?? 'builtin'} status={authorRun.status} /></> : null}</p> : null}{stage.validationRunId ? <p className="identifier">Validation Run {stage.validationRunId}</p> : null}
         {stage.error ? <Notice message={stage.error} /> : null}
-        {stage.status === 'failed' && stage.action !== 'reuse' ? <StageRetryForm api={api} planId={plan.id} stageId={stage.id} planRevision={plan.revision} blocked={disabled || Boolean(editor) || plan.status !== 'stopped'} onSubmit={retryStage} /> : null}</li>; })}</ol>
+        {(stage.status === 'failed' || (stage.status === 'ready' && index === plan.stages.length - 1 && plan.status === 'stopped' && Boolean(plan.validationRunId))) && stage.action !== 'reuse' ? <StageRetryForm api={api} planId={plan.id} stageId={stage.id} planRevision={plan.revision} blocked={disabled || Boolean(editor) || plan.status !== 'stopped'} onSubmit={retryStage} /> : null}</li>; })}</ol>
       <div className="action-row"><button className="button primary" disabled={disabled || Boolean(editor) || plan.status !== 'draft' || plan.baseRevision !== draft.revision || !api.confirmPlan} onClick={() => { void mutate('confirm'); }}>確認 Plan 並開始</button>
         <button className="button secondary" disabled={disabled || Boolean(editor) || ['done', 'stopped'].includes(plan.status) || !api.cancelPlan} onClick={() => { void mutate('cancel'); }}>停止 Plan</button></div>
-      {plan.status === 'stopped' ? <p className="inline-hint">已停止，不會自動重跑。失敗 Stage 可先查詢人工修復資格；修訂整份 Plan 則須儲存後重新確認。</p> : null}
+      {plan.status === 'stopped' ? <p className="inline-hint">已停止，不會自動重跑。失敗 Stage 或整體驗證失敗後的末段可先查詢人工修復資格；修訂整份 Plan 則須儲存後重新確認。</p> : null}
       {plan.status === 'draft' && plan.baseRevision !== draft.revision ? <p className="blocked-hint">Plan 基底與目前草稿不同，請重新載入草稿並修訂計畫。</p> : null}
     </> : null}
     {editable && fresh ? <div className="plan-editor">{!editor ? <button className="button secondary" disabled={disabled || !api.savePlan} onClick={() => setEditor({ text: JSON.stringify(plan?.stages.map(editableStage) ?? [], null, 2), planRevision: plan?.revision ?? 0, draftRevision: draft.revision })}>{plan ? '修訂 Stage' : '建立 Plan'}</button> : <>

@@ -197,3 +197,5 @@ PM 在各波實作前固定 HTTP／dispatch／輸出與遷移規則；Server／R
 
 - 開源引擎只負責迴圈、供應商、重試與 compaction，工具一律來自註冊表。依賴版本鎖定在 Worker 的 lockfile，並更新 tech-stack。
 - `runtimes/agent-bridge/` 是參考外部 Worker，以 MCP 接單模式連線，不能直接存取 DB 或 Manager。
+
+2026-11-16 交付保留補強：Module 交付區間至少保留五次模型請求，才能在同一個8次總上限內完成 script、harness、commit、自試修一段及再次 commit；一般 Test／Planner 仍為三次。已驗候選依 guard 完成，不提高總模型／工具／時間預算。

@@ -215,7 +215,14 @@ func runM10PlanModuleFlow(t *testing.T, mode string, bridge func(*testing.T, *Po
 			t.Fatal(err)
 		}
 	}
-	if err = p.Complete(ctx, "m10-stage", usecase.ID, usecase.AttemptID, Result{Status: "succeeded"}); err != nil {
+	usecaseStatus := "succeeded"
+	if mode == "create_compose_repair" {
+		usecaseStatus = "failed"
+	}
+	if mode == "create_compose_cancel" {
+		usecaseStatus = "cancelled"
+	}
+	if err = p.Complete(ctx, "m10-stage", usecase.ID, usecase.AttemptID, Result{Status: usecaseStatus}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = p.CreatePlanSummary(ctx, composed.ID, composed.Revision, usecase.ID); err == nil {
@@ -223,6 +230,62 @@ func runM10PlanModuleFlow(t *testing.T, mode string, bridge func(*testing.T, *Po
 	}
 	if err = p.ReleaseSlots(ctx, "m10-stage", nil); err != nil {
 		t.Fatal(err)
+	}
+	if mode == "create_compose_cancel" {
+		r, e := p.StageRetry(ctx, plan.ID, stage.ID)
+		if e != nil || r.Eligible {
+			t.Fatal("cancelled Compose admitted", e)
+		}
+		return
+	}
+	if mode == "create_compose_repair" {
+		stopped, e := p.Plan(ctx, item.ID, editing.ID)
+		if e != nil || stopped.Status != "stopped" || stopped.Stages[0].Status != "ready" {
+			t.Fatal("compose failure did not stop Plan", e)
+		}
+		for _, guard := range []struct{ change, restore string }{
+			{"status='succeeded'", "status='failed'"},
+
+			{"slot_released=false", "slot_released=true"},
+		} {
+			if _, e = p.DB.ExecContext(ctx, `UPDATE runs SET `+guard.change+` WHERE id=$1`, usecase.ID); e != nil {
+				t.Fatal(e)
+			}
+			blocked, e := p.StageRetry(ctx, plan.ID, stage.ID)
+			if e != nil || blocked.Eligible {
+				t.Fatal("invalid Compose proof admitted", guard.change, e)
+			}
+			if _, e = p.DB.ExecContext(ctx, `UPDATE runs SET `+guard.restore+` WHERE id=$1`, usecase.ID); e != nil {
+				t.Fatal(e)
+			}
+		}
+		if _, e = p.DB.ExecContext(ctx, `UPDATE runs SET draft_revision=draft_revision+1 WHERE id=$1`, usecase.ID); e == nil {
+			t.Fatal("immutable Compose snapshot changed")
+		}
+		if _, e = p.DB.ExecContext(ctx, `UPDATE plans SET validation_run_id=$2 WHERE id=$1`, plan.ID, validation.ID); e != nil {
+			t.Fatal(e)
+		}
+		wrong, e := p.StageRetry(ctx, plan.ID, stage.ID)
+		if e != nil || wrong.Eligible {
+			t.Fatal("foreign validation admitted", e)
+		}
+		if _, e = p.DB.ExecContext(ctx, `UPDATE plans SET validation_run_id=$2 WHERE id=$1`, plan.ID, usecase.ID); e != nil {
+			t.Fatal(e)
+		}
+		retry, e := p.StageRetry(ctx, plan.ID, stage.ID)
+		if e != nil || !retry.Eligible {
+			t.Fatal("last ready Stage cannot repair failed Compose", e, stringValue(retry.Reason))
+		}
+		body := StageRetryRequest{retry.PlanRevision, retry.Source.ModuleRevision, retry.Source.ModuleContextRevision, true, "Repair integration assertion without weakening it"}
+		repaired, e := p.RetryPlanStage(ctx, plan.ID, stage.ID, body)
+		if e != nil || repaired.Status != "running" || repaired.ValidationRunID != nil || repaired.Stages[0].ValidationRunID != nil {
+			t.Fatal("old Compose evidence retained", e)
+		}
+		replay, e := p.RetryPlanStage(ctx, plan.ID, stage.ID, body)
+		if e != nil || *replay.Stages[0].AuthorRunID != *repaired.Stages[0].AuthorRunID {
+			t.Fatal("retry duplicated", e)
+		}
+		return
 	}
 	summary, err := p.CreatePlanSummary(ctx, composed.ID, composed.Revision, usecase.ID)
 	if err != nil {
@@ -366,4 +429,12 @@ func TestM10PostgresPlanConfirmDispatchCancel(t *testing.T) {
 
 func TestPlanStageAuthorReceivesValidatedCandidateContext(t *testing.T) {
 	runM10PlanModuleFlow(t, "create_context", nil)
+}
+
+func TestComposeFailureAllowsLastStageRepair(t *testing.T) {
+	runM10PlanModuleFlow(t, "create_compose_repair", nil)
+}
+
+func TestCancelledComposeDoesNotAllowLastStageRepair(t *testing.T) {
+	runM10PlanModuleFlow(t, "create_compose_cancel", nil)
 }
