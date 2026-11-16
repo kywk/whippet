@@ -150,7 +150,7 @@ PM 在各波實作前固定 HTTP／dispatch／輸出與遷移規則；Server／R
 
 2026-11-16 M12.2 Wave2：Server 以後端宣告的非機密 runtime profiles 提供 Workspace 預設與主 skill 覆寫；管理 API 只接受 profile ID，與既有 builtin/external 接單模式分開。設定沿用 Workspace revision CAS；排隊交易鎖定設定並將完整有效 runtime 及 SHA256 寫進 author_payload。派工與重播只讀原快照，Test partial 的受控繼續沿用來源 runtime；後續設定只影響新排入的獨立任務。打包 skill model 是套件預設與完整性校驗，runtime 是本次有效模型選擇；工具、skill pins 與預算仍由原快照控制。精確欄位、優先序與相容性見 [v12 契約](../../contracts/mvp-v12.md#m122-wave2控制面-runtime-快照)。
 
-Worker 只從固定供應商機密設定取得金鑰，依快照覆蓋非機密環境設定；缺少對應金鑰即停止，不借用其他 provider 的 key。enable 與金鑰仍由目前後端控制，不把可撤銷機密固定進 Run。Server／Manager／Worker 共用 golden runtime digest 測資，但各自驗證。Wave2 只完成後端切片；UI、跨 Run 總預算與正式比較仍待後續 Wave。
+Worker 只從固定供應商機密設定取得金鑰，依快照覆蓋非機密環境設定；缺少對應金鑰即停止，不借用其他 provider 的 key。enable 與金鑰仍由目前後端控制，不把可撤銷機密固定進 Run。Server／Manager／Worker 共用 golden runtime digest 測資，但各自驗證。Wave2完成後端切片，Wave3已接上Workspace設定UI：只選後端profile、五主skill可繼承／覆寫；衝突後重讀並保留選擇，經人工比對才可再次儲存，不自動重送。跨Run總預算與正式比較仍待後續Wave。
 
 ### 資料
 

@@ -1,5 +1,6 @@
 import { validRepairContent, editableStage } from './plan';
-import { RUN_STATUSES } from './types';
+import { AGENT_RUNTIME_SKILLS, RUN_STATUSES } from './types';
+import type { WorkspaceAgentRuntime } from './types';
 import type { AgentToken, AgentToolAudit, AuthorEngine, BrowserSession, StageRetry, ModuleMetadata, Plan, PlanStage, PlanSummary, StageArgument, JsonValue, AuthorPartial, CatalogItem, AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
 
 export class ApiError extends Error {
@@ -52,6 +53,28 @@ function parseStatus(value: unknown): RunStatus {
 
 function parseAuthorEngine(value: unknown): AuthorEngine {
   return value === undefined ? 'builtin' : choice(value, ['builtin', 'external'] as const);
+}
+
+function parseWorkspaceAgentRuntime(value: unknown, workspaceId: string): WorkspaceAgentRuntime {
+  const data = record(value);
+  const selection = record(data.selection);
+  const result: WorkspaceAgentRuntime = {
+    workspaceId: string(data.workspaceId), revision: revision(data.revision),
+    selection: {
+      profileId: string(selection.profileId),
+      skillProfiles: Object.fromEntries(Object.entries(record(selection.skillProfiles)).map(([skill, profile]) => [choice(skill, AGENT_RUNTIME_SKILLS), string(profile)])),
+    },
+    profiles: array(data.profiles, (value) => {
+      const profile = record(value);
+      return { id: string(profile.id), engine: choice(profile.engine, ['builtin', 'vercel'] as const), provider: string(profile.provider), model: string(profile.model), reasoningEffort: string(profile.reasoningEffort) };
+    }),
+  };
+  if (result.workspaceId !== workspaceId || result.revision < 1 || new Set(result.profiles.map((profile) => profile.id)).size !== result.profiles.length) {
+    throw new ApiError('Runtime 設定所屬 Workspace、revision 或 profile 清單不符。', 'INVALID_RESPONSE');
+  }
+  // A removed profile is still a real saved selection. Let the UI show it as
+  // unavailable instead of silently substituting builtin or rejecting the read.
+  return result;
 }
 
 function parseWorkspaceSnapshot(value: unknown): WorkspaceSettingsSnapshot {
@@ -630,6 +653,13 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
       const workspace = parseWorkspaceDetail(await request(`/workspaces/${id(workspaceId)}/author-engine`, 'PATCH', signal, { revision, authorEngine }));
       if (workspace.id !== workspaceId) throw new ApiError('Workspace 回應不符。', 'WORKSPACE_CONFLICT');
       return workspace;
+    },
+    async getWorkspaceAgentRuntime(workspaceId, signal) {
+      return parseWorkspaceAgentRuntime(await request(`/workspaces/${id(workspaceId)}/agent-runtime`, 'GET', signal, undefined, false, 200), workspaceId);
+    },
+    async updateWorkspaceAgentRuntime(workspaceId, revision, selection, signal) {
+      const { profileId, skillProfiles } = selection;
+      return parseWorkspaceAgentRuntime(await request(`/workspaces/${id(workspaceId)}/agent-runtime`, 'PATCH', signal, { revision, profileId, skillProfiles }, false, 200), workspaceId);
     },
     async createWorkspace(name, signal) { return parseWorkspaceDetail(await request('/workspaces', 'POST', signal, name?.trim() ? { name: name.trim() } : {})); },
     async getWorkspaceConversation(workspaceId, signal) {

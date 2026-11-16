@@ -41,7 +41,7 @@ reasoning effort仍使用原設定與skill快照，模型／effort／output cap�
 
 ## M12.2 Wave2：控制面 runtime 快照
 
-2026-11-16 後端切片已實作；UI 尚待後續 Wave。沿用 WSS envelope protocolVersion=1，author_payload／Worker input 新增選填 `runtime`；沒有修改 author.json、工具 registry 或 skill 套件。
+2026-11-16 後端切片已實作，UI於同日Wave3完成（見下節）。沿用 WSS envelope protocolVersion=1，author_payload／Worker input 新增選填 `runtime`；沒有修改 author.json、工具 registry 或 skill 套件。
 
 ### 設定入口與優先序
 
@@ -86,4 +86,12 @@ Test partial 的「繼續」沿用來源 runtime，保持既有回收、scope／
 
 缺少 runtime 的歷史 Run 沿用 Wave1 的後端環境與主 skill 模型匹配規則，不回填歷史資料。帶 runtime 必須同時具有完整 v10 capability snapshot；舊 Manager／Worker 會拒絕未知欄位，部署須協同更新三端，不能依 envelope version=1 推定可混用。此候選沒有部署到兩個固定基準。
 
-本波只驗證 CAS→快照→派工／受控 continue，以及兩引擎的合成 Responses 接縫；沒有新增付費模型 Run、重跑黃金全套或修改歷史 raw。UI 設定、跨 Run 總額、第二 provider 真測及 M12.3／M12.4／M12.Z 仍待辦。
+Wave2只驗證 CAS→快照→派工／受控 continue，以及兩引擎的合成 Responses 接縫；沒有新增付費模型 Run、重跑黃金全套或修改歷史 raw。UI設定已由Wave3完成；跨 Run 總額、第二 provider 真測及 M12.3／M12.4／M12.Z 仍待辦。
+
+## M12.2 Wave3：Workspace runtime 設定 UI
+
+入口為「Workspace 設定 → 正式設定與能力 → Agent runtime 設定」。沿用登入管理gate與既有API client，GET載入公開profile／revision／selection，PATCH只送`revision`、`profileId`、`skillProfiles`。主skill的繼承選項會移除對應map項目；覆寫只接受後端提供的profile ID，沒有endpoint、金鑰、自訂model／effort／capacity欄位。內建profile的空白provider／model／effort顯示「沿用主skill」，每個skill顯示有效profile與模型迴圈。
+
+409時保留未儲存選擇並GET最新設定，顯示目前設定供比對，使用者可採用目前設定或保留選擇繼續編輯；後者仍須另按儲存，沒有自動PATCH。其他儲存錯誤也先重讀確認，不直接重送；最新讀取失敗時阻擋兩個決策與儲存，提供重新載入。錯誤聚焦到提示區，避免表單底部操作後看不到回饋。
+
+已保存但不在目前白名單中的profile仍原樣顯示為「目前不可用」，保留disabled選項並阻擋儲存，直到使用者明確修正所有失效選擇；不靜默fallback。UI明訂此設定與M11接單模式不同，僅影響新任務，既有Run與受控繼續沿用原runtime。未擴張預算，也未改動authorEngine路由。

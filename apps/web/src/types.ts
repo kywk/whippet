@@ -56,6 +56,27 @@ export interface AgentToolAudit {
 
 export type ScriptOrigin = 'ai' | 'manual' | 'legacy';
 export type AuthorEngine = 'builtin' | 'external';
+// Worker model loops are independent of the builtin/external task routing above.
+export type AgentRuntimeEngine = 'builtin' | 'vercel';
+export const AGENT_RUNTIME_SKILLS = ['test-author', 'workspace-author', 'acceptance-summary', 'module-authoring', 'usecase-planner'] as const;
+export type AgentRuntimeSkill = typeof AGENT_RUNTIME_SKILLS[number];
+export interface AgentRuntimeSelection {
+  profileId: string;
+  skillProfiles: Partial<Record<AgentRuntimeSkill, string>>;
+}
+export interface AgentRuntimeProfile {
+  id: string;
+  engine: AgentRuntimeEngine;
+  provider: string;
+  model: string;
+  reasoningEffort: string;
+}
+export interface WorkspaceAgentRuntime {
+  workspaceId: string;
+  revision: number;
+  selection: AgentRuntimeSelection;
+  profiles: AgentRuntimeProfile[];
+}
 export interface WorkspaceCapability { available: boolean; reason: string | null }
 export interface WorkspaceCapabilities {
   aiExploration?: WorkspaceCapability;
@@ -414,6 +435,8 @@ export interface WhippetApi {
   requestSummary(testId: string, editingSessionId: string, revision: number, validationRunId: string, signal?: AbortSignal): Promise<Run>;
   getWorkspace(workspaceId: string, signal?: AbortSignal): Promise<WorkspaceDetail>;
   updateWorkspaceAuthorEngine(workspaceId: string, revision: number, authorEngine: AuthorEngine, signal?: AbortSignal): Promise<WorkspaceDetail>;
+  getWorkspaceAgentRuntime?: (workspaceId: string, signal?: AbortSignal) => Promise<WorkspaceAgentRuntime>;
+  updateWorkspaceAgentRuntime?: (workspaceId: string, revision: number, selection: AgentRuntimeSelection, signal?: AbortSignal) => Promise<WorkspaceAgentRuntime>;
   createWorkspace(name: string | undefined, signal?: AbortSignal): Promise<WorkspaceDetail>;
   getWorkspaceConversation(workspaceId: string, signal?: AbortSignal): Promise<WorkspaceConversationData>;
   sendWorkspaceMessage(workspaceId: string, input: { content: string; revision: number; contextRevision: number }, signal?: AbortSignal): Promise<{ run: Run; conversationId: string }>;

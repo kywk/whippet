@@ -10,6 +10,7 @@ import { WorkspaceAvailability, WorkspaceSettings } from './WorkspaceSettings';
 import { WorkspaceProposalCard } from './WorkspaceProposal';
 import { WorkspaceCredentials } from './WorkspaceCredentials';
 import { WorkspaceAgentAccess } from './WorkspaceAgentAccess';
+import { WorkspaceAgentRuntime } from './WorkspaceAgentRuntime';
 import { WorkspaceBrowserSessions } from './WorkspaceBrowserSessions';
 import { AuthorEngineSettings } from './AuthorEngineSettings';
 import { AuthorEngineStatus } from './AuthorEngineStatus';
@@ -81,6 +82,7 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
   const [engineError, setEngineError] = useState<string>();
   const [engineNote, setEngineNote] = useState<string>();
   const [credentialGuard, setCredentialGuard] = useState({ dirty: false, busy: false });
+  const [runtimeGuard, setRuntimeGuard] = useState({ dirty: false, busy: false });
   const [loadError, setLoadError] = useState<string>();
   const [sendError, setSendError] = useState<string>();
   const [runError, setRunError] = useState<string>();
@@ -145,10 +147,11 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
     return () => { request.abort(); clearTimeout(timer); };
   }, [api, workspace.id, trackedId, refresh]);
 
-  const mutating = sending || proposalBusy || credentialGuard.busy || engineBusy;
-  // 背景執行的訪談與一般未送出的草稿文字不綁住頁面切換，只保護正在送出的請求或未保存帳密。
-  useLeaveGuard(mutating || credentialGuard.dirty || engineSelection !== current.authorEngine, onDirtyChange);
+  const mutating = sending || proposalBusy || credentialGuard.busy || engineBusy || runtimeGuard.busy;
+  // 背景訪談與一般草稿文字不綁住頁面切換，只保護正在送出的請求、未保存帳密或設定選擇。
+  useLeaveGuard(mutating || credentialGuard.dirty || runtimeGuard.dirty || engineSelection !== current.authorEngine, onDirtyChange);
   const reportCredentialGuard = useCallback((state: { dirty: boolean; busy: boolean }) => setCredentialGuard(state), []);
+  const reportRuntimeGuard = useCallback((state: { dirty: boolean; busy: boolean }) => setRuntimeGuard(state), []);
   const canSend = Boolean(fresh && conversation && !refreshing && !mutating && !runActive && !credentialGuard.dirty);
 
   async function send() {
@@ -197,6 +200,7 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
   function returnToTests() {
     if (mutating) return;
     if (engineSelection !== current.authorEngine && !window.confirm('AI 撰寫引擎的選擇尚未儲存。確定返回？')) return;
+    if (runtimeGuard.dirty && !window.confirm('Runtime 的選擇尚未儲存。確定返回測試工作台？')) return;
     if (credentialGuard.dirty && !window.confirm('返回測試工作台會清除尚未保存的帳密；一般未送出訊息會保留。確定繼續？')) return;
     setLiveSelection(undefined);
     onReturn();
@@ -293,17 +297,18 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
           <button className="rail-icon-button light small side-close" aria-label="關閉右側面板" onClick={() => setSideOpen(false)}><CloseIcon /></button>
         </div>
         <div id="ws-panel-proposal" role="tabpanel" aria-labelledby="ws-tab-proposal" className="side-panel" hidden={sideTab !== 'proposal'}>
-          {current.currentProposal && conversation ? <WorkspaceProposalCard key={current.currentProposal.id} api={api} workspace={current} proposal={current.currentProposal} contextRevision={conversation.contextRevision} blocked={!fresh || refreshing || sending || runActive || credentialGuard.busy || credentialGuard.dirty || Boolean(content)} onUpdated={proposalUpdated} onBusyChange={setProposalBusy} onRefresh={refresh} /> : <section className="workspace-proposal" aria-label="設定提案"><h3>設定提案</h3><p className="mode-empty">尚未取得提案。正式設定保持原樣，請先透過訪談說明目標與必要資訊。</p></section>}
+          {current.currentProposal && conversation ? <WorkspaceProposalCard key={current.currentProposal.id} api={api} workspace={current} proposal={current.currentProposal} contextRevision={conversation.contextRevision} blocked={!fresh || refreshing || sending || runActive || credentialGuard.busy || credentialGuard.dirty || runtimeGuard.busy || Boolean(content)} onUpdated={proposalUpdated} onBusyChange={setProposalBusy} onRefresh={refresh} /> : <section className="workspace-proposal" aria-label="設定提案"><h3>設定提案</h3><p className="mode-empty">尚未取得提案。正式設定保持原樣，請先透過訪談說明目標與必要資訊。</p></section>}
         </div>
         <div id="ws-panel-credentials" role="tabpanel" aria-labelledby="ws-tab-credentials" className="side-panel" hidden={sideTab !== 'credentials'}>
-          {active ? <WorkspaceCredentials api={api} apiBase={apiBase} workspace={current} blocked={!fresh || refreshing || sending || proposalBusy} onGuardChange={reportCredentialGuard} onRefresh={refresh} /> : null}
+          {active ? <WorkspaceCredentials api={api} apiBase={apiBase} workspace={current} blocked={!fresh || refreshing || sending || proposalBusy || runtimeGuard.busy} onGuardChange={reportCredentialGuard} onRefresh={refresh} /> : null}
         </div>
         <div id="ws-panel-settings" role="tabpanel" aria-labelledby="ws-tab-settings" className="side-panel" hidden={sideTab !== 'settings'}>
           <WorkspaceAvailability workspace={current} />
           <WorkspaceSettings workspace={current} />
-          <AuthorEngineSettings current={current.authorEngine} selected={engineSelection} disabled={!fresh || refreshing || sending || proposalBusy || credentialGuard.busy} busy={engineBusy} onSelect={(value) => { setEngineSelection(value); setEngineError(undefined); setEngineNote(undefined); }} onSave={() => { void saveEngine(); }} />
+          <AuthorEngineSettings current={current.authorEngine} selected={engineSelection} disabled={!fresh || refreshing || sending || proposalBusy || credentialGuard.busy || runtimeGuard.busy} busy={engineBusy} onSelect={(value) => { setEngineSelection(value); setEngineError(undefined); setEngineNote(undefined); }} onSave={() => { void saveEngine(); }} />
           {engineError ? <Notice message={engineError} /> : null}
           {engineNote ? <p role="status" className="inline-hint">{engineNote}</p> : null}
+          <WorkspaceAgentRuntime api={api} workspaceId={workspace.id} workspaceRevision={current.revision} active={active && sideTab === 'settings'} blocked={!fresh || refreshing || sending || proposalBusy || credentialGuard.busy || engineBusy} onRefresh={refresh} onGuardChange={reportRuntimeGuard} />
           <WorkspaceAgentAccess api={api} workspaceId={workspace.id} active={active && sideTab === 'settings'} />
           <WorkspaceBrowserSessions api={api} apiBase={apiBase} workspaceId={workspace.id} active={active && sideTab === 'settings'} />
           {conversation?.conversationSummary ? <section className="session-background" aria-label="Workspace 對話背景"><h4>Workspace 對話背景</h4><p className="summary-content">{conversation.conversationSummary}</p></section> : null}

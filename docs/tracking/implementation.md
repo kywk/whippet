@@ -431,7 +431,7 @@ M11.Z 清單：
 
 ### M12 階段三：Agent Adapter（`feat/agent-adapter`；M12.0 spike起點main `5768166`）
 
-狀態：進行中（M12.0完成，Wave1正式adapter／容量保護、Wave2控制面runtime快照後端切片完成；整項尚待UI、跨Run界限與後續驗收）。依賴：M11.Z 已完成且由使用者 merge/push；M12.0自main `5768166`建立spike，Wave1自已提交`73fe101`建立獨立feat/agent-adapter，不自行merge/tag。
+狀態：進行中（M12.0完成，Wave1正式adapter／容量保護、Wave2控制面runtime快照後端、Wave3設定UI完成；整項尚待跨Run界限與後續驗收）。依賴：M11.Z 已完成且由使用者 merge/push；M12.0自main `5768166`建立spike，Wave1自已提交`73fe101`建立獨立feat/agent-adapter，不自行merge/tag。
 
 2026-11-16 接續準備完成（owner：主 Agent，不開subagent）：使用者已merge/push至main（60498a9）。依新授權退役62舊容器、17 volumes、11 networks、92映像標籤、157 tmp項目；15份DB及歷史資料先冷備份，其他專案16容器保留。M12僅保留builtin19987–19989與本機MCP19587兩基準（共3個Docker容器）。新增m12-dev-env.py start/status；受控停機→恢復PASS，11份身分SHA不變、builtin81 Run、兩庫名額0、MCP19工具、模型Run新增0。OS重開機由使用者稍後執行；[恢復指引](../guides/mcp-agent.md#m12-保留環境與重開機恢復2026-11-16)。M12.0尚未開工，不將環境整理當引擎spike完成。
 
@@ -439,7 +439,7 @@ M11.Z 清單：
 | --- | --- | --- | --- | --- |
 | M12.0 | M12 獨立 Leader（主 Agent，不開 subagent） | 2 天 spike：pi-agent-core＋pi-ai 與 Vercel AI SDK，依規格的淘汰條件與黃金子集比較；PM 裁定並更新 tech-stack | 結論文件放在 `docs/research/` | 完成（2026-11-16；兩套可執行 seam、固定版本、四淘汰條件通過，定向39/39無SKIP、build/typecheck通過；原始真子集各3 PASS/1 FAIL，G11補context另存assisted PASS。選Vercel，預設仍builtin；[決策與證據](../research/m12-engine-spike-20261116.md)） |
 | M12.1 | M12 獨立 Leader（不開 subagent） | 開源引擎 adapter（只用註冊表工具）、多供應商 provider 設定、`beforeRequest` 遮蔽 | adapter 單元測試：遮蔽 hook、取消 1 秒內停止、沒有內建工具；長對話容量預檢／合法compaction／固定預算續接驗收依架構容量策略 | 進行中（Wave1完成：正式Vercel／provider opt-in、共用收尾、final guard、已核官方capacity與可取回資料壓縮；Worker143/143、production容器11/11、Manager定向/build/typecheck及真Muse/xhigh入口1-request＋自試正負PASS。Wave2已補控制面runtime快照後端；跨Run總額、一般對話／超大Stage仍待辦；[Wave1交接](handoff/m12-wave1-20261116.md)） |
-| M12.2 | M12 獨立 Leader（不開 subagent） | 依 Workspace 或 skill 設定 engine、provider、model，並快照進 Run；UI 設定 | Go 測試加目視 | 進行中（2026-11-16 Wave2後端完成：profile白名單、Workspace／主skill選擇CAS、不可變Run runtime及continue沿用；Server／Manager／Worker定向共12 PASS、0 FAIL／SKIP，兩Go模組建置與Worker TypeScript build通過。只用獨立tmpfs DB及合成模型，未全量驗證／部署；UI仍待辦；[交接](handoff/m12-wave2-20261116.md)） |
+| M12.2 | M12 Wave3 獨立 Leader（不開 subagent） | 依 Workspace 或 skill 設定 engine、provider、model，並快照進 Run；UI 設定 | Go 測試加目視 | 完成（2026-11-16；沿用[Wave2後端12項定向驗證](handoff/m12-wave2-20261116.md)，Wave3設定UI接上真GET／PATCH、五主skill繼承／覆寫、有效profile、409人工比對及不可用profile阻擋。Web typecheck／build及一條獨立tmpfs DB／候選Server的UI儲存→重讀流程PASS，含真CAS／撤除profile與合成503、桌面／窄版目視。零模型Run，未部署固定基準；[Wave3交接](handoff/m12-wave3-20261116.md)） |
 | M12.3 | t32 | `runtimes/agent-bridge/` 參考外部 Worker（MCP 接單模式客戶端） | 完成一筆接單任務 | 待辦 |
 | M12.4 | t33＋PM | 兩個引擎跑黃金任務集；PM 依成功率、工具呼叫數、token、延遲決定預設引擎 | 比較紀錄放在 devlog | 待辦 |
 | **M12.Z** | PM＋t33 | **階段三完整驗證** | 通過後 merge 回 main，標記 `phase3-verified` | 待辦 |
