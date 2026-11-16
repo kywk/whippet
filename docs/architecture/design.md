@@ -162,6 +162,10 @@ PM 在各波實作前固定 HTTP／dispatch／輸出與遷移規則；Server／R
 - Use Case spec 由 Server 以確定性模板產生（每個 Stage 對應一個 `test.step`，綁定值轉成區域常數），不交給 AI 產生。
 - Server 端工具（catalog、module 與 usecase 草稿讀寫、plan、驗證要求）由 Server 實作。Worker 透過 M9 history IPC 泛化而成的「harness tool IPC」呼叫，Manager 核對活躍 attempt；Worker 不持有 Manager token。
 
+### Stage 作者上下文（2026-11-16）
+
+首次 Stage 派工與原 Stage retry 由相同 Server 入口組裝附加 DATA 訊息：核准的當前 Stage args、直接 binding 來源與前一 Stage 的固定 Module 契約（slug／匯出函式／輸入／回傳／前後條件及版本 ID）。已發佈 Module 只依 Plan 固定版解析；私有候選須屬於同 Plan／Workspace，且原 author 與正式 validation 已回收、revision／context／bundle hash／驗證證據仍有效。這份資料不包含上游程式碼或 harness，不新增工具權限。上下文 JSON 上限15000字元，超限拒絕排入，不截斷參數或靜默丟契約；加上最多16000字元的本輪使用者訊息，仍在既有32000總上限內。
+
 ### 引擎能力
 
 - 預算來自 skill manifest 快照。剩最後 1 次模型請求或最後 2 次工具呼叫時，注入收尾指示；超過上限時輸出 `partial`，Server 保存自我試跑通過的候選結果並顯示「繼續」。

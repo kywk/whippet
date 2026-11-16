@@ -95,8 +95,12 @@ func (p *Postgres) dispatchPlanModule(ctx context.Context, tx *sql.Tx, plan *Pla
 }
 
 func (p *Postgres) enqueuePlanModuleAuthor(ctx context.Context, tx *sql.Tx, plan *Plan, stage *PlanStage, d draftState, s EditingSession, message string) (Run, error) {
+	contextData, err := p.planAuthorContext(ctx, tx, plan, stage)
+	if err != nil {
+		return Run{}, err
+	}
 	s.ContextRevision++
-	input := editingAuthorInput(s, d, "module-authoring", []ChatMessage{{Role: "user", Content: message}})
+	input := editingAuthorInput(s, d, "module-authoring", []ChatMessage{{Role: "user", Content: message}, {Role: "user", Content: contextData}})
 	input.Platform = &AuthorPlatform{PlanID: &plan.ID, StageID: &stage.ID, Module: d.Module}
 	input.AllowedTools = []string{"read_module_draft", "read_validation_report", "stage_module_candidate_part", "commit_module_candidate", "request_module_validation"}
 	auth, proposal, err := p.prepareAuthor(ctx, tx, d, &input)

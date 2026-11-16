@@ -37,7 +37,11 @@ func runM10PlanModuleFlow(t *testing.T, mode string, bridge func(*testing.T, *Po
 	} else {
 		stage.Action = "modify"
 	}
-	plan, err := p.SavePlan(ctx, item.ID, editing.ID, editing.Draft.Revision, 0, []PlanStageInput{stage})
+	inputs := []PlanStageInput{stage}
+	if mode == "create_context" {
+		inputs = append(inputs, PlanStageInput{ID: "downstream", Title: "consume output", Action: "create", Module: &PlannedModule{Slug: "downstream", ModuleKind: "step", Description: "Consume prior output"}, Args: map[string]StageArgument{"input": {Kind: "binding", StageID: stage.ID, Path: []string{}}}})
+	}
+	plan, err := p.SavePlan(ctx, item.ID, editing.ID, editing.Draft.Revision, 0, inputs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,6 +160,43 @@ func runM10PlanModuleFlow(t *testing.T, mode string, bridge func(*testing.T, *Po
 	}
 	if err = p.ReleaseSlots(ctx, "m10-stage", nil); err != nil {
 		t.Fatal(err)
+	}
+	if mode == "create_context" {
+		a, err := p.Claim(ctx, "m10-stage", 1)
+		if err != nil || a == nil || a.Kind != "author" {
+			t.Fatal("downstream dispatch", err)
+		}
+		check := func(a *Assignment) {
+			t.Helper()
+			body := ""
+			for _, m := range a.Author.Messages {
+				body += m.Content
+			}
+			if !strings.Contains(body, candidate) || !strings.Contains(body, `"input"`) || !strings.Contains(body, `"exportName":"prepare"`) {
+				t.Fatal("validated candidate contract missing")
+			}
+		}
+		check(a)
+		if err = p.Complete(ctx, "m10-stage", a.ID, a.AttemptID, Result{Status: "failed", Error: "synthetic"}); err != nil {
+			t.Fatal(err)
+		}
+		if err = p.ReleaseSlots(ctx, "m10-stage", nil); err != nil {
+			t.Fatal(err)
+		}
+		r, err := p.StageRetry(ctx, plan.ID, "downstream")
+		if err != nil || !r.Eligible {
+			t.Fatal("candidate retry", err)
+		}
+		_, err = p.RetryPlanStage(ctx, plan.ID, "downstream", StageRetryRequest{r.PlanRevision, r.Source.ModuleRevision, r.Source.ModuleContextRevision, true, "repair"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		a, err = p.Claim(ctx, "m10-stage", 1)
+		if err != nil || a == nil {
+			t.Fatal(err)
+		}
+		check(a)
+		return
 	}
 	composed, err := p.Plan(ctx, item.ID, editing.ID)
 	if err != nil || composed.Status != "composed" || composed.Stages[0].CandidateVersionID == nil || *composed.Stages[0].CandidateVersionID != candidate {
@@ -321,4 +362,8 @@ func TestM10PostgresPlanConfirmDispatchCancel(t *testing.T) {
 	if err = p.DB.QueryRowContext(ctx, `SELECT count(*) FROM plan_module_candidates WHERE plan_id=$1`, plan.ID).Scan(&count); err != nil || count != 0 {
 		t.Fatal("cancelled Plan advanced", err)
 	}
+}
+
+func TestPlanStageAuthorReceivesValidatedCandidateContext(t *testing.T) {
+	runM10PlanModuleFlow(t, "create_context", nil)
 }
