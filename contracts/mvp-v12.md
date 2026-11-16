@@ -29,7 +29,7 @@ reasoning effort仍使用原設定與skill快照，模型／effort／output cap�
 - 已核實OpenCode公開metadata：Muse Spark 1.3 Contributor context=1048576、output capability=131072；**Run output仍為原8192，Module依原快照最多16384**。capability來源與SHA見本Wave安全證據。
 - text-only估算為serialized input／instructions／tools的UTF-8 bytes，加512 framing allowance。另保留Run output與1024 safety tokens；可用input取模型剩餘容量與後端input cap的較小值。此為保守預檢，不宣稱精確token計數，也不支援原生image／file輸入的容量估算。
 - 達80%門檻才嘗試壓縮舊工具結果。保留全部初始對話、目前草稿／Stage、原始限制、決策與證據；保留所有call/result ID／順序及provider reasoning；最新一份工具結果保留全文。
-- 只壓縮可由**當前提供工具**取回的`catalog_get(moduleVersionId)`成功結果及`read_skill_reference(skillId,referenceId)`。必須與回傳固定ID相符；原文仍在Server不可變版本／打包且hash固定的reference。summary保留身分、metadata、原文hash與精確read-back args，標明DATA與非驗證證據。不得將draft／report／Plan／未知結果改成不可取回摘要；G5舊snapshot修剪照舊。
+- Wave1只壓縮可由**當前提供工具**取回的`catalog_get(moduleVersionId)`成功結果及`read_skill_reference(skillId,referenceId)`。必須與回傳固定ID相符；原文仍在Server不可變版本／打包且hash固定的reference。summary保留身分、metadata、原文hash與精確read-back args，標明DATA與非驗證證據。Wave6另加入同Run凍結history頁及剩餘取回額度檢查，見下節。不得將draft／report／Plan／未知結果改成不可取回摘要；G5舊snapshot修剪照舊。
 - 不執行隱藏取回、不消耗額外模型請求；模型若需原文，走既有工具及同一預算。壓縮後仍超界則停止；不提高上限或默刪受保護資料。
 
 ## partial與觀測
@@ -38,6 +38,19 @@ reasoning effort仍使用原設定與skill快照，模型／effort／output cap�
 - checkpoint始終從Worker guard重建。截斷保留固定`INCOMPLETE_MAX_OUTPUT_TOKENS`分類，未執行半份args；有可信checkpoint才回partial，否則安全失敗。容量預檢可以在零HTTP時回未完成結果。保留guard原有的剩餘工作文字，不以引擎自報稿取代。
 - Module／Planner／summary既有partial限制不變；沒有新增跨Run Module checkpoint，也沒有排入隱式continue或正式validation。
 - Manager額外接受`author:context:compacted:N`，N僅1..12，不含內容、雜湊、路徑或機密；其他自由文字仍拒絕。取消沿用AbortSignal與Manager回收後才釋放slot，不宣稱能終止供應商遠端計費。
+
+## M12.1 Wave6：雙引擎容量與凍結對話索引
+
+2026-11-16，Worker內部策略擴充；不改HTTP／WS、tool registry、skill pins或runtime digest。
+
+- `runAuthor`把既有runtime／後端設定的已知或顯式capacity傳給builtin；兩引擎採相同UTF-8保守估算、80%壓縮門檻、input cap及output／safety保留。最後整份機密guard之後再檢查容量。未知capacity的舊builtin profile仍走原bytes保護，不臆測模型能力；Vercel仍必須提供可驗證capacity。
+- `read_conversation_history`成功結果必須符合原有六項／8KiB及UTF-8分頁驗證，且引擎持有本Run不可變`history.maxSequence`，才可替換較舊頁。初頁精確`"null"`轉成JSON null，其餘cursor保持原值；未提供history工具／pin、錯誤結果或非法分頁一律不壓縮。
+- 替換內容是**凍結原文的索引**：maxSequence、各fragment的sequence／role／offsetBytes／lengthBytes／hasMoreContent、nextCursor、遮蔽後原回應SHA256及精確取回參數。標示DATA／非驗證證據，不把原對話提升為指令，也不宣稱已產生保留所有語意的摘要。
+- 每次序列化都從引擎保留的原始結果重新評估；不改Server原文或永久丟棄Worker原資料。全部初始對話、saved snapshot中的目標／限制／決策／revision／Stage／證據、目前草稿、call/result配對、reasoning與最新一份工具結果保留全文。
+- 所有可壓縮資料（含Catalog與skill reference）的不同取回引用數，不得超過本Run剩餘tool calls；history另受剩餘四次讀取額度限制，失敗讀取也計數。同一凍結引用重複出現只需保留一個取回額度。這是可取回條件，沒有額外保留或提高工具預算；是否重讀仍由模型在原預算內決定。
+- 額度耗盡、交付階段不再提供取回工具或壓縮後仍超量時，保留原資料並以`context_capacity`停止；不得留下無法重讀的索引、隱藏取回或自動重送。可在零HTTP時輸出既有未完成結果，usage不虛報模型／工具用量。
+
+本切片完成有界history壓縮→精確重讀的雙引擎合成驗證；不等同任意長對話語意摘要、超大Stage拆解續接或真模型成功率驗收。M12.1一般大任務、金額計價及正式比較仍待辦；預設builtin、模型／effort與8／12／180000／8192（Module原16384）不變。
 
 ## M12.2 Wave2：控制面 runtime 快照
 

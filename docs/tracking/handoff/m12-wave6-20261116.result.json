@@ -1,0 +1,140 @@
+{
+  "wave": "M12.1 Wave6",
+  "createdAt": "2026-11-16T17:34:56.446859+08:00",
+  "branch": "feat/agent-adapter",
+  "sourceHead": "770064a4177a9a82dba2ad258e6d5a1e0c1ef0f2",
+  "mainHead": "576816622d988049d36453c7b3dabed9feeadd28",
+  "status": "bounded-context-slice-complete",
+  "milestoneM12_1": "in-progress",
+  "builds": {
+    "workerStrictTypeScript": "PASS",
+    "agentBridgeWithWorkerDeclarations": "PASS",
+    "lockfilesChanged": false
+  },
+  "tests": {
+    "workerCore": 31,
+    "adapterHTTP": 8,
+    "referenceClient": 8,
+    "uniqueTopLevelPassed": 47,
+    "finalFailures": 0,
+    "skipped": 0,
+    "initialSandboxRun": {
+      "passed": 32,
+      "failed": 7,
+      "reason": "loopback listen EPERM",
+      "originalOutputRetained": true
+    },
+    "loopbackRetry": {
+      "scope": "adapter file only",
+      "passed": 8,
+      "failed": 0
+    },
+    "contextAssertionReview": {
+      "scope": "context unit file only after restoring available-tool budget in original rejection test",
+      "passed": 5,
+      "failed": 0
+    }
+  },
+  "representative": {
+    "transport": "real HistoryClient generic IPC with synthetic history and self-test responses",
+    "inputCap": 32000,
+    "engines": [
+      {
+        "engine": "builtin",
+        "modelResponses": 5,
+        "toolCalls": 5,
+        "historyReads": 3,
+        "syntheticSelfTests": 1,
+        "peakEstimate": 31566
+      },
+      {
+        "engine": "vercel",
+        "modelResponses": 5,
+        "toolCalls": 5,
+        "historyReads": 3,
+        "syntheticSelfTests": 1,
+        "peakEstimate": 31507
+      }
+    ],
+    "originalConversationPreserved": true,
+    "frozenHistoryReadBackHashMatched": true,
+    "fourReadExhaustionStops": true,
+    "oversizedProtectedDataSendsZeroHTTP": true
+  },
+  "paidProviderCalls": 0,
+  "backendProductionChanged": false,
+  "candidateServerOrDBCreated": false,
+  "baselineDeployed": false,
+  "baselineHealth": {
+    "builtinStateValid": true,
+    "managerIdentityValid": true,
+    "ports": {
+      "api": true,
+      "target": true,
+      "web": true
+    },
+    "mcpPinsValid": true,
+    "mcpReady": true,
+    "builtinServerSha256": "f064bd02671c223b7f209bf982e32623d0dc88318ee4b5bcf6f4b1a9f275f35f"
+  },
+  "cleanup": {
+    "newContainers": 0,
+    "newVolumes": 0,
+    "newNetworks": 0,
+    "ownedBackgroundProcesses": 0,
+    "loopbackFixturesClosed": true
+  },
+  "remaining": [
+    "general semantic conversation compaction",
+    "large immutable candidate/Stage references and decomposition",
+    "monetary and wider task totals",
+    "second provider live test",
+    "M12.4 formal golden comparison",
+    "M12.Z"
+  ],
+  "historicalEvidencePreserved": true,
+  "original14TaskUnassistedBatchAllPassProven": false,
+  "artifacts": {
+    "root": "/var/folders/0n/ycjdyc553gx4ywrtpmtnwp2h0000gq/T/whippet-m12-wave6-pfj_qp1_",
+    "files": [
+      {
+        "file": "adapter-network-final.tap",
+        "sha256": "77bb0f8534982cb3defac10de639ce2bdb31003946a213019ecf9d701ce8f25c"
+      },
+      {
+        "file": "bridge-final.tap",
+        "sha256": "f83c4d40f232400a853fd2c21f00770b970d8553e191db30eb0884acd97d3cfd"
+      },
+      {
+        "file": "build-final.txt",
+        "sha256": "15850202dbd24d6da40c717fcfdf110a9e6e3381ecbb17cc6cc44bebef77dfae"
+      },
+      {
+        "file": "context-r1.tap",
+        "sha256": "ab8282905356c9c6df52c0653adec0b4c7a7b5904b8791339ed9ecaf9e673173"
+      },
+      {
+        "file": "context-unit-final.tap",
+        "sha256": "1845b127ebbe7e448456e235b7480b0c3b98d9dc2e4ac5ffef081d984fb6e9e4"
+      },
+      {
+        "file": "worker-build-final.txt",
+        "sha256": "c6161590a087ed13ab5698dfe97a928ecc6b4e821d89d917069829b512da2898"
+      },
+      {
+        "file": "worker-build-r1.txt",
+        "sha256": "c6161590a087ed13ab5698dfe97a928ecc6b4e821d89d917069829b512da2898"
+      },
+      {
+        "file": "worker-r2-sandbox.tap",
+        "sha256": "a6450afeb8f734902b01456d47d336690468008437f42defa292675952fbf417"
+      }
+    ]
+  },
+  "secretScan": {
+    "filesScanned": 13,
+    "controlledSourcesLoaded": true,
+    "workingTreeFindings": 0,
+    "stagedFindings": 0
+  }
+}

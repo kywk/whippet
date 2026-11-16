@@ -9,6 +9,7 @@ import type { AgentEngine, EnginePartial } from "./engine.js";
 import { selectAgentEngine } from "./engines/select.js";
 import { runtimeConfig } from "./runtime.js";
 import { AIError, type AIConfig } from "../ai/config.js";
+import { availableModelCapacity } from "../ai/capacity.js";
 import { buildResponsesRequest } from "../ai/responses.js";
 import { classifyDiagnosticError, type ExplorationBrowser } from "./tools.js";
 import { AuthorError, serializeAuthorArtifact, EDIT_TOOLS, boundedText, isSummary, isWorkspaceAuthor, parseWorkspaceAuthorOutput, parseSummaryOutput, validateAuthorInput, type AuthorInput, type AuthorOutput, type SummaryOutput, type WorkspaceAuthorOutput } from "./types.js";
@@ -132,6 +133,8 @@ export async function runAuthor(
       instructions, context: transcript, tools: allowedTools,
       budget: { modelRequests: capability?.budget.maxModelRequests ?? (summary || workspace && allowedTools.length === 0 ? 1 : 8), toolExecutions: capability?.budget.maxToolCalls ?? 12, maxOutputTokens: capability?.budget.maxOutputTokens ?? 8192 },
       model: config, signal,
+      capacity: availableModelCapacity(config),
+      ...(hasHistory(input) && options.history ? { history: input.author.history } : {}),
       ...(capability ? { maxRequestBytes: 64 * 1024 * 1024, maxToolOutputBytes: module || planner ? 25 * 1024 * 1024 : 13 * 1024 * 1024 } : {}),
       ...(options.moduleDiagnostics ? { onModelRequestFailure: recordModelFailure } : {}),
       request: async (body) => {

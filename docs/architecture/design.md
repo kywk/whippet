@@ -182,7 +182,7 @@ Worker 只從固定供應商機密設定取得金鑰，依快照覆蓋非機密�
 
 單次輸出上限、輸入context容量與整體任務預算是三個不同邊界。G6將單次輸出上限納入skill不可變快照；Module本輪授權16384，其餘缺值8192。不得在失敗後由模型自行提高上限、換模型或無限重試。這個設定提高可用輸出額度，尚不能證明已排除截斷或大任務能力已完成。
 
-目前對話入口保留最近最多12則／32000 Unicode code points；builtin Run內只會將舊browser snapshot縮成摘要，其他provider output／工具項目仍會累積；request bytes上限只是傳輸保護，不是model context token容量估算。既有history工具支援有界按需讀取；test-author具有自試通過checkpoint與partial續接，Module依v10仍於預算耗盡時停Stage，不具同等partial。不能將這些局部能力宣稱為通用長對話compaction。
+對話入口仍保留最近最多12則／32000 Unicode code points。M12 Wave6已讓已知capacity的builtin與Vercel共用保守容量預檢，舊browser snapshot修剪照舊；未知capacity的legacy builtin仍只有原bytes保護。既有history工具支援有界按需讀取；Wave6在可用工具與剩餘額度內將凍結舊頁替換成精確原文索引。test-author具有自試通過checkpoint與partial續接，Module依v10仍於預算耗盡時停Stage，不具同等partial。不能將這些局部能力宣稱為通用長對話語意compaction。
 
 M12引擎整合的設計與驗收要求（依Wave逐項實作）：
 
@@ -194,6 +194,8 @@ M12引擎整合的設計與驗收要求（依Wave逐項實作）：
 - 驗收包含：長對話在固定上限下完成、超大Stage可拆解續接、壓縮後限制／證據引用不遺失、截斷不執行半份工具呼叫、取消／過期／重送不重複副作用。能力未通過前明列限制，不宣稱能處理任意大小任務。
 
 2026-11-16 Wave4受控continue切片：新test-author根Run在排隊交易固定最多三筆Run與首筆budget；每筆不可變鏈分配保存累計用量，Worker在模型傳輸／工具執行邊界產生partial receipt，Manager及Server獨立校驗。續接只取得剩餘模型／工具／作者迴圈時間與不提高的輸出上限，沿原runtime；缺紀錄採保守扣抵或拒絕，不重建歷史額度。原test／source鎖、回收門檻、revision／context CAS及唯一source重送仍有效，耗盡不寫入。這不是供應商金額配額或所有新任務／Stage retry的整體計費；精確欄位與限制見[v12 Wave4](../../contracts/mvp-v12.md#m121-wave4受控-continue-鏈的共用資源額度)。
+
+2026-11-16 Wave6容量切片：builtin已知capacity接上與Vercel相同的輸入／輸出保留策略；兩引擎每次從原始結果建立傳輸副本，只替換有當前工具且剩餘讀取額度足夠的不可變資料。history以原maxSequence及UTF-8分頁驗證固定範圍，索引保留fragment位置／原回應hash／原cursor，不提升為指令或驗證證據。不同取回引用總數受剩餘工具額度限制，history另受原四次額度限制；不能取回或仍超量就停止。雙引擎合成流程已驗壓縮→IPC精確重讀→候選交付，不宣稱一般語意摘要、任意大Stage或真模型能力完成，見[v12 Wave6](../../contracts/mvp-v12.md#m121-wave6雙引擎容量與凍結對話索引)。
 
 ### MCP（M11）
 

@@ -1,7 +1,10 @@
 import type { ModelRequestFailureStage } from "./module-diagnostics.js";
 import type { AIConfig } from "../ai/config.js";
+import type { ModelCapacity } from "../ai/capacity.js";
+import type { HistoryPin } from "./history.js";
 import { AuthorError } from "./types.js";
 import { guardRequest, outputTokenLimit, partialResult, requestSettings } from "./engine-policy.js";
+import { ContextCapacityError, estimateInputTokens, fitContext } from "./engines/context.js";
 
 export type EngineItem = Record<string, unknown>;
 export interface EngineTool { name: string }
@@ -17,6 +20,8 @@ export interface EngineRun {
   tools: EngineTool[];
   budget: { modelRequests: number; toolExecutions: number; maxOutputTokens?: number };
   model: Pick<AIConfig, "reasoningEffort">;
+  capacity?: ModelCapacity;
+  history?: HistoryPin;
   signal: AbortSignal;
   beforeRequest(context: EngineItem[]): EngineItem[];
   // Final serialized-body guard; called after SDK serialization and compaction.
@@ -77,18 +82,31 @@ export const builtinEngine: AgentEngine = {
       try { input.onModelRequestFailure?.(stage); } catch { /* Evidence never changes engine semantics. */ }
       throw new AuthorError('invalid_response');
     };
-    let count = 0;
+    let count = 0, historyCalls = 0;
     const partial = (reason: EnginePartial["reason"]): EngineResult => partialResult(input, reason);
     for (let request = 0; request < budget.modelRequests; request++) {
       if (signal.aborted) throw new AuthorError("cancelled");
       pruneSnapshots(context);
       const settings = requestSettings(input, request, count);
-      const body = guardRequest(input, {
+      let body = {
         input: input.beforeRequest(context),
         ...settings,
         reasoning: { effort: input.model.reasoningEffort }, parallel_tool_calls: false,
         max_output_tokens: maxOutputTokens, store: false, include: ["reasoning.encrypted_content"],
-      });
+      } as EngineItem;
+      try {
+        if (input.capacity) {
+          const fit = fitContext(body, input.capacity, maxOutputTokens, { toolCalls: budget.toolExecutions - count,
+            ...(input.history ? { history: { pin: input.history, reads: Math.max(0, 4 - historyCalls) } } : {}) });
+          body = fit.body;
+          if (fit.compacted) input.onEvent?.(`author:context:compacted:${fit.compacted}`);
+        }
+        body = guardRequest(input, body);
+        if (input.capacity && estimateInputTokens(body) > Math.min(input.capacity.maxInputTokens, input.capacity.contextWindowTokens - maxOutputTokens - input.capacity.safetyTokens)) throw new ContextCapacityError();
+      } catch (error) {
+        if (error instanceof ContextCapacityError) return partial("context_capacity");
+        throw error;
+      }
       if (Buffer.byteLength(JSON.stringify(body)) > (input.maxRequestBytes ?? 4 * 1024 * 1024)) throw new AuthorError("limit");
       input.onEvent?.(`author:model:${request + 1}:started`);
       const raw = await input.request(body);
@@ -118,6 +136,7 @@ export const builtinEngine: AgentEngine = {
       for (const call of calls) {
         if (signal.aborted) throw new AuthorError("cancelled");
         if (count >= budget.toolExecutions) return partial("tool_budget");
+        if (call.name === "read_conversation_history") historyCalls++;
         const result = await execute(call, ++count);
         const serialized = JSON.stringify(result);
         if (serialized === undefined || Buffer.byteLength(serialized) > (input.maxToolOutputBytes ?? 3 * 1024 * 1024)) throw new AuthorError("limit");

@@ -12,6 +12,7 @@ export interface HistoryPage {
   editingSessionId: string | null; conversationId: string; maxSequence: string;
   items: HistoryItem[]; nextCursor: string | null;
 }
+export type HistoryResult = Pick<HistoryPage, "items" | "nextCursor">;
 export class HistoryError extends Error { constructor() { super("history_unavailable"); } }
 const decimal = /^(0|[1-9][0-9]*)$/;
 export function validSequence(value: unknown): value is string {
@@ -35,9 +36,18 @@ export function validateHistoryPage(value: unknown, input: AuthorInput, cursor: 
   if (!hasHistory(input) || !exact(value, ["workspaceId", "testId", "runId", "attemptId", "editingSessionId", "conversationId", "maxSequence", "items", "nextCursor"]) ||
     value.workspaceId !== input.workspaceId || value.testId !== input.testId || value.runId !== input.runId || value.attemptId !== input.attemptId ||
     value.editingSessionId !== (input.author.editingSessionId ?? null) || value.conversationId !== input.author.conversationId || value.maxSequence !== input.author.history!.maxSequence ||
-    !Array.isArray(value.items) || value.items.length > 6 || value.nextCursor !== null && !historyCursor(value.nextCursor)) throw new HistoryError();
-  const start = cursor === null ? { sequence: BigInt(input.author.history!.maxSequence), offset: 0 } : historyCursor(cursor);
-  if (!start || start.sequence > BigInt(input.author.history!.maxSequence)) throw new HistoryError();
+    !Array.isArray(value.items)) throw new HistoryError();
+  validateHistoryResult({ items: value.items, nextCursor: value.nextCursor }, input.author.history!, cursor);
+  return value as unknown as HistoryPage;
+}
+
+// The model sees only this projection. Reuse pagination validation when deciding
+// whether an old result is safely recoverable from the task's frozen cutoff.
+export function validateHistoryResult(value: unknown, pin: HistoryPin, cursor: string | null): HistoryResult {
+  if (!validSequence(pin.maxSequence) || !exact(value, ["items", "nextCursor"]) ||
+      !Array.isArray(value.items) || value.items.length > 6 || value.nextCursor !== null && !historyCursor(value.nextCursor)) throw new HistoryError();
+  const start = cursor === null ? { sequence: BigInt(pin.maxSequence), offset: 0 } : historyCursor(cursor);
+  if (!start || start.sequence > BigInt(pin.maxSequence)) throw new HistoryError();
   let bytes = 0;
   let previous: HistoryItem | undefined;
   for (const raw of value.items) {
@@ -57,7 +67,7 @@ export function validateHistoryPage(value: unknown, input: AuthorInput, cursor: 
   else if (previous.hasMoreContent) {
     if (!next || next.sequence !== BigInt(previous.sequence) || next.offset !== previous.offsetBytes + Buffer.byteLength(previous.content)) throw new HistoryError();
   } else if (next && (next.sequence >= BigInt(previous.sequence) || next.offset !== 0)) throw new HistoryError();
-  return value as unknown as HistoryPage;
+  return value as unknown as HistoryResult;
 }
 
 export class HistoryClient {

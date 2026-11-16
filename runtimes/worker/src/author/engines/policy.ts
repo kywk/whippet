@@ -11,6 +11,7 @@ export class AdapterPolicy {
   readonly definitions: ToolDefinition[];
   requests = 0;
   executions = 0;
+  private historyCalls = 0;
   completedText: string | undefined;
   toolExhausted = false;
   failure: AuthorError | undefined;
@@ -57,7 +58,8 @@ export class AdapterPolicy {
     let clean: Record<string, any> | undefined;
     try {
       body.input = this.input.beforeRequest(body.input);
-      const fit = fitContext(body, modelCapacity(this.config), outputTokenLimit(this.input));
+      const fit = fitContext(body, modelCapacity(this.config), outputTokenLimit(this.input), { toolCalls: this.input.budget.toolExecutions - this.executions,
+        ...(this.input.history ? { history: { pin: this.input.history, reads: Math.max(0, 4 - this.historyCalls) } } : {}) });
       clean = guardRequest(this.input, fit.body);
       if (fit.compacted) this.input.onEvent?.(`author:context:compacted:${fit.compacted}`);
     }
@@ -109,6 +111,7 @@ export class AdapterPolicy {
     if (!id || this.seen.has(id)) this.fail("invalid_response");
     this.validateCall(name, args);
     this.seen.add(id);
+    if (name === "read_conversation_history") this.historyCalls++;
     const call = { type: "function_call", name, call_id: id, arguments: JSON.stringify(args) };
     let result: unknown;
     try { result = await withAbort(this.input.execute(call, ++this.executions), this.input.signal); }
