@@ -329,7 +329,7 @@ M9歷史失敗已定位（81352430診斷回合）：模型將首次cursor輸出�
 
 ### M10 階段一：自研引擎與 Use Case（`main`）
 
-狀態：進行中。依賴：M9 已完成。
+狀態：進行中（主流程、M10.9原四段收尾、持續監看與空白還原已實證；黃金v1仍有未完整驗證／前置不一致項，不宣稱階段無條件全過）。依賴：M9 已完成。
 
 2026-11-13 首波：PM `t3d`；新對話 Server `t4b`、Runtime `t4c`、Web `t4d`、QA `t4f`，同 space/tab、parent=t3d、crew=1。使用者改指定開發 GPT-6 Astra light（CLI low）；QA 維持 Muse Spark Contributor xhigh。M10.0 待雙方盤點後固定契約；此紀錄不代表驗證通過。
 
@@ -346,7 +346,7 @@ M9歷史失敗已定位（81352430診斷回合）：模型將首次cursor輸出�
 | M10.6 | t4c＋t4b | catalog／module／usecase／plan 工具接上註冊表與 IPC | 單元測試加一次真模型「搜尋並複用」 | 完成（registry10.2；定向測試及真模型搜尋→固定版複用→Server保存非SKIP PASS，5model/3tools；未含整批發布） |
 | M10.7 | t4d | Module 列表與詳情（簽章、引用者）、Use Case Stage 檢視、Plan 確認卡、Stage 進度、partial「繼續」卡 | build 加目視 | 完成（build＋真Module/Plan/批次發布目視；B隔離真partial/單次continue，限制見證據） |
 | M10.8 | PM＋t4p | 黃金任務集 v1（10–15 題，含新建、修復、複用、拆解、越界、注入頁、預算耗盡），放在 `scripts/test/golden/` | 用 builtin 跑一次並記錄基準 | 完成（首次真基準與離線覆核已保存：4 PASS／2 FAIL／8 UNVERIFIED；不是完整驗收通過） |
-| M10.9 | PM t4s＋Server t50＋Runtime t4z | 整合 smoke：用真模型把「登入 → 搜尋 → 下單 → 驗證」拆成 4 段並發佈 | 一條主流程 | 進行中（Plan composed/r18四Stage ready；3 author＋3 Module驗證＋整體Use Case驗證共7 Run成功並回收，待批次摘要／發佈） |
+| M10.9 | 主 Agent（Wave7收尾）；原 PM t4s／Server t50／Runtime t4z | 整合 smoke：用真模型把「登入 → 搜尋 → 下單 → 驗證」拆成4段並發佈 | 一條主流程 | 完成（原四Stage/候選不重做；Wave7 builtin批次摘要成功、原子發佈 UseCase b3382b18、正式 Run d4243565 為1/0/0/0，舊服務未升級/重啟） |
 | M10.10 | PM t4s＋t4z＋t50 | 有界Module兩段暫存／commit真自試，timeout清理與安全階段觀測 | 正負真自試、三端回收／正式驗證、一次受控真模型 | 完成（分段工具／診斷、journal與Module遮蔽修補已部署；retry7三Module自試1/0、parser/upload與正式驗證及Compose成功，秘密負向守衛保持） |
 | **M10.Z** | 主 Agent 親自執行 Wave6（不開 subagent） | **階段一完整驗證**（見下方） | 八項矩陣與既有證據限制分別記錄；本次不自行 tag | 完成（本次要求的 #3／#4／#7 三缺漏：真 builtin 1 reuse＋2 create、Compose／摘要／原子發佈／正式執行；原 Stage 真修復；partial 同 session 繼續完成。其餘五項沿用不重驗；原黃金與 LiveView 限制保留，不自行 phase1-verified。詳見 [Wave6實際修復與驗收](handoff/m10z-wave6-20261116.md)） |
 
@@ -374,6 +374,8 @@ M10.Z 清單：
 
 #
 2026-11-16 Wave6 主 Agent 親自補齊三缺漏：修正 Manager HTTP2/WS 共用 TLS config、Worker 候選交付與 canonical baseURL；#7 同 revision 正式驗證1/0/0/0。#4 原 query Stage 停止後沿原 session 真修復，正式1/0/0/0；verify 補 Plan args／上游 metadata 後正式3/0/0/0。#3 Plan done/r10，真 Compose1/0/0/0、builtin摘要、兩新Module與UseCase原子發佈、已發布正式Run1/0/0/0。新DB26 Run，active/occupied/Worker皆0，三埠與持久身分正常，私有備份更新完成；無空白volume還原演練、無其他五項重驗、無push/merge/tag。詳見[Wave6交接](handoff/m10z-wave6-20261116.md)。
+
+2026-11-16 Wave7（owner：主 Agent，不開subagent）：Stage權威args／固定上游契約已自動接線，真模型首次下游產稿與Compose1/0/0/0；LiveView真UI連續12秒7/9/10/9幀、關閉後Run繼續成功；Wave6備份真還原新volume、兩次Server啟動與26 Run/報告/身分一致。M10.9原四段摘要／原子發佈／正式執行1/0/0/0。補驗另修Planner純訊息阻礙被誤判失敗、Module五回合交付修復、Compose末段重試與失敗摘要接線；G07四Module各驗證及整體Compose全1/0/0/0。黃金原PASS不重跑，舊分數不覆寫；G05 assisted複用草稿正式通過，G09/G10真拒絕，G11/G12行為與原評分分列，G08 Stage1稿與G13/G14真耗盡條件仍未完整證實。未push/merge/tag。詳見[Wave7修復與補證](handoff/m10z-wave7-20261116.md)。
 
 ## M11 階段二：MCP（`feat/mcp`，基線 `ded0364`）
 
