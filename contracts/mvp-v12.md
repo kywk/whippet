@@ -1,6 +1,6 @@
 # M12.1 Wave1：Worker 引擎接縫
 
-狀態：2026-11-16 Wave1 已實作。本節固定 Runtime 內部接縫與後端設定；**沒有升級 HTTP／WS protocol_version、修改 Run dispatch 或放寬 v10 author.json**。Workspace／skill 的 engine、provider 快照屬 M12.2；跨 Run 總嘗試／成本界限後續另訂，不能由本節推定完成。
+狀態：2026-11-16 Wave1 已實作。本節固定 Runtime 內部接縫與後端設定；**沒有升級 HTTP／WS protocol_version、修改 Run dispatch 或放寬 v10 author.json**。Workspace／skill 的 engine、provider 快照屬 M12.2；受控continue的跨Run資源總額見下方Wave4，不能由Wave1推定完成。
 
 ## 後端選擇
 
@@ -80,13 +80,13 @@ reasoningEffort, contextWindowTokens, contextInputTokens, sha256
 
 排隊後變更 Workspace、profile 宣告或非機密模型環境設定，不重建派工／重播的 runtime。Worker 在解析環境前套用 runtime，畸形的後續模型／effort／engine／capacity 環境值也不能覆寫快照。enable 與金鑰仍取目前後端，保留停用與輪替能力；金鑰不進 input、journal、profile、產物或模型 context，final guard 也檢查未選中供應商的 key。
 
-Test partial 的「繼續」沿用來源 runtime，保持既有回收、scope／revision／context CAS 與重送冪等；新建獨立 Run／Stage retry 依當時設定建立新快照。原 runtime／預算不回寫。此 Wave 未實作 continuation 鏈的總嘗試／成本界限，不能宣稱已防止跨 Run 繞額。
+Test partial 的「繼續」沿用來源 runtime，保持既有回收、scope／revision／context CAS 與重送冪等；新建獨立 Run／Stage retry 依當時設定建立新快照。原 runtime／預算不回寫。Wave2沒有實作continuation鏈總額；Wave4已補受控continue的共用資源額度，規則見下節。
 
 ### 相容性與驗證範圍
 
 缺少 runtime 的歷史 Run 沿用 Wave1 的後端環境與主 skill 模型匹配規則，不回填歷史資料。帶 runtime 必須同時具有完整 v10 capability snapshot；舊 Manager／Worker 會拒絕未知欄位，部署須協同更新三端，不能依 envelope version=1 推定可混用。此候選沒有部署到兩個固定基準。
 
-Wave2只驗證 CAS→快照→派工／受控 continue，以及兩引擎的合成 Responses 接縫；沒有新增付費模型 Run、重跑黃金全套或修改歷史 raw。UI設定已由Wave3完成；跨 Run 總額、第二 provider 真測及 M12.3／M12.4／M12.Z 仍待辦。
+Wave2只驗證 CAS→快照→派工／受控 continue，以及兩引擎的合成 Responses 接縫；沒有新增付費模型 Run、重跑黃金全套或修改歷史 raw。UI設定由Wave3完成，受控continue資源總額由Wave4完成；金額計價、一般長對話／超大Stage、第二 provider 真測及 M12.3／M12.4／M12.Z 仍待辦。
 
 ## M12.2 Wave3：Workspace runtime 設定 UI
 
@@ -95,3 +95,23 @@ Wave2只驗證 CAS→快照→派工／受控 continue，以及兩引擎的合�
 409時保留未儲存選擇並GET最新設定，顯示目前設定供比對，使用者可採用目前設定或保留選擇繼續編輯；後者仍須另按儲存，沒有自動PATCH。其他儲存錯誤也先重讀確認，不直接重送；最新讀取失敗時阻擋兩個決策與儲存，提供重新載入。錯誤聚焦到提示區，避免表單底部操作後看不到回饋。
 
 已保存但不在目前白名單中的profile仍原樣顯示為「目前不可用」，保留disabled選項並阻擋儲存，直到使用者明確修正所有失效選擇；不靜默fallback。UI明訂此設定與M11接單模式不同，僅影響新任務，既有Run與受控繼續沿用原runtime。未擴張預算，也未改動authorEngine路由。
+
+## M12.1 Wave4：受控 continue 鏈的共用資源額度
+
+Migration 027新增`author_chain_budgets`，新`test-author` Run排隊時在同一交易保存根Run ID、ordinal=1、maxRuns=3、首筆budget及spentBefore=0。每筆分配不可更新／刪除，`(root_run_id,ordinal)`唯一；不回填歷史Run。這是`POST /api/runs/{id}/continue`的鏈界限，不是Workspace／帳號／Plan所有獨立任務的金額配額。
+
+整鏈最多三筆Run（含首筆），模型請求、工具執行與作者迴圈毫秒總量共用首筆budget，**不是每筆重給8／12／180000，更不是放大三倍**。每次模型輸出上限仍不高於首筆有效上限（缺值8192），runtime仍沿來源快照。僅減少新Run的budget與timeout，不回寫原快照、變更skill／registry或提高既定額度。
+
+Worker為受控test-author partial新增可選的可信欄位：
+
+```json
+{"usage":{"modelRequests":3,"toolCalls":12,"durationMs":250}}
+```
+
+此欄位位於`author.json.partial`內，由`runAuthor`守衛建立。模型請求在傳輸邊界扣抵（含合法的收尾請求），工具在執行入口扣抵（含失敗的嘗試），不信任引擎事件、引擎自報序號或模型輸出的usage。作者迴圈以單調時鐘記錄至少1毫秒；排隊、人工等待與容器啟動不列入此迴圈時間。每筆仍受既有Worker／Manager逾時與回收規則約束。
+
+Server及Manager各自拒絕null、重複／未知／缺欄、負數、非整數與超過本Run分配的receipt；Server在套用候選前驗證。模型、MCP外部作者與UI不能提交可信receipt。歷史無receipt的partial仍可讀取／保存；若新鏈中某筆缺receipt，保守扣完該筆全部分配。沒有鏈policy的歷史Run不補造額度，明確拒絕新續接。
+
+續接沿既有test鎖、source鎖、目前草稿revision／context／scope及已回收檢查。相同source／session／revision先回既有Run，不重複扣抵；不同body仍409。第一次建立子Run時，依不可變的spentBefore加上來源receipt計算餘額，再與目前skill上限取較小值，原子保存子Run、其鏈分配、對話與唯一source關聯。總嘗試、模型或迴圈時間耗盡回409 `continuation_budget_exhausted`；缺乏可信policy／用量則回409 `continuation_usage_unavailable`。拒絕不能新增Run、訊息或推進context CAS。工具餘額可為0，後續Run不能重新取得工具名額。
+
+本波只提供固定runtime／每次輸出上限下的請求、工具與迴圈時間界限，不計算供應商帳單金額、實際token價格或取消後遠端計費，也不將新獨立任務／Stage retry併為同一鏈。新的partial欄位需Server／Manager／Worker一起升級；舊接收端會拒絕，沒有移除receipt的降級fallback。兩個固定基準未部署本候選。

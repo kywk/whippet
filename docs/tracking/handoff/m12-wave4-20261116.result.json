@@ -1,0 +1,31 @@
+{
+  "wave": "M12 Wave4",
+  "date": "2026-11-16",
+  "passed": true,
+  "server": { "topLevelPassed": 8, "failed": 0, "skipped": 0, "packageSeconds": 3.191, "realPostgres": true, "realNodeWorker": true, "syntheticTransport": true, "engines": ["builtin", "vercel"] },
+  "manager": { "topLevelPassed": 2, "failed": 0, "skipped": 0, "packageSeconds": 0.539 },
+  "worker": { "topLevelPassed": 7, "failed": 0, "skipped": 0, "syntheticTransport": true },
+  "builds": { "serverGo1.23.12": true, "managerGo1.25.0": true, "workerTypeScript": true },
+  "checks": {
+    "rootBudgetUnchanged": true,
+    "sharedModelToolLoopTimeLimits": true,
+    "maxRunsIncludingRoot": 3,
+    "runtimePreserved": true,
+    "duplicateContinueReturnsSameRun": true,
+    "rejectedContinueRollsBack": true,
+    "oldChainReplayAfterCap": true,
+    "missingReceiptChargesWholeAllocation": true,
+    "legacyWithoutPolicyRejected": true,
+    "invalidReceiptCannotApplyDraft": true,
+    "chainAllocationsImmutable": true,
+    "engineEventsCannotForgeUsage": true,
+    "thirdFinalRequestCharged": true,
+    "candidateDbRemoved": true
+  },
+  "paidProviderCalls": 0,
+  "secretScan": { "files": 23, "findings": 0 },
+  "baselineHealthAllTrue": true,
+  "deployedToBaselines": false,
+  "monetaryQuotaImplemented": false,
+  "m12_1Complete": false
+}

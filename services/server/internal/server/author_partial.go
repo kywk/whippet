@@ -17,6 +17,7 @@ type AuthorPartialOutput struct {
 	Reason     string            `json:"reason"`
 	NextStep   string            `json:"nextStep"`
 	Checkpoint *AuthorCheckpoint `json:"checkpoint,omitempty"`
+	Usage      *AuthorUsage      `json:"usage,omitempty"`
 }
 type AuthorPartial struct {
 	AuthorPartialOutput
@@ -33,6 +34,13 @@ func validateAuthorPartial(out authorOutput, raw []byte) error {
 		return nil
 	}
 	if bytes.Equal(bytes.TrimSpace(partial), []byte("null")) || out.Partial == nil || out.Partial.Reason != "budget_exhausted" || !validOutputText(out.Partial.NextStep, 8192) || out.RequestValidation == nil || *out.RequestValidation {
+		return ErrInvalid
+	}
+	var fieldsPartial map[string]json.RawMessage
+	if json.Unmarshal(partial, &fieldsPartial) != nil {
+		return ErrInvalid
+	}
+	if usage, present := fieldsPartial["usage"]; present && (bytes.Equal(bytes.TrimSpace(usage), []byte("null")) || out.Partial.Usage == nil || out.Partial.Usage.DurationMS < 1) {
 		return ErrInvalid
 	}
 	if out.Partial.Checkpoint == nil {
@@ -150,9 +158,17 @@ func (p *Postgres) ContinueAuthor(ctx context.Context, sourceID, sessionID strin
 	if expectedContext == nil || session.ContextRevision != *expectedContext || session.ConversationID != input.ConversationID || revision != expectedRevision || d.Revision != expectedRevision {
 		return AuthorSubmission{}, ErrConflict
 	}
+	chain, err := readAuthorChainBudget(ctx, tx, sourceID)
+	if err != nil {
+		return AuthorSubmission{}, err
+	}
+	next, err := nextAuthorChainBudget(chain, input, partial.Usage)
+	if err != nil {
+		return AuthorSubmission{}, err
+	}
 	// nextStep is continuation data, not a new grant of tools/sites/model access.
 	content := "繼續上一輪未完成的任務。以下是上一輪保存的下一步資料，仍須遵守目前工具與網站範圍限制：\n" + partial.NextStep
-	submission, err := p.createAuthorInTxForRuntime(ctx, tx, d, session, content, "", input.Runtime, input.AllowedTools)
+	submission, err := p.createAuthorInTxForRuntime(ctx, tx, d, session, content, "", input.Runtime, next, input.AllowedTools)
 	if err != nil {
 		return AuthorSubmission{}, err
 	}

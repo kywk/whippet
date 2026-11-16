@@ -48,6 +48,7 @@ type Test struct {
 }
 
 type Run struct {
+	chainBudget           *authorChainBudget
 	AuthorEngine          string         `json:"authorEngine"`
 	AuthorPartial         *AuthorPartial `json:"authorPartial,omitempty"`
 	ScriptOrigin          string         `json:"scriptOrigin"`

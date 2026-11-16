@@ -27,7 +27,7 @@ func decodeAuthorOutput(data []byte) (authorOutput, error) {
 	var result authorOutput
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
-	if !utf8.Valid(data) || int64(len(data)) > MaxAuthorArtifactBytes || decoder.Decode(&result) != nil ||
+	if !utf8.Valid(data) || int64(len(data)) > MaxAuthorArtifactBytes || strictJSONNoDuplicates(data) != nil || decoder.Decode(&result) != nil ||
 		result.Message == nil || result.RequestValidation == nil || decoder.Decode(new(any)) != io.EOF {
 		return result, fmt.Errorf("invalid author output")
 	}
@@ -243,6 +243,9 @@ func (p *Postgres) completeAuthorWith(ctx context.Context, testID, runID, attemp
 					}
 					var plan authorPlan
 					if outputErr == nil && output.Partial != nil && output.Partial.Checkpoint != nil && !authorCanUpdateDraft(input) {
+						outputErr = ErrInvalid
+					}
+					if outputErr == nil && output.Partial != nil && output.Partial.Usage != nil && !validAuthorUsage(output.Partial.Usage, input.Budget) {
 						outputErr = ErrInvalid
 					}
 					if outputErr == nil {

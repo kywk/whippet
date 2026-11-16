@@ -493,6 +493,10 @@ func (a *API) artifact(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) fail(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ErrContinuationBudget):
+		writeError(w, 409, "continuation_budget_exhausted", "此續接鏈已達總嘗試、模型或執行時間上限，無法再繼續；已保存的草稿與證據仍保留。")
+	case errors.Is(err, ErrContinuationUsage):
+		writeError(w, 409, "continuation_usage_unavailable", "此任務缺少可信的續接總額或用量紀錄，無法安全續接；請先檢視已保存的草稿與證據。")
 	case errors.Is(err, ErrSkillUnavailable):
 		writeError(w, 503, "skill_unavailable", "The configured skill package is unavailable or incompatible")
 	case errors.Is(err, ErrHistoryUnavailable):

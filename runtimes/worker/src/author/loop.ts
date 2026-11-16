@@ -53,6 +53,7 @@ export async function runAuthor(
   browser: ExplorationBrowser | undefined,
   options: { moduleDiagnostics?:ModuleDiagnostics; observer?: (event:string)=>void; fetcher?: typeof fetch; signal?: AbortSignal; progress?: (message: string) => void;secrets?:KnownSecrets; history?: Pick<HistoryClient, "read">; harness?: Pick<HarnessClient,"call">; engine?: AgentEngine; onPartial?: (partial: EnginePartial) => void } = {},
 ): Promise<AuthorOutput | SummaryOutput | WorkspaceAuthorOutput | PlannerOutput> {
+  const startedAt = performance.now();
   validateAuthorInput(input);
   const observation=new AuthorObservation(options.observer);
   const feedback=new Map<string,string>();
@@ -100,6 +101,10 @@ export async function runAuthor(
   let candidateMessage: string | undefined;
   let candidateNextStep: string | undefined;
   let modelRequests = 0;
+  // Count at the guarded transport/tool boundary, independently of engine events
+  // and execution ordinals. These counters never come from model output.
+  let chargedModelRequests = 0;
+  let chargedToolCalls = 0;
   let changed = false;
   let validation = false;
   let toolCount = 0;
@@ -130,6 +135,8 @@ export async function runAuthor(
       ...(capability ? { maxRequestBytes: 64 * 1024 * 1024, maxToolOutputBytes: module || planner ? 25 * 1024 * 1024 : 13 * 1024 * 1024 } : {}),
       ...(options.moduleDiagnostics ? { onModelRequestFailure: recordModelFailure } : {}),
       request: async (body) => {
+        if (chargedModelRequests >= (capability?.budget.maxModelRequests ?? 8)) throw new AuthorError("limit");
+        chargedModelRequests++;
         const prepared = buildResponsesRequest(config, { sessionId: input.author.conversationId, input: "Whippet author coding task" });
         const serializedBody=JSON.stringify({ ...JSON.parse(prepared.init.body), ...body });
         if(options.observer){
@@ -190,8 +197,9 @@ export async function runAuthor(
       } } : {}),
       checkpoint: () => checkpoint === undefined ? undefined : { script: checkpoint.script },
       pendingWork: () => candidateNextStep,
-      execute: async (call, execution) => {
-        toolCount = execution;
+      execute: async (call) => {
+        if (chargedToolCalls >= (capability?.budget.maxToolCalls ?? 12)) throw new AuthorError("limit");
+        toolCount = ++chargedToolCalls;
         if (typeof call.call_id !== "string" || !call.call_id || callsSeen.has(call.call_id) || typeof call.arguments !== "string" || typeof call.name !== "string") throw new AuthorError("invalid_response");
         callsSeen.add(call.call_id);
         let result: unknown;
@@ -403,7 +411,10 @@ export async function runAuthor(
       const output: AuthorOutput = {
         message: `本輪模型請求 ${modelRequests}/${capability.budget.maxModelRequests}。` + (reason === "context_capacity" ? "輸入已達容量保護界限。" : reason === "output_truncated" ? "模型輸出達固定上限而截斷。" : "已達預算上限，") + (savedCheckpoint ? "已保留最後通過自我試跑的候選稿；剩餘工作尚未完成，仍須正式驗證。" : "尚無可保留的已驗證候選稿。請縮小剩餘工作後繼續。"),
         requestValidation: false,
-        partial: { reason: "budget_exhausted", nextStep: partial.nextStep },
+        partial: { reason: "budget_exhausted", nextStep: partial.nextStep, usage: {
+          modelRequests: chargedModelRequests, toolCalls: chargedToolCalls,
+          durationMs: Math.min(capability.budget.maxDurationMs, Math.max(1, Math.ceil(performance.now() - startedAt))),
+        } },
       };
       if (savedCheckpoint) {
         output.script = savedCheckpoint.script;

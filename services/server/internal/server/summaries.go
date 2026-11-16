@@ -99,6 +99,9 @@ func enqueueAuthorSnapshot(ctx context.Context, tx *sql.Tx, d draftState, input 
  CASE WHEN $15='external' THEN 'external' WHEN $14 IN ('test-author','acceptance-summary','module-authoring','usecase-planner') THEN w.author_engine ELSE 'builtin' END FROM tests t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=$2`, id, d.TestID, d.Revision, d.Script, d.hash, input.Budget.MaxDurationMS, string(payload), settingsJSON(d.WorkspaceSettings), d.EditingSessionID, jsonText(d.WorkspaceContext), d.ScriptOrigin, binding.authorizationRevision, binding.scopeProposalID, input.SkillID, binding.AuthorEngine); err != nil {
 		return Run{}, err
 	}
+	if err = saveAuthorChainBudget(ctx, tx, id, input, binding.chainBudget); err != nil {
+		return Run{}, err
+	}
 	return scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs r WHERE r.id=$1`, id))
 }
 

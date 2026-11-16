@@ -58,6 +58,7 @@ export interface AuthorPartialOutput {
   reason: "budget_exhausted";
   nextStep: string;
   checkpoint?: { scriptHash: string; selfTestPassed: true };
+  usage?: { modelRequests: number; toolCalls: number; durationMs: number };
 }
 export interface AuthorOutput {
   module?: ModuleMetadata;

@@ -125,10 +125,10 @@ func (p *Postgres) createAuthorInTx(ctx context.Context, tx *sql.Tx, d draftStat
 }
 
 func (p *Postgres) createAuthorInTxForEngine(ctx context.Context, tx *sql.Tx, d draftState, session EditingSession, content, engine string, toolCeiling ...[]string) (AuthorSubmission, error) {
-	return p.createAuthorInTxForRuntime(ctx, tx, d, session, content, engine, nil, toolCeiling...)
+	return p.createAuthorInTxForRuntime(ctx, tx, d, session, content, engine, nil, nil, toolCeiling...)
 }
 
-func (p *Postgres) createAuthorInTxForRuntime(ctx context.Context, tx *sql.Tx, d draftState, session EditingSession, content, engine string, runtime *AuthorRuntime, toolCeiling ...[]string) (AuthorSubmission, error) {
+func (p *Postgres) createAuthorInTxForRuntime(ctx context.Context, tx *sql.Tx, d draftState, session EditingSession, content, engine string, runtime *AuthorRuntime, chain *authorChainBudget, toolCeiling ...[]string) (AuthorSubmission, error) {
 	testID, sessionID, revision := d.TestID, session.ID, d.Revision
 	var active bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM runs WHERE test_id=$1 AND kind='author'
@@ -213,6 +213,11 @@ func (p *Postgres) createAuthorInTxForRuntime(ctx context.Context, tx *sql.Tx, d
 	if err := snapshotAuthor(&input); err != nil {
 		return AuthorSubmission{}, err
 	}
+	if chain != nil {
+		if err = chain.constrain(&input); err != nil {
+			return AuthorSubmission{}, err
+		}
+	}
 	if len(toolCeiling) > 0 {
 		allowed := map[string]bool{}
 		for _, name := range toolCeiling[0] {
@@ -226,7 +231,7 @@ func (p *Postgres) createAuthorInTxForRuntime(ctx context.Context, tx *sql.Tx, d
 		}
 		input.AllowedTools = restricted
 	}
-	run, err := enqueueAuthorSnapshot(ctx, tx, d, input, Run{authorizationRevision: auth, scopeProposalID: proposal, AuthorEngine: engine})
+	run, err := enqueueAuthorSnapshot(ctx, tx, d, input, Run{authorizationRevision: auth, scopeProposalID: proposal, AuthorEngine: engine, chainBudget: chain})
 	if err != nil {
 		return AuthorSubmission{}, err
 	}

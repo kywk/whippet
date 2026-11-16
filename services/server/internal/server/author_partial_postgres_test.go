@@ -63,9 +63,14 @@ func setupM10Partial(t *testing.T) m10PartialFixture {
 	}
 	return m10PartialFixture{p, ctx, assignment, test.ID, s.ID, d.Revision, files}
 }
-func (f m10PartialFixture) finish(t *testing.T, script *string, status string) {
+func (f m10PartialFixture) finish(t *testing.T, script *string, status string, receipt ...*AuthorUsage) {
 	t.Helper()
 	output := authorOutput{Message: stringPointer("budget exhausted"), RequestValidation: new(bool), Script: script, Partial: &AuthorPartialOutput{Reason: "budget_exhausted", NextStep: "finish remaining assertions"}}
+	// Current Worker fixture: one synthetic request/tool, no real model call.
+	output.Partial.Usage = &AuthorUsage{1, 1, 1}
+	if len(receipt) > 0 {
+		output.Partial.Usage = receipt[0]
+	}
 	if script != nil {
 		output.Partial.Checkpoint = &AuthorCheckpoint{ScriptHash: scriptHash(*script), SelfTestPassed: true}
 	}
