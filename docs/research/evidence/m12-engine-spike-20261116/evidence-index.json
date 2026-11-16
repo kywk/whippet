@@ -1,0 +1,245 @@
+{
+  "recordedAt": "2026-11-16T11:44:42.117381+08:00",
+  "baseCommit": "576816622d988049d36453c7b3dabed9feeadd28",
+  "selectedForM121": "vercel",
+  "defaultEngine": "builtin",
+  "tests": {
+    "passed": 39,
+    "failed": 0,
+    "skipped": 0
+  },
+  "rawSubset": [
+    {
+      "id": "G11",
+      "engine": "pi",
+      "verdict": "PASS",
+      "metrics": {
+        "modelRequests": 1,
+        "toolCalls": 1,
+        "inputTokens": 2397,
+        "outputTokens": 724,
+        "tokenUsageObserved": true,
+        "selfTests": [
+          {
+            "passed": true,
+            "scriptSha256": "47b037af04532ac44c471ba8861482c7de92a8991eb3d3ceb6f29a1d551ef7ee"
+          }
+        ]
+      },
+      "latencyMs": 6430,
+      "source": "pi-g11-context/G11.json",
+      "assisted": true
+    },
+    {
+      "id": "G01",
+      "engine": "pi",
+      "verdict": "PASS",
+      "metrics": {
+        "modelRequests": 1,
+        "toolCalls": 1,
+        "inputTokens": 2137,
+        "outputTokens": 794,
+        "tokenUsageObserved": true,
+        "selfTests": [
+          {
+            "passed": true,
+            "scriptSha256": "2fafc9bfab2c134eb2245ae612a08b92d87fea7431490023eda533ee65f5e8f7"
+          }
+        ]
+      },
+      "latencyMs": 8776,
+      "source": "pi-native-g01/G01.json",
+      "assisted": false
+    },
+    {
+      "id": "G03",
+      "engine": "pi",
+      "verdict": "PASS",
+      "metrics": {
+        "modelRequests": 1,
+        "toolCalls": 1,
+        "inputTokens": 2185,
+        "outputTokens": 448,
+        "tokenUsageObserved": true,
+        "selfTests": [
+          {
+            "passed": true,
+            "scriptSha256": "baf27c2fb0753b08078266e28dd6b923322cc6cb5e78361bb2d6812a0f8e58bf"
+          }
+        ]
+      },
+      "latencyMs": 7145,
+      "source": "pi-native-subset/G03.json",
+      "assisted": false
+    },
+    {
+      "id": "G09",
+      "engine": "pi",
+      "verdict": "PASS",
+      "metrics": {
+        "modelRequests": 1,
+        "toolCalls": 0,
+        "inputTokens": 2099,
+        "outputTokens": 612,
+        "tokenUsageObserved": true,
+        "selfTests": []
+      },
+      "latencyMs": 8169,
+      "source": "pi-native-subset/G09.json",
+      "assisted": false
+    },
+    {
+      "id": "G11",
+      "engine": "pi",
+      "verdict": "FAIL",
+      "metrics": {
+        "modelRequests": 2,
+        "toolCalls": 1,
+        "inputTokens": 5064,
+        "outputTokens": 1352,
+        "tokenUsageObserved": true,
+        "selfTests": []
+      },
+      "latencyMs": 9778,
+      "source": "pi-native-subset/G11.json",
+      "assisted": false
+    },
+    {
+      "id": "G11",
+      "engine": "vercel",
+      "verdict": "PASS",
+      "metrics": {
+        "modelRequests": 1,
+        "toolCalls": 1,
+        "inputTokens": 2395,
+        "outputTokens": 767,
+        "tokenUsageObserved": true,
+        "selfTests": [
+          {
+            "passed": true,
+            "scriptSha256": "008b3cd1460b534b8dbcf528e9b97fa82f288bccac73c0c536ac059a8b07ab2f"
+          }
+        ]
+      },
+      "latencyMs": 6337,
+      "source": "vercel-g11-context/G11.json",
+      "assisted": true
+    },
+    {
+      "id": "G01",
+      "engine": "vercel",
+      "verdict": "PASS",
+      "metrics": {
+        "modelRequests": 1,
+        "toolCalls": 1,
+        "inputTokens": 2138,
+        "outputTokens": 609,
+        "tokenUsageObserved": true,
+        "selfTests": [
+          {
+            "passed": true,
+            "scriptSha256": "a84fe864fc763c3d8edcaec77c6bdf30658644010eac7eadeefadd26d7620d21"
+          }
+        ]
+      },
+      "latencyMs": 5739,
+      "source": "vercel-native-subset/G01.json",
+      "assisted": false
+    },
+    {
+      "id": "G03",
+      "engine": "vercel",
+      "verdict": "PASS",
+      "metrics": {
+        "modelRequests": 2,
+        "toolCalls": 2,
+        "inputTokens": 4967,
+        "outputTokens": 675,
+        "tokenUsageObserved": true,
+        "selfTests": [
+          {
+            "passed": true,
+            "scriptSha256": "baf27c2fb0753b08078266e28dd6b923322cc6cb5e78361bb2d6812a0f8e58bf"
+          }
+        ]
+      },
+      "latencyMs": 9992,
+      "source": "vercel-native-subset/G03.json",
+      "assisted": false
+    },
+    {
+      "id": "G09",
+      "engine": "vercel",
+      "verdict": "PASS",
+      "metrics": {
+        "modelRequests": 1,
+        "toolCalls": 0,
+        "inputTokens": 2098,
+        "outputTokens": 598,
+        "tokenUsageObserved": true,
+        "selfTests": []
+      },
+      "latencyMs": 3879,
+      "source": "vercel-native-subset/G09.json",
+      "assisted": false
+    },
+    {
+      "id": "G11",
+      "engine": "vercel",
+      "verdict": "FAIL",
+      "metrics": {
+        "modelRequests": 1,
+        "toolCalls": 0,
+        "inputTokens": 2129,
+        "outputTokens": 1238,
+        "tokenUsageObserved": true,
+        "selfTests": []
+      },
+      "latencyMs": 15890,
+      "source": "vercel-native-subset/G11.json",
+      "assisted": false
+    }
+  ],
+  "filesSha256": {
+    "engine-tests-final.tap": "87a4c4debb61dfa5e708e461d24be27bdec273c2f2dbc36b5d4b8531131fd41f",
+    "engine-tests-transport-close.tap": "e9644b1c5b4602988ec3054b2d05d8de0de5afa87d2a96c6d649010dcfc535b9",
+    "implicit-audit-final.jsonl": "babd1f3e4d2c92ebf8661cbd7b67dbd9a3141a2655c10c2b1cd7b568c890483b",
+    "pi-g11-context/G11.json": "8885750304d15cba7ec78b4a42714c30ce59996c2fa92cf276f58513b3589acf",
+    "pi-g11-context/intent.json": "edbad6014062eddc6fe23783ead4c190e8273e8709b8839532a672f9370085ce",
+    "pi-g11-context/summary.json": "658016637b0c9d51971d92cc8ee3a1b9a7a033153d0a780b803f8533bb2bd309",
+    "pi-native-g01/G01.json": "806bcb037919514bf25fd8ab8a75e24b5d6ec294751e0711a81f7a6d80db3364",
+    "pi-native-g01/intent.json": "1a1c5311b220187a5dd78e0ce2566f2ac1f5dbf11677d70bd67b663da4e7ec72",
+    "pi-native-g01/summary.json": "bec474ad211c1c2e21d2c900751b080fa68f01ec8ebb10708386d5e07cba2b96",
+    "pi-native-subset/G03.json": "41a067e264be935f9a0830ae69bd5727ffd90d6a59a52ed7861612c5331e4bf4",
+    "pi-native-subset/G09.json": "ccc2784895f726358d5f20f89d37665cc77b8dc982506a6c1c92b37b4af3364b",
+    "pi-native-subset/G11.json": "17cca51b25cbb98b9cbf983d4fb529475a1eef390201fcd45fe0c704350c17db",
+    "pi-native-subset/intent.json": "409c06b6b6eb89ee1674fc3250b964c5e5f6f59d85ecbc7bb01ba5a9b65baffe",
+    "pi-native-subset/summary.json": "74715165553d53a4034555e78db6c3188d07087dc89aac1be5b44c56d861a886",
+    "vercel-g11-context/G11.json": "4ce14fa1501f02b7a9d31a3b304ed20b9273577801ce10ce0c49852d28d1d8bd",
+    "vercel-g11-context/intent.json": "1b070def02a1256a45e49bbfb41c45032ad495071a3ef295ae241a3acd36d7a4",
+    "vercel-g11-context/summary.json": "ba8e6882a636a740183ff82951cb4c4836b04875e3475cd0e4fff38e27864077",
+    "vercel-native-subset/G01.json": "d35f04a6b4f21e4f277aeb79e246d247da162f3c1bc2626a7a2c09246670bf38",
+    "vercel-native-subset/G03.json": "277595a7333cd08e30c87d39def8e013fa7a463962cd25e253177a6d5c0774b1",
+    "vercel-native-subset/G09.json": "fb95f78a7ecdaa31bfedb10acf5d5e0976f01d1accfdfb6258dbf7c92843be74",
+    "vercel-native-subset/G11.json": "b4a09f71197ffeac36123176aefb4c4be06f599072553d8a773a301afcac1f7e",
+    "vercel-native-subset/intent.json": "728740d2fca87cafcf9ae39c7712782b770a81a6da0d084142da0025bc602e93",
+    "vercel-native-subset/summary.json": "a111f48b3bc35310994da133193d6e1ce37f862ca731574c4680b7454588e4a2"
+  },
+  "sourceSha256": {
+    "runtimes/worker/package-lock.json": "59e7830b88735aca182d159b189566a6637e03f41413aba9d74e8364d2b32c7c",
+    "contracts/tools/registry.json": "cfe9c33bc50f5d803d96ecf052ac090c1de38ffd8ff7bf1310fd5f69221571c3",
+    "runtimes/worker/src/author/spike/fixture.ts": "03ae0657144445c5ca5c3087728b0f0a72c3bbd6e849fd28dc56516551d4ebb2",
+    "runtimes/worker/src/author/spike/pi.ts": "0c467e4964e659a23413b8318d809260ee1a0b2a8f8ae41289e347d9a4775b29",
+    "runtimes/worker/src/author/spike/policy.ts": "bf9ecac244e84e601f88f2d4ea8088f4623f88510fdf599d07d74d879107d074",
+    "runtimes/worker/src/author/spike/spike.test.ts": "2ebb052cddec9f7c1289ed84a94e992b05f49da15eb53ec62f4eb26caf8e3b50",
+    "runtimes/worker/src/author/spike/vercel.ts": "d1ea9edc1d343ff40e0c835a8aa80ea1fce594aae8e2032e6fc2ea6a6ee08e72"
+  },
+  "inheritedBuiltinEvidenceSha256": {
+    "G13-final.json": "82595277bd89a7deb0119f8d3677c9709f54f7473e28f829e6aebf5214d797b1",
+    "G14-final.json": "9de5ec2548503159f7eab565ca305836d26680ef70f59586ba4b9f46963d0c08",
+    "G08-final.json": "25ca78ca841103fd1e9dfa88f1a4eb3d56f3e27c1ea6918f5cd3425279d7e2de",
+    "G11-strict-fix.json": "ed7fe347050ef3192c5ac79f99b52b2bf47eeb624534baf0e3f4f532be93245f",
+    "G12-strict-fix.json": "3d314c856272d4929375f87122451e9920aaf3e9193adac0c84a555f0f4b6501"
+  },
+  "original14UnassistedAllPassProven": false
+}

@@ -1,0 +1,35 @@
+{
+  "id": "G01",
+  "engine": "pi",
+  "budget": {
+    "maxModelRequests": 8,
+    "maxToolCalls": 12,
+    "maxDurationMs": 180000,
+    "maxOutputTokens": 8192
+  },
+  "metrics": {
+    "modelRequests": 1,
+    "toolCalls": 1,
+    "inputTokens": 2137,
+    "outputTokens": 794,
+    "tokenUsageObserved": true,
+    "selfTests": [
+      {
+        "passed": true,
+        "scriptSha256": "2fafc9bfab2c134eb2245ae612a08b92d87fea7431490023eda533ee65f5e8f7"
+      }
+    ]
+  },
+  "latencyMs": 8776,
+  "checks": {
+    "guardSelfTestPassed": true,
+    "candidateMatchesSelfTest": true,
+    "preservesIntent": true
+  },
+  "verdict": "PASS",
+  "output": {
+    "message": "已建立本地合成頁測試：使用 page.setContent 渲染 h1 與按鈕，並驗證按鈕可見，未使用外部 URL。",
+    "requestValidation": true,
+    "script": "import { test, expect } from '@playwright/test';\n\ntest('本地合成頁 Run test 按鈕可見', async ({ page }) => {\n  await page.setContent(`\n    <!DOCTYPE html>\n    <html lang=\"en\">\n      <head>\n        <meta charset=\"utf-8\" />\n        <title>Whippet local test</title>\n      </head>\n      <body>\n        <h1>Whippet ready</h1>\n        <button>Run test</button>\n      </body>\n    </html>\n  `);\n\n  await expect(page.locator('h1')).toHaveText('Whippet ready');\n  await expect(page.getByRole('button', { name: 'Run test' })).toBeVisible();\n});\n"
+  }
+}

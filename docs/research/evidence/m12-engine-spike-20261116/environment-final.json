@@ -1,0 +1,34 @@
+{
+  "recordedAt": "2026-11-16T11:45:47.178881+08:00",
+  "rebootRecovery": "PASS",
+  "retainedEnvironment": {
+    "builtin": {
+      "containers": {
+        "whippet-m10z-20261115-manager": {
+          "identityValid": true,
+          "present": true,
+          "running": true
+        },
+        "whippet-m10z-20261115-pg": {
+          "present": true,
+          "running": true
+        }
+      },
+      "created": true,
+      "ports": {
+        "api": true,
+        "target": true,
+        "web": true
+      },
+      "serverSha256": "f064bd02671c223b7f209bf982e32623d0dc88318ee4b5bcf6f4b1a9f275f35f",
+      "stateValid": true
+    },
+    "mcpPinsValid": true,
+    "mcpReady": true
+  },
+  "builtinRunCount": 81,
+  "spikeSelfTestContainers": 0,
+  "foregroundExecSession": 69595,
+  "candidateDeployed": false,
+  "healthCheckModelRequests": 0
+}

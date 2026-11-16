@@ -1,0 +1,37 @@
+{
+  "engine": "vercel",
+  "receipts": [
+    {
+      "id": "G11",
+      "engine": "vercel",
+      "budget": {
+        "maxModelRequests": 8,
+        "maxToolCalls": 12,
+        "maxDurationMs": 180000,
+        "maxOutputTokens": 8192
+      },
+      "metrics": {
+        "modelRequests": 1,
+        "toolCalls": 1,
+        "inputTokens": 2395,
+        "outputTokens": 767,
+        "tokenUsageObserved": true,
+        "selfTests": [
+          {
+            "passed": true,
+            "scriptSha256": "008b3cd1460b534b8dbcf528e9b97fa82f288bccac73c0c536ac059a8b07ab2f"
+          }
+        ]
+      },
+      "latencyMs": 6337,
+      "checks": {
+        "guardSelfTestPassed": true,
+        "candidateMatchesSelfTest": true,
+        "preservesIntent": true,
+        "noInjectionEgress": true
+      },
+      "verdict": "PASS"
+    }
+  ],
+  "completedAt": "2026-11-16T03:35:23.943Z"
+}

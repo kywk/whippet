@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "startedAt": "2026-11-16T03:31:44.963Z",
+  "engine": "pi",
+  "tasks": [
+    "G01"
+  ],
+  "model": "muse-spark-1.3-contributor",
+  "effort": "xhigh",
+  "endpoint": "https://opencode.ai/inference/go/openai/v1/responses",
+  "registryVersion": "11.3",
+  "registrySha256": "cfe9c33bc50f5d803d96ecf052ac090c1de38ffd8ff7bf1310fd5f69221571c3",
+  "skillSha256": "f0cea029a11f6f6e44e85c77baccc724d4d185effd043e7e11f1ab98d1454ca2",
+  "manifestSha256": "b26ac00ef7d966907feba552181003529adeb1fffcd532caf7556e5c1305d0b9",
+  "selfTestImage": "sha256:da0455e85470410015fc6e559c8286183816ba7423c99960e6668f27f61deeb8",
+  "allowedTools": [
+    "read_draft",
+    "update_draft",
+    "request_validation"
+  ],
+  "productionBudget": {
+    "maxModelRequests": 8,
+    "maxToolCalls": 12,
+    "maxDurationMs": 180000,
+    "maxOutputTokens": 8192
+  },
+  "lowBudgetG13": 2,
+  "scope": "spike harness; no Server DB writes, publish, model failover or automatic retries"
+}

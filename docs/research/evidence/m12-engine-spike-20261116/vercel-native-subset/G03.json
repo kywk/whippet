@@ -1,0 +1,35 @@
+{
+  "id": "G03",
+  "engine": "vercel",
+  "budget": {
+    "maxModelRequests": 8,
+    "maxToolCalls": 12,
+    "maxDurationMs": 180000,
+    "maxOutputTokens": 8192
+  },
+  "metrics": {
+    "modelRequests": 2,
+    "toolCalls": 2,
+    "inputTokens": 4967,
+    "outputTokens": 675,
+    "tokenUsageObserved": true,
+    "selfTests": [
+      {
+        "passed": true,
+        "scriptSha256": "baf27c2fb0753b08078266e28dd6b923322cc6cb5e78361bb2d6812a0f8e58bf"
+      }
+    ]
+  },
+  "latencyMs": 9992,
+  "checks": {
+    "guardSelfTestPassed": true,
+    "candidateMatchesSelfTest": true,
+    "preservesIntent": true
+  },
+  "verdict": "PASS",
+  "output": {
+    "message": "已將斷言由 hello 修正為 hallo，與頁面內容一致，其餘結構維持不變。",
+    "requestValidation": true,
+    "script": "import { test, expect } from '@playwright/test';\ntest('問候語', async ({ page }) => {\n  await page.setContent('<h1>hallo</h1>');\n  await expect(page.getByRole('heading')).toHaveText('hallo');\n});\n"
+  }
+}

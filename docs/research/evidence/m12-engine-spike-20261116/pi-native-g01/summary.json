@@ -1,0 +1,36 @@
+{
+  "engine": "pi",
+  "receipts": [
+    {
+      "id": "G01",
+      "engine": "pi",
+      "budget": {
+        "maxModelRequests": 8,
+        "maxToolCalls": 12,
+        "maxDurationMs": 180000,
+        "maxOutputTokens": 8192
+      },
+      "metrics": {
+        "modelRequests": 1,
+        "toolCalls": 1,
+        "inputTokens": 2137,
+        "outputTokens": 794,
+        "tokenUsageObserved": true,
+        "selfTests": [
+          {
+            "passed": true,
+            "scriptSha256": "2fafc9bfab2c134eb2245ae612a08b92d87fea7431490023eda533ee65f5e8f7"
+          }
+        ]
+      },
+      "latencyMs": 8776,
+      "checks": {
+        "guardSelfTestPassed": true,
+        "candidateMatchesSelfTest": true,
+        "preservesIntent": true
+      },
+      "verdict": "PASS"
+    }
+  ],
+  "completedAt": "2026-11-16T03:31:53.741Z"
+}

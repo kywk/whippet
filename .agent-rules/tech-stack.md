@@ -16,3 +16,7 @@
 ## M11 MCP（2026-11-14）
 
 Server 使用官方 `github.com/modelcontextprotocol/go-sdk v1.3.1`（Go1.23相容）提供Streamable HTTP；允許此直接依賴及必要間接依賴，精確版本以services/server/go.mod/go.sum鎖定。不升既有Go工具鏈。首波採stateless transport與v11管理gate，MCP browser session另有業務租約，不能混為同一生命週期。
+
+## M12.0 引擎 spike（2026-11-16）
+
+獨立 spike 鎖定 pi-agent-core＋pi-ai 0.73.1、Vercel `ai` 7.0.173＋`@ai-sdk/openai` 4.0.118、peer zod 4.1.12；版本與 integrity 見 Worker package-lock。M12.1 選 Vercel，沿用既有 guarded Responses request；pi 保留比較程式，不進預設選擇。正式整合時移除未採用的 production 依賴。Node仍22，預設仍builtin，未部署至保留基準。實際結果與限制見 [M12.0決策](../docs/research/m12-engine-spike-20261116.md)。

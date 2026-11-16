@@ -1,0 +1,240 @@
+TAP version 13
+# Subtest: builtin returns model budget partial and asks for a final answer before exhaustion
+ok 1 - builtin returns model budget partial and asks for a final answer before exhaustion
+  ---
+  duration_ms: 1.111041
+  type: 'test'
+  ...
+# Subtest: tool budget stops before the extra execution and preserves verified checkpoint
+ok 2 - tool budget stops before the extra execution and preserves verified checkpoint
+  ---
+  duration_ms: 0.827917
+  type: 'test'
+  ...
+# Subtest: snapshot compaction preserves latest page, IDs, hints and reasoning including login page
+ok 3 - snapshot compaction preserves latest page, IDs, hints and reasoning including login page
+  ---
+  duration_ms: 0.107333
+  type: 'test'
+  ...
+# Subtest: dispatcher rejects duplicate bindings and abort does not become partial
+ok 4 - dispatcher rejects duplicate bindings and abort does not become partial
+  ---
+  duration_ms: 0.3265
+  type: 'test'
+  ...
+# Subtest: harness checkpoint keeps last passing candidate after failed repair, without extending wire
+ok 5 - harness checkpoint keeps last passing candidate after failed repair, without extending wire
+  ---
+  duration_ms: 9.63975
+  type: 'test'
+  ...
+# Subtest: partial checkpoint comes only from Worker guard and redaction changes discard it
+ok 6 - partial checkpoint comes only from Worker guard and redaction changes discard it
+  ---
+  duration_ms: 4.317541
+  type: 'test'
+  ...
+# Subtest: model final JSON cannot inject script, partial or checkpoint
+ok 7 - model final JSON cannot inject script, partial or checkpoint
+  ---
+  duration_ms: 2.457375
+  type: 'test'
+  ...
+# Subtest: author artifact serialization counts UTF8 JSON plus newline at exactly 13MiB
+ok 8 - author artifact serialization counts UTF8 JSON plus newline at exactly 13MiB
+  ---
+  duration_ms: 124.098666
+  type: 'test'
+  ...
+# Subtest: author reserves model turns for candidate self-test before exploration consumes the budget
+ok 9 - author reserves model turns for candidate self-test before exploration consumes the budget
+  ---
+  duration_ms: 0.392542
+  type: 'test'
+  ...
+# Subtest: module delivery reserves both staging calls, commit, and self-test repair
+ok 10 - module delivery reserves both staging calls, commit, and self-test repair
+  ---
+  duration_ms: 0.297417
+  type: 'test'
+  ...
+# Subtest: Module delivery can repair and recommit a failed self-test within eight requests
+ok 11 - Module delivery can repair and recommit a failed self-test within eight requests
+  ---
+  duration_ms: 0.165667
+  type: 'test'
+  ...
+# Subtest: output budget engine defaults and explicit values reach request; invalid values never request
+ok 12 - output budget engine defaults and explicit values reach request; invalid values never request
+  ---
+  duration_ms: 2.616958
+  type: 'test'
+  ...
+# Subtest: output budget snapshot and manifest validate both effective bounds and immutable pins
+ok 13 - output budget snapshot and manifest validate both effective bounds and immutable pins
+  ---
+  duration_ms: 6.769666
+  type: 'test'
+  ...
+# Subtest: output budget strict malformed fields and non-module elevation fail closed
+ok 14 - output budget strict malformed fields and non-module elevation fail closed
+  ---
+  duration_ms: 10.269084
+  type: 'test'
+  ...
+# Subtest: output budget auxiliary module cannot elevate primary snapshot
+ok 15 - output budget auxiliary module cannot elevate primary snapshot
+  ---
+  duration_ms: 3.568959
+  type: 'test'
+  ...
+# Subtest: output budget true author fetch pins module and legacy defaults across requests
+ok 16 - output budget true author fetch pins module and legacy defaults across requests
+  ---
+  duration_ms: 15.599583
+  type: 'test'
+  ...
+# Subtest: output budget no-capability author remains 8192 and invalid capability fails before fetch
+ok 17 - output budget no-capability author remains 8192 and invalid capability fails before fetch
+  ---
+  duration_ms: 4.122
+  type: 'test'
+  ...
+# Subtest: production v10 budget returns guard-owned checkpoint, never queues validation
+ok 18 - production v10 budget returns guard-owned checkpoint, never queues validation
+  ---
+  duration_ms: 10.03
+  type: 'test'
+  ...
+# Subtest: v10 partial omits script for failed/unverified/redacted candidates and ignores EnginePartial forgeries
+ok 19 - v10 partial omits script for failed/unverified/redacted candidates and ignores EnginePartial forgeries
+  ---
+  duration_ms: 6.6105
+  type: 'test'
+  ...
+# Subtest: v9 test-author and legacy do not emit new fields; cancellation is not partial
+ok 20 - v9 test-author and legacy do not emit new fields; cancellation is not partial
+  ---
+  duration_ms: 3.945666
+  type: 'test'
+  ...
+# Subtest: pi: every serialized request is masked; pins, registry and optional schema preserved
+ok 21 - pi: every serialized request is masked; pins, registry and optional schema preserved
+  ---
+  duration_ms: 21.525834
+  type: 'test'
+  ...
+# Subtest: pi: rejects unregistered tools, malformed/half JSON, truncation and coerced types before execution
+ok 22 - pi: rejects unregistered tools, malformed/half JSON, truncation and coerced types before execution
+  ---
+  duration_ms: 12.831042
+  type: 'test'
+  ...
+# Subtest: pi: exact model/tool budgets, last passing checkpoint and no forged completion
+ok 23 - pi: exact model/tool budgets, last passing checkpoint and no forged completion
+  ---
+  duration_ms: 9.775875
+  type: 'test'
+  ...
+# Subtest: pi: provider abort settles and closes HTTP connection within one second
+ok 24 - pi: provider abort settles and closes HTTP connection within one second
+  ---
+  duration_ms: 2.695208
+  type: 'test'
+  ...
+# {"engine":"pi","abortSettleAndCloseMs":0.829,"thresholdMs":1000}
+# Subtest: pi: snapshot compaction preserves pairs, newest full snapshot and encrypted reasoning
+ok 25 - pi: snapshot compaction preserves pairs, newest full snapshot and encrypted reasoning
+  ---
+  duration_ms: 4.305875
+  type: 'test'
+  ...
+# Subtest: pi: masking rejection sends nothing, HTTP failure does not retry, request bytes fail closed
+ok 26 - pi: masking rejection sends nothing, HTTP failure does not retry, request bytes fail closed
+  ---
+  duration_ms: 2.867209
+  type: 'test'
+  ...
+# Subtest: pi: duplicate IDs cannot repeat side effects; cancellation during a tool cannot issue a follow-up
+ok 27 - pi: duplicate IDs cannot repeat side effects; cancellation during a tool cannot issue a follow-up
+  ---
+  duration_ms: 3.945542
+  type: 'test'
+  ...
+# Subtest: pi: guard completion stops without a follow-up model request; no implicit tools
+ok 28 - pi: guard completion stops without a follow-up model request; no implicit tools
+  ---
+  duration_ms: 2.481542
+  type: 'test'
+  ...
+# Subtest: pi: real Worker parser owns partial checkpoint; failed repair cannot replace it
+ok 29 - pi: real Worker parser owns partial checkpoint; failed repair cannot replace it
+  ---
+  duration_ms: 5.625125
+  type: 'test'
+  ...
+# Subtest: vercel: every serialized request is masked; pins, registry and optional schema preserved
+ok 30 - vercel: every serialized request is masked; pins, registry and optional schema preserved
+  ---
+  duration_ms: 18.226458
+  type: 'test'
+  ...
+# Subtest: vercel: rejects unregistered tools, malformed/half JSON, truncation and coerced types before execution
+ok 31 - vercel: rejects unregistered tools, malformed/half JSON, truncation and coerced types before execution
+  ---
+  duration_ms: 6.502084
+  type: 'test'
+  ...
+# Subtest: vercel: exact model/tool budgets, last passing checkpoint and no forged completion
+ok 32 - vercel: exact model/tool budgets, last passing checkpoint and no forged completion
+  ---
+  duration_ms: 6.722875
+  type: 'test'
+  ...
+# Subtest: vercel: provider abort settles and closes HTTP connection within one second
+ok 33 - vercel: provider abort settles and closes HTTP connection within one second
+  ---
+  duration_ms: 2.08925
+  type: 'test'
+  ...
+# {"engine":"vercel","abortSettleAndCloseMs":0.488,"thresholdMs":1000}
+# Subtest: vercel: snapshot compaction preserves pairs, newest full snapshot and encrypted reasoning
+ok 34 - vercel: snapshot compaction preserves pairs, newest full snapshot and encrypted reasoning
+  ---
+  duration_ms: 4.33325
+  type: 'test'
+  ...
+# Subtest: vercel: masking rejection sends nothing, HTTP failure does not retry, request bytes fail closed
+ok 35 - vercel: masking rejection sends nothing, HTTP failure does not retry, request bytes fail closed
+  ---
+  duration_ms: 2.788667
+  type: 'test'
+  ...
+# Subtest: vercel: duplicate IDs cannot repeat side effects; cancellation during a tool cannot issue a follow-up
+ok 36 - vercel: duplicate IDs cannot repeat side effects; cancellation during a tool cannot issue a follow-up
+  ---
+  duration_ms: 4.15375
+  type: 'test'
+  ...
+# Subtest: vercel: guard completion stops without a follow-up model request; no implicit tools
+ok 37 - vercel: guard completion stops without a follow-up model request; no implicit tools
+  ---
+  duration_ms: 2.456042
+  type: 'test'
+  ...
+# Subtest: vercel: real Worker parser owns partial checkpoint; failed repair cannot replace it
+ok 38 - vercel: real Worker parser owns partial checkpoint; failed repair cannot replace it
+  ---
+  duration_ms: 8.751708
+  type: 'test'
+  ...
+1..38
+# tests 38
+# suites 0
+# pass 38
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1550.103583

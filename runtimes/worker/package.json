@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -12,11 +14,17 @@
     "test:ai": "node --test dist/ai/ai.test.js",
     "test:author": "node --test dist/author/author.test.js",
     "author": "node dist/author/main.js",
+    "test:engine-spike": "node --test dist/author/spike/spike.test.js",
     "ai:check": "node dist/ai/cli.js check",
     "ai:probe": "node dist/ai/cli.js probe"
   },
   "dependencies": {
-    "@playwright/test": "1.64.1"
+    "@ai-sdk/openai": "4.0.118",
+    "@mariozechner/pi-agent-core": "0.73.1",
+    "@mariozechner/pi-ai": "0.73.1",
+    "@playwright/test": "1.64.1",
+    "ai": "7.0.173",
+    "zod": "4.1.12"
   },
   "devDependencies": {
     "@types/node": "22.10.2",

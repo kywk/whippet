@@ -44,6 +44,8 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/test/m12-dev-env.py status
 
 實測：全部保留服務停止後，由上述start恢復；11份身分檔SHA相同，builtin DB仍81 Run，兩庫active／occupied皆0，MCP initialize與19工具列舉成功，新增模型Run=0。這是受控服務重啟測試，使用者的實際OS重開機尚未發生。
 
+2026-11-16 M12.0 Leader於使用者實際OS重開機後執行上述恢復流程：Docker29.8.2就緒，start回RUNNING且前景exec session保留；另一exec核stateValid、Manager identityValid、三ports、mcpPinsValid與mcpReady全部true。收尾builtin DB仍81 Run／active0，健康檢查未建立模型Run。spike與兩個固定部署分開；[M12.0決策及限制](../research/m12-engine-spike-20261116.md)。
+
 
 ## 部署與管理
 

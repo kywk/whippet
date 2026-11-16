@@ -1,0 +1,35 @@
+{
+  "id": "G01",
+  "engine": "vercel",
+  "budget": {
+    "maxModelRequests": 8,
+    "maxToolCalls": 12,
+    "maxDurationMs": 180000,
+    "maxOutputTokens": 8192
+  },
+  "metrics": {
+    "modelRequests": 1,
+    "toolCalls": 1,
+    "inputTokens": 2138,
+    "outputTokens": 609,
+    "tokenUsageObserved": true,
+    "selfTests": [
+      {
+        "passed": true,
+        "scriptSha256": "a84fe864fc763c3d8edcaec77c6bdf30658644010eac7eadeefadd26d7620d21"
+      }
+    ]
+  },
+  "latencyMs": 5739,
+  "checks": {
+    "guardSelfTestPassed": true,
+    "candidateMatchesSelfTest": true,
+    "preservesIntent": true
+  },
+  "verdict": "PASS",
+  "output": {
+    "message": "建立本地合成頁測試：setContent 含 h1 與 Run test 按鈕並驗證可見",
+    "requestValidation": true,
+    "script": "import { test, expect } from '@playwright/test';\n\ntest('本地合成頁驗證 Run test 按鈕可見', async ({ page }) => {\n  await page.setContent(`\n    <main>\n      <h1>Whippet ready</h1>\n      <button>Run test</button>\n    </main>\n  `);\n\n  await expect(page.locator('h1')).toHaveText('Whippet ready');\n  await expect(page.getByRole('button', { name: 'Run test' })).toBeVisible();\n});\n"
+  }
+}
