@@ -206,6 +206,8 @@ M12引擎整合的設計與驗收要求（依Wave逐項實作）：
 - 開源引擎只負責迴圈、供應商、重試與 compaction，工具一律來自註冊表。依賴版本鎖定在 Worker 的 lockfile，並更新 tech-stack。
 - `runtimes/agent-bridge/` 是參考外部 Worker，以 MCP 接單模式連線，不能直接存取 DB 或 Manager。
 
+2026-11-16 M12.3 Wave5：普通test-author參考客戶端共用已鎖定Vercel引擎、打包skill及registry，只有MCP控制面與claim允許的原工具；不把M11 external接單與Worker runtime選項混為一談。操作者的模型設定及key留在本機受控環境，不從task.runtime或網頁自動改endpoint。私有journal在claim／submit前固定冪等ID；submit回應遺失只重送原完整body，不重跑模型／工具。不明工具結果／租約失效／pin漂移即停止；每秒最多送出一次MCP請求，429不自動重試。候選仍未驗證，發佈只能由人在平台完成。此MVP不支援其他主skill或通用MCP SSE，詳見[操作說明](../../runtimes/agent-bridge/README.md)。
+
 2026-11-16 M12.1 Wave1：正式Vercel adapter由後端明確opt-in，預設builtin。兩引擎共用收尾與output限額；final `prepareRequest(body)`在SDK序列化與安全壓縮後做整份機密守衛，再委派既有Responses傳輸。capacity使用已核官方模型能力扣除固定output與safety，採保守text估算；僅把能由當前工具取回的固定Catalog版／打包reference換成有精確read-back args與hash的DATA摘要，保留對話、草稿、Stage與證據、call/result配對及reasoning。超界停止、截斷不執行半份args；可信checkpoint與原nextStep由guard保留，無自動跨Run重試。這是工具資料壓縮切片，不是通用長對話／跨Run總預算策略完成。細節見[v12 Runtime約定](../../contracts/mvp-v12.md)，實測及後續見[Wave1交接](../tracking/handoff/m12-wave1-20261116.md)。
 
 2026-11-16 交付保留補強：Module 交付區間至少保留五次模型請求，才能在同一個8次總上限內完成 script、harness、commit、自試修一段及再次 commit；一般 Test／Planner 仍為三次。已驗候選依 guard 完成，不提高總模型／工具／時間預算。

@@ -1,0 +1,17 @@
+{
+  "wave": "M12 Wave5",
+  "date": "2026-11-16",
+  "passed": true,
+  "clientTests": { "passed": 8, "failed": 0, "skipped": 0 },
+  "realMcpIntegration": { "passed": 1, "failed": 0, "skipped": 0, "testSeconds": 10.50, "packageSeconds": 11.069, "realHttp": true, "realPostgres": true, "engine": "vercel", "modelTransport": "synthetic" },
+  "builds": { "workerDeclarations": true, "referenceWorkerTypeScript": true, "cliHelp": true },
+  "flow": { "claims": 1, "modelResponses": 2, "taskTools": 1, "submitAttempts": 2, "sameSubmitIdAndOutput": true, "draftRevisionDelta": 1, "candidateOrigin": "ai", "runState": "succeeded", "activeClaimsAfterSubmit": 0, "formalValidationRequested": false },
+  "checks": { "noModelOrToolReplay": true, "leaseLossStopsWork": true, "privateState": true, "pinDriftRejected": true, "secretGuard": true, "proofAndPartialRejected": true, "duplicateKeysRejected": true, "rateLimitNotWeakened": true, "mcpRequestPacing": true, "candidateDbRemoved": true },
+  "supportedSkill": "test-author",
+  "paidProviderCalls": 0,
+  "secretScan": { "files": 17, "findings": 0 },
+  "baselineHealthAllTrue": true,
+  "deployedToBaselines": false,
+  "m12_3MvpComplete": true,
+  "m12Complete": false
+}

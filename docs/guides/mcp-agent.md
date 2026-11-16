@@ -118,6 +118,8 @@ Codex MCP名稱為 `whippet`，以 stdio bridge 連到本機 `/mcp`；啟動新�
 
 ## Wave3 外部接單（普通 Test）
 
+M12.3現已提供[可執行的Vercel參考Worker](../../runtimes/agent-bridge/README.md)，先支援一筆普通test-author任務。從repo建置後以既有Agent Token私有檔及新的私有state檔啟動；不會切Workspace接單模式、建立新Run或部署兩個固定基準。它共用既有SDK／registry／skill pins，透過MCP領單、心跳、受限工具與提交；submit回應遺失可用原state明確恢復，不重跑模型／工具。候選未驗證，正式驗證及人工發佈仍走平台流程。其他主skill目前會停止，不能當作全技能外部Worker。
+
 管理者在 Workspace「正式設定與能力」選外部 Agent；設定影響新 Run；Wave3 僅普通 Test，Wave4 擴充驗收摘要，Wave5 擴充 Module／Use Case planner（含 Stage 原 skill）／Workspace 訪談。既有 Run 快照不變。底層管理API是 `PATCH /api/workspaces/{id}/author-engine`，以revision CAS保存。Run.authorEngine是建立時快照。
 
 Agent依序使用task_claim（requestId冪等）、task_heartbeat、task_tool_call及task_submit。task_tool_call把runId/attemptId/leaseId/callId放在控制工具本身的arguments，nested工具的arguments維持原registry schema。只用contextBundle實際allowedTools。短租120秒，硬期限沿原skill budget（普通test-author目前180秒）；heartbeat不能延長硬期限。先讀 `whippet://skill/test-author/references/external-mcp`。

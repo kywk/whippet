@@ -115,3 +115,15 @@ Server及Manager各自拒絕null、重複／未知／缺欄、負數、非整數
 續接沿既有test鎖、source鎖、目前草稿revision／context／scope及已回收檢查。相同source／session／revision先回既有Run，不重複扣抵；不同body仍409。第一次建立子Run時，依不可變的spentBefore加上來源receipt計算餘額，再與目前skill上限取較小值，原子保存子Run、其鏈分配、對話與唯一source關聯。總嘗試、模型或迴圈時間耗盡回409 `continuation_budget_exhausted`；缺乏可信policy／用量則回409 `continuation_usage_unavailable`。拒絕不能新增Run、訊息或推進context CAS。工具餘額可為0，後續Run不能重新取得工具名額。
 
 本波只提供固定runtime／每次輸出上限下的請求、工具與迴圈時間界限，不計算供應商帳單金額、實際token價格或取消後遠端計費，也不將新獨立任務／Stage retry併為同一鏈。新的partial欄位需Server／Manager／Worker一起升級；舊接收端會拒絕，沒有移除receipt的降級fallback。兩個固定基準未部署本候選。
+
+## M12.3 Wave5：普通 Test MCP 參考 Worker
+
+`runtimes/agent-bridge`是repo內可執行的單次接單客戶端，共用Worker鎖定的Vercel adapter及打包registry／skills，不新增MCP工具、Server schema或WS欄位。只支援`test-author`；其他主skill明確停止。模型工具只能是claim.allowedTools與本地pin一致的可接線子集，所有呼叫由客戶端固定runId／attemptId／leaseId並配新UUID callId，經原`task_tool_call`送出；MCP控制工具、DB／Manager、fs／shell及發佈均不暴露給模型。
+
+主skill、manifest、registry及external reference均校驗pin；主檔與reference從MCP讀取後另核SHA。操作者明訂的provider／model／effort／HTTPS模型入口與key用既有固定機密欄位載入，不由task.runtime或頁面更換。此客戶端明確選Vercel，不修改平台builtin預設或M11 authorEngine路由。
+
+每個journal最多一筆任務。claim前原子保存requestId，submit前保存完整`{runId,attemptId,leaseId,submitId,output}`並fsync；同journal禁止並行。submit回應不明／busy後，操作者重啟同state只重送同一ID及內容，不重新領單或執行模型／工具。工作階段被中斷則停止於claimed，不自動重跑；不明工具結果不換callId或自動重試。已完成journal只回保存結果，不代表最新Server或正式驗證狀態。
+
+執行依claim固定budget及原硬期限，30秒心跳；控制與工具MCP請求起點至少間隔1秒，以符合原burst10／每秒補1限流。429保留原狀態並回`rate_limited`，沒有隱式重送。HTTP僅literal loopback，其餘HTTPS；不跟redirect或自動切Server。Token、目前及未選中provider key禁止出現在模型body、MCP參數、回應資料或候選；journal 0600、父目錄0700，token同樣驗本人／regular／單硬連結與權限。
+
+final僅接受既有普通Test輸出欄位，拒絕partial、自報proof／validated、未知或重複key。提交仍是未自試AI候選，requestValidation僅請求獨立正式Run，無發佈路徑。本波真MCP＋暫存DB流程使用合成模型回應，沒有新增付費模型呼叫、正式驗證或黃金比較；完整真模型／Docker／其他skill驗收不由本節推定完成。
