@@ -1,6 +1,49 @@
-# MCP Agent 接入（M11 開發中）
+# MCP Agent 接入與 M12 開發環境
 
-本頁對應 [v11 契約](../../contracts/mvp-v11.md)。目前已交付 Token、Catalog、匿名 browser session、外部接單及平台作者切片；普通 Test 已通過真 UI→MCP Agent→正式驗證。各功能的部署與驗證範圍如下，M11 整階段仍未完成。不得將此設定套用到既有19287驗收現場。
+本頁對應 [v11 契約](../../contracts/mvp-v11.md)。M11 限定範圍已完成集中驗收，詳見 [M11 結果](../tracking/handoff/m11-final-20261114.md)。下方各 wave 紀錄保留當時的驗證範圍；目前 M12 使用的保留環境及重開機恢復方式見本節。舊19287等隔離環境已依2026-11-16使用者指示退役。
+
+## M12 保留環境與重開機恢復（2026-11-16）
+
+`feat/mcp` 已由使用者 merge 至 `main` 並 push，合併提交 `60498a9`。保留兩個已驗基準：
+
+| 用途 | 入口 | 持久資料 |
+| --- | --- | --- |
+| builtin、Web、TLS API與合成目標 | Web `http://127.0.0.1:19987`；API `https://127.0.0.1:19989`；目標19988 | `~/.local/share/whippet/m10z-20261115`；volume `whippet-m10z-20261115-pgdata` |
+| 本機 MCP 接入／M12參考外部Worker | `http://127.0.0.1:19587/mcp`；DB19589 | `~/.local/share/whippet-mcp`；volume `whippet-mcp-local-db`；既有兩個 LaunchAgent |
+
+名稱保留原值，以延續 Vault、token、TLS、Manager ID與work目錄。MCP是已驗的本機HTTP接入基準，不代表已部署目前checkout的新程式，也不等於可信TLS credential登入全鏈。兩個環境的Server／Worker／registry pins分別保存，不混用候選或背景版本。
+
+重開機後：
+
+1. 開啟 OrbStack，等 `docker info` 成功；不用重裝或重新初始化。
+2. 在會持續保留的終端執行：
+
+```sh
+cd /Users/kywk/kywk/project/whippet
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test/m12-dev-env.py start
+```
+
+腳本檢查既有state／映像／volume與MCP檔案pin，啟動MCP DB、必要的LaunchAgent，再以前景方式啟動builtin Server／Web／target。已有健康服務就回ALREADY_RUNNING；前景啟動時需保留該終端或exec session。現有Manager直接復用；只有容器缺失才將既有model.env交給Docker，腳本不讀內容。此命令不create、不seed、不建立模型Run。
+
+3. 在另一個終端核對：
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test/m12-dev-env.py status
+```
+
+預期builtin的stateValid、Manager identityValid、三個ports，以及mcpPinsValid、mcpReady均為true。MCP的兩個LaunchAgent原本即為RunAtLoad／KeepAlive；腳本只在未載入時bootstrap，必要時kickstart。
+
+**故障處理：** Docker尚未就緒時先恢復OrbStack。若state、volume、pin或身分不符，腳本STOP；先核對持久備份，不執行create/install-local-mcp、不重建Vault/token、不只改digest繞過檢查。M12若改Web等已pin輸入，從基準原始碼worktree啟動舊基準，另外建置候選，不自動覆寫基準。
+
+保留的恢復資料：
+
+- `~/.local/share/whippet/backups/m10z-20261116-wave8`：builtin既有完整備份與精確映像封存。
+- `~/.local/share/whippet/backups/pre-m12-cleanup-20261116`：清理前DB、volume、歷史檔案、兩個保留state、LaunchAgent與MCP Worker映像；內含機密，目錄0700／檔案0600，不輸出或提交內容。
+- `~/.local/share/whippet/maintenance/m12-mcp-pins.json`：MCP恢復pin；`m12-recovery-check.json`：本次受控停機／恢復結果。
+- `~/.local/share/whippet/evidence/m10z-wave8`：可直接讀取的安全收據與測試輸出。原/private/tmp歷史資料已冷封存，不再以舊tmp路徑當作仍存在的環境。
+
+實測：全部保留服務停止後，由上述start恢復；11份身分檔SHA相同，builtin DB仍81 Run，兩庫active／occupied皆0，MCP initialize與19工具列舉成功，新增模型Run=0。這是受控服務重啟測試，使用者的實際OS重開機尚未發生。
+
 
 ## 部署與管理
 

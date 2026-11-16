@@ -433,6 +433,8 @@ M11.Z 清單：
 
 狀態：待辦。依賴：M11.Z。M12.0 spike 可在 M11 期間於拋棄式分支先做。
 
+2026-11-16 接續準備完成（owner：主 Agent，不開subagent）：使用者已merge/push至main（60498a9）。依新授權退役62舊容器、17 volumes、11 networks、92映像標籤、157 tmp項目；15份DB及歷史資料先冷備份，其他專案16容器保留。M12僅保留builtin19987–19989與本機MCP19587兩基準（共3個Docker容器）。新增m12-dev-env.py start/status；受控停機→恢復PASS，11份身分SHA不變、builtin81 Run、兩庫名額0、MCP19工具、模型Run新增0。OS重開機由使用者稍後執行；[恢復指引](../guides/mcp-agent.md#m12-保留環境與重開機恢復2026-11-16)。M12.0尚未開工，不將環境整理當引擎spike完成。
+
 | 項目 | Owner | 內容 | 最小驗證 | 狀態 |
 | --- | --- | --- | --- | --- |
 | M12.0 | t32 | 2 天 spike：pi-agent-core＋pi-ai 與 Vercel AI SDK，依規格的淘汰條件與黃金子集比較；PM 裁定並更新 tech-stack | 結論文件放在 `docs/research/` | 待辦 |
