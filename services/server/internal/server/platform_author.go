@@ -15,11 +15,12 @@ type AuthorPlatform struct {
 }
 
 type moduleAuthorOutput struct {
-	Message             *string `json:"message"`
-	Script              *string `json:"script"`
-	Module              *Module `json:"module"`
-	RequestValidation   *bool   `json:"requestValidation"`
-	ConversationSummary *string `json:"conversationSummary,omitempty"`
+	Partial             *AuthorPartialOutput `json:"partial,omitempty"`
+	Message             *string              `json:"message"`
+	Script              *string              `json:"script"`
+	Module              *Module              `json:"module"`
+	RequestValidation   *bool                `json:"requestValidation"`
+	ConversationSummary *string              `json:"conversationSummary,omitempty"`
 }
 type plannerAuthorOutput struct {
 	Message       *string `json:"message"`
@@ -30,7 +31,7 @@ type plannerAuthorOutput struct {
 }
 
 func decodePlatformFinal(data []byte, limit int64, out any) error {
-	if int64(len(data)) > limit || !utf8.Valid(data) {
+	if int64(len(data)) > limit || !utf8.Valid(data) || strictJSONNoDuplicates(data) != nil {
 		return ErrInvalid
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -79,6 +80,9 @@ func decodeModuleAuthorOutput(data []byte, input AuthorInput, registry *ToolRegi
 	}
 	if strings.TrimSpace(*out.Script) == "" || strings.ContainsRune(*out.Script, 0) || validateModule(out.Module, input.Platform.Module.Slug) != nil {
 		return out, ErrInvalid
+	}
+	if err := validateModulePartial(out, input, registry); err != nil {
+		return out, err
 	}
 	return out, nil
 }

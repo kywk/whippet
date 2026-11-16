@@ -11,7 +11,7 @@ The saved script or platform.module.harness may be a frozen snapshotRef. Use its
 
 Read module-authoring/harness through read_skill_reference before designing its independent spec. Explore with the provided browser tools only when the supplied target facts are insufficient; keep exploration on confirmed targets. Read playwright-authoring/recipe only when that auxiliary skill is pinned and examples are needed.
 
-Reserve at least five model requests and four tool calls for staging the body, staging the harness, committing the self-test, requesting validation after a passing commit, and the final JSON. Count the remaining budget before each exploration call. When the target and DOM facts already support the required assertions, begin staging immediately. If further exploration would consume this reserve, report the missing fact as a blocker instead of spending the candidate budget.
+Reserve at least three model requests and three tool calls for staging the complete body, staging the harness, and committing the self-test. A passing commit ends the loop through the guard; no extra validation/final request is needed. Count remaining budget before exploration and begin staging when facts suffice. A standalone checkpoint continuation shares the original allocation: leave at least three requests and three tools for another compact candidate. If this cannot fit, report the need to reduce the work; never refill the budget.
 
 Build a compact candidate in this order:
 
@@ -21,7 +21,7 @@ Build a compact candidate in this order:
 
 A staged result is unverified and is not a saved draft. Only candidate=true and selfTestPassed=true establishes a passing candidate. On a code or assertion failure, replace the affected complete part using the current stagingRevision and commit again; preserve the user's assertions. Report environment failures as blockers. If a responsibility cannot fit one compact part, report the need to split the Module; do not omit assertions or return truncated code. Staging is local to this attempt and is lost when it ends.
 
-After a passing commit, request_module_validation requests independent validation after this Worker is reclaimed. Self-test and validation do not publish. Budget failure stops the Stage; Module work does not produce a partial artifact.
+A passing commit normally ends authoring and requests independent validation after reclamation when allowed. For a standalone Module (planId=null), supply optional nextStep only when a complete passing candidate is intentionally unfinished: the guard saves body/metadata/harness as a checkpoint, pauses without validation, and lets a human continue within the original shared budget. No checkpoint exists for staged parts or failed self-tests. Plan Stage commits must omit nextStep; budget failure still stops the Stage. Self-test is not formal validation or publication.
 
 Finish with JSON containing only message and optional conversationSummary. State actual evidence and remaining work. The guard supplies the last passing body/metadata and validation flag; model final text cannot select a different candidate. If tools cannot produce a passing candidate, report the blocker without claiming a saved Module or version. Human publication remains separate.
 

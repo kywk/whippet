@@ -1,0 +1,5 @@
+=== RUN   TestModuleCheckpointPostgresUI
+    module_checkpoint_ui_postgres_test.go:68: real API + ConversationPanel: one explicit POST, preserved full Module, reduced child budget, no paid model
+--- PASS: TestModuleCheckpointPostgresUI (3.79s)
+PASS
+ok  	github.com/whippet/whippet/services/server/internal/server	3.948s

@@ -259,9 +259,13 @@ function parseAuthorPartial(value: unknown): AuthorPartial {
     const item = record(data.checkpoint);
     const scriptHash = string(item.scriptHash);
     if (!/^[a-f0-9]{64}$/.test(scriptHash) || item.selfTestPassed !== true) throw new ApiError('partial checkpoint 格式不符。', 'INVALID_RESPONSE');
-    checkpoint = { scriptHash, selfTestPassed: true };
+    const moduleHash = Object.hasOwn(item, 'moduleHash') ? string(item.moduleHash) : undefined;
+    if (moduleHash !== undefined && !/^[a-f0-9]{64}$/.test(moduleHash)) throw new ApiError('Module checkpoint 格式不符。', 'INVALID_RESPONSE');
+    checkpoint = { scriptHash, ...(moduleHash ? { moduleHash } : {}), selfTestPassed: true };
   }
-  return { reason: choice(data.reason, ['budget_exhausted'] as const), nextStep, checkpoint,
+  const reason = choice(data.reason, ['budget_exhausted', 'checkpoint_saved'] as const);
+  if (reason === 'checkpoint_saved' && !checkpoint?.moduleHash) throw new ApiError('Module checkpoint 缺少完整候選引用。', 'INVALID_RESPONSE');
+  return { reason, nextStep, checkpoint,
     appliedRevision: data.appliedRevision == null ? undefined : revision(data.appliedRevision) };
 }
 

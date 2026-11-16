@@ -1,0 +1,10 @@
+{
+  "stage": "wait-for-child",
+  "error": "TimeoutError",
+  "responses": [
+    {
+      "status": 202
+    }
+  ],
+  "alerts": []
+}

@@ -1,0 +1,28 @@
+=== RUN   TestModuleCheckpointArtifactGuards
+=== RUN   TestModuleCheckpointArtifactGuards/hash
+=== RUN   TestModuleCheckpointArtifactGuards/harness
+=== RUN   TestModuleCheckpointArtifactGuards/metadata
+=== RUN   TestModuleCheckpointArtifactGuards/no-checkpoint
+=== RUN   TestModuleCheckpointArtifactGuards/no-usage
+=== RUN   TestModuleCheckpointArtifactGuards/over-budget
+=== RUN   TestModuleCheckpointArtifactGuards/validation
+=== RUN   TestModuleCheckpointArtifactGuards/unknown
+=== RUN   TestModuleCheckpointArtifactGuards/duplicate
+=== RUN   TestModuleCheckpointArtifactGuards/null
+=== RUN   TestModuleCheckpointArtifactGuards/plan
+=== RUN   TestModuleCheckpointArtifactGuards/old-pin
+--- PASS: TestModuleCheckpointArtifactGuards (0.01s)
+    --- PASS: TestModuleCheckpointArtifactGuards/hash (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/harness (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/metadata (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/no-checkpoint (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/no-usage (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/over-budget (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/validation (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/unknown (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/duplicate (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/null (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/plan (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/old-pin (0.00s)
+PASS
+ok  	github.com/whippet/whippet/services/server/internal/server	0.546s

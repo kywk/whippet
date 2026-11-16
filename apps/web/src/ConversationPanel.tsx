@@ -208,7 +208,9 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
       if (controller.signal.aborted) return;
       // Lock all uncertain outcomes until an explicit read/confirmation. No POST retries.
       setContinueConflict(partialRun.id); setContinueChecked(undefined);
-      setSubmitError(cause instanceof ApiError && cause.status === 409
+      setSubmitError(cause instanceof ApiError && cause.code === 'continuation_budget_exhausted'
+        ? '已達續接上限或剩餘額度不足；候選已保留。請重新規劃剩餘工作，不會自動重送或補額。'
+        : cause instanceof ApiError && cause.status === 409
         ? '繼續條件已變更或 Worker 尚未回收。請重新載入並確認草稿；不會自動改用新 revision 重送。'
         : `${errorMessage(cause)} 繼續尚未確認成功；端點可能未就緒或結果不明，請重新載入對話與草稿確認。`);
       onRefreshRuns();
@@ -301,10 +303,10 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
         </AssistantTurn> : null}
       </ol>
       {partialRun ? <section className="artifact partial-card" aria-label="部分完成與繼續">
-        <h3>部分完成 · 預算耗盡</h3>
+        <h3>部分完成 · {partialRun.authorPartial!.reason === 'checkpoint_saved' ? '已保存候選' : '預算耗盡'}</h3>
         <p>Run <span className="identifier">{partialRun.id}</span> · 預期草稿 revision {expectedRevision ?? '未知'}</p>
         <p className="summary-content">下一步：{partialRun.authorPartial!.nextStep}</p>
-        <p>{partialRun.authorPartial!.checkpoint ? '保留最後自我試跑通過的候選結果；不等於正式驗證通過。' : '沒有自我試跑通過的 checkpoint；此輪不套用新腳本。'}</p>
+        <p>{partialRun.authorPartial!.checkpoint?.moduleHash ? '完整 Module 本體、metadata 與 harness 已通過自我試跑並保存；仍須完成剩餘工作與正式驗證。' : partialRun.authorPartial!.checkpoint ? '保留最後自我試跑通過的候選結果；不等於正式驗證通過。' : '沒有自我試跑通過的 checkpoint；此輪不套用新腳本。'}</p>
         <p className="inline-hint">繼續前仍由 Server 核對週期、背景與 Worker 回收狀態。此結果不可直接發佈。</p>
         {!partialMatches ? <p className="blocked-hint">來源 Run 與目前草稿／週期不符，或缺少來源 revision，無法繼續。</p> : null}
         {!api.continueAuthor ? <p className="blocked-hint">此連線尚未提供繼續功能。</p> : null}

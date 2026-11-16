@@ -1,0 +1,86 @@
+=== RUN   TestModuleCheckpointPostgresRealSelfTests
+=== RUN   TestModuleCheckpointPostgresRealSelfTests/pass
+=== RUN   TestModuleCheckpointPostgresRealSelfTests/fail
+--- PASS: TestModuleCheckpointPostgresRealSelfTests (3.37s)
+    --- PASS: TestModuleCheckpointPostgresRealSelfTests/pass (1.97s)
+    --- PASS: TestModuleCheckpointPostgresRealSelfTests/fail (1.40s)
+=== RUN   TestModuleCheckpointPostgresWorkerContinueAndValidation
+=== RUN   TestModuleCheckpointPostgresWorkerContinueAndValidation/builtin
+    module_checkpoint_postgres_test.go:181: Manager bridge: exit status 1 === RUN   TestModuleCheckpointWorkerArtifactBridge
+            module_checkpoint_bridge_test.go:34: actual Worker artifact rejected by Manager
+        --- FAIL: TestModuleCheckpointWorkerArtifactBridge (0.01s)
+        FAIL
+=== RUN   TestModuleCheckpointPostgresWorkerContinueAndValidation/vercel
+    module_checkpoint_postgres_test.go:181: Manager bridge: exit status 1 === RUN   TestModuleCheckpointWorkerArtifactBridge
+            module_checkpoint_bridge_test.go:34: actual Worker artifact rejected by Manager
+        --- FAIL: TestModuleCheckpointWorkerArtifactBridge (0.00s)
+        FAIL
+--- FAIL: TestModuleCheckpointPostgresWorkerContinueAndValidation (1.22s)
+    --- FAIL: TestModuleCheckpointPostgresWorkerContinueAndValidation/builtin (0.77s)
+    --- FAIL: TestModuleCheckpointPostgresWorkerContinueAndValidation/vercel (0.45s)
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/revision
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/context
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/authorization
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/cancelled
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/budget
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/attempt-cap
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/external-output
+    module_checkpoint_postgres_test.go:289: pq: new row for relation "runs" violates check constraint "runs_check1"
+--- FAIL: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted (2.91s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/revision (0.41s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/context (0.41s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/authorization (0.42s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/cancelled (0.40s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/budget (0.42s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/attempt-cap (0.47s)
+    --- FAIL: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/external-output (0.38s)
+=== RUN   TestModuleCheckpointArtifactGuards
+=== RUN   TestModuleCheckpointArtifactGuards/hash
+=== RUN   TestModuleCheckpointArtifactGuards/harness
+=== RUN   TestModuleCheckpointArtifactGuards/metadata
+=== RUN   TestModuleCheckpointArtifactGuards/no-checkpoint
+=== RUN   TestModuleCheckpointArtifactGuards/no-usage
+=== RUN   TestModuleCheckpointArtifactGuards/over-budget
+=== RUN   TestModuleCheckpointArtifactGuards/validation
+=== RUN   TestModuleCheckpointArtifactGuards/unknown
+=== RUN   TestModuleCheckpointArtifactGuards/duplicate
+=== RUN   TestModuleCheckpointArtifactGuards/null
+=== RUN   TestModuleCheckpointArtifactGuards/plan
+=== RUN   TestModuleCheckpointArtifactGuards/old-pin
+--- PASS: TestModuleCheckpointArtifactGuards (0.01s)
+    --- PASS: TestModuleCheckpointArtifactGuards/hash (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/harness (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/metadata (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/no-checkpoint (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/no-usage (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/over-budget (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/validation (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/unknown (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/duplicate (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/null (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/plan (0.00s)
+    --- PASS: TestModuleCheckpointArtifactGuards/old-pin (0.00s)
+=== RUN   TestModuleCheckpointPostgresUI
+    module_checkpoint_ui_postgres_test.go:47: UI flow: exit status 1 node:internal/modules/run_main:123
+            triggerUncaughtException(
+            ^
+        
+        AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+        
+        false !== true
+        
+            at file:///Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/scripts/test/m12-module-checkpoint-ui.mjs:45:10 {
+          generatedMessage: true,
+          code: 'ERR_ASSERTION',
+          actual: false,
+          expected: true,
+          operator: 'strictEqual',
+          diff: 'simple'
+        }
+        
+        Node.js v22.23.5
+--- FAIL: TestModuleCheckpointPostgresUI (2.48s)
+FAIL
+FAIL	github.com/whippet/whippet/services/server/internal/server	10.337s
+FAIL

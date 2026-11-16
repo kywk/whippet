@@ -1,0 +1,14 @@
+{
+  "status": "PASS",
+  "realAPI": true,
+  "realConversationPanel": true,
+  "sourceRunId": "a41b0d21-6ba4-4507-87a4-862cc98b13d6",
+  "continuedRunId": "b119ecc5-94f9-4ffa-87de-76737fea7882",
+  "checkpointReasonDisplayed": true,
+  "fullCandidatePreserved": true,
+  "posts": 1,
+  "pageErrors": 0,
+  "httpErrors": 0,
+  "smallViewportFits": true,
+  "paidModelRequests": 0
+}

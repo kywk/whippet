@@ -205,6 +205,8 @@ M12引擎整合的設計與驗收要求（依Wave逐項實作）：
 
 2026-11-17 Wave10對話記憶：registry13.0新增Worker內部record_conversation_memory，僅在完整pins與凍結history能力成立時開給四主skill，不暴露於MCP接單。原迴圈模型選擇已讀完整原句並分類，Worker核對sequence／UTF-8位移／句界／來源role，保存原頁hash／cursor、當前revision／Stage及完整user片段；已選事實只能合併，不能刪除。摘要沿既有conversationSummary最多8192 bytes，下輪仍為DATA且需重讀才能建立新的已核對來源。壓縮保留該頁所有user片段與最新完整結果，其他assistant文字可按需讀回；若保護資料仍超量就停止。遮蔽改寫的頁面不能建立失準原文引用，使用前重新檢查秘密。工具與模型／時間額度不變，無額外摘要請求；真Server／Postgres保存及雙引擎合成流程通過，未宣稱全量語意涵蓋。精確界限見[v12 Wave10](../../contracts/mvp-v12.md#m121-wave10有界結構化對話記憶registry-130)。
 
+2026-11-17 Wave11獨立Module checkpoint：registry14.0的commit_module_candidate可選nextStep，僅在planId／stageId皆null時，將完整且自試通過的本體／metadata／harness保存為checkpoint_saved partial，不排正式驗證。Worker守衛產生本體hash、涵蓋全部metadata與harness的有序UTF-8長度前綴hash及實際用量；Manager／Server獨立核對，MCP提交前與套用端均拒絕。沿既有continue人工操作、回收／revision／context／scope守衛及migration027原共用額度，最多三筆且不補額；Module餘額不足3模型／3工具不排子Run。來源執行路由、runtime與pins不隨Workspace新偏好改變，原Run不可變。完成後才走原獨立正式驗證及人工發佈；Plan Stage、程序中斷時隱式保存、任意大候選仍未開放，見[v12 Wave11](../../contracts/mvp-v12.md#m121-wave11獨立-module-checkpoint人工續接registry-140)。
+
 M12範圍收斂（2026-11-16，依本輪同意的推進建議）：供應商金額計價與跨獨立任務／Stage retry／全Plan／帳號的共用配額移至後續里程碑，不作M12完成門檻；與MVP原先不含完整配額系統一致。M12仍必須保證受控continue及Stage拆分不增加原資源上限；一般長對話語意摘要、任意大候選與Module跨Run checkpoint等未完成能力持續明列，不用放寬預算取代實作。
 
 ### MCP（M11）

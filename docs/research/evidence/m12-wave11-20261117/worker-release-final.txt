@@ -1,0 +1,104 @@
+TAP version 13
+# Subtest: both engines pause a verified standalone Module and complete a second Run within the original allocation
+ok 1 - both engines pause a verified standalone Module and complete a second Run within the original allocation
+  ---
+  duration_ms: 50.276208
+  type: 'test'
+  ...
+# {"engine":"builtin","totalRequests":6,"totalTests":2,"firstUsage":{"modelRequests":3,"toolCalls":3,"durationMs":8},"maxRequests":8,"maxTools":12}
+# {"engine":"vercel","totalRequests":6,"totalTests":2,"firstUsage":{"modelRequests":3,"toolCalls":3,"durationMs":26},"maxRequests":8,"maxTools":12}
+# Subtest: Plan stages cannot request a standalone checkpoint and failed self-tests cannot mint one
+ok 2 - Plan stages cannot request a standalone checkpoint and failed self-tests cannot mint one
+  ---
+  duration_ms: 5.786041
+  type: 'test'
+  ...
+# Subtest: cancellation and newly discovered secrets discard a Module checkpoint before artifact output
+ok 3 - cancellation and newly discovered secrets discard a Module checkpoint before artifact output
+  ---
+  duration_ms: 7.153
+  type: 'test'
+  ...
+# Subtest: truncated commit arguments never execute or promote staged parts to a Module checkpoint
+ok 4 - truncated commit arguments never execute or promote staged parts to a Module checkpoint
+  ---
+  duration_ms: 7.627583
+  type: 'test'
+  ...
+# Subtest: eight successful exploration calls without a Module candidate stop at the pinned model budget
+ok 5 - eight successful exploration calls without a Module candidate stop at the pinned model budget
+  ---
+  duration_ms: 10.470916
+  type: 'test'
+  ...
+# Subtest: staged candidate uses real engine/fetch tool sequence and never IPC; commit alone creates final
+ok 6 - staged candidate uses real engine/fetch tool sequence and never IPC; commit alone creates final
+  ---
+  duration_ms: 7.033167
+  type: 'test'
+  ...
+# Subtest: staging CAS and schema rejection never advance accepted revision or bypass full candidate guards
+ok 7 - staging CAS and schema rejection never advance accepted revision or bypass full candidate guards
+  ---
+  duration_ms: 6.652209
+  type: 'test'
+  ...
+# Subtest: failed repair preserves prior verified candidate and staging never becomes a checkpoint
+ok 8 - failed repair preserves prior verified candidate and staging never becomes a checkpoint
+  ---
+  duration_ms: 8.743875
+  type: 'test'
+  ...
+# Subtest: secret parts and cancellation cannot create a verified checkpoint
+ok 9 - secret parts and cancellation cannot create a verified checkpoint
+  ---
+  duration_ms: 2.913417
+  type: 'test'
+  ...
+# Subtest: duplicate commit call ID never repeats self-test; late pass after abort never creates checkpoint
+ok 10 - duplicate commit call ID never repeats self-test; late pass after abort never creates checkpoint
+  ---
+  duration_ms: 5.168541
+  type: 'test'
+  ...
+# Subtest: production v10 budget returns guard-owned checkpoint, never queues validation
+ok 11 - production v10 budget returns guard-owned checkpoint, never queues validation
+  ---
+  duration_ms: 6.5375
+  type: 'test'
+  ...
+# Subtest: v10 partial omits script for failed/unverified/redacted candidates and ignores EnginePartial forgeries
+ok 12 - v10 partial omits script for failed/unverified/redacted candidates and ignores EnginePartial forgeries
+  ---
+  duration_ms: 6.672
+  type: 'test'
+  ...
+# Subtest: v9 test-author and legacy do not emit new fields; cancellation is not partial
+not ok 13 - v9 test-author and legacy do not emit new fields; cancellation is not partial
+  ---
+  duration_ms: 1.212
+  type: 'test'
+  location: '/Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/author/partial.test.js:61:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The validation function is expected to return "true". Received false
+    
+    Caught error:
+    
+    AuthorError: Author task skill_unavailable; provider and browser details are hidden
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  stack: |-
+    async TestContext.<anonymous> (file:///Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/author/partial.test.js:63:9)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 12
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 358.178417

@@ -1,7 +1,7 @@
 import type { ModuleDiagnostics, ModelRequestFailureStage } from "./module-diagnostics.js";
 import { AuthorObservation } from "./observation.js";
 import { HarnessError } from "./harness.js";
-import { moduleAuthor, plannerAuthor, PLATFORM_TOOLS, PLATFORM_SERVER_TOOLS, validateModule, plannerCandidate, type ModuleMetadata, type PlannerOutput } from "./platform.js";
+import { moduleAuthor, plannerAuthor, PLATFORM_TOOLS, PLATFORM_SERVER_TOOLS, validateModule, plannerCandidate, moduleCheckpointHash, type ModuleMetadata, type PlannerOutput } from "./platform.js";
 import { HarnessClient } from "./harness.js";
 import { capabilitySnapshot, loadSkillBundle } from "./manifest.js";
 import { loadToolRegistry, sha256, modelTool, validateToolArguments, validateToolResult } from "./registry.js";
@@ -107,6 +107,8 @@ export async function runAuthor(
   let stagingRevision = 0;
   const stagedParts: Partial<Record<"script" | "harness", string>> = {};
   let moduleCheckpoint: {script:string;module:ModuleMetadata} | undefined;
+  let moduleNextStep: string | undefined;
+  const canCheckpointModule = module && !!capability && input.author.platform!.planId === null && allowedTools.some(tool => tool.name === "commit_module_candidate");
   let planRef: string | undefined;
   let candidateMessage: string | undefined;
   let candidateNextStep: string | undefined;
@@ -197,7 +199,7 @@ export async function runAuthor(
         if (call.name !== "commit_module_candidate" || !moduleCheckpoint || !result || typeof result !== "object") return undefined;
         const verified = result as { candidate?: unknown; selfTestPassed?: unknown };
         return verified.candidate === true && verified.selfTestPassed === true
-          ? JSON.stringify({ message: "Module 候選稿已通過自我試跑；仍須正式驗證。" }) : undefined;
+          ? JSON.stringify({ message: moduleNextStep ? "Module 候選稿已保存；仍有剩餘工作，尚未排正式驗證。" : "Module 候選稿已通過自我試跑；仍須正式驗證。" }) : undefined;
       } } : planner ? { completeAfterTool: (call: Item, result: unknown) => {
         if (call.name !== "propose_plan" || !planRef || !result || typeof result !== "object") return undefined;
         const proposal = result as { candidate?: unknown; candidateRef?: unknown };
@@ -253,6 +255,7 @@ export async function runAuthor(
             if(!module || !browser?.verifyDraft)throw new AuthorError("tool_failed");
             let candidate = args;
             if (call.name === "commit_module_candidate") {
+              if (Object.hasOwn(args, "nextStep") && (!canCheckpointModule || !boundedText(args.nextStep,2048,true))) throw new AuthorError("tool_failed");
               if (args.stagingRevision !== stagingRevision || stagedParts.script === undefined || stagedParts.harness === undefined) throw new AuthorError("tool_failed");
               candidate = { script: stagedParts.script, module: { ...args.metadata as Record<string, unknown>, harness: stagedParts.harness } };
             }
@@ -273,7 +276,8 @@ export async function runAuthor(
             options.moduleDiagnostics?.selfTest(check.passed);
             if(check.passed){
               moduleCheckpoint=next;
-              if(call.name === "commit_module_candidate" && allowedTools.some(tool => tool.name === "request_module_validation")) validation=true;
+              moduleNextStep = call.name === "commit_module_candidate" ? args.nextStep as string | undefined : undefined;
+              if(call.name === "commit_module_candidate" && !moduleNextStep && allowedTools.some(tool => tool.name === "request_module_validation")) validation=true;
               result={candidate:true,selfTestPassed:true};
             }
             else result={candidate:false,selfTestPassed:false,error:check.error??check.summary};
@@ -421,6 +425,24 @@ export async function runAuthor(
     });
     if (signal.aborted) throw new AuthorError(options.signal?.aborted ? "cancelled" : "timed_out");
     options.moduleDiagnostics?.checkpoint(!!moduleCheckpoint);
+    if (canCheckpointModule && moduleNextStep) {
+      // Only the complete candidate held by the self-test guard can cross Runs.
+      // Never use an adapter's claimed checkpoint or staged/half tool arguments.
+      if (!moduleCheckpoint) throw new AuthorError("limit");
+      noSecret(moduleCheckpoint,config);
+      if (options.secrets && JSON.stringify(options.secrets.clean(moduleCheckpoint)) !== JSON.stringify(moduleCheckpoint)) throw new AuthorError("sensitive_output");
+      const output: AuthorOutput = { message: "已保留完整且通過自我試跑的 Module 候選；仍有剩餘工作，尚未排正式驗證或發佈。",
+        ...structuredClone(moduleCheckpoint), requestValidation: false,
+        partial: { reason: "checkpoint_saved", nextStep: moduleNextStep,
+          checkpoint: { scriptHash: sha256(moduleCheckpoint.script), moduleHash: moduleCheckpointHash(moduleCheckpoint.module), selfTestPassed: true },
+          usage: { modelRequests: chargedModelRequests, toolCalls: chargedToolCalls, durationMs: Math.min(capability!.budget.maxDurationMs, Math.max(1, Math.ceil(performance.now()-startedAt))) } } };
+      const conversationSummary = memory?.summary();
+      if (conversationSummary) output.conversationSummary = conversationSummary;
+      noSecret(output,config);
+      if (options.secrets && JSON.stringify(options.secrets.clean(output)) !== JSON.stringify(output)) throw new AuthorError("sensitive_output");
+      serializeAuthorArtifact(output,"module-authoring");
+      return output;
+    }
     if (engineResult.partial) {
       if (summary || workspace || module || planner) throw new AuthorError("limit");
       // The adapter's claimed checkpoint is never authority. Rebuild from guard state.

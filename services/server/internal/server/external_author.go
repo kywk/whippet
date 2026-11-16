@@ -412,7 +412,11 @@ func (p *Postgres) validateExternalAuthorSubmission(ctx context.Context, token A
 			break
 		}
 		if skillID == "module-authoring" {
-			_, err = decodeModuleAuthorOutput(raw, input, registry)
+			var output moduleAuthorOutput
+			output, err = decodeModuleAuthorOutput(raw, input, registry)
+			if err == nil && output.Partial != nil {
+				err = ErrInvalid // Only the internal Worker may assert a checkpoint/usage.
+			}
 		} else {
 			_, err = decodePlannerAuthorOutput(raw, input, registry)
 		}

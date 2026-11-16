@@ -1,0 +1,8 @@
+=== RUN   TestModuleCheckpointArtifactGuards
+=== RUN   TestModuleCheckpointArtifactGuards/slug
+    module_checkpoint_test.go:58: invalid Module partial accepted
+--- FAIL: TestModuleCheckpointArtifactGuards (0.02s)
+    --- FAIL: TestModuleCheckpointArtifactGuards/slug (0.01s)
+FAIL
+FAIL	whippet/services/manager/internal/manager	0.426s
+FAIL

@@ -1,0 +1,30 @@
+{
+  "viewport": 390,
+  "width": 489,
+  "offenders": [
+    {
+      "tag": "BUTTON",
+      "class": "button quiet compact",
+      "width": 113.640625,
+      "right": 456.53125
+    },
+    {
+      "tag": "BUTTON",
+      "class": "rail-icon-button light small",
+      "width": 28,
+      "right": 488.53125
+    },
+    {
+      "tag": "svg",
+      "class": {},
+      "width": 18,
+      "right": 485.53125
+    },
+    {
+      "tag": "path",
+      "class": {},
+      "width": 10.79998779296875,
+      "right": 481.9312438964844
+    }
+  ]
+}

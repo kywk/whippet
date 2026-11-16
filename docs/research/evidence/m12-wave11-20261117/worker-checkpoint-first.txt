@@ -1,0 +1,69 @@
+TAP version 13
+# Subtest: both engines pause a verified standalone Module and complete a second Run within the original allocation
+not ok 1 - both engines pause a verified standalone Module and complete a second Run within the original allocation
+  ---
+  duration_ms: 4.202084
+  type: 'test'
+  location: '/Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/author/module-checkpoint.test.js:35:1'
+  failureType: 'testCodeFailure'
+  error: 'Author task security_unavailable; provider and browser details are hidden'
+  code: 'security_unavailable'
+  name: 'AuthorError'
+  stack: |-
+    validateAuthorInput (file:///Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/author/types.js:139:15)
+    runAuthor (file:///Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/author/loop.js:51:5)
+    TestContext.<anonymous> (file:///Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/author/module-checkpoint.test.js:51:31)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.start (node:internal/test_runner/test:944:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
+  ...
+# Subtest: Plan stages cannot request a standalone checkpoint and failed self-tests cannot mint one
+not ok 2 - Plan stages cannot request a standalone checkpoint and failed self-tests cannot mint one
+  ---
+  duration_ms: 1.442083
+  type: 'test'
+  location: '/Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/author/module-checkpoint.test.js:85:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The validation function is expected to return "true". Received false
+    
+    Caught error:
+    
+    AuthorError: Author task security_unavailable; provider and browser details are hidden
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  stack: |-
+    async TestContext.<anonymous> (file:///Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/author/module-checkpoint.test.js:93:9)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: cancellation and newly discovered secrets discard a Module checkpoint before artifact output
+not ok 3 - cancellation and newly discovered secrets discard a Module checkpoint before artifact output
+  ---
+  duration_ms: 1.064917
+  type: 'test'
+  location: '/Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/author/module-checkpoint.test.js:100:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The validation function is expected to return "true". Received false
+    
+    Caught error:
+    
+    AuthorError: Author task security_unavailable; provider and browser details are hidden
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  stack: |-
+    async TestContext.<anonymous> (file:///Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/author/module-checkpoint.test.js:104:9)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 0
+# fail 3
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 311.298416

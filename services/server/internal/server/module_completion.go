@@ -41,7 +41,10 @@ func (p *Postgres) completeModule(ctx context.Context, tx *sql.Tx, run, attempt 
 		}
 	}
 	out, err := decodeModuleAuthorOutput(data, input, registry)
-	if err != nil {
+	if err != nil || externalOutput != nil && out.Partial != nil {
+		if err == nil {
+			err = ErrInvalid
+		}
 		return err
 	}
 	module, stages := platformJSON(out.Module, nil)
@@ -57,6 +60,11 @@ func (p *Postgres) completeModule(ctx context.Context, tx *sql.Tx, run, attempt 
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE editing_sessions SET context_revision=context_revision+1,conversation_summary=COALESCE($2,conversation_summary) WHERE id=$1`, session.ID, out.ConversationSummary); err != nil {
 		return err
+	}
+	if out.Partial != nil {
+		partial := AuthorPartial{AuthorPartialOutput: *out.Partial, AppliedRevision: &next}
+		_, err = tx.ExecContext(ctx, `UPDATE runs SET author_partial=$2,author_partial_context_revision=$3 WHERE id=$1`, run, jsonText(partial), session.ContextRevision+1)
+		return err // No formal validation or Plan candidate from an unfinished Module.
 	}
 	if input.Platform.PlanID != nil {
 		applied, err := scanDraft(tx.QueryRowContext(ctx, draftSelect, d.TestID))

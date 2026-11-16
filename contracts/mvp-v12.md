@@ -228,3 +228,50 @@ Worker 以既有 `conversationSummary` 字串保存最多8192 UTF-8 bytes 的 JS
 記錄工具照原工具執行入口扣額，包括失敗嘗試。history 每 attempt 最多4次、原每頁6片段／8192 bytes、總8模型／12工具／180000ms與單次 output 上限不變；受控 continue 或拆分 Run 仍用其已減少的分配，沒有額外呼叫、重試或補額。取消不回傳摘要 artifact 或執行後續候選。
 
 下次 Run 只收到既有背景 DATA 字串；目前 scope／revision／Stage 與正式證據優先。既有摘要字串不自動匯入本 Run 的已核對來源集合，若要再次建立來源摘錄需明確重讀。此切片不涵蓋任意長對話全量語意、跨 Run 自動合併、任意大候選編輯或 Module checkpoint。一般 Test 的真 Server／Postgres→Worker→保存→下輪原文讀回、兩引擎合成模型流程與拒絕案例見 [Wave10交接](../docs/tracking/handoff/m12-wave10-20261117.md)。
+
+## M12.1 Wave11：獨立 Module checkpoint／人工續接（registry 14.0）
+
+2026-11-17。本節覆蓋 v10「Module 不提供 partial」的**獨立 Module**例外；Plan Stage 維持原規則。沿用 migration027 的不可變共用額度表、既有 `author_partial` 與 continue 管理端點，沒有新 migration 或自動續接。Server／Manager／Worker／Web 及打包 registry／skill pins 須同步升級；舊接收端會拒絕新欄位，不移除 partial／hash 降級。固定基準未部署。
+
+### 明確保存完整候選
+
+`commit_module_candidate` 新增選填 `nextStep:string`，非空、最多2048 UTF-8 bytes；未知欄位／null／空白仍拒絕，整份輸入8192 bytes、metadata4096 JSON bytes不變。供應商表示沿既有 non-strict schema，Worker 仍以原本完整 schema 驗證。只有完整能力快照、`module-authoring`、`platform.planId=null`、`stageId=null` 且可使用 commit 工具的 Run 能提供 nextStep；Plan Stage 提供時在自試前拒絕。
+
+兩份完整暫存仍各最多8192 bytes、attempt-local；commit 組裝本體／metadata／harness，通過原 schema、slug、scope、機密守衛與自我試跑後，才以守衛閉包保存候選。有 nextStep 時完成鉤子直接結束本輪，保存未完成候選並等待人工續接，不額外要求模型產生 final 或排正式驗證。省略 nextStep 的成功 commit 沿原完成流程，仍只在具權限時要求回收後正式驗證。
+
+新增 Module artifact 形狀（既有 message／script／module／conversationSummary 上限不變，總量仍25MiB）：
+
+```json
+{
+  "message":"候選已保存，仍有剩餘工作",
+  "script":"完整 Module 本體",
+  "module":{"slug":"...","moduleKind":"step","exportName":"run","signature":"...","inputs":"...","returns":"...","preconditions":"...","postconditions":"...","harness":"完整驗證腳本"},
+  "requestValidation":false,
+  "partial":{
+    "reason":"checkpoint_saved",
+    "nextStep":"完成剩餘斷言",
+    "checkpoint":{"scriptHash":"64位lowercase SHA256","moduleHash":"64位lowercase SHA256","selfTestPassed":true},
+    "usage":{"modelRequests":3,"toolCalls":3,"durationMs":1}
+  }
+}
+```
+
+`scriptHash` 是本體原始 UTF-8 SHA256。`moduleHash` 覆蓋依序 slug、moduleKind、exportName、signature、inputs、returns、preconditions、postconditions、harness：每個原字串編成 `十進位UTF-8 byte長度:原文` 後無間隔串接，再 SHA256。這避免 Node／Go 的 JSON key 順序、HTML 與 U+2028 escaping 差異；不是正式驗證的 bundleHash。普通 Test checkpoint 不接受 moduleHash，Module checkpoint 則必須具備；Module partial 只接受 checkpoint_saved，沒有無候選或模型自報 proof 的形狀。
+
+Manager／Server 獨立核對完整 schema、重複／null／未知欄位、權威 slug、兩個 hash、requestValidation=false 及必備用量 receipt。只有內部 Worker 的自試守衛產生 checkpoint；MCP 在提交前檢查與套用交易均拒絕此 envelope，普通外部 Module 提交保持原流程。機密遮蔽改變候選或 nextStep、取消或自試未通過時，不交付 checkpoint。截斷的工具參數不執行，只有暫存片段仍屬未驗資料。
+
+### 保存、回收與受控續接
+
+Server 原子寫入完整 Module 草稿的新 revision、清除舊正式驗證／摘要、更新 context revision，並保存 authorPartial 的 appliedRevision、兩個 hash、nextStep、用量及完成後 context。Run transport status 為 succeeded；不建立 Module 正式驗證要求或 Plan candidate，不代表整體需求完成或可直接發佈。重送相同完成結果不再次套用候選。
+
+人工仍使用 `POST /api/runs/{id}/continue`、body `{editingSessionId,revision}`。僅內部 builtin 接單模式、成功且具上述 partial、同一活躍週期、已回收的獨立 Module Run 可續接。當前 revision／context、conversation、完整本體／module hash 必須吻合；新 Run 的 scope／設定、authorization revision／proposal、skills、registry、model、runtime 與原快照相同，工具只能取原權限與目前裁決交集。Workspace 後續切換 builtin／external 偏好不能重新路由此鏈，SDK 引擎仍沿原 runtime。漂移或過期拒絕，不重釘原 Run。
+
+沿用原最多三筆 Run（含首筆）、模型8／工具12／作者時間180000ms共用總量；Module單次output仍16384。用量由傳輸／工具入口計數，失敗嘗試同樣扣抵，作者時間至少1ms。每子 Run 只取得原上限扣掉先前用量的餘額，不重新給額度。公開 Module 路線需三次請求／工具完成本體、harness與commit；剩餘不足3模型或3工具時不排必然無法完成的子 Run，回409 continuation_budget_exhausted。時間／模型／總嘗試耗盡亦同；缺可信 policy／用量則拒絕，不重建歷史額度。最多三筆是上限，並不保證原額度足夠執行三輪。
+
+同 source／session／revision 的並行或重送只建立一份子 Run 與分配；相同請求可讀回原 receipt，不因後續已進展再扣額。不同 body、取消、未回收、revision／context／授權或原文不符均拒絕；交易拒絕不留下新 Run／訊息或推進 context。MCP 沒有 continue／發佈入口。UI 以「已保存候選」區分預算耗盡，沿原人工按鈕、409保留／重讀與不自動重送流程。
+
+### 已驗範圍與限制
+
+雙引擎各以3模型／3工具保存，再於5／9的餘額內各3模型／3工具完成後排正式驗證；真 Node Worker artifact 經 Manager 接收端、Server與Postgres保存／續接。另有實際 Playwright 成功與刻意斷言失敗自試，以及真候選API／ConversationPanel人工續接。模型回應全部為合成，未跑付費provider或黃金全套；正式驗證的排程門檻已驗，這些自試不替代發佈所需的正式證據。
+
+本波不提供 Plan Stage partial／失敗 Stage 恢復、取消或程序崩潰時的隱式保存、跨 attempt 暫存、任意大候選分段編輯或放大配額。沒有通過完整 commit 的工作仍停止；需在原額度耗盡前明確保存可驗證候選。精確結果及後續見 [Wave11交接](../docs/tracking/handoff/m12-wave11-20261117.md)。

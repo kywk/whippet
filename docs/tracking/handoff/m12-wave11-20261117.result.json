@@ -1,0 +1,188 @@
+{
+  "date": "2026-11-17",
+  "timezone": "Asia/Taipei",
+  "recordedAt": "2026-11-17T06:39:04.372389+08:00",
+  "baseCommit": "7218bc0bfc463ae42c0f913b39da1ed2888fec33",
+  "branch": "feat/agent-adapter",
+  "scope": "explicit verified standalone Module checkpoint and human continuation; Plan Stage unchanged",
+  "registryVersion": "14.0",
+  "partialReason": "checkpoint_saved",
+  "moduleHashFormat": "SHA256 of ordered length-prefixed UTF-8 slug/moduleKind/exportName/signature/inputs/returns/preconditions/postconditions/harness",
+  "verification": {
+    "mode": "targeted checks and failure-specific reruns; not one full-regression batch",
+    "distinctTopLevelPassed": 26,
+    "workerPassed": 14,
+    "managerParserPassed": 2,
+    "managerWorkerArtifactBridgeDistinctPassed": 1,
+    "managerWorkerArtifactBridgeInvocations": 4,
+    "serverPassed": 8,
+    "mcpReferenceClientPassed": 1,
+    "latestFailures": 0,
+    "latestSkipped": 0,
+    "serverLatestTargets": {
+      "TestM12ContinuationPostgresSharedBudgetCASAndReplay": {
+        "status": "PASS",
+        "source": "server-release-final.txt"
+      },
+      "TestM10PartialParserCheckpointAndRedaction": {
+        "status": "PASS",
+        "source": "server-release-final.txt"
+      },
+      "TestModuleCheckpointPostgresRealSelfTests": {
+        "status": "PASS",
+        "source": "server-release-final.txt"
+      },
+      "TestModuleCheckpointPostgresWorkerContinueAndValidation": {
+        "status": "PASS",
+        "source": "server-release-final.txt"
+      },
+      "TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted": {
+        "status": "PASS",
+        "source": "server-rejections-final.txt"
+      },
+      "TestModuleCheckpointArtifactGuards": {
+        "status": "PASS",
+        "source": "server-release-final.txt"
+      },
+      "TestModuleCheckpointPostgresUI": {
+        "status": "PASS",
+        "source": "ui-external-final.txt"
+      },
+      "TestM10PostgresModuleAuthorReclaimValidation": {
+        "status": "PASS",
+        "source": "server-release-final.txt"
+      }
+    },
+    "paidModelRequests": 0,
+    "fullRegressionRun": false,
+    "actualPlaywrightSelfTests": {
+      "passed": 1,
+      "expectedAssertionFailure": 1,
+      "failureDidNotCreateCheckpoint": true,
+      "usesRealModuleABI": true
+    },
+    "actualUIFlowsPassed": 1,
+    "uiCountedInServer": true,
+    "formalValidationScheduledAfterCompletionAndReclaim": true,
+    "formalValidationExecuted": false,
+    "builds": {
+      "worker": "PASS",
+      "agentBridge": "PASS",
+      "web": "PASS",
+      "serverGo1.23.12": "PASS",
+      "managerGo1.25.0": "PASS"
+    }
+  },
+  "representativeFlow": {
+    "engines": [
+      "builtin",
+      "vercel"
+    ],
+    "firstRequests": 3,
+    "firstToolCalls": 3,
+    "childRequestAllocation": 5,
+    "childToolAllocation": 9,
+    "secondRequests": 3,
+    "secondToolCalls": 3,
+    "sharedMaxRequests": 8,
+    "sharedMaxTools": 12,
+    "maxRuns": 3,
+    "maxDurationMs": 180000,
+    "maxOutputTokens": 16384,
+    "minChildRequests": 3,
+    "minChildTools": 3,
+    "sourceSnapshotUnchanged": true,
+    "routingPinnedAcrossWorkspacePreferenceChange": true,
+    "duplicateContinuationAllocations": 1
+  },
+  "baseline": {
+    "main": "576816622d988049d36453c7b3dabed9feeadd28",
+    "stateValid": true,
+    "managerIdentityValid": true,
+    "portsAllTrue": true,
+    "mcpPinsValid": true,
+    "mcpReady": true,
+    "candidateDeployed": false
+  },
+  "cleanup": {
+    "ownedTmpfsPostgresRemoved": true,
+    "ownedContainersRemaining": 0,
+    "candidateServerStopped": true,
+    "uiBrowserAndViteStopped": true,
+    "ownedLeftoverTemplatesRemoved": 2,
+    "retainedVolumesTouched": false
+  },
+  "compatibility": {
+    "legacyTestAuthorBodyUtf8BytesBefore": 4383,
+    "legacyTestAuthorBodyUtf8BytesAfter": 4043,
+    "legacyMainByteLimitUnchanged": 4096,
+    "mcpCanSubmitCheckpoint": false,
+    "planStageCheckpointEnabled": false,
+    "migrationAdded": false,
+    "dependenciesChanged": false
+  },
+  "remaining": [
+    "bounded candidate editing and references",
+    "Plan Stage checkpoint contract and recovery",
+    "implicit checkpoint on cancellation/crash (not provided)",
+    "arbitrary-size artifacts and complete semantic coverage",
+    "formal engine comparison, second provider live check and M12.Z"
+  ],
+  "rawEvidenceNotes": {
+    "server-release-final.txt": "mixed intermediate: six passing targets retained; rejections and UI superseded by their targeted PASS receipts",
+    "worker-checkpoint-first.txt": "initial missing Workspace scope fixture; not a production failure",
+    "worker-final.txt": "unsupported legacy full-candidate test fixture rejected; corrected to test truncated staged commit",
+    "worker-final2.txt": "new truncation test expected wrong failure code; corrected to the existing INVALID_RESPONSE classification",
+    "worker-release-final.txt": "reproduced existing legacy skill size failure; fixed without raising limit",
+    "server-integrated-first.txt": "initial bridge output-directory and readonly external-row fixture errors, plus real small-viewport overflow",
+    "ui-api-diagnostic.txt": "202/child succeeded; test awaited transient note instead of queued progress; assertions corrected"
+  },
+  "sha256": {
+    "baseline-status-final.json": "edb3f16770e1b70d60d09bc32210b7d66c65cc86231ee58a6f7b9f7c9535a5ab",
+    "bridge-final.txt": "91d7c54be7f22635d599bec75ef7af74e1704a290c43cfececd2afd017896d47",
+    "manager-final.txt": "1c118b2edeb0a39ae012ebd2419f13c0231d57ce9675f745d1685982e66bb9ed",
+    "manager-final2.txt": "766f8cab18dbf981bdd8403239cb0ba1372e2ba55bd74c89505583b37a68659b",
+    "manager-parser-first.txt": "891dcf205595b918c01476ecf895270588ea228e8525aa924b5d4b41b7a448f4",
+    "manager-release-final.txt": "a644b0a41b5b7ac8ba89da40388d31474f32acd857367381b0ed1b3a8c76badc",
+    "manager-slug-red.txt": "d82df19b56b1aa40967cec141885e9f3a406dbedb0472ceae768c85da9c7fec9",
+    "server-integrated-first.txt": "05d4c7a32d95b3f2b58cfac3c63f3bf096722582005b2c1091cc5440307da8f0",
+    "server-parser-first.txt": "706d151581adaf1d2a33acd00ab815077f9f9d02d8944be9655ea7d199a8f3a6",
+    "server-postgres-first.txt": "5c7e89f72b7711239883b0bedca60a15cc28523d1158f9d484dea5348da3a830",
+    "server-rejections-final.txt": "faecbb7cf4cd330875c6131bbc8dbbcdcdb75d673420b5649bdfe88e9b9afeb1",
+    "server-release-final.txt": "e8f2a4f6aa2b92a497aec30c98c43c25b61ea415330384af268409cdf505d9df",
+    "ui-api-diagnostic.txt": "3fbdc361b5b248bd74dee15e86882dfdd7ca39a0ddc305475a31016b9156ffa1",
+    "ui-external-final.txt": "ff3ffa20ec263713ebcdf48230aa7f64270ab9965866d5ef5caf07038928990b",
+    "ui-final/desktop.png": "683573fcb2766878ae59d37b357746e156975aa6bdc17c0322aadf170bbae72e",
+    "ui-final/layout.json": "0dfc521083f18deb00ff599fa57254eac326687cfc31fb75632a18fbbd76c985",
+    "ui-final/narrow.png": "5a73ce547b197800a5c4137f0a56afc65389ea059031c9a19ff9f92e94933c1b",
+    "ui-final2/cleanup.json": "aaee01e3d0e23af8e0198e4fe98988250c4390b1da03f5965cc9f41983cf1545",
+    "ui-final2/desktop.png": "30400cdac6be22f80ac9f4e165cd959c13f5782a117988156c3c2501532a6f9f",
+    "ui-final2/failure.json": "0b815ba9008749c7fd30222a0fac8ed010843dbf174d731f74d02554c6e4a922",
+    "ui-final2/layout.json": "0dfc521083f18deb00ff599fa57254eac326687cfc31fb75632a18fbbd76c985",
+    "ui-final2/lifecycle.json": "8c643c7c1803969ef0fbc890d96b450fdb278b88b3f3fd8665b7f0131889140f",
+    "ui-final2/narrow.png": "75b11aa3f8cc436cc43b532e906dcf44caba61da71d76a549b272582f5c33689",
+    "ui-final3/cleanup.json": "ae6fc94ec0a2499336024f32a8d9120f6141a3f0d908a2d26c6099ab34aafc68",
+    "ui-final3/desktop.png": "c5dff2f244e6db1eb56d558ddc5d1b1fab7b4f31c5388bd19a921ad47a643303",
+    "ui-final3/layout.json": "0dfc521083f18deb00ff599fa57254eac326687cfc31fb75632a18fbbd76c985",
+    "ui-final3/lifecycle.json": "80a8410d7334ae410175e7e51aaef33931b4366f6adc755fc14129023ee4dbc1",
+    "ui-final3/narrow.png": "0a0f8bda5321eaacfac63ff21c5bdaadae377d407e0e7ab45b27ad84eba8e112",
+    "ui-final3/result.json": "c4fb0a3e879e06f890f563cdced0c4f1ef00dc62a3f83c3048034ce64c10cae9",
+    "ui-first/desktop.png": "2b8203a66bd4b5a3cf8f46cab7b57052a066c4ef1948bb2254c196bc1ea6880f",
+    "ui-layout-red/desktop.png": "565a29e0875850d8a8ed5b096cec300595495c3fc7a6555abf8560ed47f4601f",
+    "ui-layout-red/layout.json": "b840aacd741b788503f59623ba63d6fbdbed116f8ee9f16b4f3ce475df9e3dab",
+    "ui-layout-red/narrow.png": "457eb507c2105ccf28940e85a7f3394d91572949a9aee197d166befd94af74eb",
+    "ui-layout-red.txt": "60ecce4f4b04b6484050f54c77f0057e598460e94bca686718647ad2d7f9a856",
+    "worker-checkpoint-first.txt": "52f4190cfd5a28d8def1ced1f028a29e44c294ff0a1dc5253f031b8ff7c1588b",
+    "worker-checkpoint-second.txt": "726be1aa59baa925a45990c0b0a564f137148b323465765e0eba2adf427956ee",
+    "worker-final.txt": "1f6512d0d803f2223a020601e030b9fad30c8e7de86a97cbfb16e9ddb8ca48c2",
+    "worker-final2.txt": "a5a262c7caa6d272034d2e53df013df64f55e37d7e43b383342aafbc41a7daac",
+    "worker-pins-final2.txt": "afc6c2ac4bcde2dfcfadaf061d8e518eeb601a4db0edd47cf72cd34264657ed4",
+    "worker-release-final.txt": "3db30f4babade3fe7531f750a101db640f8c857b9e78dcd00d960a6bd45d8840",
+    "worker-release-final2.txt": "eae57922e3fd6a1dccb7f6a870c9ca8f3b091b1316b5bc2c7506a6cd0033ba6d"
+  },
+  "secretScan": {
+    "files": 77,
+    "findings": 0,
+    "valuesPrinted": false
+  }
+}

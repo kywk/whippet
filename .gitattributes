@@ -7,3 +7,11 @@ docs/research/evidence/m12-adapter-wave1-20261116/worker-typecheck.txt whitespac
 docs/research/evidence/m12-wave10-20261117/context-capacity-red.txt whitespace=-blank-at-eol,-blank-at-eof
 docs/research/evidence/m12-wave10-20261117/ec10b54-context-complete-control.txt whitespace=-blank-at-eol,-blank-at-eof
 docs/research/evidence/m12-wave10-20261117/worker-final.txt whitespace=-blank-at-eol,-blank-at-eof
+# Wave11 raw failure diagnostics keep their original whitespace and SHA256.
+docs/research/evidence/m12-wave11-20261117/server-integrated-first.txt whitespace=-blank-at-eol,-blank-at-eof
+docs/research/evidence/m12-wave11-20261117/server-release-final.txt whitespace=-blank-at-eol,-blank-at-eof
+docs/research/evidence/m12-wave11-20261117/ui-api-diagnostic.txt whitespace=-blank-at-eol,-blank-at-eof
+docs/research/evidence/m12-wave11-20261117/ui-layout-red.txt whitespace=-blank-at-eol,-blank-at-eof
+docs/research/evidence/m12-wave11-20261117/worker-checkpoint-first.txt whitespace=-blank-at-eol,-blank-at-eof
+docs/research/evidence/m12-wave11-20261117/worker-final2.txt whitespace=-blank-at-eol,-blank-at-eof
+docs/research/evidence/m12-wave11-20261117/worker-release-final.txt whitespace=-blank-at-eol,-blank-at-eof

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "13.0",
+  "version": "14.0",
   "tools": [
     {
       "name": "read_conversation_history",
@@ -996,7 +996,7 @@
     },
     {
       "name": "commit_module_candidate",
-      "description": "After both script and harness have been staged in this attempt, self-test them together with the supplied complete metadata. Use the current stagingRevision. Only a passing full candidate replaces the verified checkpoint; failure preserves the previous passing candidate. Does not publish.",
+      "description": "After both script and harness have been staged in this attempt, self-test them together with the supplied complete metadata. Use the current stagingRevision. Only a passing full candidate replaces the verified checkpoint; failure preserves the previous passing candidate. Does not publish. For a standalone Module only, optional nextStep explicitly saves a passing but unfinished candidate and pauses for human continuation; no formal validation is queued. Plan Stage calls must omit nextStep. Original shared budget applies.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1063,6 +1063,12 @@
             ],
             "additionalProperties": false,
             "x-maxJsonBytes": 4096
+          },
+          "nextStep": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048,
+            "x-maxUtf8Bytes": 2048
           }
         },
         "required": [

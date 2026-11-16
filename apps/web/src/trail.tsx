@@ -179,7 +179,7 @@ export function trailFromRuns(runs: Run[], session: { id?: string; draftRevision
   const summary = own.find((run) => run.kind === 'author' && run.authorMode === 'summary' && (!validation || Date.parse(run.createdAt) >= Date.parse(validation.createdAt)));
   if (author?.authorPartial && (!validation || Date.parse(validation.createdAt) <= Date.parse(author.createdAt))) {
     const stages: Stage[] = [
-      { key: 'author', label: '改稿', state: 'todo', detail: '預算耗盡，保留部分結果；請檢視下一步', runId: author.id, at: stamp(author) },
+      { key: 'author', label: '改稿', state: 'todo', detail: author.authorPartial.reason === 'checkpoint_saved' ? '候選已保存，請檢視剩餘工作後繼續' : '預算耗盡，保留部分結果；請檢視下一步', runId: author.id, at: stamp(author) },
       { key: 'validate', label: '驗證', state: 'todo', detail: '自我試跑不等於正式驗證' },
       { key: 'summary', label: '摘要', state: 'todo', detail: '等待正式驗證' },
       { key: 'publish', label: '發佈', state: 'todo', detail: 'partial 不可直接發佈' },

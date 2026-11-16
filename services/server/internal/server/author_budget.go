@@ -112,6 +112,11 @@ func (c authorChainBudget) constrain(input *AuthorInput) error {
 	b.MaxModelRequests = min(b.MaxModelRequests, remaining.MaxModelRequests)
 	b.MaxToolCalls = min(b.MaxToolCalls, remaining.MaxToolCalls)
 	b.MaxDurationMS = min(b.MaxDurationMS, remaining.MaxDurationMS)
+	// The public Module author route stages body/harness and commits in three
+	// calls. Do not queue a child that cannot produce one complete candidate.
+	if standaloneModule(*input) && (b.MaxModelRequests < 3 || b.MaxToolCalls < 3) {
+		return ErrContinuationBudget
+	}
 	output := min(effectiveOutputTokens(&b), effectiveOutputTokens(&c.Limit))
 	if output != 8192 || b.MaxOutputTokens != nil || c.Limit.MaxOutputTokens != nil {
 		b.MaxOutputTokens = &output
@@ -139,7 +144,7 @@ func readAuthorChainBudget(ctx context.Context, tx *sql.Tx, source string) (auth
 }
 
 func saveAuthorChainBudget(ctx context.Context, tx *sql.Tx, runID string, input AuthorInput, chain *authorChainBudget) error {
-	if input.SkillID != "test-author" {
+	if input.SkillID != "test-author" && !standaloneModule(input) {
 		return nil
 	}
 	if chain == nil {

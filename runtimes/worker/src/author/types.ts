@@ -55,9 +55,9 @@ export function serializeAuthorArtifact(value: unknown, primary?: string): strin
 }
 
 export interface AuthorPartialOutput {
-  reason: "budget_exhausted";
+  reason: "budget_exhausted" | "checkpoint_saved";
   nextStep: string;
-  checkpoint?: { scriptHash: string; selfTestPassed: true };
+  checkpoint?: { scriptHash: string; moduleHash?: string; selfTestPassed: true };
   usage?: { modelRequests: number; toolCalls: number; durationMs: number };
 }
 export interface AuthorOutput {

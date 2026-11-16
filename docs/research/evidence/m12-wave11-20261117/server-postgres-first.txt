@@ -1,0 +1,24 @@
+=== RUN   TestModuleCheckpointPostgresWorkerContinueAndValidation
+=== RUN   TestModuleCheckpointPostgresWorkerContinueAndValidation/builtin
+=== RUN   TestModuleCheckpointPostgresWorkerContinueAndValidation/vercel
+--- PASS: TestModuleCheckpointPostgresWorkerContinueAndValidation (1.61s)
+    --- PASS: TestModuleCheckpointPostgresWorkerContinueAndValidation/builtin (0.84s)
+    --- PASS: TestModuleCheckpointPostgresWorkerContinueAndValidation/vercel (0.77s)
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/revision
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/context
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/authorization
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/cancelled
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/budget
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/attempt-cap
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/external-output
+--- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted (2.91s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/revision (0.41s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/context (0.40s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/authorization (0.43s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/cancelled (0.40s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/budget (0.41s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/attempt-cap (0.47s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/external-output (0.39s)
+PASS
+ok  	github.com/whippet/whippet/services/server/internal/server	4.934s

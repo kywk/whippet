@@ -735,7 +735,7 @@ td time { white-space: nowrap; font-variant-numeric: tabular-nums; }
   .test-actions .button { width: 100%; }
   .test-mode.general-mode { padding: 16px 14px 28px; }
   .overview section, .overview-side section { padding: 16px; }
-  .chat-bar { padding: 6px 10px; gap: 4px; }
+  .chat-bar { padding: 6px 10px; gap: 4px; height: auto; flex-wrap: wrap; }
   .chat-bar .chip { padding: 2px 7px; font-size: .7rem; }
   .chat-bar .button.compact { padding: 4px 6px; font-size: .72rem; gap: 4px; white-space: nowrap; min-height: 30px; }
   .chat-bar .button.compact .icon { width: 15px; height: 15px; }

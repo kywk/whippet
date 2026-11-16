@@ -1,0 +1,21 @@
+=== RUN   TestModuleCheckpointPostgresUI
+    module_checkpoint_ui_postgres_test.go:47: UI flow: exit status 1 node:internal/modules/run_main:123
+            triggerUncaughtException(
+            ^
+        
+        locator.waitFor: Timeout 5000ms exceeded.
+        Call log:
+          - waiting for getByText('Server 已接受繼續請求；後續進度以 Run 狀態為準，尚未完成驗證或發佈。', { exact: true }) to be visible
+        
+            at /Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/scripts/test/m12-module-checkpoint-ui.mjs:52:81 {
+          log: [
+            "  - waiting for getByText('Server 已接受繼續請求；後續進度以 Run 狀態為準，尚未完成驗證或發佈。', { exact: true }) to be visible"
+          ],
+          name: 'TimeoutError'
+        }
+        
+        Node.js v22.23.5
+--- FAIL: TestModuleCheckpointPostgresUI (7.44s)
+FAIL
+FAIL	github.com/whippet/whippet/services/server/internal/server	7.868s
+FAIL

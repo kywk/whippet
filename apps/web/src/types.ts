@@ -201,9 +201,9 @@ export interface CatalogItem {
 }
 
 export interface AuthorPartial {
-  reason: 'budget_exhausted';
+  reason: 'budget_exhausted' | 'checkpoint_saved';
   nextStep: string;
-  checkpoint?: { scriptHash: string; selfTestPassed: true };
+  checkpoint?: { scriptHash: string; moduleHash?: string; selfTestPassed: true };
   appliedRevision?: number;
 }
 

@@ -1,0 +1,86 @@
+TAP version 13
+# Subtest: both engines pause a verified standalone Module and complete a second Run within the original allocation
+ok 1 - both engines pause a verified standalone Module and complete a second Run within the original allocation
+  ---
+  duration_ms: 47.868083
+  type: 'test'
+  ...
+# {"engine":"builtin","totalRequests":6,"totalTests":2,"firstUsage":{"modelRequests":3,"toolCalls":3,"durationMs":8},"maxRequests":8,"maxTools":12}
+# {"engine":"vercel","totalRequests":6,"totalTests":2,"firstUsage":{"modelRequests":3,"toolCalls":3,"durationMs":25},"maxRequests":8,"maxTools":12}
+# Subtest: Plan stages cannot request a standalone checkpoint and failed self-tests cannot mint one
+ok 2 - Plan stages cannot request a standalone checkpoint and failed self-tests cannot mint one
+  ---
+  duration_ms: 5.48175
+  type: 'test'
+  ...
+# Subtest: cancellation and newly discovered secrets discard a Module checkpoint before artifact output
+ok 3 - cancellation and newly discovered secrets discard a Module checkpoint before artifact output
+  ---
+  duration_ms: 6.919875
+  type: 'test'
+  ...
+# Subtest: truncated tool arguments never execute and only the last passing complete Module can become a partial
+not ok 4 - truncated tool arguments never execute and only the last passing complete Module can become a partial
+  ---
+  duration_ms: 1.648209
+  type: 'test'
+  location: '/Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/author/module-checkpoint.test.js:119:1'
+  failureType: 'testCodeFailure'
+  error: 'Author task invalid_input; provider and browser details are hidden'
+  code: 'invalid_input'
+  name: 'AuthorError'
+  stack: |-
+    runAuthor (file:///Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/author/loop.js:70:19)
+    TestContext.<anonymous> (file:///Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/author/module-checkpoint.test.js:124:27)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: eight successful exploration calls without a Module candidate stop at the pinned model budget
+ok 5 - eight successful exploration calls without a Module candidate stop at the pinned model budget
+  ---
+  duration_ms: 10.240042
+  type: 'test'
+  ...
+# Subtest: staged candidate uses real engine/fetch tool sequence and never IPC; commit alone creates final
+ok 6 - staged candidate uses real engine/fetch tool sequence and never IPC; commit alone creates final
+  ---
+  duration_ms: 5.990667
+  type: 'test'
+  ...
+# Subtest: staging CAS and schema rejection never advance accepted revision or bypass full candidate guards
+ok 7 - staging CAS and schema rejection never advance accepted revision or bypass full candidate guards
+  ---
+  duration_ms: 4.796959
+  type: 'test'
+  ...
+# Subtest: failed repair preserves prior verified candidate and staging never becomes a checkpoint
+ok 8 - failed repair preserves prior verified candidate and staging never becomes a checkpoint
+  ---
+  duration_ms: 8.918458
+  type: 'test'
+  ...
+# Subtest: secret parts and cancellation cannot create a verified checkpoint
+ok 9 - secret parts and cancellation cannot create a verified checkpoint
+  ---
+  duration_ms: 2.922375
+  type: 'test'
+  ...
+# Subtest: duplicate commit call ID never repeats self-test; late pass after abort never creates checkpoint
+ok 10 - duplicate commit call ID never repeats self-test; late pass after abort never creates checkpoint
+  ---
+  duration_ms: 4.956292
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 9
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 353.026083

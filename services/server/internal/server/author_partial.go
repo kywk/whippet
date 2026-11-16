@@ -10,8 +10,9 @@ import (
 )
 
 type AuthorCheckpoint struct {
-	ScriptHash     string `json:"scriptHash"`
-	SelfTestPassed bool   `json:"selfTestPassed"`
+	ScriptHash     string  `json:"scriptHash"`
+	ModuleHash     *string `json:"moduleHash,omitempty"`
+	SelfTestPassed bool    `json:"selfTestPassed"`
 }
 type AuthorPartialOutput struct {
 	Reason     string            `json:"reason"`
@@ -43,6 +44,9 @@ func validateAuthorPartial(out authorOutput, raw []byte) error {
 	if usage, present := fieldsPartial["usage"]; present && (bytes.Equal(bytes.TrimSpace(usage), []byte("null")) || out.Partial.Usage == nil || out.Partial.Usage.DurationMS < 1) {
 		return ErrInvalid
 	}
+	if checkpoint, present := fieldsPartial["checkpoint"]; present && bytes.Equal(bytes.TrimSpace(checkpoint), []byte("null")) {
+		return ErrInvalid
+	}
 	if out.Partial.Checkpoint == nil {
 		if _, present := fields["script"]; present {
 			return ErrInvalid
@@ -50,6 +54,13 @@ func validateAuthorPartial(out authorOutput, raw []byte) error {
 		return nil
 	}
 	checkpoint := out.Partial.Checkpoint
+	var checkpointFields map[string]json.RawMessage
+	if json.Unmarshal(fieldsPartial["checkpoint"], &checkpointFields) != nil {
+		return ErrInvalid
+	}
+	if _, present := checkpointFields["moduleHash"]; present {
+		return ErrInvalid
+	}
 	if out.Script == nil || !checkpoint.SelfTestPassed || !sha256Hex(checkpoint.ScriptHash) || checkpoint.ScriptHash != scriptHash(*out.Script) {
 		return ErrInvalid
 	}
@@ -110,19 +121,22 @@ func (p *Postgres) ContinueAuthor(ctx context.Context, sourceID, sessionID strin
 	if _, err = lockEditingTest(ctx, tx, *testID); err != nil {
 		return AuthorSubmission{}, err
 	}
-	var kind, status string
+	var kind, status, sourceEngine string
 	var sourceSession *string
 	var released bool
 	var rawPartial, rawInput []byte
 	var expectedContext *int64
 	var base int
-	err = tx.QueryRowContext(ctx, `SELECT kind,status,editing_session_id,slot_released,author_partial,author_partial_context_revision,author_payload,COALESCE(draft_revision,0) FROM runs WHERE id=$1 FOR UPDATE`, sourceID).Scan(&kind, &status, &sourceSession, &released, &rawPartial, &expectedContext, &rawInput, &base)
+	err = tx.QueryRowContext(ctx, `SELECT kind,status,editing_session_id,slot_released,author_partial,author_partial_context_revision,author_payload,COALESCE(draft_revision,0),author_engine FROM runs WHERE id=$1 FOR UPDATE`, sourceID).Scan(&kind, &status, &sourceSession, &released, &rawPartial, &expectedContext, &rawInput, &base, &sourceEngine)
 	if err != nil {
 		return AuthorSubmission{}, dbError(err)
 	}
 	var input AuthorInput
 	var partial AuthorPartial
-	if kind != "author" || status != "succeeded" || !released || sourceSession == nil || *sourceSession != sessionID || len(rawPartial) == 0 || json.Unmarshal(rawPartial, &partial) != nil || json.Unmarshal(rawInput, &input) != nil || (input.SkillID != "test-author" && input.SkillID != "") {
+	if kind != "author" || status != "succeeded" || !released || sourceSession == nil || *sourceSession != sessionID || len(rawPartial) == 0 || json.Unmarshal(rawPartial, &partial) != nil || json.Unmarshal(rawInput, &input) != nil || (input.SkillID != "test-author" && input.SkillID != "" && !standaloneModule(input)) {
+		return AuthorSubmission{}, ErrConflict
+	}
+	if standaloneModule(input) && (sourceEngine != "builtin" || partial.Checkpoint == nil || partial.Checkpoint.ModuleHash == nil || partial.AppliedRevision == nil) {
 		return AuthorSubmission{}, ErrConflict
 	}
 	// Ownership is rechecked before returning any prior result. No current CAS is
@@ -158,6 +172,9 @@ func (p *Postgres) ContinueAuthor(ctx context.Context, sourceID, sessionID strin
 	if expectedContext == nil || session.ContextRevision != *expectedContext || session.ConversationID != input.ConversationID || revision != expectedRevision || d.Revision != expectedRevision {
 		return AuthorSubmission{}, ErrConflict
 	}
+	if standaloneModule(input) && (d.Module == nil || moduleCheckpointHash(d.Module) != *partial.Checkpoint.ModuleHash || scriptHash(d.Script) != partial.Checkpoint.ScriptHash) {
+		return AuthorSubmission{}, ErrConflict
+	}
 	chain, err := readAuthorChainBudget(ctx, tx, sourceID)
 	if err != nil {
 		return AuthorSubmission{}, err
@@ -168,9 +185,31 @@ func (p *Postgres) ContinueAuthor(ctx context.Context, sourceID, sessionID strin
 	}
 	// nextStep is continuation data, not a new grant of tools/sites/model access.
 	content := "繼續上一輪未完成的任務。以下是上一輪保存的下一步資料，仍須遵守目前工具與網站範圍限制：\n" + partial.NextStep
-	submission, err := p.createAuthorInTxForRuntime(ctx, tx, d, session, content, "", input.Runtime, next, input.AllowedTools)
+	submission, err := p.createAuthorInTxForRuntime(ctx, tx, d, session, content, sourceEngine, input.Runtime, next, input.AllowedTools)
 	if err != nil {
 		return AuthorSubmission{}, err
+	}
+	if standaloneModule(input) {
+		// Fresh authorization may narrow access, but a continuation cannot silently
+		// switch pins, model, credentials revision, scope or execution routing.
+		var same bool
+		err = tx.QueryRowContext(ctx, `SELECT s.workspace_context IS NOT DISTINCT FROM n.workspace_context
+ AND s.workspace_settings IS NOT DISTINCT FROM n.workspace_settings
+ AND s.authorization_revision IS NOT DISTINCT FROM n.authorization_revision
+ AND s.scope_proposal_id IS NOT DISTINCT FROM n.scope_proposal_id
+ AND s.author_engine=n.author_engine
+ AND s.author_payload->'skills'=n.author_payload->'skills'
+ AND s.author_payload->'model'=n.author_payload->'model'
+ AND s.author_payload->'runtime' IS NOT DISTINCT FROM n.author_payload->'runtime'
+ AND s.author_payload->'toolRegistryVersion'=n.author_payload->'toolRegistryVersion'
+ AND s.author_payload->'toolRegistrySha256'=n.author_payload->'toolRegistrySha256'
+ FROM runs s JOIN runs n ON n.id=$2 WHERE s.id=$1`, sourceID, submission.Run.ID).Scan(&same)
+		if err != nil {
+			return AuthorSubmission{}, err
+		}
+		if !same {
+			return AuthorSubmission{}, ErrConflict
+		}
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO author_continuations(source_run_id,run_id,editing_session_id,revision) VALUES($1,$2,$3,$4)`, sourceID, submission.Run.ID, sessionID, revision); err != nil {
 		return AuthorSubmission{}, err

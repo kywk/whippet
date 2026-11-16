@@ -101,6 +101,9 @@ func authorArtifactLimit(a *AuthorTask) int64 {
 	return maxAuthorArtifactBytes
 }
 func validPlatformArtifact(raw json.RawMessage, a *AuthorTask) bool {
+	if _, ok := uniqueBudgetFields(raw); !ok {
+		return false
+	}
 	var fields map[string]json.RawMessage
 	if json.Unmarshal(raw, &fields) != nil {
 		return false
@@ -110,6 +113,7 @@ func validPlatformArtifact(raw json.RawMessage, a *AuthorTask) bool {
 		allowed["script"] = true
 		allowed["module"] = true
 		allowed["requestValidation"] = true
+		allowed["partial"] = true
 	} else {
 		allowed["planCandidate"] = true
 	}
@@ -139,5 +143,23 @@ func validPlatformArtifact(raw json.RawMessage, a *AuthorTask) bool {
 	}
 	var script string
 	var request bool
-	return (hasAllowedTool(a, "update_module_candidate") || hasAllowedTool(a, "commit_module_candidate")) && json.Unmarshal(fields["script"], &script) == nil && validModuleCandidate(script, fields["module"]) && len(fields["requestValidation"]) > 0 && json.Unmarshal(fields["requestValidation"], &request) == nil && (!request || hasAllowedTool(a, "request_module_validation"))
+	if _, ok := uniqueBudgetFields(fields["module"]); !ok {
+		return false
+	}
+	var source struct {
+		Module struct {
+			Slug string `json:"slug"`
+		} `json:"module"`
+	}
+	var target struct {
+		Slug string `json:"slug"`
+	}
+	if json.Unmarshal(a.Platform, &source) != nil || json.Unmarshal(fields["module"], &target) != nil || source.Module.Slug == "" || source.Module.Slug != target.Slug {
+		return false
+	}
+	valid := (hasAllowedTool(a, "update_module_candidate") || hasAllowedTool(a, "commit_module_candidate")) && json.Unmarshal(fields["script"], &script) == nil && validModuleCandidate(script, fields["module"]) && len(fields["requestValidation"]) > 0 && json.Unmarshal(fields["requestValidation"], &request) == nil && (!request || hasAllowedTool(a, "request_module_validation"))
+	if partial, present := fields["partial"]; present {
+		return valid && !request && validModulePartialArtifact(partial, a, script, fields["module"])
+	}
+	return valid
 }

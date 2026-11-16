@@ -1,8 +1,13 @@
 import { AuthorError, boundedText, type AuthorInput } from './types.js';
-import { exactObject, loadToolRegistry, validateToolArguments } from './registry.js';
+import { exactObject, loadToolRegistry, validateToolArguments, sha256 } from './registry.js';
 export const PLATFORM_SERVER_TOOLS = ['catalog_search','catalog_next_page','catalog_get','read_module_draft','read_usecase_draft','read_plan','propose_plan'] as const;
 export const PLATFORM_TOOLS = [...PLATFORM_SERVER_TOOLS,'update_module_candidate','stage_module_candidate_part','commit_module_candidate','request_module_validation'] as const;
 export interface ModuleMetadata { slug:string; moduleKind:'setup'|'step'|'page'; exportName:string; signature:string; inputs:string; returns:string; preconditions:string; postconditions:string; harness:string }
+// Length-prefixed UTF-8 fields avoid JSON key order and escaping differences
+// between Worker, Manager and Server. Covers the complete metadata + harness.
+export function moduleCheckpointHash(m: ModuleMetadata): string {
+  return sha256([m.slug,m.moduleKind,m.exportName,m.signature,m.inputs,m.returns,m.preconditions,m.postconditions,m.harness].map(s=>`${Buffer.byteLength(s)}:${s}`).join(''));
+}
 export interface PlatformInput { planId:string|null; stageId:string|null; module:ModuleMetadata|null }
 export interface PlannerOutput { script?:never; requestValidation?:never; message:string; planCandidate?:{candidateRef:string}; conversationSummary?:string }
 export const moduleAuthor = (input:AuthorInput) => input.author.skillId === 'module-authoring';

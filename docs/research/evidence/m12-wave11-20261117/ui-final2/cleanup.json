@@ -1,0 +1,16 @@
+{
+  "browserClosed": true,
+  "processes": [
+    {
+      "pid": 41554,
+      "exitCode": 143,
+      "signalCode": null
+    },
+    {
+      "pid": 41550,
+      "exitCode": 0,
+      "signalCode": null
+    }
+  ],
+  "fixtureRemoved": true
+}
