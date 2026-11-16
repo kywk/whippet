@@ -178,6 +178,17 @@ func (a *API) executeExternalTool(ctx context.Context, p *Postgres, token AgentT
 		}
 		raw, _ := json.Marshal(map[string]any{"script": task.ContextBundle.Script, "baseRevision": task.ContextBundle.Author.BaseRevision})
 		return externalToolReceipt{Value: raw}
+	case "read_author_snapshot":
+		task, err := p.externalTask(ctx, p.DB, c)
+		if err != nil {
+			return externalToolReceipt{Error: "tool_unavailable"}
+		}
+		page, err := readAuthorSnapshot(task.ContextBundle.Script, task.ContextBundle.Author, canonical)
+		if err != nil {
+			return externalToolReceipt{Error: "tool_unavailable"}
+		}
+		raw, _ := json.Marshal(page)
+		return externalToolReceipt{Value: raw}
 	case "read_validation_report":
 		task, err := p.externalTask(ctx, p.DB, c)
 		if err != nil {

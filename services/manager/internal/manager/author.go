@@ -18,7 +18,7 @@ var authorEnvNames = []string{
 // Existing fixed Worker observations are opt-in metadata, never arbitrary logs.
 var authorObservationPattern = regexp.MustCompile(`^author:observe:[1-8]:(started|fetchInvoked|headersReceived|bodyParsed|responseAccepted|failed|timeoutProviderWait|timeoutBodyWait|cancelled|timeoutToolWait|toolCancelled|timeoutOther|feedbackFrameAccepted|feedbackQueued|feedbackIncludedAtFetch|toolsIncludedAtFetch|functionCallObserved)$`)
 
-var authorProgressPattern = regexp.MustCompile(`^author:(model:([1-9]|1[0-2]):(started|succeeded|failed|heartbeat)|tool:([1-9]|1[0-9]|20):(read_draft|read_validation_report|update_draft|browser_navigate|browser_snapshot|browser_click|browser_fill|browser_login|request_validation|read_conversation_history|read_skill_reference|catalog_search|catalog_get|read_module_draft|read_usecase_draft|read_plan|propose_plan|update_module_candidate|stage_module_candidate_part|commit_module_candidate|request_module_validation|unknown):(started|succeeded|failed|heartbeat))$`)
+var authorProgressPattern = regexp.MustCompile(`^author:(model:([1-9]|1[0-2]):(started|succeeded|failed|heartbeat)|tool:([1-9]|1[0-9]|20):(read_draft|read_author_snapshot|read_validation_report|update_draft|browser_navigate|browser_snapshot|browser_click|browser_fill|browser_login|request_validation|read_conversation_history|read_skill_reference|catalog_search|catalog_get|read_module_draft|read_usecase_draft|read_plan|propose_plan|update_module_candidate|stage_module_candidate_part|commit_module_candidate|request_module_validation|unknown):(started|succeeded|failed|heartbeat))$`)
 var authorContextPattern = regexp.MustCompile(`^author:context:compacted:([1-9]|1[0-2])$`)
 
 const maxAuthorTimeoutMS = 900000

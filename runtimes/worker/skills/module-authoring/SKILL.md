@@ -7,6 +7,8 @@ description: Create or repair a reusable Whippet Module and its verification har
 
 Use the pinned platform.module and read_module_draft to establish the immutable slug, moduleKind, exported API, named inputs, returned values and observable pre/postconditions. Keep one reusable responsibility. Modules cannot import other Modules or reach another Workspace.
 
+The saved script or platform.module.harness may be a frozen snapshotRef. Use its readPage arguments with read_author_snapshot and follow nextOffsetBytes unchanged with the same sha256; null requests the full original only if it fits context. These are original baseRevision data, not staged or verified candidates. Keep Stage args, contracts and evidence; never infer omitted code or assertions. Reads consume the same tool budget and remain available during delivery for necessary original facts.
+
 Read module-authoring/harness through read_skill_reference before designing its independent spec. Explore with the provided browser tools only when the supplied target facts are insufficient; keep exploration on confirmed targets. Read playwright-authoring/recipe only when that auxiliary skill is pinned and examples are needed.
 
 Reserve at least five model requests and four tool calls for staging the body, staging the harness, committing the self-test, requesting validation after a passing commit, and the final JSON. Count the remaining budget before each exploration call. When the target and DOM facts already support the required assertions, begin staging immediately. If further exploration would consume this reserve, report the missing fact as a blocker instead of spending the candidate budget.

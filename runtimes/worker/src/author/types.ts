@@ -8,7 +8,7 @@ import { validateWorkspaceContext, validateWorkspaceConfig, type WorkspaceContex
 import { validSequence, type HistoryPin } from "./history.js";
 import { validRuntime, type AuthorRuntime } from "./runtime.js";
 
-export const EDIT_TOOLS = ["read_draft", "read_validation_report", "update_draft", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login", "request_validation", "read_conversation_history"] as const;
+export const EDIT_TOOLS = ["read_draft", "read_author_snapshot", "read_validation_report", "update_draft", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login", "request_validation", "read_conversation_history"] as const;
 export interface ValidationEvidence {
   runId: string; attemptId: string; draftRevision: number; scriptHash: string; timeoutMs: number;
   status: "succeeded"; reportsReady: true;
@@ -128,8 +128,10 @@ export function validateAuthorInput(value: unknown): AuthorInput {
     validateWorkspaceContext(v.workspaceContext,v.workspaceId);
   } catch { throw new AuthorError("invalid_input"); }
   const a = v.author;
+  if (a.allowedTools !== undefined && !Array.isArray(a.allowedTools)) throw new AuthorError("invalid_input");
   if (Object.keys(a).some((k) => !["conversationId", "baseRevision", "messages", "validation", "skillId", "skillVersion", "allowedTools", "editingSessionId", "contextRevision", "sourceVersion", "conversationSummary", "validationEvidence", "history", "skills", "budget", "model", "toolRegistryVersion", "toolRegistrySha256", "platform", "batch", "moduleSummary", "runtime"].includes(k))) throw new AuthorError("invalid_input");
   const capability = capabilitySnapshot(a);
+  if (Array.isArray(a.allowedTools) && a.allowedTools.includes("read_author_snapshot") && !capability) throw new AuthorError("invalid_input");
   if (Object.hasOwn(a, "runtime") && (!capability || !validRuntime(a.runtime))) throw new AuthorError("invalid_input");
   if (capability && (capability.skills[0]!.id !== a.skillId || capability.skills[0]!.version !== a.skillVersion)) throw new AuthorError("invalid_input");
   validatePlatform(v, !!capability);

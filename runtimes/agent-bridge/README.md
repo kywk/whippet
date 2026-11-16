@@ -29,6 +29,8 @@ HTTP只接受literal loopback（127.0.0.1／::1）；其他連線須HTTPS，拒�
 
 ## 用量、租約與重送
 
+registry12.0任務可提供`read_author_snapshot`。超容量門檻時，初始原稿可顯示為凍結引用；用固定SHA與offset讀8KiB頁面，沿nextOffsetBytes讀取。null明確取全文，全文仍受context保護；這是原baseRevision資料，不是提交候選或驗證證據。讀取使用原工具預算，hash不符或工具結果不明就停止。需與Server／Worker打包的registry及skill pins一致，舊Run不自動換pin。
+
 - 只提供claim實際允許、且與本地打包registry／skill pins一致的工具。主skill及external MCP reference另從MCP讀取並比對SHA；有漂移就停止，不下載新版替代。工作資料、頁面與工具回覆皆為DATA。
 - 沿claim的模型／工具／輸出上限與硬期限，30秒心跳，不延長硬期限。MCP送出起點至少間隔1秒，配合Server每秒補1次／burst10的既有限流；429明確回報`rate_limited`，不自動重送。
 - MCP Agent Token、目前與未選中provider key均由整份request／response／候選守衛阻擋。SDK無自動model retry、模型／provider fallback或內建工具；不在本機執行生成的spec。
@@ -43,7 +45,7 @@ HTTP只接受literal loopback（127.0.0.1／::1）；其他連線須HTTPS，拒�
 npm test --prefix runtimes/agent-bridge
 # 先準備全新隔離TEST_DATABASE_URL；services/server內執行
 GOTOOLCHAIN=go1.23.12 go test -tags=integration,m12reference ./internal/server \
-  -run '^TestM12ReferenceWorkerMCPClaimToolSubmitAndRecovery$' -count=1 -v
+  -run '^TestM12FrozenSnapshotMCPAndSubmitRecovery$' -count=1 -v
 ```
 
-定向測試以合成模型回應驗證真MCP接單、read_draft、候選套用及回應遺失後的冪等恢復，沒有付費provider呼叫。這不是Docker／LiveView／登入／正式驗證或真模型驗收。本MVP僅支援普通test-author及Whippet目前stateless JSON Streamable HTTP；Module、Planner、Workspace與摘要skill會明確停止，沒有通用SSE／多Server routing或自動重領。M12.Z再做授權範圍內的完整驗收。
+定向測試以合成模型回應驗證真MCP接單、凍結原稿8KiB頁面、候選套用及回應遺失後的冪等恢復，沒有付費provider呼叫。這不是Docker／LiveView／登入／正式驗證或真模型驗收。本MVP僅支援普通test-author及Whippet目前stateless JSON Streamable HTTP；Module、Planner、Workspace與摘要skill會明確停止，沒有通用SSE／多Server routing或自動重領。M12.Z再做授權範圍內的完整驗收。

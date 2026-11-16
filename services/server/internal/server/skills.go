@@ -191,6 +191,9 @@ func snapshotAuthor(input *AuthorInput) error {
 	if references > 0 && defaults["read_skill_reference"] && !seen["read_skill_reference"] {
 		tools = append(tools, "read_skill_reference")
 	}
+	if (input.SkillID == "test-author" || input.SkillID == "module-authoring") && defaults["read_author_snapshot"] && !seen["read_author_snapshot"] {
+		tools = append(tools, "read_author_snapshot")
+	}
 	sort.Strings(tools)
 	budget := primary.Budget
 	if budget.MaxDurationMS > authorTimeoutMS {

@@ -295,7 +295,7 @@ func offlineAuthorAllowed(a Assignment) bool {
 		return false
 	}
 	for _, tool := range a.Author.AllowedTools {
-		if tool != "read_draft" && tool != "read_validation_report" && tool != "update_draft" && tool != "read_conversation_history" && tool != "read_skill_reference" && !platformServerTool(tool) {
+		if tool != "read_draft" && tool != "read_author_snapshot" && tool != "read_validation_report" && tool != "update_draft" && tool != "read_conversation_history" && tool != "read_skill_reference" && !platformServerTool(tool) {
 			return false
 		}
 	}

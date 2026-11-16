@@ -1,0 +1,192 @@
+{
+  "wave": "M12.1 Wave8",
+  "branch": "feat/agent-adapter",
+  "sourceHead": "2f05b989b862b56c65f866c725ebaa8a8d9cbc61",
+  "mainHead": "576816622d988049d36453c7b3dabed9feeadd28",
+  "status": "bounded-frozen-source-slice-complete",
+  "milestoneM12_1": "in-progress",
+  "contract": {
+    "registry": "12.0",
+    "tool": "read_author_snapshot",
+    "scope": [
+      "frozen script",
+      "frozen Module harness"
+    ],
+    "pageBytes": 8192,
+    "fullReadOffset": null,
+    "mutableDraftRead": false,
+    "existingPinsRewritten": false,
+    "httpOrWsFieldsChanged": false,
+    "databaseMigration": false
+  },
+  "builds": {
+    "workerWithDeclarations": "PASS",
+    "referenceClient": "PASS",
+    "serverGo1_23_12": "PASS",
+    "managerGo1_25_0": "PASS",
+    "dependenciesChanged": false
+  },
+  "tests": {
+    "worker": 38,
+    "client": 8,
+    "serverUnit": 5,
+    "manager": 5,
+    "realMCP": 1,
+    "uniquePassed": 57,
+    "failed": 0,
+    "skipped": 0
+  },
+  "flows": {
+    "ordinaryTest": [
+      {
+        "engine": "builtin",
+        "models": 6,
+        "tools": 6,
+        "pages": 3,
+        "rereads": 1,
+        "selfTests": 2,
+        "peakEstimate": 23007,
+        "inputCap": 28000
+      },
+      {
+        "engine": "vercel",
+        "models": 6,
+        "tools": 6,
+        "pages": 3,
+        "rereads": 1,
+        "selfTests": 2,
+        "peakEstimate": 22876,
+        "inputCap": 28000
+      }
+    ],
+    "moduleStage": [
+      {
+        "engine": "builtin",
+        "models": 5,
+        "tools": 5,
+        "selfTests": 1,
+        "peakEstimate": 20169,
+        "inputCap": 22000
+      },
+      {
+        "engine": "vercel",
+        "models": 5,
+        "tools": 5,
+        "selfTests": 1,
+        "peakEstimate": 20182,
+        "inputCap": 22000
+      }
+    ],
+    "MCP": {
+      "models": 2,
+      "claims": 1,
+      "snapshotReads": 1,
+      "submitAttemptsSameIdAndBody": 2,
+      "draftRevisionsAdded": 1,
+      "activeClaimsAfter": 0,
+      "formalValidation": false,
+      "testSeconds": 10.5
+    }
+  },
+  "preserved": [
+    "goal and constraints",
+    "complete initial dialogue",
+    "Stage args and binding references",
+    "Module contract",
+    "baseRevision and contextRevision",
+    "evidence references",
+    "call/result pairing and reasoning",
+    "latest tool result"
+  ],
+  "negativeCases": [
+    "wrong hash/component/role",
+    "UTF-8 middle or out-of-range offset",
+    "invalid fields/types",
+    "legacy or partial capability",
+    "missing tool",
+    "zero tool budget",
+    "newly learned secrets invalidate frozen read"
+  ],
+  "fixtureRepair": {
+    "baselineHead": "2f05b989b862b56c65f866c725ebaa8a8d9cbc61",
+    "baselineFailed": true,
+    "originalCallsInOneRun": 15,
+    "toolLimit": 12,
+    "splitIndependentRunCalls": [
+      11,
+      7
+    ],
+    "assertionsRetained": true,
+    "budgetRaised": false
+  },
+  "paidProviderCalls": 0,
+  "baselineDeployed": false,
+  "baselineHealth": {
+    "stateValid": true,
+    "managerIdentityValid": true,
+    "api": true,
+    "target": true,
+    "web": true,
+    "mcpPinsValid": true,
+    "mcpReady": true,
+    "builtinServerSha256": "f064bd02671c223b7f209bf982e32623d0dc88318ee4b5bcf6f4b1a9f275f35f"
+  },
+  "cleanup": {
+    "ownedDatabaseContainers": 0,
+    "newVolumes": 0,
+    "newNetworks": 0,
+    "ownedBackgroundProcesses": 0,
+    "baselineSourceCopyRemoved": true,
+    "ownedGoCachesRemoved": true,
+    "loopbackFixturesClosed": true
+  },
+  "remaining": [
+    "arbitrary large candidate editing",
+    "Stage decomposition and continuation",
+    "general semantic compaction",
+    "monetary/wider task totals",
+    "second provider live test",
+    "M12.4",
+    "M12.Z"
+  ],
+  "original14TaskUnassistedBatchAllPassProven": false,
+  "historicalRawPreserved": true,
+  "artifacts": {
+    "root": "/var/folders/0n/ycjdyc553gx4ywrtpmtnwp2h0000gq/T/whippet-m12-wave8-wv703rk1",
+    "sha256": {
+      "adapter-final.tap": "8f30bc23e93d740bd14b2b64fa280aedf6c919ba8b0082859f318e0196187d12",
+      "baseline-build.txt": "c6161590a087ed13ab5698dfe97a928ecc6b4e821d89d917069829b512da2898",
+      "baseline-module-cas.tap": "de32d00f2a72ebbf5e880c57f459c69f038a1055d00ccf40d3e3fd29c1577400",
+      "bridge-final.tap": "1de4490b874b3bfb3278fa25363eb862f3ee5ebca7a42fa13f1624fff0e6ac17",
+      "build-final-r2.txt": "15850202dbd24d6da40c717fcfdf110a9e6e3381ecbb17cc6cc44bebef77dfae",
+      "build-final-r3.txt": "15850202dbd24d6da40c717fcfdf110a9e6e3381ecbb17cc6cc44bebef77dfae",
+      "build-final-r4.txt": "15850202dbd24d6da40c717fcfdf110a9e6e3381ecbb17cc6cc44bebef77dfae",
+      "build-final-r5.txt": "15850202dbd24d6da40c717fcfdf110a9e6e3381ecbb17cc6cc44bebef77dfae",
+      "build-final.txt": "15850202dbd24d6da40c717fcfdf110a9e6e3381ecbb17cc6cc44bebef77dfae",
+      "build-r1.txt": "15850202dbd24d6da40c717fcfdf110a9e6e3381ecbb17cc6cc44bebef77dfae",
+      "build-r2.txt": "15850202dbd24d6da40c717fcfdf110a9e6e3381ecbb17cc6cc44bebef77dfae",
+      "manager-build-final.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "manager-build.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "manager-snapshot-final.txt": "ea30461c1d9fa5a19caf394ba92a948630874e81b01bc188423fc540ee1ab313",
+      "manager-unit-r1.txt": "f7b13d2dbf6504b4229f70504a8ea0abeec77182d2aac89c83e6d83b2d273405",
+      "mcp-integration-r1.txt": "c6a156048ccb6b23c6d0fc232c47ceb768dd26afb48a88c7f940f3c194718f74",
+      "module-staging-final.tap": "61940a5e55f510038a2d337e79718eaeb72dae78aec347275f1b76a08972054a",
+      "server-build-final.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "server-snapshot-final.txt": "4b7666f6d1122ae46fbc876555f2a5125aa43ce15a90eb06473e0affd4c43ba7",
+      "server-unit-final.txt": "680236be0560d13b0e40dcef0e8398195bbcbb8f2cfa454cd7766e3cb2a50707",
+      "server-unit-r1.txt": "b5da4f143459db84785fb462d47b0e3540a672bcb2c584697171d1b94277cb16",
+      "server-unit-r2.txt": "3d59b72f64ffb9a2bfa9c48001c2b32b6ee1e968dd7b4dfbc98d3ce163ec79f8",
+      "snapshot-final-r2.tap": "281c5e3b74ea305fc9a8ae90fc77a7a6f952e65a59f7626c9a0132241ddd475a",
+      "snapshot-final.tap": "f4192eb77cc3d65912f1ed1befe62937e9cc2a2d1275579af7f70c82fc850b89",
+      "snapshot-r1.tap": "3ddef8bdf50f6ed9694f9fb132e689c8dcd6ca5ae6982fa2b209c694b9696656",
+      "snapshot-runtime-final.tap": "7da0856219ee62737bcf5d53cc80bb6b4469ba827975c65ef962e7d4cf14f546",
+      "worker-core-final.tap": "c6069c93ca03aa251d1f48768e7cde2c041a23161cf54a2501b23e04f00c66c7"
+    }
+  },
+  "secretScan": {
+    "filesScanned": 38,
+    "controlledSourcesLoaded": true,
+    "workingTreeFindings": 0,
+    "stagedFindings": 0
+  }
+}

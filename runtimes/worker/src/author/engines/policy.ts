@@ -58,7 +58,7 @@ export class AdapterPolicy {
     let clean: Record<string, any> | undefined;
     try {
       body.input = this.input.beforeRequest(body.input);
-      const fit = fitContext(body, modelCapacity(this.config), outputTokenLimit(this.input), { toolCalls: this.input.budget.toolExecutions - this.executions,
+      const fit = fitContext(body, modelCapacity(this.config), outputTokenLimit(this.input), { toolCalls: this.input.budget.toolExecutions - this.executions, snapshot: this.input.snapshot,
         ...(this.input.history ? { history: { pin: this.input.history, reads: Math.max(0, 4 - this.historyCalls) } } : {}) });
       clean = guardRequest(this.input, fit.body);
       if (fit.compacted) this.input.onEvent?.(`author:context:compacted:${fit.compacted}`);

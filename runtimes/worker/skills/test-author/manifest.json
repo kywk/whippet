@@ -3,6 +3,7 @@
   "version": "1",
   "defaultTools": [
     "read_conversation_history",
+    "read_author_snapshot",
     "read_draft",
     "read_validation_report",
     "update_draft",

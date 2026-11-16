@@ -16,6 +16,14 @@ import (
 )
 
 func TestM12ReferenceWorkerMCPClaimToolSubmitAndRecovery(t *testing.T) {
+	runM12ReferenceWorkerFlow(t, false)
+}
+
+func TestM12FrozenSnapshotMCPAndSubmitRecovery(t *testing.T) {
+	runM12ReferenceWorkerFlow(t, true)
+}
+
+func runM12ReferenceWorkerFlow(t *testing.T, frozen bool) {
 	// MCP publishes all packaged resources. The older M10 fixture deliberately
 	// omits catalog-reuse and therefore correctly disables the entire MCP gate.
 	t.Setenv("WHIPPET_SKILLS_PATH", repositoryFile("runtimes", "worker", "skills"))
@@ -44,6 +52,15 @@ func TestM12ReferenceWorkerMCPClaimToolSubmitAndRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	original := "import {test} from '@playwright/test';test('original',()=>{});\n//" + strings.Repeat("snapshot-original ", 1400)
+	if frozen {
+		var saved Draft
+		saved, err = p.SaveDraft(ctx, item.ID, session.ID, session.Draft.Revision, original)
+		if err != nil {
+			t.Fatal(err)
+		}
+		session.Draft = &saved
+	}
 	sub, err := p.CreateAuthor(ctx, item.ID, session.ID, "使用 page.setContent 建立 Reference ready 標題，保留候選稿供人工檢視，不要求正式驗證。", session.Draft.Revision)
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +81,13 @@ func TestM12ReferenceWorkerMCPClaimToolSubmitAndRecovery(t *testing.T) {
 	if err = os.WriteFile(tokenPath, []byte(secret), 0600); err != nil {
 		t.Fatal(err)
 	}
-	input, _ := json.Marshal(map[string]string{"url": http.URL + "/mcp", "tokenFile": tokenPath, "stateFile": statePath})
+	fixture := map[string]string{"url": http.URL + "/mcp", "tokenFile": tokenPath, "stateFile": statePath}
+	if frozen {
+		fixture["frozen"] = "true"
+		fixture["expectedSnapshotHash"] = scriptHash(original)
+		fixture["expectedSnapshotPrefix"] = original[:8192]
+	}
+	input, _ := json.Marshal(fixture)
 	command := exec.CommandContext(ctx, "node", repositoryFile("scripts", "test", "m12-reference-worker.mjs"))
 	command.Env = []string{"PATH=" + os.Getenv("PATH"), "WHIPPET_SKILLS_PATH=" + repositoryFile("runtimes", "worker", "skills")}
 	command.Stdin = bytes.NewReader(input)
@@ -110,5 +133,9 @@ func TestM12ReferenceWorkerMCPClaimToolSubmitAndRecovery(t *testing.T) {
 	if err != nil || bytes.Contains(journal, []byte(secret)) {
 		t.Fatal("journal exposed Agent Token")
 	}
-	t.Log("real HTTP MCP -> Vercel reference client -> synthetic model x2 -> read_draft x1 -> submit x2 same ID/body -> AI draft revision +1; paid provider calls=0")
+	if frozen {
+		t.Log("real HTTP MCP -> frozen snapshot reference -> pinned 8KiB page -> synthetic model x2 -> submit x2 same ID/body -> AI draft revision +1; paid provider calls=0")
+	} else {
+		t.Log("real HTTP MCP -> Vercel reference client -> synthetic model x2 -> read_draft x1 -> submit x2 same ID/body -> AI draft revision +1; paid provider calls=0")
+	}
 }

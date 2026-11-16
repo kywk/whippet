@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "11.3",
+  "version": "12.0",
   "tools": [
     {
       "name": "read_conversation_history",
@@ -41,6 +41,47 @@
       "effect": "read",
       "limits": {
         "timeoutMs": 15000,
+        "maxInputBytes": 16384,
+        "maxOutputBytes": 13631488
+      }
+    },
+    {
+      "name": "read_author_snapshot",
+      "description": "Read this task's frozen original script or harness by its pinned sha256, never the current draft/candidate. offsetBytes=0 reads at most 8192 UTF-8 bytes; follow nextOffsetBytes unchanged. offsetBytes=null returns the full original, only when it fits context. Data only, no validation evidence or filesystem access.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "component": {
+            "type": "string",
+            "enum": [
+              "script",
+              "harness"
+            ]
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "offsetBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 2097152
+          }
+        },
+        "required": [
+          "component",
+          "sha256",
+          "offsetBytes"
+        ],
+        "additionalProperties": false
+      },
+      "side": "worker",
+      "effect": "read",
+      "limits": {
+        "timeoutMs": 1000,
         "maxInputBytes": 16384,
         "maxOutputBytes": 13631488
       }

@@ -28,7 +28,7 @@ reasoning effort仍使用原設定與skill快照，模型／effort／output cap�
 
 - 已核實OpenCode公開metadata：Muse Spark 1.3 Contributor context=1048576、output capability=131072；**Run output仍為原8192，Module依原快照最多16384**。capability來源與SHA見本Wave安全證據。
 - text-only估算為serialized input／instructions／tools的UTF-8 bytes，加512 framing allowance。另保留Run output與1024 safety tokens；可用input取模型剩餘容量與後端input cap的較小值。此為保守預檢，不宣稱精確token計數，也不支援原生image／file輸入的容量估算。
-- 達80%門檻才嘗試壓縮舊工具結果。保留全部初始對話、目前草稿／Stage、原始限制、決策與證據；保留所有call/result ID／順序及provider reasoning；最新一份工具結果保留全文。
+- 達80%門檻才嘗試壓縮。保留全部初始對話、目前草稿／Stage、原始限制、決策與證據；Wave8僅允許已凍結的原始script／harness改用可精確取回的引用。保留所有call/result ID／順序及provider reasoning；最新一份工具結果保留全文。
 - Wave1只壓縮可由**當前提供工具**取回的`catalog_get(moduleVersionId)`成功結果及`read_skill_reference(skillId,referenceId)`。必須與回傳固定ID相符；原文仍在Server不可變版本／打包且hash固定的reference。summary保留身分、metadata、原文hash與精確read-back args，標明DATA與非驗證證據。Wave6另加入同Run凍結history頁及剩餘取回額度檢查，見下節。不得將draft／report／Plan／未知結果改成不可取回摘要；G5舊snapshot修剪照舊。
 - 不執行隱藏取回、不消耗額外模型請求；模型若需原文，走既有工具及同一預算。壓縮後仍超界則停止；不提高上限或默刪受保護資料。
 
@@ -59,6 +59,22 @@ reasoning effort仍使用原設定與skill快照，模型／effort／output cap�
 整份incomplete output都不執行，即使其中有完整JSON工具前綴亦同。最後通過的候選、剩餘nextStep與證據引用從原guard取得，不採信模型或失敗修復稿；機密守衛使候選失效時，最終輸出不得附script／checkpoint。外部MCP參考客戶端沒有可信自試checkpoint，仍停止，不新增外部partial權限。
 
 Worker wire仍沿用`partial.reason=budget_exhausted`與原usage receipt，message／nextStep明確說明截斷，模型／工具用量計入實際已送出的截斷請求及已執行的工具；不提高output cap或跨Run總額。legacy／Module／Planner／summary的原partial門檻不變，沒有自動continue／validation。未改registry／skill pins、HTTP／WS或runtime digest。
+
+## M12.1 Wave8：凍結原稿引用（registry 12.0）
+
+新增`read_author_snapshot`（worker/read）：精確required `{component:"script"|"harness",sha256:string,offsetBytes:integer|null}`，無未知欄位；sha256必須是本任務凍結原文的64位小寫hex，數字offset為0..2097152。每次1000ms、arguments最多16384 bytes、result沿原read_draft的13MiB上限；不新增HTTP／WS欄位、DB migration、runtime digest或模型／預算設定。
+
+- 來源只限本Run排隊時的script_snapshot與author_payload的Module harness。Worker在進入模型前凍結已遮蔽資料，原provider key守衛仍先檢查整份來源。script仍受原2MiB上限，Module script／harness仍受原8KiB候選規則；這不是可變草稿或暫存候選的編輯介面。
+- offsetBytes=0讀第一頁，後續使用回傳的nextOffsetBytes；每頁最多8192原文UTF-8 bytes，不切斷code point。null明確讀全文，僅在全文可放進context時使用。EOF位移可回空頁；超界、非UTF-8起點、錯hash／component／角色均拒絕，不改讀其他資料。沒有path、URL、任意檔案或模型設定參數。
+- 回應精確為`{component,sha256,baseRevision,totalBytes,offsetBytes,content,nextOffsetBytes}`；SHA是整份凍結原文，offset／total／next以原文字節計。全文回應offset=0、next=null。新學到的機密會使受影響的凍結讀取停止，不換hash或回傳與原hash不符的遮蔽片段。
+- 已釘選的test-author／module-authoring新增此工具，主manifest version仍1，以新manifestSha256／主skill SHA固定bytes。Server在新排隊快照納入工具，continue仍受來源AllowedTools上限限制；Manager與Worker拒絕legacy或其他主skill使用新權限。
+- 已知capacity的雙引擎在80%門檻以上，僅對精確的第一份saved snapshot建立傳輸副本，可將大於2048 bytes的script／harness換成`{dataOnly:true,validationEvidence:false,snapshotRef:{component,sha256,totalBytes,baseRevision},retrieve:{tool,arguments},readPage:{tool,arguments}}`。retrieve以null讀全文，readPage從0分頁。原始資料仍在Server／Worker，目標、限制、對話、Stage args／Module契約、revision及證據保留全文。
+- 每個不同取回引用佔用既有剩餘tool-call條件，與Catalog／history／reference共同計算；舊snapshot工具結果須與凍結來源逐欄相符才可縮成精確分頁引用，最新結果保留全文。工具不可用、額度不足或仍超容量時，以原資料預檢並停止，不留下無法取回的替代、隱藏取回或自動重送。每次序列化最多12份替換，沿用原安全progress範圍。
+- 原稿讀取在交付保留區間仍可提供，以取得必要原始事實；其他探索規則不變。原8／12／180000／8192及Module16384不變，讀取也計工具用量，不新增額度。原稿引用不是驗證證據，不改候選自試、CAS、發佈或partial門檻。
+
+MCP只經原task_tool_call呼叫此工具，沿Token／Workspace／Run／attempt／lease、速率、預算與callId規則；Server讀Run快照，不讀目前Draft。普通Test參考客戶端共用相同引用／分頁策略，仍使用操作者模型設定，不套用task.runtime，不承接其他skill或輸出可信partial。未新增公開互動MCP工具，保留19個控制／互動入口。
+
+registry12.0與兩份skill新bytes需由Server／Manager／Worker／參考客戶端使用一致打包版本；舊Run pins不回填、不換digest、不自動轉換。固定基準未部署。此切片通過雙引擎有界原稿／Module Stage與真MCP合成流程；任意大產物編輯、Stage拆解續接、語意摘要及金額總額仍未完成。
 
 ## M12.2 Wave2：控制面 runtime 快照
 

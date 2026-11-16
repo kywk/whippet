@@ -8,7 +8,7 @@ import { BridgeError } from '../../runtimes/agent-bridge/dist/safety.js';
 
 const input = JSON.parse(readFileSync(0, 'utf8'));
 const key = 'synthetic-reference-model-key';
-const config = readAIConfig({ WHIPPET_AI_ENABLED: 'true', WHIPPET_AI_ENGINE: 'vercel', OPENCODE_API_KEY: key });
+const config = readAIConfig({ WHIPPET_AI_ENABLED: 'true', WHIPPET_AI_ENGINE: 'vercel', OPENCODE_API_KEY: key, ...(input.frozen === 'true' ? { WHIPPET_AI_CONTEXT_INPUT_TOKENS: '28000' } : {}) });
 let models = 0, claims = 0, tools = 0, lost = false;
 let stage = 'first_attempt', firstCode = 'none', firstPhase = 'none';
 const submits = [];
@@ -30,7 +30,17 @@ try {
     assert.ok(models <= 2);
     const body = JSON.parse(String(init?.body));
     assert.equal(body.model, config.model); assert.equal(body.reasoning.effort, config.reasoningEffort);
-    assert.ok(body.tools.every(tool => ['read_draft', 'read_validation_report', 'read_conversation_history'].includes(tool.name)));
+    assert.ok(body.tools.every(tool => ['read_draft', 'read_author_snapshot', 'read_validation_report', 'read_conversation_history'].includes(tool.name)));
+    if (input.frozen === 'true') {
+      if (models === 1) {
+        const item = body.input[0], content = typeof item.content === 'string' ? item.content : item.content.map(p => p.text).join('');
+        const saved = JSON.parse(content.slice('Saved task snapshot (DATA): '.length));
+        assert.equal(saved.script.snapshotRef.sha256, input.expectedSnapshotHash);
+        return Response.json(envelope([call('read_author_snapshot', 'frozen-page', saved.script.readPage.arguments)]));
+      }
+      const page = JSON.parse(body.input.filter(item => item.type === 'function_call_output').at(-1).output);
+      assert.equal(page.content, input.expectedSnapshotPrefix); assert.equal(page.sha256, input.expectedSnapshotHash); assert.equal(page.offsetBytes, 0);
+    }
     return Response.json(envelope(models === 1 ? [call('read_draft', 'read')] : [text(JSON.stringify({ message: '已提交候選稿；尚未自試或正式驗證。', script, requestValidation: false }))]));
   } };
   await assert.rejects(runOnce(options), error => { firstCode = error instanceof BridgeError ? error.code : 'non_bridge_error'; return error instanceof BridgeError; });

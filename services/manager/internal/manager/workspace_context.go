@@ -269,7 +269,7 @@ func authorCanEditWithoutExecution(a *AuthorTask) bool {
 		return false
 	}
 	for _, tool := range *a.AllowedTools {
-		if tool != "read_draft" && tool != "read_validation_report" && tool != "update_draft" {
+		if tool != "read_draft" && tool != "read_author_snapshot" && tool != "read_validation_report" && tool != "update_draft" {
 			return false
 		}
 	}

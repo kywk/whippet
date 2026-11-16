@@ -3,6 +3,7 @@
   "version": "1",
   "defaultTools": [
     "read_skill_reference",
+    "read_author_snapshot",
     "read_module_draft",
     "read_validation_report",
     "stage_module_candidate_part",

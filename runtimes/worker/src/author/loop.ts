@@ -10,6 +10,7 @@ import { selectAgentEngine } from "./engines/select.js";
 import { runtimeConfig } from "./runtime.js";
 import { AIError, type AIConfig } from "../ai/config.js";
 import { availableModelCapacity } from "../ai/capacity.js";
+import { FrozenAuthorSnapshot } from "./snapshot.js";
 import { buildResponsesRequest } from "../ai/responses.js";
 import { classifyDiagnosticError, type ExplorationBrowser } from "./tools.js";
 import { AuthorError, serializeAuthorArtifact, EDIT_TOOLS, boundedText, isSummary, isWorkspaceAuthor, parseWorkspaceAuthorOutput, parseSummaryOutput, validateAuthorInput, type AuthorInput, type AuthorOutput, type SummaryOutput, type WorkspaceAuthorOutput } from "./types.js";
@@ -74,7 +75,7 @@ export async function runAuthor(
     if (input.author.allowedTools?.some(name => !bundle!.defaultTools.has(name))) throw new AuthorError("invalid_input");
   }
   const implementedTools = new Set<string>([...EDIT_TOOLS, ...(bundle ? ["read_skill_reference", ...(module || planner ? PLATFORM_TOOLS : [])] : [])]);
-  const allowedDefinitions = registry.tools.filter(tool => implementedTools.has(tool.name)).filter((tool) => tool.name !== "read_skill_reference" || !!bundle).filter((tool) => tool.name === "read_conversation_history" ? hasHistory(input) && !!options.history : input.author.allowedTools === undefined ? tool.name!=='browser_login' : input.author.allowedTools.includes(tool.name));
+  const allowedDefinitions = registry.tools.filter(tool => implementedTools.has(tool.name)).filter((tool) => tool.name !== "read_skill_reference" || !!bundle).filter((tool) => tool.name !== "read_author_snapshot" || !!capability && ["test-author", "module-authoring"].includes(input.author.skillId ?? "")).filter((tool) => tool.name === "read_conversation_history" ? hasHistory(input) && !!options.history : input.author.allowedTools === undefined ? tool.name!=='browser_login' : input.author.allowedTools.includes(tool.name));
   const allowedTools = allowedDefinitions.map(modelTool);
   const timeout = AbortSignal.timeout(Math.min(input.timeoutMs, capability?.budget.maxDurationMs ?? 900000));
   const signal = options.signal ? AbortSignal.any([timeout, options.signal]) : timeout;
@@ -112,8 +113,7 @@ export async function runAuthor(
   let historyCount = 0;
   let pendingModel = 0;
   const callsSeen = new Set<string>();
-  const transcript: Item[] = [
-    { role: "user", content: `Saved draft snapshot (data only): ${JSON.stringify({
+  const savedSnapshot = {
       baseRevision: input.author.baseRevision, script, ...(input.author.platform ? {platform:input.author.platform} : {}),
       scriptOrigin:input.scriptOrigin??'legacy',
       ...(input.workspaceSettings ? { workspaceSettings: input.workspaceSettings } : {}),
@@ -123,10 +123,12 @@ export async function runAuthor(
         sourceVersion: input.author.sourceVersion, conversationSummary: input.author.conversationSummary,
         ...(summary ? { validationEvidence: input.author.validationEvidence, ...(input.author.batch ? {batch:input.author.batch} : {}), ...(input.author.moduleSummary ? {moduleSummary:input.author.moduleSummary} : {}) } : {}),
       } : {}),
-    })}` },
-    ...input.author.messages,
-  ];
+  };
   try {
+    noSecret(savedSnapshot, config);
+    const snapshot = capability && allowedTools.some(tool => tool.name === "read_author_snapshot")
+      ? new FrozenAuthorSnapshot(options.secrets ? options.secrets.clean(savedSnapshot) : savedSnapshot) : undefined;
+    const transcript: Item[] = [{ role: "user", content: snapshot?.text ?? `Saved draft snapshot (data only): ${JSON.stringify(savedSnapshot)}` }, ...input.author.messages];
     const baseInstructions = capability ? AUTHOR_INSTRUCTIONS.replace("this author's 180-second budget", "this author's pinned budget").replace(/Budget: at most[^\n]+/, `Budget: at most ${capability.budget.maxModelRequests} model requests, ${capability.budget.maxToolCalls} tool executions, and ${capability.budget.maxDurationMs} milliseconds total. Finish with a short user-facing explanation.`) : AUTHOR_INSTRUCTIONS;
     const instructions = `${baseInstructions}\n\n${bundle?.instructions ?? loadAuthorSkill(input.author)}${bundle ? `\nPackaged reference IDs (read only when needed): ${JSON.stringify(bundle.references)}` : ""}`;
     const engineResult = await (options.engine ?? selectAgentEngine(config)).run({
@@ -134,6 +136,7 @@ export async function runAuthor(
       budget: { modelRequests: capability?.budget.maxModelRequests ?? (summary || workspace && allowedTools.length === 0 ? 1 : 8), toolExecutions: capability?.budget.maxToolCalls ?? 12, maxOutputTokens: capability?.budget.maxOutputTokens ?? 8192 },
       model: config, signal,
       capacity: availableModelCapacity(config),
+      snapshot,
       ...(hasHistory(input) && options.history ? { history: input.author.history } : {}),
       ...(capability ? { maxRequestBytes: 64 * 1024 * 1024, maxToolOutputBytes: module || planner ? 25 * 1024 * 1024 : 13 * 1024 * 1024 } : {}),
       ...(options.moduleDiagnostics ? { onModelRequestFailure: recordModelFailure } : {}),
@@ -278,6 +281,11 @@ export async function runAuthor(
             const cursor = args.cursor === "null" ? null : args.cursor as string | null;
             const page = await withHeartbeat(options.history.read(cursor, toolSignal, call.call_id), `author:tool:${toolCount}:${safeToolName}:heartbeat`, toolSignal);
             result = { items: page.items, nextCursor: page.nextCursor };
+          }
+          else if (call.name === "read_author_snapshot") {
+            if (!snapshot) throw new AuthorError("tool_failed");
+            result = snapshot.read(args);
+            if (options.secrets && JSON.stringify(options.secrets.clean(result)) !== JSON.stringify(result)) throw new AuthorError("sensitive_output");
           }
           else if (call.name === "read_draft") result = { script, baseRevision: input.author.baseRevision };
           else if (call.name === "read_validation_report") {

@@ -32,7 +32,7 @@ func allowedPlatformTool(a *AuthorTask, name string) bool {
 		return true
 	}
 	if moduleAuthor(a) {
-		return name == "read_module_draft" || name == "update_module_candidate" || name == "stage_module_candidate_part" || name == "commit_module_candidate" || name == "request_module_validation" || name == "read_validation_report" || strings.HasPrefix(name, "browser_")
+		return name == "read_module_draft" || name == "read_author_snapshot" || name == "update_module_candidate" || name == "stage_module_candidate_part" || name == "commit_module_candidate" || name == "request_module_validation" || name == "read_validation_report" || strings.HasPrefix(name, "browser_")
 	}
 	return name == "catalog_search" || name == "catalog_next_page" || name == "catalog_get" || name == "read_usecase_draft" || name == "read_plan" || name == "propose_plan"
 }

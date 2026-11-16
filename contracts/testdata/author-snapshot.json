@@ -1,0 +1,19 @@
+{
+  "baseRevision": 7,
+  "chunks": [
+    {
+      "text": "a",
+      "repeat": 8191
+    },
+    {
+      "text": "界🙂",
+      "repeat": 3
+    }
+  ],
+  "sha256": "27ba90269bf711192a72f63848a64b2f52f9676ae75f23c07a93767b16e22c71",
+  "pageBytes": [
+    8191,
+    21
+  ],
+  "invalidOffset": 8192
+}

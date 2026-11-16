@@ -61,9 +61,17 @@ test('staging CAS and schema rejection never advance accepted revision or bypass
   assert('error' in (await call('commit_module_candidate',{stagingRevision:1,metadata}) as object)); // no harness
   assert('error' in (await call('stage_module_candidate_part',stage('harness',harness,0)) as object));
   assert.equal((await call('stage_module_candidate_part',stage('harness',harness,1)) as any).revision,2);
+  assert.deepEqual(await call('commit_module_candidate',{stagingRevision:2,metadata}),{candidate:true,selfTestPassed:true});return final;
+ }}});
+ // Each scenario remains within the original 12-tool Run budget. Failed stage
+ // and failed commit assertions use independent attempts, never extra allowance.
+ const commitInput=input();commitInput.runId='22222222-2222-4222-8222-222222222222';commitInput.attemptId='33333333-3333-4333-8333-333333333333';
+ await runAuthor(commitInput,cfg,browser(async()=>{verified++;return {passed:true,summary:'synthetic'};}),{engine:{async run(r){const call=calls(r);
+  assert.equal((await call('stage_module_candidate_part',stage('script',script,0)) as any).revision,1);
+  assert.equal((await call('stage_module_candidate_part',stage('harness',harness,1)) as any).revision,2);
   for(const args of [{stagingRevision:1,metadata},{stagingRevision:2,metadata:{...metadata,slug:'other'}},{stagingRevision:2,metadata:{...metadata,exportName:'return'}},{stagingRevision:2,metadata:{...metadata,signature:'x'.repeat(4096)}}])assert('error' in (await call('commit_module_candidate',args) as object));
   assert.deepEqual(await call('commit_module_candidate',{stagingRevision:2,metadata}),{candidate:true,selfTestPassed:true});return final;
- }}});assert.equal(verified,1);
+ }}});assert.equal(verified,2);
 });
 
 test('failed repair preserves prior verified candidate and staging never becomes a checkpoint',async()=>{

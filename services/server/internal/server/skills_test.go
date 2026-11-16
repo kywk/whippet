@@ -51,7 +51,7 @@ func TestM10SkillSnapshotPolicyAndDrift(t *testing.T) {
 	if input.Model.Provider != "opencode" || input.Budget.MaxModelRequests != 8 {
 		t.Fatal("primary policy missing")
 	}
-	if strings.Join(input.AllowedTools, ",") != "read_conversation_history,read_draft,read_skill_reference" {
+	if strings.Join(input.AllowedTools, ",") != "read_author_snapshot,read_conversation_history,read_draft,read_skill_reference" {
 		t.Fatalf("policy widened %v", input.AllowedTools)
 	}
 	prior := input.Skills[0].SHA256

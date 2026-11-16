@@ -116,7 +116,7 @@ func validAuthorMetadataForMode(a *AuthorTask, script *string, mode authorValida
 		}
 		if registry != nil {
 			// Only runtime-implemented capabilities can be advertised.
-			known = known || name == "read_skill_reference" || platformTool(name)
+			known = known || name == "read_skill_reference" || name == "read_author_snapshot" || platformTool(name)
 			registered := false
 			for _, tool := range registry.Tools {
 				registered = registered || tool.Name == name

@@ -3,10 +3,12 @@ import type { ModelCapacity } from "../../ai/capacity.js";
 import type { EngineItem } from "../engine.js";
 import { AuthorError } from "../types.js";
 import { validateHistoryResult, type HistoryPin } from "../history.js";
+import type { FrozenAuthorSnapshot } from "../snapshot.js";
 
 export interface ContextRetrievalBudget {
   toolCalls: number;
   history?: { pin: HistoryPin; reads: number };
+  snapshot?: FrozenAuthorSnapshot;
 }
 
 export class ContextCapacityError extends Error {
@@ -19,7 +21,7 @@ export const estimateInputTokens = (body: EngineItem) => Buffer.byteLength(JSON.
   input: body.input, instructions: body.instructions, tools: body.tools,
 })) + 512;
 
-function summary(call: EngineItem, item: EngineItem, history?: ContextRetrievalBudget["history"]): { output: string; key: string; history: boolean } | undefined {
+function summary(call: EngineItem, item: EngineItem, retrieval: ContextRetrievalBudget): { output: string; key: string; history: boolean } | undefined {
   if (typeof call.arguments !== "string" || typeof item.output !== "string") return;
   let args: any, value: any;
   try { args = JSON.parse(call.arguments); value = JSON.parse(item.output); } catch { return; }
@@ -32,15 +34,24 @@ function summary(call: EngineItem, item: EngineItem, history?: ContextRetrievalB
     identity = { testId: value.testId, versionId: value.versionId, scriptOrigin: value.scriptOrigin, module: metadata };
   } else if (call.name === "read_skill_reference" && value?.skillId === args?.skillId && value?.referenceId === args?.referenceId && typeof value?.content === "string") {
     identity = { skillId: value.skillId, referenceId: value.referenceId };
-  } else if (call.name === "read_conversation_history" && history && args && Object.keys(args).length === 1 && Object.hasOwn(args, "cursor")) {
+  } else if (call.name === "read_author_snapshot" && retrieval.snapshot) {
+    try {
+      const page = retrieval.snapshot.read(args);
+      if (!value || Object.keys(value).length !== Object.keys(page).length ||
+          !Object.entries(page).every(([key, expected]) => Object.hasOwn(value, key) && value[key] === expected)) return;
+      const { content: _content, ...metadata } = page;
+      identity = metadata;
+      args = { component: page.component, sha256: page.sha256, offsetBytes: args.offsetBytes };
+    } catch { return; }
+  } else if (call.name === "read_conversation_history" && retrieval.history && args && Object.keys(args).length === 1 && Object.hasOwn(args, "cursor")) {
     // Only the model-facing first-page spelling is normalized. IPC stays strict.
     const cursor = args.cursor === "null" ? null : args.cursor;
     if (cursor !== null && typeof cursor !== "string") return;
     try {
-      const page = validateHistoryResult(value, history.pin, cursor);
+      const page = validateHistoryResult(value, retrieval.history.pin, cursor);
       if (!page.items.length) return;
       args = { cursor };
-      identity = { maxSequence: history.pin.maxSequence, items: page.items.map(({ content, ...item }) => ({ ...item, lengthBytes: Buffer.byteLength(content) })), nextCursor: page.nextCursor };
+      identity = { maxSequence: retrieval.history.pin.maxSequence, items: page.items.map(({ content, ...item }) => ({ ...item, lengthBytes: Buffer.byteLength(content) })), nextCursor: page.nextCursor };
       historyResult = true;
     } catch { return; }
   } else return;
@@ -67,12 +78,21 @@ export function fitContext(body: EngineItem, capacity: ModelCapacity, maxOutputT
     const available = new Set((Array.isArray(body.tools) ? body.tools : []).map((t: EngineItem) => t.name));
     const calls = new Map<string, EngineItem>();
     const references = new Set<string>(), historyReferences = new Set<string>();
+    if (retrieval.snapshot && available.has("read_author_snapshot") && items[0]) {
+      for (const choice of retrieval.snapshot.initialReferences(items[0], retrieval.toolCalls)) {
+        items[0] = choice.item;
+        references.clear(); choice.keys.forEach(key => references.add(key));
+        compacted = choice.keys.length;
+        if (estimateInputTokens(copy) <= Math.floor(limit * 0.8)) break;
+      }
+    }
     for (const [index, item] of items.entries()) {
+      if (estimateInputTokens(copy) <= Math.floor(limit * 0.8) || compacted >= 12) break;
       if (item.type === "function_call" && typeof item.call_id === "string") calls.set(item.call_id, item);
       if (index === lastResult || item.type !== "function_call_output" || typeof item.call_id !== "string") continue;
       const call = calls.get(item.call_id);
       if (!call || !available.has(call.name)) continue;
-      const compact = summary(call, item, retrieval.history);
+      const compact = summary(call, item, retrieval);
       if (!compact || Buffer.byteLength(compact.output) >= Buffer.byteLength(String(item.output))) continue;
       if (!references.has(compact.key) && references.size >= retrieval.toolCalls ||
           compact.history && !historyReferences.has(compact.key) && historyReferences.size >= (retrieval.history?.reads ?? 0)) continue;

@@ -27,7 +27,7 @@ export function requestSettings(input: EngineRun, request: number, count: number
     input.tools.some(tool => tool.name === "propose_plan") ? "propose_plan" :
     input.tools.some(tool => tool.name === "commit_module_candidate") ? "commit_module_candidate" : undefined;
   const deliveryTurns = delivery === "commit_module_candidate" ? 5 : 3;
-  const deliveryTools = delivery === "commit_module_candidate" ? ["stage_module_candidate_part", "commit_module_candidate"] : [delivery];
+  const deliveryTools = delivery === "commit_module_candidate" ? ["stage_module_candidate_part", "commit_module_candidate", "read_author_snapshot"] : [delivery, "read_author_snapshot"];
   const reserve = delivery && remaining <= deliveryTurns
     ? `\nCandidate delivery reserve: ${remaining} model requests remaining, ${budget.toolExecutions - count} tool executions remaining. ${delivery === "commit_module_candidate" ? "Stage script and harness with stage_module_candidate_part, then call commit_module_candidate; reserve two turns to stage a self-test repair and commit it again. " : ""}Use ${delivery} now when the collected evidence is sufficient. Preserve every requested assertion. Reserve the following turns for inspecting self-test feedback and repairing the candidate. Do not repeat exploration already covered by tool results. If essential evidence is missing, obtain only that evidence; never invent it or claim unverified success.` : "";
   return {

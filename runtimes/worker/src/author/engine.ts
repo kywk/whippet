@@ -2,6 +2,7 @@ import type { ModelRequestFailureStage } from "./module-diagnostics.js";
 import type { AIConfig } from "../ai/config.js";
 import type { ModelCapacity } from "../ai/capacity.js";
 import type { HistoryPin } from "./history.js";
+import type { FrozenAuthorSnapshot } from "./snapshot.js";
 import { AuthorError } from "./types.js";
 import { guardRequest, modelResponseFailureStage, outputTokenLimit, partialResult, requestSettings } from "./engine-policy.js";
 import { ContextCapacityError, estimateInputTokens, fitContext } from "./engines/context.js";
@@ -22,6 +23,7 @@ export interface EngineRun {
   model: Pick<AIConfig, "reasoningEffort">;
   capacity?: ModelCapacity;
   history?: HistoryPin;
+  snapshot?: FrozenAuthorSnapshot;
   signal: AbortSignal;
   beforeRequest(context: EngineItem[]): EngineItem[];
   // Final serialized-body guard; called after SDK serialization and compaction.
@@ -91,7 +93,7 @@ export const builtinEngine: AgentEngine = {
       } as EngineItem;
       try {
         if (input.capacity) {
-          const fit = fitContext(body, input.capacity, maxOutputTokens, { toolCalls: budget.toolExecutions - count,
+          const fit = fitContext(body, input.capacity, maxOutputTokens, { toolCalls: budget.toolExecutions - count, snapshot: input.snapshot,
             ...(input.history ? { history: { pin: input.history, reads: Math.max(0, 4 - historyCalls) } } : {}) });
           body = fit.body;
           if (fit.compacted) input.onEvent?.(`author:context:compacted:${fit.compacted}`);

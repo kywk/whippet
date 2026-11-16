@@ -199,6 +199,8 @@ M12引擎整合的設計與驗收要求（依Wave逐項實作）：
 
 2026-11-16 Wave7修復：builtin原先在已驗候選之後遇到輸出截斷仍一律失敗，現在與Vercel共用固定回應分類，只有無provider error的max_output_tokens截斷且guard仍持有可信checkpoint才回partial。整份incomplete output不執行，失敗修復稿及模型自報checkpoint不得取代最後通過稿；取消／無可信候選仍停止。原wire與共用鏈額度不變，實際用量含截斷請求，不隱式重送或提高上限，見[v12 Wave7](../../contracts/mvp-v12.md#m121-wave7截斷收尾修復)。
 
+2026-11-16 Wave8有界原稿切片：registry12.0新增read_author_snapshot，只讀本Run凍結的script／Module harness，hash固定，按UTF-8 byte分頁或明確取全文。雙引擎可將saved snapshot的大原稿換成精確可取回的DATA引用，其餘目標／限制／Stage args／契約／revision／證據維持全文；可變草稿與候選提交規則不變。所有取回走原工具額度，交付區間仍可讀必要原文，工具不在或額度不足則停止。Server MCP沿原claim權威讀Run快照，普通Test參考客戶端同樣支援；新registry／skill pins須同版本打包，原Run不重釘。這不是任意大產物編輯、Stage拆解或語意摘要完成，見[v12 Wave8](../../contracts/mvp-v12.md#m121-wave8凍結原稿引用registry-120)。
+
 ### MCP（M11）
 
 - Go Server 使用官方 MCP Go SDK 提供 Streamable HTTP 端點。Agent Token 雜湊保存，綁定單一 Workspace，可撤銷、有速率限制，並寫入稽核紀錄。
