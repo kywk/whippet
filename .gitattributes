@@ -1,0 +1,5 @@
+# Raw tool receipts retain exact bytes for their recorded SHA256 values.
+# Only these generated logs contain upstream trailing blank lines/spaces.
+docs/research/evidence/m12-adapter-wave1-20261116/worker-image-final.txt whitespace=-blank-at-eol,-blank-at-eof
+docs/research/evidence/m12-adapter-wave1-20261116/worker-image-profile-final.txt whitespace=-blank-at-eol,-blank-at-eof
+docs/research/evidence/m12-adapter-wave1-20261116/worker-typecheck.txt whitespace=-blank-at-eol,-blank-at-eof
