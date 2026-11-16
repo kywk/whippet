@@ -304,3 +304,5 @@ budget 新增可選 `maxOutputTokens`，manifest／author 快照使用同一欄�
 ### M109 timeout觀測接線
 
 沿既有default-off M109 gate掛既有AuthorObservation。Manager僅在author且gate on轉送 `author:observe:<1..8>:<event>`；event精確限observation.ts既有17個enum，未知／前後綴／自由文字拒絕。沿原log event／attempt驗證保存，不改sidecar v3或公開Run wire；Server安全投影只收固定grammar與時間。歷史未記錄的headers/body位置仍UNKNOWN，不回填。非成功HTTP body.cancel也受原Run signal約束；此清理修補獨立驗證，不宣稱是retry4原因。
+
+2026-11-16 相容補充：usecase-planner 允許 `{message,conversationSummary?}` 的純訊息阻礙／澄清回覆。僅在同 Run/attempt 沒有成功 plan_candidates 時接受，保存對話但不建立或改寫 Plan，不排入驗證。若已有成功候選，仍須帶最後權威 candidateRef；省略、null、偽造或舊 ref 都拒絕。Worker 從 guard 閉包選 ref，模型 final 仍不得自填 candidateRef／stages／script。Server、Manager、Worker 同批支援；主 skill、工具權限與原候選 CAS 不變。

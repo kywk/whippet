@@ -323,3 +323,10 @@ test('planner preserves authoritative proposal without another model call',async
  assert.equal(requests,1,'a successful canonical proposal needs no extra model turn');
  assert.deepEqual((out as any).planCandidate,{candidateRef:id});
 });
+
+test('planner can report a blocker without inventing a Plan candidate',async()=>{
+ const v=input('usecase-planner');
+ const out=await runAuthor(v,config,undefined,{fetcher:async()=>Response.json({status:'completed',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({message:'請先設定 Workspace 登入角色；尚未建立 Plan。'})}]}]})});
+ assert.equal(out.message,'請先設定 Workspace 登入角色；尚未建立 Plan。');
+ assert.equal((out as any).planCandidate,undefined);assert.equal(out.script,undefined);assert.equal(out.requestValidation,undefined);
+});

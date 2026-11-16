@@ -32,6 +32,16 @@ func (p *Postgres) completePlanner(ctx context.Context, tx *sql.Tx, run, attempt
 	if err != nil {
 		return err
 	}
+	if out.PlanCandidate == nil {
+		var count int
+		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM plan_candidates WHERE run_id=$1 AND attempt_id=$2`, run, attempt).Scan(&count); err != nil {
+			return err
+		}
+		if count != 0 {
+			return ErrConflict
+		}
+		return savePlannerConversation(ctx, tx, run, input, d, session, out)
+	}
 	var ref, hash string
 	var raw []byte
 	err = tx.QueryRowContext(ctx, `SELECT id,content_hash,stages FROM plan_candidates WHERE run_id=$1 AND attempt_id=$2 AND editing_session_id=$3 AND base_revision=$4 AND context_revision=$5 ORDER BY sequence DESC LIMIT 1`, run, attempt, session.ID, input.BaseRevision, input.ContextRevision).Scan(&ref, &hash, &raw)
@@ -69,6 +79,11 @@ func (p *Postgres) completePlanner(ctx context.Context, tx *sql.Tx, run, attempt
 	if _, err = tx.ExecContext(ctx, `INSERT INTO plans(id,test_id,editing_session_id,revision,base_revision,context_revision,status,stages,script_origin) VALUES($1,$2,$3,$4,$5,$6,'draft',$7,'ai') ON CONFLICT(editing_session_id) DO UPDATE SET revision=EXCLUDED.revision,base_revision=EXCLUDED.base_revision,context_revision=EXCLUDED.context_revision,status='draft',stages=EXCLUDED.stages,validation_run_id=NULL,error=NULL,script_origin='ai'`, id, d.TestID, session.ID, revision, d.Revision, session.ContextRevision+1, jsonText(prepared)); err != nil {
 		return err
 	}
+	return savePlannerConversation(ctx, tx, run, input, d, session, out)
+}
+
+func savePlannerConversation(ctx context.Context, tx *sql.Tx, run string, input AuthorInput, d draftState, session EditingSession, out plannerAuthorOutput) error {
+	var err error
 	if _, err = tx.ExecContext(ctx, `INSERT INTO messages(id,conversation_id,role,content,run_id,base_revision) VALUES($1,$2,'assistant',$3,$4,$5)`, NewID(), session.ConversationID, *out.Message, run, input.BaseRevision); err != nil {
 		return err
 	}

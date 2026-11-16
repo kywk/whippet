@@ -84,7 +84,7 @@ func decodeModuleAuthorOutput(data []byte, input AuthorInput, registry *ToolRegi
 }
 func decodePlannerAuthorOutput(data []byte, input AuthorInput, registry *ToolRegistry) (plannerAuthorOutput, error) {
 	var out plannerAuthorOutput
-	if input.SkillID != "usecase-planner" || input.Platform == nil || input.Platform.Module != nil || input.Platform.StageID != nil || decodePlatformFinal(data, MaxAuthorArtifactBytes, &out) != nil || !validAuthorText(out.Message, out.ConversationSummary) || out.PlanCandidate == nil || !ValidID(out.PlanCandidate.CandidateRef) || validateToolSnapshot(input, registry, "propose_plan") != nil {
+	if input.SkillID != "usecase-planner" || input.Platform == nil || input.Platform.Module != nil || input.Platform.StageID != nil || decodePlatformFinal(data, MaxAuthorArtifactBytes, &out) != nil || !validAuthorText(out.Message, out.ConversationSummary) || (out.PlanCandidate != nil && !ValidID(out.PlanCandidate.CandidateRef)) || validateToolSnapshot(input, registry, "propose_plan") != nil {
 		return out, ErrInvalid
 	}
 	// Ownership and last-successful-candidate checks require the completion transaction.

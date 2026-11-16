@@ -132,6 +132,9 @@ func validPlatformArtifact(raw json.RawMessage, a *AuthorTask) bool {
 		var c struct {
 			Ref string `json:"candidateRef"`
 		}
+		if _, present := fields["planCandidate"]; !present {
+			return hasAllowedTool(a, "propose_plan")
+		}
 		return hasAllowedTool(a, "propose_plan") && exactWorkspaceObject(fields["planCandidate"], "candidateRef") && json.Unmarshal(fields["planCandidate"], &c) == nil && uuidPattern.MatchString(c.Ref)
 	}
 	var script string

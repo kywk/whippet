@@ -55,3 +55,15 @@ func TestM10PlatformFinalGuards(t *testing.T) {
 		t.Fatal("ordinary primary platform accepted")
 	}
 }
+
+func TestPlannerBlockerOutputWithoutCandidate(t *testing.T) {
+	input, r := m10PlatformInput(t, "usecase-planner")
+	if _, err := decodePlannerAuthorOutput([]byte(`{"message":"請先設定角色；尚未建立 Plan。"}`), input, r); err != nil {
+		t.Fatal("valid blocker rejected", err)
+	}
+	for _, raw := range []string{`{"message":"blocker","planCandidate":null}`, `{"message":"blocker","script":"fake"}`, `{"message":"blocker","requestValidation":true}`} {
+		if _, err := decodePlannerAuthorOutput([]byte(raw), input, r); err == nil {
+			t.Fatal("unsafe blocker accepted")
+		}
+	}
+}

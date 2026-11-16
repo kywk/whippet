@@ -4,7 +4,7 @@ export const PLATFORM_SERVER_TOOLS = ['catalog_search','catalog_next_page','cata
 export const PLATFORM_TOOLS = [...PLATFORM_SERVER_TOOLS,'update_module_candidate','stage_module_candidate_part','commit_module_candidate','request_module_validation'] as const;
 export interface ModuleMetadata { slug:string; moduleKind:'setup'|'step'|'page'; exportName:string; signature:string; inputs:string; returns:string; preconditions:string; postconditions:string; harness:string }
 export interface PlatformInput { planId:string|null; stageId:string|null; module:ModuleMetadata|null }
-export interface PlannerOutput { script?:never; requestValidation?:never; message:string; planCandidate:{candidateRef:string}; conversationSummary?:string }
+export interface PlannerOutput { script?:never; requestValidation?:never; message:string; planCandidate?:{candidateRef:string}; conversationSummary?:string }
 export const moduleAuthor = (input:AuthorInput) => input.author.skillId === 'module-authoring';
 export const plannerAuthor = (input:AuthorInput) => input.author.skillId === 'usecase-planner';
 const reserved = new Set('await break case catch class const continue debugger default delete do else enum export extends false finally for function if implements import in instanceof interface let new null package private protected public return static super switch this throw true try typeof var void while with yield'.split(' '));

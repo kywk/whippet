@@ -413,8 +413,8 @@ export async function runAuthor(
         options.moduleDiagnostics?.checkpoint(true,true);
         result={message,...structuredClone(moduleCheckpoint),requestValidation:validation,...(conversationSummary!==undefined?{conversationSummary}:{})};
       } else if(planner){
-        if(!planRef || options.secrets && options.secrets.redact(planRef)!==planRef)throw new AuthorError("invalid_response");
-        result={message,planCandidate:{candidateRef:planRef},...(conversationSummary!==undefined?{conversationSummary}:{})};
+        if(planRef && options.secrets && options.secrets.redact(planRef)!==planRef)throw new AuthorError("invalid_response");
+        result={message,...(planRef?{planCandidate:{candidateRef:planRef}}:{}),...(conversationSummary!==undefined?{conversationSummary}:{})};
       } else result = { message, requestValidation: validation, ...(changed ? { script } : {}), ...(conversationSummary !== undefined ? { conversationSummary } : {}) };
     }
     if(options.secrets)result=options.secrets.clean(result);
