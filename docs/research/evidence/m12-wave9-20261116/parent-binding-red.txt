@@ -1,0 +1,6 @@
+=== RUN   TestStageSplitPostgresPreservesPrefixAndResumes
+    plan_split_postgres_test.go:188: original parent binding lost its pinned upstream contract
+--- FAIL: TestStageSplitPostgresPreservesPrefixAndResumes (0.42s)
+FAIL
+FAIL	github.com/whippet/whippet/services/server/internal/server	0.922s
+FAIL

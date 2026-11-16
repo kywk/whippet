@@ -5,6 +5,7 @@ import { batchPublishReady, editableStage, parseStageEditor } from './plan';
 import type { AuthorEngine, Draft, EditingSession, Plan, PlanSummary, StageRetryInput, Run, Version, WhippetApi } from './types';
 import './platform-preview.css';
 import { StageRetryForm } from './StageRetryForm';
+import { StageSplitForm } from './StageSplitForm';
 import { AuthorEngineStatus } from './AuthorEngineStatus';
 
 const planLabels = { draft: '待確認', confirmed: '已暫停，等待繼續確認', running: '逐階段執行中', composed: '已組合，等待驗證／摘要', done: '整批已發佈', stopped: '已停止' };
@@ -28,11 +29,12 @@ export function PlanPanel({ api, testId, session, draft, runs, authorEngine, blo
   const [pending, setPending] = useState(false);
   const [conflict, setConflict] = useState(false);
   const [editor, setEditor] = useState<{ text: string; planRevision: number; draftRevision: number }>();
+  const [splitEditor, setSplitEditor] = useState<{ plan: Plan; index: number }>();
   const [confirmation, setConfirmation] = useState('');
   const lock = useRef(false);
   const sequence = useRef(0);
   const mutationController = useRef<AbortController | undefined>(undefined);
-  useEffect(() => { onGuardChange(pending || Boolean(editor)); return () => onGuardChange(false); }, [pending, editor, onGuardChange]);
+  useEffect(() => { onGuardChange(pending || Boolean(editor) || Boolean(splitEditor)); return () => onGuardChange(false); }, [pending, editor, splitEditor, onGuardChange]);
   useEffect(() => () => mutationController.current?.abort(), []);
 
   const reload = useCallback(async (signal: AbortSignal, explicit = false) => {
@@ -81,13 +83,13 @@ export function PlanPanel({ api, testId, session, draft, runs, authorEngine, blo
   const disabled = blocked || pending || loading || !fresh || conflict;
   const confirmationKey = plan && summary ? JSON.stringify({ plan, summary }) : '';
   const publishReady = !summaryError && batchPublishReady(plan, summary);
-  const mayPublish = !disabled && !editor && publishReady && Boolean(api.publishPlan);
+  const mayPublish = !disabled && !editor && !splitEditor && publishReady && Boolean(api.publishPlan);
   const validationReady = validation?.status === 'succeeded' && validation.id === plan?.validationRunId;
-  const maySummarize = !disabled && !editor && plan?.status === 'composed' && plan.stages.every((stage) => stage.status === 'ready') && validationReady && Boolean(api.requestPlanSummary) && !(summary && ['queued', 'dispatched', 'running', 'collecting', 'cancelling'].includes(summary.status));
+  const maySummarize = !disabled && !editor && !splitEditor && plan?.status === 'composed' && plan.stages.every((stage) => stage.status === 'ready') && validationReady && Boolean(api.requestPlanSummary) && !(summary && ['queued', 'dispatched', 'running', 'collecting', 'cancelling'].includes(summary.status));
   const summaryRun = summary ? runs.find((run) => run.id === summary.runId && run.kind === 'author' && run.authorMode === 'summary') : undefined;
 
   async function retryStage(stageId: string, input: StageRetryInput) {
-    if (lock.current || disabled || editor || !plan || !api.retryStage || !api.getPlan) throw new Error('目前無法重試，請重新確認。');
+    if (lock.current || disabled || editor || splitEditor || !plan || !api.retryStage || !api.getPlan) throw new Error('目前無法重試，請重新確認。');
     const currentPlan = plan;
     lock.current = true; sequence.current++; setPending(true); setFresh(false); setConfirmation(''); setError(undefined);
     const controller = new AbortController(); mutationController.current = controller;
@@ -106,8 +108,25 @@ export function PlanPanel({ api, testId, session, draft, runs, authorEngine, blo
     } finally { lock.current = false; if (!controller.signal.aborted) setPending(false); }
   }
 
+  async function splitStage(stageId: string, input: Parameters<NonNullable<WhippetApi['splitPlanStage']>>[2]) {
+    if (lock.current || disabled || editor || !plan || !api.splitPlanStage || !api.getPlan) throw new Error('目前無法拆分，請重新確認。');
+    lock.current = true; sequence.current++; setPending(true); setFresh(false); setError(undefined); setNote(undefined);
+    const controller = new AbortController(); mutationController.current = controller;
+    try {
+      const receipt = await api.splitPlanStage(plan.id, stageId, input, controller.signal);
+      if (receipt.testId !== testId || receipt.editingSessionId !== session.id) throw new Error('拆分回應所屬範圍不符。');
+      const current = await api.getPlan(testId, session.id, controller.signal);
+      if (controller.signal.aborted) return;
+      setPlan(current); setFresh(true); setSplitEditor(undefined); setSummary(undefined); setValidation(undefined);
+      setNote('已儲存拆分並保留前段成果；尚未開始執行，請檢視各段額度後逐段確認。'); onRefresh();
+    } catch (cause) {
+      if (!controller.signal.aborted) { setConflict(true); setFresh(false); setError(`${errorMessage(cause)} 拆分結果需重新確認；保留輸入與原 CAS，不會自動重送。`); }
+      throw cause;
+    } finally { lock.current = false; if (!controller.signal.aborted) setPending(false); }
+  }
+
   async function mutate(action: 'save' | 'confirm' | 'cancel' | 'summary' | 'publish', throughStageId?: string) {
-    if (lock.current || disabled) return;
+    if (lock.current || disabled || splitEditor) return;
     const currentPlan = plan;
     if (action === 'save' && (!editor || !editable || !api.savePlan)) return;
     if (action !== 'save' && !currentPlan) return;
@@ -168,18 +187,22 @@ export function PlanPanel({ api, testId, session, draft, runs, authorEngine, blo
         <details><summary>參數與回傳綁定</summary><pre className="plan-json">{JSON.stringify(stage.args, null, 2)}</pre><p>綁定別名：{stage.bind || '未設定'}</p></details>
         {stage.authorRunId ? <p className="identifier">Author Run {stage.authorRunId}{authorRun ? <> · <AuthorEngineStatus engine={authorRun.authorEngine ?? 'builtin'} status={authorRun.status} /></> : null}</p> : null}{stage.validationRunId ? <p className="identifier">Validation Run {stage.validationRunId}</p> : null}
         {stage.error ? <Notice message={stage.error} /> : null}
-        {(stage.status === 'failed' || (stage.status === 'ready' && index === plan.stages.length - 1 && plan.status === 'stopped' && Boolean(plan.validationRunId))) && stage.action !== 'reuse' ? <StageRetryForm api={api} planId={plan.id} stageId={stage.id} planRevision={plan.revision} blocked={disabled || Boolean(editor) || plan.status !== 'stopped'} onSubmit={retryStage} /> : null}</li>; })}</ol>
-      <div className="action-row"><button className="button primary" disabled={disabled || Boolean(editor) || !['draft', 'confirmed'].includes(plan.status) || plan.baseRevision !== draft.revision || !api.confirmPlan} onClick={() => { void mutate('confirm'); }}>{plan.status === 'confirmed' ? '確認並繼續剩餘 Stage' : '確認 Plan 並開始'}</button>
-        <button className="button secondary" disabled={disabled || Boolean(editor) || !['draft', 'confirmed'].includes(plan.status) || plan.baseRevision !== draft.revision || !api.confirmPlan || !plan.stages.some(stage => stage.status === 'pending')} onClick={() => { void mutate('confirm', plan.stages.find(stage => stage.status === 'pending')?.id); }}>確認並只執行下一個 Stage</button>
-        <button className="button secondary" disabled={disabled || Boolean(editor) || ['done', 'stopped'].includes(plan.status) || !api.cancelPlan} onClick={() => { void mutate('cancel'); }}>停止 Plan</button></div>
+        {stage.decomposition ? <p>由 {stage.decomposition.sourceStageId} 拆分 · 第 {stage.decomposition.ordinal}／{stage.decomposition.count} 段 · 上限 {stage.decomposition.budget.maxModelRequests} 次模型請求、{stage.decomposition.budget.maxToolCalls} 次工具、{stage.decomposition.budget.maxDurationMs / 1000} 秒。</p> : null}
+        {['draft', 'confirmed'].includes(plan.status) && stage.status === 'pending' && stage.action === 'create' && !stage.decomposition ? <button className="button secondary" disabled={disabled || Boolean(editor) || Boolean(splitEditor) || !api.splitPlanStage} onClick={() => setSplitEditor({ plan, index })}>拆分此 Stage 並保留進度</button> : null}
+        {(stage.status === 'failed' || (stage.status === 'ready' && index === plan.stages.length - 1 && plan.status === 'stopped' && Boolean(plan.validationRunId))) && stage.action !== 'reuse' ? <StageRetryForm api={api} planId={plan.id} stageId={stage.id} planRevision={plan.revision} blocked={disabled || Boolean(editor) || Boolean(splitEditor) || plan.status !== 'stopped'} onSubmit={retryStage} /> : null}</li>; })}</ol>
+      <div className="action-row"><button className="button primary" disabled={disabled || Boolean(editor) || Boolean(splitEditor) || !['draft', 'confirmed'].includes(plan.status) || plan.baseRevision !== draft.revision || !api.confirmPlan} onClick={() => { void mutate('confirm'); }}>{plan.status === 'confirmed' ? '確認並繼續剩餘 Stage' : '確認 Plan 並開始'}</button>
+        <button className="button secondary" disabled={disabled || Boolean(editor) || Boolean(splitEditor) || !['draft', 'confirmed'].includes(plan.status) || plan.baseRevision !== draft.revision || !api.confirmPlan || !plan.stages.some(stage => stage.status === 'pending')} onClick={() => { void mutate('confirm', plan.stages.find(stage => stage.status === 'pending')?.id); }}>確認並只執行下一個 Stage</button>
+        <button className="button secondary" disabled={disabled || Boolean(editor) || Boolean(splitEditor) || ['done', 'stopped'].includes(plan.status) || !api.cancelPlan} onClick={() => { void mutate('cancel'); }}>停止 Plan</button></div>
       {plan.status === 'stopped' ? <p className="inline-hint">已停止，不會自動重跑。失敗 Stage 或整體驗證失敗後的末段可先查詢人工修復資格；修訂整份 Plan 則須儲存後重新確認。</p> : null}
       {plan.status === 'draft' && plan.baseRevision !== draft.revision ? <p className="blocked-hint">Plan 基底與目前草稿不同，請重新載入草稿並修訂計畫。</p> : null}
     </> : null}
-    {editable && fresh ? <div className="plan-editor">{!editor ? <button className="button secondary" disabled={disabled || !api.savePlan} onClick={() => setEditor({ text: JSON.stringify(plan?.stages.map(editableStage) ?? [], null, 2), planRevision: plan?.revision ?? 0, draftRevision: draft.revision })}>{plan ? '修訂 Stage' : '建立 Plan'}</button> : <>
+    {splitEditor ? <StageSplitForm plan={splitEditor.plan} index={splitEditor.index} disabled={disabled} onSubmit={splitStage} onClose={() => setSplitEditor(undefined)} /> : null}
+    {plan?.stages.some(stage => stage.decomposition) ? <p className="inline-hint">此 Plan 已固定拆分額度，保留各段進度；整份重寫與子段重試不會重新分配額度。可繼續確認未執行且尚未拆分的工作，或停止 Plan。</p> : null}
+    {editable && fresh && !plan?.stages.some(stage => stage.decomposition) ? <div className="plan-editor">{!editor ? <button className="button secondary" disabled={disabled || Boolean(splitEditor) || !api.savePlan} onClick={() => setEditor({ text: JSON.stringify(plan?.stages.map(editableStage) ?? [], null, 2), planRevision: plan?.revision ?? 0, draftRevision: draft.revision })}>{plan ? '修訂 Stage' : '建立 Plan'}</button> : <>
       <label className="platform-field">Stage JSON（未儲存）<textarea rows={14} value={editor.text} disabled={pending} onChange={(event) => setEditor({ ...editor, text: event.target.value })} /></label>
       <p className="inline-hint">1–32 個線性 Stage；欄位 id、title、action（reuse/modify/create）、args、bind。複用／修改指定 moduleVersionId；新建指定 module（slug/moduleKind/description）。儲存不會開始執行。</p>
       <p className="muted">編輯基底：Plan r{editor.planRevision} / 草稿 r{editor.draftRevision}；重新載入不會替換這份編輯的 CAS 值。</p>
-      <div className="action-row"><button className="button primary" disabled={disabled || !api.savePlan} onClick={() => { void mutate('save'); }}>儲存 Plan</button><button className="button quiet" disabled={pending} onClick={() => setEditor(undefined)}>放棄本機 Plan 編輯</button></div>
+      <div className="action-row"><button className="button primary" disabled={disabled || Boolean(splitEditor) || !api.savePlan} onClick={() => { void mutate('save'); }}>儲存 Plan</button><button className="button quiet" disabled={pending} onClick={() => setEditor(undefined)}>放棄本機 Plan 編輯</button></div>
     </>}</div> : null}
     {plan ? <section className="platform-card"><h3>整批驗證與摘要</h3>
       {validation ? <RunStatusBadge run={validation} /> : <p>尚未取得 Use Case 真實驗證結果。</p>}

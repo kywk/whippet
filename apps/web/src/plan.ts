@@ -8,10 +8,10 @@ export function editableStage(stage: PlanStageInput): PlanStageInput {
     args: stage.args, ...(stage.bind ? { bind: stage.bind } : {}) };
 }
 
-export function parseStageEditor(text: string): PlanStageInput[] {
+export function parseStageEditor(text: string, priorStageIDs: Iterable<string> = []): PlanStageInput[] {
   const value: unknown = JSON.parse(text);
   if (!Array.isArray(value) || value.length < 1 || value.length > 32) throw new Error('Plan 必須包含 1–32 個 Stage。');
-  const seen = new Set<string>();
+  const seen = new Set<string>(priorStageIDs);
   const object = (item: unknown): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item));
   for (const item of value) {
     if (!object(item) || Object.keys(item).some((key) => !['id', 'title', 'action', 'moduleTestId', 'moduleVersionId', 'module', 'args', 'bind'].includes(key))) throw new Error('Stage 只可編輯 id/title/action/moduleTestId/moduleVersionId/module/args/bind，不可送出執行狀態。');

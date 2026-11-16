@@ -1,0 +1,11 @@
+{
+  "status": "PASS",
+  "realAPI": true,
+  "casConflictRetainsEditor": true,
+  "splitSavedAndReread": true,
+  "explicitConfirmation": true,
+  "posts": 2,
+  "authorRunsQueued": 0,
+  "paidModelRequests": 0,
+  "smallViewportFits": true
+}

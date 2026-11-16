@@ -52,6 +52,11 @@ func (p *Postgres) inspectStageRetry(ctx context.Context, tx *sql.Tx, plan *Plan
 		return r, ErrNotFound
 	}
 	stage := plan.Stages[index]
+	if policy, _, e := readStageSplit(ctx, tx, plan.ID, stage.ID); e != nil {
+		return r, e
+	} else if policy != nil {
+		return retryReason(r, "split_budget_reserved"), nil
+	}
 	var workspace string
 	if err := tx.QueryRowContext(ctx, `SELECT t.workspace_id FROM tests t JOIN editing_sessions e ON e.test_id=t.id WHERE t.id=$1 AND e.id=$2 AND t.kind='usecase'`, plan.TestID, plan.EditingSessionID).Scan(&workspace); err != nil {
 		return r, dbError(err)

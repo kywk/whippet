@@ -201,6 +201,10 @@ M12引擎整合的設計與驗收要求（依Wave逐項實作）：
 
 2026-11-16 Wave8有界原稿切片：registry12.0新增read_author_snapshot，只讀本Run凍結的script／Module harness，hash固定，按UTF-8 byte分頁或明確取全文。雙引擎可將saved snapshot的大原稿換成精確可取回的DATA引用，其餘目標／限制／Stage args／契約／revision／證據維持全文；可變草稿與候選提交規則不變。所有取回走原工具額度，交付區間仍可讀必要原文，工具不在或額度不足則停止。Server MCP沿原claim權威讀Run快照，普通Test參考客戶端同樣支援；新registry／skill pins須同版本打包，原Run不重釘。這不是任意大產物編輯、Stage拆解或語意摘要完成，見[v12 Wave8](../../contracts/mvp-v12.md#m121-wave8凍結原稿引用registry-120)。
 
+2026-11-16 Wave9有界拆分：新增人工管理操作，將未嘗試的create Stage拆成兩個線性Stage，保留其他Stage狀態及固定驗證綁定。原Stage的模型／工具／作者時間額度預先分配，原8／12／180000拆成各4／6／90000，單次output不變；凍結policy及每子段唯一Run分配不可變。確認前不排任務；既有逐段確認／回收後續接／Compose／人工發佈門檻保留。父Stage原目標與binding上游契約留在子段DATA，超限停止。拆分子段不遞迴拆分或補額重試，Plan不允許整份覆寫抹除分配。精確範圍見[v12 Wave9](../../contracts/mvp-v12.md#m121-wave9有界-stage-拆分與保留進度續接)。
+
+M12範圍收斂（2026-11-16，依本輪同意的推進建議）：供應商金額計價與跨獨立任務／Stage retry／全Plan／帳號的共用配額移至後續里程碑，不作M12完成門檻；與MVP原先不含完整配額系統一致。M12仍必須保證受控continue及Stage拆分不增加原資源上限；一般長對話語意摘要、任意大候選與Module跨Run checkpoint等未完成能力持續明列，不用放寬預算取代實作。
+
 ### MCP（M11）
 
 - Go Server 使用官方 MCP Go SDK 提供 Streamable HTTP 端點。Agent Token 雜湊保存，綁定單一 Workspace，可撤銷、有速率限制，並寫入稽核紀錄。

@@ -4,6 +4,7 @@ import { validRepairContent } from './plan';
 import type { StageRetry, StageRetryInput, WhippetApi } from './types';
 
 const reasons: Record<NonNullable<StageRetry['reason']>, string> = {
+  split_budget_reserved: '拆分子 Stage 的額度已固定，不能用重試補回額度',
   plan_not_stopped: 'Plan 尚未停止', stage_not_retryable: '此 Stage 不適用人工重試', cancelled: '此工作已取消',
   source_unavailable: '無法確認原始執行來源', session_closed: '原 Module 編輯週期已關閉', reclaim_pending: '原工作尚未完成回收',
   snapshot_mismatch: '來源快照與目前版本不一致', prior_stage_invalid: '前序 Stage 資格已失效', scope_unavailable: '執行範圍尚未就緒',

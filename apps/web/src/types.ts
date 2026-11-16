@@ -220,6 +220,7 @@ export interface PlanStageInput {
   bind?: string;
 }
 export interface PlanStage extends PlanStageInput {
+  decomposition?: { sourceStageId: string; ordinal: number; count: number; budget: { maxModelRequests: number; maxToolCalls: number; maxDurationMs: number; maxOutputTokens?: number } };
   status: 'pending' | 'authoring' | 'validating' | 'ready' | 'failed';
   draftRevision?: number;
   candidateVersionId?: string;
@@ -242,7 +243,7 @@ export interface Plan {
 }
 export interface StageRetry {
   eligible: boolean;
-  reason: null | 'plan_not_stopped' | 'stage_not_retryable' | 'cancelled' | 'source_unavailable' | 'session_closed' | 'reclaim_pending' | 'snapshot_mismatch' | 'prior_stage_invalid' | 'scope_unavailable';
+  reason: null | 'plan_not_stopped' | 'stage_not_retryable' | 'cancelled' | 'source_unavailable' | 'session_closed' | 'reclaim_pending' | 'snapshot_mismatch' | 'prior_stage_invalid' | 'scope_unavailable' | 'split_budget_reserved';
   planRevision: number;
   source: null | { moduleTestId: string; editingSessionId: string; moduleRevision: number; moduleContextRevision: number; authorRunId: string; authorStatus: RunStatus; validationRunId: string | null; validationStatus: RunStatus | null; reclaimed: boolean };
 }
@@ -400,6 +401,7 @@ export interface WhippetApi {
   savePlan?: (testId: string, input: { editingSessionId: string; revision: number; planRevision: number; stages: PlanStageInput[] }, signal?: AbortSignal) => Promise<Plan>;
   getStageRetry?: (planId: string, stageId: string, signal?: AbortSignal) => Promise<StageRetry>;
   retryStage?: (planId: string, stageId: string, input: StageRetryInput, signal?: AbortSignal) => Promise<Plan>;
+  splitPlanStage?: (planId: string, stageId: string, input: { planRevision: number; confirmed: true; stages: PlanStageInput[] }, signal?: AbortSignal) => Promise<Plan>;
   confirmPlan?: (planId: string, planRevision: number, signal?: AbortSignal, throughStageId?: string) => Promise<Plan>;
   cancelPlan?: (planId: string, planRevision: number, signal?: AbortSignal) => Promise<Plan>;
   getPlanSummary?: (planId: string, signal?: AbortSignal) => Promise<PlanSummary | null>;

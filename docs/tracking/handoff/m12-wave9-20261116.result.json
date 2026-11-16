@@ -1,0 +1,79 @@
+{
+  "date": "2026-11-16",
+  "timezone": "Asia/Taipei",
+  "baseCommit": "aaafe35d65b820b7b8ae15e8eeace0cca92569a3",
+  "branch": "feat/agent-adapter",
+  "scope": "unattempted create Stage -> two stages, frozen allocation, preserved verified prefix",
+  "verification": {
+    "goTopLevelPassed": 6,
+    "goEngineSubcasesPassed": 2,
+    "goFinalFailures": 0,
+    "goSkipped": 0,
+    "uiFlowsPassed": 1,
+    "workerRequestsPerEngine": 3,
+    "workerToolCallsPerEngine": 3,
+    "workerSelfTestsPerEngine": 1,
+    "paidModelRequests": 0,
+    "fullRegressionRun": false,
+    "serverBuild": "PASS",
+    "workerBuild": "PASS",
+    "webTypecheckBuild": "PASS"
+  },
+  "budget": {
+    "original": [
+      8,
+      12,
+      180000
+    ],
+    "children": [
+      [
+        4,
+        6,
+        90000
+      ],
+      [
+        4,
+        6,
+        90000
+      ]
+    ],
+    "moduleMaxOutputTokens": 16384
+  },
+  "baseline": {
+    "main": "576816622d988049d36453c7b3dabed9feeadd28",
+    "stateValid": true,
+    "managerIdentityValid": true,
+    "portsAllTrue": true,
+    "mcpPinsValid": true,
+    "mcpReady": true,
+    "candidateDeployed": false
+  },
+  "cleanup": {
+    "ownedTmpfsPostgresRemoved": true,
+    "retainedVolumesTouched": false,
+    "uiCandidateProcessesStopped": true
+  },
+  "deferredScope": [
+    "monetary pricing",
+    "quotas spanning independent tasks or all Plan/account work"
+  ],
+  "remaining": [
+    "general semantic conversation compaction",
+    "arbitrary large candidate editing",
+    "cross-Run Module checkpoints",
+    "formal model comparison and M12.Z"
+  ],
+  "sha256": {
+    "parent-binding-red.txt": "d9834c5bca7a5e21fd02611b9a494d89109e414454ac815110a2c112272881a4",
+    "server-final.txt": "23baf1c8c6d6accab948a950cd90f50eeb71ccc14f6814418020b32874e33b8d",
+    "server-two-stage-final.txt": "2f8083377584be9e4642433178258e6bad2a131f845f6eb3b2e6342836d807df",
+    "ui-final2/result.json": "8f8c2e3d893cd181e18d2b59c883bd2183d9dc784b975936d4f8da53188a6ec8",
+    "ui-final2/desktop.png": "0b6362c9acb5e684d1398c562233da044883d6e262c2b5effc5b1c869280542d",
+    "ui-final2/narrow.png": "5e4c31e5ad09075a6085e85eb3a9536123065d88201913eadd77a6c4734c19ee"
+  },
+  "secretScan": {
+    "files": 37,
+    "findings": 0,
+    "valuesPrinted": false
+  }
+}

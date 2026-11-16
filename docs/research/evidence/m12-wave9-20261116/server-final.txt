@@ -1,0 +1,18 @@
+=== RUN   TestPlanStageAuthorReceivesPinnedContext
+--- PASS: TestPlanStageAuthorReceivesPinnedContext (0.19s)
+=== RUN   TestPlanConfirmThroughPausesAfterValidation
+--- PASS: TestPlanConfirmThroughPausesAfterValidation (0.20s)
+=== RUN   TestStageSplitPostgresPreservesPrefixAndResumes
+--- PASS: TestStageSplitPostgresPreservesPrefixAndResumes (0.41s)
+=== RUN   TestStageSplitPostgresFailureAndStrictInput
+--- PASS: TestStageSplitPostgresFailureAndStrictInput (0.19s)
+=== RUN   TestStageSplitBudgetConservation
+--- PASS: TestStageSplitBudgetConservation (0.00s)
+=== RUN   TestStageSplitRealWorkerBudget
+=== RUN   TestStageSplitRealWorkerBudget/builtin
+=== RUN   TestStageSplitRealWorkerBudget/vercel
+--- PASS: TestStageSplitRealWorkerBudget (0.85s)
+    --- PASS: TestStageSplitRealWorkerBudget/builtin (0.42s)
+    --- PASS: TestStageSplitRealWorkerBudget/vercel (0.43s)
+PASS
+ok  	github.com/whippet/whippet/services/server/internal/server	2.160s

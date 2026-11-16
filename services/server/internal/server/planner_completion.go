@@ -70,6 +70,11 @@ func (p *Postgres) completePlanner(ctx context.Context, tx *sql.Tx, run, attempt
 			return ErrConflict
 		}
 		id = current.ID
+		if split, e := hasStageSplits(ctx, tx, id); e != nil {
+			return e
+		} else if split {
+			return ErrConflict
+		}
 		revision = current.Revision + 1
 	}
 	prepared, err := preparePlanStages(ctx, tx, session.WorkspaceID, stages)

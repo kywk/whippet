@@ -120,9 +120,18 @@ func (p *Postgres) enqueuePlanModuleAuthor(ctx context.Context, tx *sql.Tx, plan
 	if err = snapshotAuthor(&input); err != nil {
 		return Run{}, err
 	}
+	split, err := applyStageSplit(ctx, tx, plan, stage, &input)
+	if err != nil {
+		return Run{}, err
+	}
 	run, err := enqueueAuthorSnapshot(ctx, tx, d, input, Run{authorizationRevision: auth, scopeProposalID: proposal})
 	if err != nil {
 		return Run{}, err
+	}
+	if split {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO plan_stage_split_runs(plan_id,stage_id,run_id) VALUES($1,$2,$3)`, plan.ID, stage.ID, run.ID); err != nil {
+			return Run{}, err
+		}
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO messages(id,conversation_id,role,content,run_id,base_revision) VALUES($1,$2,'user',$3,$4,$5)`, NewID(), s.ConversationID, message, run.ID, d.Revision); err != nil {
 		return Run{}, err

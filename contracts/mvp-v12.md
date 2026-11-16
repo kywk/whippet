@@ -1,5 +1,7 @@
 # M12.1 Wave1：Worker 引擎接縫
 
+最新增量：Wave9 的有界 Stage 拆分與續接見文末；不改既有原始收據或 Run pins。
+
 狀態：2026-11-16 Wave1 已實作。本節固定 Runtime 內部接縫與後端設定；**沒有升級 HTTP／WS protocol_version、修改 Run dispatch 或放寬 v10 author.json**。Workspace／skill 的 engine、provider 快照屬 M12.2；受控continue的跨Run資源總額見下方Wave4，不能由Wave1推定完成。
 
 ## 後端選擇
@@ -164,3 +166,39 @@ Server及Manager各自拒絕null、重複／未知／缺欄、負數、非整數
 執行依claim固定budget及原硬期限，30秒心跳；控制與工具MCP請求起點至少間隔1秒，以符合原burst10／每秒補1限流。429保留原狀態並回`rate_limited`，沒有隱式重送。HTTP僅literal loopback，其餘HTTPS；不跟redirect或自動切Server。Token、目前及未選中provider key禁止出現在模型body、MCP參數、回應資料或候選；journal 0600、父目錄0700，token同樣驗本人／regular／單硬連結與權限。
 
 final僅接受既有普通Test輸出欄位，拒絕partial、自報proof／validated、未知或重複key。提交仍是未自試AI候選，requestValidation僅請求獨立正式Run，無發佈路徑。本波真MCP＋暫存DB流程使用合成模型回應，沒有新增付費模型呼叫、正式驗證或黃金比較；完整真模型／Docker／其他skill驗收不由本節推定完成。
+
+## M12.1 Wave9：有界 Stage 拆分與保留進度續接
+
+2026-11-16。新增 migration 028、人工管理操作與設定 UI；沒有新增 Agent 工具或改 HTTP／WS envelope、runtime digest、Worker artifact、registry、skill 或模型依賴。需先套用 migration 028 的候選 Server；固定基準未部署。
+
+### 人工拆分與交易
+
+`POST /api/plans/{id}/stages/{stageId}/split` 只收 `{planRevision,confirmed:true,stages:[child1,child2]}`，回 `{plan:Plan}`。沿既有管理 gate；MCP 不提供此操作。JSON 上限 64KiB，未知／重複／null 必填欄位拒絕，子段只收既有 PlanStageInput，不能提交執行狀態、模型、runtime 或 budget。
+
+僅支援 draft／confirmed Plan 中未嘗試、pending 的 create Stage。Plan／Use Case revision 與 context 必須一致；沒有執行中或未回收的相關 Run。confirmed Plan 的前段必須 ready 且原候選／正式驗證／revision／context／hash／回收仍有效；draft 的前段可以尚未執行。後段必須 pending。running／stopped／取消後 Plan、modify／reuse、已有 author 或 candidate、拆分子段均拒絕，不將失敗重試包裝為新拆分。
+
+每次固定拆為兩個 create 子段，moduleKind 不變、ID／slug 唯一、總 Stage 數仍最多32；slug 不能占用同 Workspace 的既有 Module。最後一段保留原 Stage ID 與 bind，後段原 binding 不改。以完整 Plan 校驗 args／binding；原目標、完整原 Stage 描述與 args 留在不可變來源，語意是否等價仍須人工確認與原驗證門檻。
+
+交易保留其他 Stage 的 status／Run／candidate／validation IDs，僅替換來源 Stage；增加 Plan revision 與 Use Case context revision，清除執行邊界及舊摘要。拆分本身不排 author、validation 或 publish。新子段仍走既有 confirm／throughStageId，逐段作者→自試候選→正式驗證→回收後才往下；整體仍須 Compose／正式驗證／人工整批發佈。
+
+`plan_stage_splits` 保存原請求、來源、policy 與歷史結果；相同 Plan revision／stage／body 重送回原結果，不再建立子段。不同 body 或 stale CAS 回衝突。UI 在操作後重新 GET，目前狀態不由歷史 receipt 推斷；衝突保留輸入及原 CAS，不自動重送。
+
+### 不增加額度的分配
+
+拆分時固定 module-authoring 當時的首筆 skill policy／pins／runtime，將原模型請求／工具／作者時間總額均分；餘數依子段順序分配，單次 output cap 維持原值。原8／12／180000分成各4／6／90000，Module output仍16384。這是保留原上限的預先分配，不是增加新 Run 預算或依模型自報用量找回餘額。
+
+代表 Worker 流程每段需3次請求執行 script／harness 暫存與完整 commit，因此本波限兩段；三段會讓一段僅剩2次請求，不能以提高原預算解決。若來源 policy 不足每段3次請求／3次工具，拒絕分配。沒有其他供應商計價或 SDK 額度推測。
+
+派工先核對現有 skill／registry 與凍結 policy 一致，再套用子段 budget 及原 runtime；pins 漂移停止。`plan_stage_split_runs` 同交易保存每個子段唯一 Run 分配，不能更新、刪除或重複排入。未用完額度不移轉，失敗／取消不補回。拆分 Plan 禁止以整份 SavePlan／planner 覆寫清除分配，拆分子段的既有 retry 查詢回 `split_budget_reserved`。這個限制顯示於 UI；需要重規劃時先停止並明確開始新的編輯週期，不隱式建立續接鏈。
+
+### 當前 Stage 背景與保真
+
+各子 Run 保留完整來源 Stage DATA，並帶入當前 args、直接 binding、父 Stage 原 args 所引用的上游固定 Module 契約及緊鄰前段契約。上游契約仍只能來自同 Plan 已驗候選或已發佈固定版，不含其他 Module 原始碼／harness，不查最新版。父 binding 不能因拆成後段而失去其來源 version／candidate 引用。
+
+沿用 Stage context15000字元、整份對話32000字元與最多12則限制；超限停止，不截斷原目標或擴大容量。分頁原稿工具、自試、scope、完整候選 parser、正式驗證與發佈規則不變。
+
+### 本波範圍與證據
+
+已驗證：保留已完成候選前段→拆分→兩段各自驗證與暫停→Compose；驗證失敗停止；併發／重送／CAS／注入拒絕／不可變額度；兩正式 Worker 引擎各在4／6／90000內完成合成流程；真候選 API 的 UI 儲存／重讀與409保留編輯。模型與自試為合成，不能當作付費模型、真 Playwright 或階段全套驗收。見 [Wave9交接](../docs/tracking/handoff/m12-wave9-20261116.md)。
+
+本波不實作自動語意拆解、失敗 Stage 的自動恢復、Module 跨 Run checkpoint、任意大候選分段編輯或一般長對話語意摘要。金額計價與跨獨立任務／Stage retry／整個 Plan／帳號的共用配額移至後續里程碑；M12 保留受控 continue 與拆分群組的原固定資源上限，既有獨立任務不被聲稱為全平台總額控制。

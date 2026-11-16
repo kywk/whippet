@@ -14,6 +14,14 @@ func (p *Postgres) planAuthorContext(ctx context.Context, tx *sql.Tx, plan *Plan
 	if err := tx.QueryRowContext(ctx, `SELECT workspace_id FROM tests WHERE id=$1`, plan.TestID).Scan(&workspace); err != nil {
 		return "", err
 	}
+	_, source, err := readStageSplit(ctx, tx, plan.ID, stage.ID)
+	if err != nil {
+		return "", err
+	}
+	var parentArgs map[string]StageArgument
+	if source != nil {
+		parentArgs = source.Args
+	}
 	type contract struct {
 		StageID   string              `json:"stageId"`
 		VersionID string              `json:"versionId"`
@@ -32,9 +40,11 @@ func (p *Postgres) planAuthorContext(ctx context.Context, tx *sql.Tx, plan *Plan
 		// Binding sources and the immediately preceding stage provide data shape
 		// and page preconditions. Unrelated source implementations stay private.
 		needed := false
-		for _, arg := range stage.Args {
-			if arg.Kind == "binding" && arg.StageID == prior.ID {
-				needed = true
+		for _, args := range []map[string]StageArgument{stage.Args, parentArgs} {
+			for _, arg := range args {
+				if arg.Kind == "binding" && arg.StageID == prior.ID {
+					needed = true
+				}
 			}
 		}
 		for i := range plan.Stages {

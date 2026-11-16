@@ -191,6 +191,12 @@ function parseTest(value: unknown): Test {
 
 function parsePlanStage(value: unknown): PlanStage {
   const data = record(value);
+  const split = data.decomposition == null ? undefined : record(data.decomposition);
+  const budget = split ? record(split.budget) : undefined;
+  const decomposition = split && budget ? { sourceStageId: string(split.sourceStageId), ordinal: revision(split.ordinal), count: revision(split.count), budget: {
+    maxModelRequests: revision(budget.maxModelRequests), maxToolCalls: revision(budget.maxToolCalls), maxDurationMs: revision(budget.maxDurationMs),
+    ...(budget.maxOutputTokens == null ? {} : { maxOutputTokens: revision(budget.maxOutputTokens) }) } } : undefined;
+  if (decomposition && (decomposition.count !== 2 || decomposition.ordinal < 1 || decomposition.ordinal > decomposition.count || decomposition.budget.maxModelRequests < 1 || decomposition.budget.maxDurationMs < 1)) throw new ApiError('Stage 拆分額度格式不符。', 'INVALID_RESPONSE');
   const module = data.module == null ? undefined : record(data.module);
   const args = Object.fromEntries(Object.entries(record(data.args)).map(([key, value]) => {
     const arg = record(value);
@@ -199,7 +205,7 @@ function parsePlanStage(value: unknown): PlanStage {
     const parsed: StageArgument = kind === 'literal' ? { kind, value: arg.value as JsonValue } : { kind, stageId: string(arg.stageId), path: array(arg.path, string) };
     return [key, parsed];
   }));
-  return { id: string(data.id), title: string(data.title), action: choice(data.action, ['reuse', 'modify', 'create'] as const),
+  return { id: string(data.id), title: string(data.title), decomposition, action: choice(data.action, ['reuse', 'modify', 'create'] as const),
     status: choice(data.status, ['pending', 'authoring', 'validating', 'ready', 'failed'] as const),
     moduleTestId: optionalString(data.moduleTestId), moduleVersionId: optionalString(data.moduleVersionId),
     module: module ? { slug: string(module.slug), moduleKind: choice(module.moduleKind, ['setup', 'step', 'page'] as const), description: string(module.description) } : undefined,
@@ -209,7 +215,7 @@ function parsePlanStage(value: unknown): PlanStage {
 function parseStageRetry(value: unknown): StageRetry {
   const data = record(value);
   const eligible = bool(data.eligible);
-  const reason = data.reason === null ? null : choice(data.reason, ['plan_not_stopped', 'stage_not_retryable', 'cancelled', 'source_unavailable', 'session_closed', 'reclaim_pending', 'snapshot_mismatch', 'prior_stage_invalid', 'scope_unavailable'] as const);
+  const reason = data.reason === null ? null : choice(data.reason, ['plan_not_stopped', 'stage_not_retryable', 'cancelled', 'source_unavailable', 'session_closed', 'reclaim_pending', 'snapshot_mismatch', 'prior_stage_invalid', 'scope_unavailable', 'split_budget_reserved'] as const);
   const planRevision = revision(data.planRevision);
   const raw = data.source === null ? null : record(data.source);
   const source = raw && { moduleTestId: string(raw.moduleTestId), editingSessionId: string(raw.editingSessionId), moduleRevision: revision(raw.moduleRevision), moduleContextRevision: revision(raw.moduleContextRevision), authorRunId: string(raw.authorRunId), authorStatus: parseStatus(raw.authorStatus), validationRunId: nullableString(raw.validationRunId), validationStatus: raw.validationStatus === null ? null : parseStatus(raw.validationStatus), reclaimed: bool(raw.reclaimed) };
@@ -528,6 +534,12 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     async getStageRetry(planId, stageId, signal) {
       const data = record(await request(`/plans/${id(planId)}/stages/${id(stageId)}/retry`, 'GET', signal));
       return parseStageRetry(data.retry);
+    },
+    async splitPlanStage(planId, stageId, input, signal) {
+      const data = record(await request(`/plans/${id(planId)}/stages/${id(stageId)}/split`, 'POST', signal, { ...input, stages: input.stages.map(editableStage) }, false, 200));
+      const plan = parsePlan(data.plan);
+      if (plan.id !== planId) throw new ApiError('拆分回應所屬 Plan 不符。', 'INVALID_RESPONSE');
+      return plan;
     },
     async retryStage(planId, stageId, input, signal) {
       if (!validRepairContent(input.content) || input.confirmed !== true || !Number.isSafeInteger(input.planRevision) || input.planRevision < 1 || !Number.isSafeInteger(input.moduleRevision) || input.moduleRevision < 1 || !Number.isSafeInteger(input.moduleContextRevision) || input.moduleContextRevision < 0) throw new ApiError('修復指示或重試 CAS 格式不符。', 'INVALID_REQUEST');

@@ -27,12 +27,13 @@ type PlanStageInput struct {
 }
 type PlanStage struct {
 	PlanStageInput
-	Status             string  `json:"status"`
-	DraftRevision      *int    `json:"draftRevision,omitempty"`
-	CandidateVersionID *string `json:"candidateVersionId,omitempty"`
-	AuthorRunID        *string `json:"authorRunId,omitempty"`
-	ValidationRunID    *string `json:"validationRunId,omitempty"`
-	Error              *string `json:"error,omitempty"`
+	Decomposition      *StageDecomposition `json:"decomposition,omitempty"`
+	Status             string              `json:"status"`
+	DraftRevision      *int                `json:"draftRevision,omitempty"`
+	CandidateVersionID *string             `json:"candidateVersionId,omitempty"`
+	AuthorRunID        *string             `json:"authorRunId,omitempty"`
+	ValidationRunID    *string             `json:"validationRunId,omitempty"`
+	Error              *string             `json:"error,omitempty"`
 }
 type Plan struct {
 	ThroughStageID   *string     `json:"throughStageId,omitempty"`
@@ -224,6 +225,11 @@ func (p *Postgres) SavePlan(ctx context.Context, test, session string, revision,
 			return nil, ErrConflict
 		}
 		id = current.ID
+		if split, e := hasStageSplits(ctx, tx, id); e != nil {
+			return nil, e
+		} else if split {
+			return nil, ErrConflict
+		}
 	}
 	stages, err := preparePlanStages(ctx, tx, s.WorkspaceID, inputs)
 	if err != nil {
