@@ -40,8 +40,8 @@ PG_NAME = PREFIX + "-pg"
 PG_VOLUME = PREFIX + "-pgdata"
 MANAGER_NAME = PREFIX + "-manager"
 PG_IMAGE = "postgres:16"
-MANAGER_IMAGE = "sha256:b1ad5410cdc64e7a6163a11e62e04a4f573d57698f307896d3811fa6cc0ed302"
-WORKER_IMAGE = "sha256:f7306c35d1d7a6dd6924e6eec4a4b06fe2ee5c1733b9b600732c625b9cb4d66a"
+MANAGER_IMAGE = "sha256:9a40bb218706c170fcdbdd72696454a0e8162cede26a9b7ed076dd94ca204265"
+WORKER_IMAGE = "sha256:da0455e85470410015fc6e559c8286183816ba7423c99960e6668f27f61deeb8"
 PORTS = {"web": 19987, "target": 19988, "api": 19989}
 PRIVATE_FILES = ("vault-key", "manager-token", "pg-password", "target-credentials.json",
                  "manager.env", "qa.crt", "qa.key", "state.json")

@@ -20,7 +20,25 @@ func (p *Postgres) advancePlanInTx(ctx context.Context, tx *sql.Tx, plan *Plan, 
 	if d.Revision != plan.BaseRevision || session.ContextRevision != plan.ContextRevision {
 		return stop("Use Case context changed")
 	}
+	boundary := len(plan.Stages) - 1
+	if plan.ThroughStageID != nil {
+		boundary = -1
+		for i, stage := range plan.Stages {
+			if stage.ID == *plan.ThroughStageID {
+				boundary = i
+			}
+		}
+		if boundary < 0 {
+			return stop("Plan execution boundary unavailable")
+		}
+	}
 	for i := range plan.Stages {
+		if i > boundary {
+			plan.Status = "confirmed"
+			plan.Revision++
+			_, err := tx.ExecContext(ctx, `UPDATE plans SET status='confirmed',revision=$2,stages=$3 WHERE id=$1`, plan.ID, plan.Revision, jsonText(plan.Stages))
+			return err
+		}
 		stage := &plan.Stages[i]
 		if stage.Status == "ready" {
 			continue

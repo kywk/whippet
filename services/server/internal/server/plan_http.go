@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 )
 
@@ -71,8 +72,9 @@ func (a *API) confirmPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		PlanRevision int  `json:"planRevision"`
-		Confirmed    bool `json:"confirmed"`
+		PlanRevision   int             `json:"planRevision"`
+		Confirmed      bool            `json:"confirmed"`
+		ThroughStageID json.RawMessage `json:"throughStageId"`
 	}
 	if err := decodeBody(w, r, &body); err != nil {
 		a.fail(w, err)
@@ -87,7 +89,25 @@ func (a *API) confirmPlan(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, ErrConflict)
 		return
 	}
-	plan, err := store.ConfirmPlan(r.Context(), id, body.PlanRevision)
+	var plan *Plan
+	var err error
+	if len(body.ThroughStageID) > 0 {
+		var through string
+		if json.Unmarshal(body.ThroughStageID, &through) != nil || through == "" {
+			a.fail(w, ErrInvalid)
+			return
+		}
+		limited, ok := a.store.(interface {
+			ConfirmPlanThrough(context.Context, string, int, string) (*Plan, error)
+		})
+		if !ok {
+			a.fail(w, ErrConflict)
+			return
+		}
+		plan, err = limited.ConfirmPlanThrough(r.Context(), id, body.PlanRevision, through)
+	} else {
+		plan, err = store.ConfirmPlan(r.Context(), id, body.PlanRevision)
+	}
 	if err != nil {
 		a.fail(w, err)
 		return

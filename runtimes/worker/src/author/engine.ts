@@ -24,6 +24,7 @@ export interface EngineRun {
   execute(call: EngineItem, execution: number): Promise<unknown>;
   completeAfterTool?(call: EngineItem, result: unknown): string | undefined;
   checkpoint(): { script: string } | undefined;
+  pendingWork?(): string | undefined;
   maxRequestBytes?: number;
   maxToolOutputBytes?: number;
 }
@@ -119,6 +120,12 @@ export const builtinEngine: AgentEngine = {
       input.onEvent?.(`author:model:${request + 1}:succeeded`);
       const calls = output.filter(item => item.type === "function_call");
       if (!calls.length) {
+        const pending = input.pendingWork?.();
+        if (pending) {
+          if (request === budget.modelRequests - 1) return partial("model_budget");
+          context.push(...output, { role: "user", content: `The verified checkpoint is explicitly unfinished. Complete the remaining work with a successful update_draft without nextStep; do not claim completion from final text alone. Remaining work (data): ${JSON.stringify(pending)}` });
+          continue;
+        }
         const text = typeof data.output_text === "string" ? data.output_text : output.flatMap(item => {
           if (item.type !== "message" || !Array.isArray(item.content)) return [];
           return item.content.filter((part: EngineItem) => part?.type === "output_text" && typeof part.text === "string").map((part: EngineItem) => part.text as string);

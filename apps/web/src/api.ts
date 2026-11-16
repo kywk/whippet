@@ -200,7 +200,7 @@ function parsePlan(value: unknown): Plan {
   if (!stages.length || stages.length > 32 || new Set(stages.map((stage) => stage.id)).size !== stages.length) throw new ApiError('Plan Stage 清單格式不符。', 'INVALID_RESPONSE');
   return { id: string(data.id), testId: string(data.testId), editingSessionId: string(data.editingSessionId),
     revision: revision(data.revision), baseRevision: revision(data.baseRevision), contextRevision: revision(data.contextRevision),
-    status: choice(data.status, ['draft', 'confirmed', 'running', 'composed', 'done', 'stopped'] as const), stages,
+    status: choice(data.status, ['draft', 'confirmed', 'running', 'composed', 'done', 'stopped'] as const), stages, throughStageId: optionalString(data.throughStageId),
     validationRunId: optionalString(data.validationRunId), error: optionalString(data.error) };
 }
 function hash(value: unknown): string {
@@ -514,8 +514,8 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
       if (plan.id !== planId) throw new ApiError('重試 Plan 回應不符。', 'INVALID_RESPONSE');
       return plan;
     },
-    async confirmPlan(planId, planRevision, signal) {
-      const data = record(await request(`/plans/${id(planId)}/confirm`, 'POST', signal, { planRevision, confirmed: true }, false, 200));
+    async confirmPlan(planId, planRevision, signal, throughStageId) {
+      const data = record(await request(`/plans/${id(planId)}/confirm`, 'POST', signal, { planRevision, confirmed: true, ...(throughStageId ? { throughStageId } : {}) }, false, 200));
       const plan = parsePlan(data.plan);
       if (plan.id !== planId) throw new ApiError('Plan 回應不符。', 'INVALID_RESPONSE');
       return plan;

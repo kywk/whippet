@@ -273,3 +273,12 @@ test("four platform skills load as pinned auxiliaries with registered tools and 
     }
   }
 });
+
+test('optional update_draft explanations use provider non-strict schema while local guard stays closed',()=>{
+ const tool=loadToolRegistry().tools.find(t=>t.name==='update_draft')!;
+ assert.equal(modelTool(tool).strict,false);
+ validateToolArguments(tool,{script:'candidate',message:'保留說明'});
+ assert.throws(()=>validateToolArguments(tool,{script:'candidate',message:null}));
+ assert.throws(()=>validateToolArguments(tool,{script:'candidate',nextStep:null}));
+ assert.throws(()=>validateToolArguments(tool,{script:'candidate',extra:true}));
+});

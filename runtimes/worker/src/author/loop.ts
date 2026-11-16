@@ -91,6 +91,9 @@ export async function runAuthor(
   const stagedParts: Partial<Record<"script" | "harness", string>> = {};
   let moduleCheckpoint: {script:string;module:ModuleMetadata} | undefined;
   let planRef: string | undefined;
+  let candidateMessage: string | undefined;
+  let candidateNextStep: string | undefined;
+  let modelRequests = 0;
   let changed = false;
   let validation = false;
   let toolCount = 0;
@@ -155,7 +158,7 @@ export async function runAuthor(
       },
       onEvent: (event) => {
         const match = /^author:model:(\d+):started$/.exec(event);
-        if (match) {pendingModel = Number(match[1]);observation.start(pendingModel);}
+        if (match) {modelRequests = Number(match[1]);pendingModel = Number(match[1]);observation.start(pendingModel);}
         if (/^author:model:\d+:succeeded$/.test(event)) {pendingModel = 0;observation.accepted();}
         options.progress?.(event);
       },
@@ -168,14 +171,15 @@ export async function runAuthor(
         if (call.name !== "propose_plan" || !planRef || !result || typeof result !== "object") return undefined;
         const proposal = result as { candidate?: unknown; candidateRef?: unknown };
         return proposal.candidate === true && proposal.candidateRef === planRef
-          ? JSON.stringify({ message: "Plan 提案已保存，請確認 Stage 後再執行。" }) : undefined;
+          ? JSON.stringify({ message: `Plan 提案已保存；本輪模型請求 ${modelRequests}/${input.author.budget!.maxModelRequests}。Stage 尚未執行或發佈；下一步請確認 Stage，再執行與正式驗證，最後確認整批發佈。` }) : undefined;
       } } : capability && !summary && !workspace ? { completeAfterTool: (call: Item, result: unknown) => {
-        if (call.name !== "update_draft" || !checkpoint || !result || typeof result !== "object") return undefined;
+        if (call.name !== "update_draft" || candidateNextStep || !checkpoint || !result || typeof result !== "object") return undefined;
         const candidate = result as { candidateSaved?: unknown; selfTestStatus?: unknown };
         return candidate.candidateSaved === true && candidate.selfTestStatus === "passed"
-          ? JSON.stringify({ message: "候選稿已通過自我試跑，接續正式驗證。" }) : undefined;
+          ? JSON.stringify({ message: candidateMessage ?? "候選稿已通過自我試跑，接續正式驗證。" }) : undefined;
       } } : {}),
       checkpoint: () => checkpoint === undefined ? undefined : { script: checkpoint.script },
+      pendingWork: () => candidateNextStep,
       execute: async (call, execution) => {
         toolCount = execution;
         if (typeof call.call_id !== "string" || !call.call_id || callsSeen.has(call.call_id) || typeof call.arguments !== "string" || typeof call.name !== "string") throw new AuthorError("invalid_response");
@@ -265,6 +269,12 @@ export async function runAuthor(
             if (browser?.verifyDraft) {
               const check = await withHeartbeat(browser.verifyDraft(next, { signal: toolSignal }), `author:tool:${toolCount}:${safeToolName}:heartbeat`, toolSignal);
               if (check.passed) {
+                for (const value of [args.message,args.nextStep]) if (value !== undefined) {
+                  noSecret(value, config.apiKey);
+                  if (options.secrets && options.secrets.clean(value) !== value) throw new AuthorError("sensitive_output");
+                }
+                candidateNextStep = args.nextStep as string | undefined;
+                candidateMessage = args.message as string | undefined;
                 checkpoint = { script: next, scriptHash: sha256(next) };
                 script = next;
                 changed = script !== input.script;
@@ -367,7 +377,8 @@ export async function runAuthor(
       // The adapter's claimed checkpoint is never authority. Rebuild from guard state.
       const { reason, nextStep } = engineResult.partial;
       if (!["model_budget", "tool_budget"].includes(reason) || !boundedText(nextStep, 8192, true)) throw new AuthorError("invalid_response");
-      const partial: EnginePartial = { reason, nextStep: options.secrets ? options.secrets.redact(nextStep) : nextStep };
+      const savedNextStep = checkpoint && candidateNextStep ? candidateNextStep : nextStep;
+      const partial: EnginePartial = { reason, nextStep: options.secrets ? options.secrets.redact(savedNextStep) : savedNextStep };
       if (!boundedText(partial.nextStep, 8192, true)) throw new AuthorError("invalid_response");
       const cleaned = checkpoint === undefined ? undefined : options.secrets ? options.secrets.redact(checkpoint.script) : checkpoint.script;
       if (checkpoint !== undefined && cleaned === checkpoint.script && sha256(checkpoint.script) === checkpoint.scriptHash && (!config.apiKey || !checkpoint.script.includes(config.apiKey))) partial.checkpoint = { script: checkpoint.script };
@@ -378,7 +389,7 @@ export async function runAuthor(
       const savedCheckpoint = partial.checkpoint && checkpoint && allowedTools.some(tool => tool.name === "update_draft") &&
         (!options.secrets || options.secrets.redact(checkpoint.script) === checkpoint.script) ? checkpoint : undefined;
       const output: AuthorOutput = {
-        message: savedCheckpoint ? "本輪已達預算上限，已保留最後通過自我試跑的候選稿；仍需正式驗證。" : "本輪已達預算上限，尚無可保留的已驗證候選稿。可繼續完成剩餘工作。",
+        message: `本輪模型請求 ${modelRequests}/${capability.budget.maxModelRequests}。` + (savedCheckpoint ? "已達預算上限，已保留最後通過自我試跑的候選稿；剩餘工作尚未完成，仍須正式驗證。" : "已達預算上限，尚無可保留的已驗證候選稿。可繼續完成剩餘工作。"),
         requestValidation: false,
         partial: { reason: "budget_exhausted", nextStep: partial.nextStep },
       };

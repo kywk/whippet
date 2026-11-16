@@ -154,6 +154,7 @@ PM 在各波實作前固定 HTTP／dispatch／輸出與遷移規則；Server／R
 - Module 版本保存 slug、moduleKind、簽章、輸入與回傳說明、harness 腳本。slug 在 Workspace 內唯一。
 - Use Case 的 revision 保存 stages JSON。發佈時寫入 `version_dependencies(version_id, module_version_id)`，引用版本固定且不可變。
 - Plan 屬於 Use Case 的編輯週期，保存 stages、每個 Stage 的狀態、連結的 Module Test 與失敗原因；狀態：draft → confirmed → running → composed → done／stopped。
+- `POST /api/plans/:id/confirm` 可選 `throughStageId`：只授權執行至指定 Stage。該段作者、正式驗證與回收完成後，Plan 以 `confirmed` 暫停，後續 Stage 保持 pending；再次確認可執行下一段或省略此欄繼續全部。恢復前重核草稿／context CAS 及前序固定候選證據；重送相同 revision 必須使用相同邊界，不重複派工。完整 Plan 才 Compose，沒有部分組合或部分發佈。
 - 發佈交易同時核對 Use Case 與本次新 Module 版本的驗證、摘要與 revision；任一項不成立就整批回滾。
 
 ### 執行
@@ -199,3 +200,5 @@ PM 在各波實作前固定 HTTP／dispatch／輸出與遷移規則；Server／R
 - `runtimes/agent-bridge/` 是參考外部 Worker，以 MCP 接單模式連線，不能直接存取 DB 或 Manager。
 
 2026-11-16 交付保留補強：Module 交付區間至少保留五次模型請求，才能在同一個8次總上限內完成 script、harness、commit、自試修一段及再次 commit；一般 Test／Planner 仍為三次。已驗候選依 guard 完成，不提高總模型／工具／時間預算。
+
+2026-11-16 作者收尾補強：registry 11.3 的 `update_draft` 可附 `message` 與 `nextStep`（各最多2048字元）。成功自試後保留同次修改說明；有 `nextStep` 則保留已驗 partial，不由自試成功或模型最後文字推定整體完成。用完既定請求後輸出守衛持有的 checkpoint、剩餘工作及實際用量；既有 continue 的 session/revision/context CAS 與去重不變。選填工具欄位在供應商使用 non-strict 表示，Worker／Server 仍以原 schema 拒絕 null／未知欄位。Planner 保存提案後回報模型用量與人工確認、執行、驗證、發佈的下一步。

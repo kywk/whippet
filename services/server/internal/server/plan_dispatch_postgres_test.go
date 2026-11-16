@@ -3,7 +3,9 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -38,7 +40,7 @@ func runM10PlanModuleFlow(t *testing.T, mode string, bridge func(*testing.T, *Po
 		stage.Action = "modify"
 	}
 	inputs := []PlanStageInput{stage}
-	if mode == "create_context" {
+	if mode == "create_context" || mode == "create_pause" {
 		inputs = append(inputs, PlanStageInput{ID: "downstream", Title: "consume output", Action: "create", Module: &PlannedModule{Slug: "downstream", ModuleKind: "step", Description: "Consume prior output"}, Args: map[string]StageArgument{"input": {Kind: "binding", StageID: stage.ID, Path: []string{}}}})
 	}
 	plan, err := p.SavePlan(ctx, item.ID, editing.ID, editing.Draft.Revision, 0, inputs)
@@ -48,6 +50,26 @@ func runM10PlanModuleFlow(t *testing.T, mode string, bridge func(*testing.T, *Po
 	if mode == "active_session" {
 		if _, _, err = p.StartEditingSession(ctx, plan.Stages[0].ModuleTestID); err != nil {
 			t.Fatal(err)
+		}
+	}
+	var confirmedRun string
+	if mode == "create_pause" {
+		limited, ok := any(p).(interface {
+			ConfirmPlanThrough(context.Context, string, int, string) (*Plan, error)
+		})
+		if !ok {
+			t.Fatal("Stage-limited confirmation unavailable")
+		}
+		confirmed, e := limited.ConfirmPlanThrough(ctx, plan.ID, plan.Revision, stage.ID)
+		if e != nil || confirmed.Status != "running" || confirmed.Stages[0].AuthorRunID == nil {
+			t.Fatal("limited confirmation", e)
+		}
+		confirmedRun = *confirmed.Stages[0].AuthorRunID
+		if _, e = limited.ConfirmPlanThrough(ctx, plan.ID, plan.Revision, "downstream"); !errors.Is(e, ErrConflict) {
+			t.Fatal("different confirmation body replayed", e)
+		}
+		if repeated, e := limited.ConfirmPlanThrough(ctx, plan.ID, plan.Revision, stage.ID); e != nil || *repeated.Stages[0].AuthorRunID != confirmedRun {
+			t.Fatal("confirmation duplicated", e)
 		}
 	}
 	tx, err := p.DB.BeginTx(ctx, nil)
@@ -63,7 +85,10 @@ func runM10PlanModuleFlow(t *testing.T, mode string, bridge func(*testing.T, *Po
 	if _, err = tx.ExecContext(ctx, `UPDATE plans SET status='running' WHERE id=$1`, plan.ID); err != nil {
 		t.Fatal(err)
 	}
-	run, err := p.dispatchPlanModule(ctx, tx, plan, item.WorkspaceID, 0)
+	run := confirmedRun
+	if mode != "create_pause" {
+		run, err = p.dispatchPlanModule(ctx, tx, plan, item.WorkspaceID, 0)
+	}
 	if mode == "active_session" {
 		if err == nil {
 			t.Fatal("active Module session taken over")
@@ -160,6 +185,29 @@ func runM10PlanModuleFlow(t *testing.T, mode string, bridge func(*testing.T, *Po
 	}
 	if err = p.ReleaseSlots(ctx, "m10-stage", nil); err != nil {
 		t.Fatal(err)
+	}
+	if mode == "create_pause" {
+		paused, e := p.Plan(ctx, item.ID, editing.ID)
+		if e != nil || paused.Status != "confirmed" || paused.Stages[0].Status != "ready" || paused.Stages[1].Status != "pending" || paused.Stages[1].AuthorRunID != nil || paused.ValidationRunID != nil {
+			t.Fatal("did not pause after Stage validation", e)
+		}
+		if next, e := p.Claim(ctx, "m10-stage", 1); e != nil || next != nil {
+			t.Fatal("unconfirmed Stage dispatched", e)
+		}
+		limited := any(p).(interface {
+			ConfirmPlanThrough(context.Context, string, int, string) (*Plan, error)
+		})
+		if _, e = limited.ConfirmPlanThrough(ctx, plan.ID, paused.Revision, stage.ID); !errors.Is(e, ErrConflict) {
+			t.Fatal("ready boundary accepted", e)
+		}
+		resumed, e := p.ConfirmPlan(ctx, plan.ID, paused.Revision)
+		if e != nil || resumed.Status != "running" || resumed.Stages[1].AuthorRunID == nil {
+			t.Fatal("resume failed", e)
+		}
+		if _, e = p.CancelPlan(ctx, plan.ID, resumed.Revision); e != nil {
+			t.Fatal(e)
+		}
+		return
 	}
 	if mode == "create_context" {
 		a, err := p.Claim(ctx, "m10-stage", 1)
@@ -441,4 +489,8 @@ func TestComposeFailureAllowsLastStageRepair(t *testing.T) {
 
 func TestCancelledComposeDoesNotAllowLastStageRepair(t *testing.T) {
 	runM10PlanModuleFlow(t, "create_compose_cancel", nil)
+}
+
+func TestPlanConfirmThroughPausesAfterValidation(t *testing.T) {
+	runM10PlanModuleFlow(t, "create_pause", nil)
 }

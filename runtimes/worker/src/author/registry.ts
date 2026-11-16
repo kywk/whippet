@@ -45,7 +45,8 @@ export function modelTool(tool: ToolDefinition) {
   // Only provider representation drops extension keywords; guard uses original schema.
   const extended = JSON.stringify(tool.inputSchema).includes('"x-max') || JSON.stringify(tool.inputSchema).includes('"oneOf"');
   const parameters = extended ? JSON.parse(JSON.stringify(tool.inputSchema, (key,value) => key.startsWith("x-") ? undefined : value)) as ToolSchema : tool.inputSchema;
-  let strict = !extended;
+  const optional = Object.keys(tool.inputSchema.properties).some(name => !tool.inputSchema.required.includes(name));
+  let strict = !extended && !optional;
   if (tool.name === "catalog_search") {
     // This one closed, fully-required object is compatible after local-only
     // extensions are removed. Never infer compatibility for other tools.

@@ -7,7 +7,7 @@ import './platform-preview.css';
 import { StageRetryForm } from './StageRetryForm';
 import { AuthorEngineStatus } from './AuthorEngineStatus';
 
-const planLabels = { draft: '待確認', confirmed: '已確認', running: '逐階段執行中', composed: '已組合，等待驗證／摘要', done: '整批已發佈', stopped: '已停止' };
+const planLabels = { draft: '待確認', confirmed: '已暫停，等待繼續確認', running: '逐階段執行中', composed: '已組合，等待驗證／摘要', done: '整批已發佈', stopped: '已停止' };
 const stageLabels = { pending: '等待前一階段', authoring: '作者任務中', validating: '驗證中', ready: '就緒', failed: '失敗' };
 const actionLabels = { reuse: '複用', modify: '修改', create: '新建' };
 interface Props {
@@ -106,12 +106,12 @@ export function PlanPanel({ api, testId, session, draft, runs, authorEngine, blo
     } finally { lock.current = false; if (!controller.signal.aborted) setPending(false); }
   }
 
-  async function mutate(action: 'save' | 'confirm' | 'cancel' | 'summary' | 'publish') {
+  async function mutate(action: 'save' | 'confirm' | 'cancel' | 'summary' | 'publish', throughStageId?: string) {
     if (lock.current || disabled) return;
     const currentPlan = plan;
     if (action === 'save' && (!editor || !editable || !api.savePlan)) return;
     if (action !== 'save' && !currentPlan) return;
-    if (action === 'confirm' && (editor || currentPlan?.status !== 'draft' || !api.confirmPlan || currentPlan.baseRevision !== draft.revision)) return;
+    if (action === 'confirm' && (editor || !currentPlan || !['draft', 'confirmed'].includes(currentPlan.status) || !api.confirmPlan || currentPlan.baseRevision !== draft.revision)) return;
     if (action === 'cancel' && (!api.cancelPlan || currentPlan?.status === 'done' || currentPlan?.status === 'stopped')) return;
     if (action === 'summary' && !maySummarize) return;
     if (action === 'publish' && (!mayPublish || confirmation !== confirmationKey || !summary)) return;
@@ -139,7 +139,7 @@ export function PlanPanel({ api, testId, session, draft, runs, authorEngine, blo
       } else {
         const next = action === 'save'
           ? await api.savePlan!(testId, { editingSessionId: session.id, revision: editor!.draftRevision, planRevision: editor!.planRevision, stages: stageInputs! }, controller.signal)
-          : action === 'confirm' ? await api.confirmPlan!(currentPlan!.id, currentPlan!.revision, controller.signal)
+          : action === 'confirm' ? await api.confirmPlan!(currentPlan!.id, currentPlan!.revision, controller.signal, throughStageId)
           : await api.cancelPlan!(currentPlan!.id, currentPlan!.revision, controller.signal);
         if (controller.signal.aborted) return;
         if (next.testId !== testId || next.editingSessionId !== session.id) throw new Error('Plan 回應所屬範圍不符。');
@@ -169,7 +169,8 @@ export function PlanPanel({ api, testId, session, draft, runs, authorEngine, blo
         {stage.authorRunId ? <p className="identifier">Author Run {stage.authorRunId}{authorRun ? <> · <AuthorEngineStatus engine={authorRun.authorEngine ?? 'builtin'} status={authorRun.status} /></> : null}</p> : null}{stage.validationRunId ? <p className="identifier">Validation Run {stage.validationRunId}</p> : null}
         {stage.error ? <Notice message={stage.error} /> : null}
         {(stage.status === 'failed' || (stage.status === 'ready' && index === plan.stages.length - 1 && plan.status === 'stopped' && Boolean(plan.validationRunId))) && stage.action !== 'reuse' ? <StageRetryForm api={api} planId={plan.id} stageId={stage.id} planRevision={plan.revision} blocked={disabled || Boolean(editor) || plan.status !== 'stopped'} onSubmit={retryStage} /> : null}</li>; })}</ol>
-      <div className="action-row"><button className="button primary" disabled={disabled || Boolean(editor) || plan.status !== 'draft' || plan.baseRevision !== draft.revision || !api.confirmPlan} onClick={() => { void mutate('confirm'); }}>確認 Plan 並開始</button>
+      <div className="action-row"><button className="button primary" disabled={disabled || Boolean(editor) || !['draft', 'confirmed'].includes(plan.status) || plan.baseRevision !== draft.revision || !api.confirmPlan} onClick={() => { void mutate('confirm'); }}>{plan.status === 'confirmed' ? '確認並繼續剩餘 Stage' : '確認 Plan 並開始'}</button>
+        <button className="button secondary" disabled={disabled || Boolean(editor) || !['draft', 'confirmed'].includes(plan.status) || plan.baseRevision !== draft.revision || !api.confirmPlan || !plan.stages.some(stage => stage.status === 'pending')} onClick={() => { void mutate('confirm', plan.stages.find(stage => stage.status === 'pending')?.id); }}>確認並只執行下一個 Stage</button>
         <button className="button secondary" disabled={disabled || Boolean(editor) || ['done', 'stopped'].includes(plan.status) || !api.cancelPlan} onClick={() => { void mutate('cancel'); }}>停止 Plan</button></div>
       {plan.status === 'stopped' ? <p className="inline-hint">已停止，不會自動重跑。失敗 Stage 或整體驗證失敗後的末段可先查詢人工修復資格；修訂整份 Plan 則須儲存後重新確認。</p> : null}
       {plan.status === 'draft' && plan.baseRevision !== draft.revision ? <p className="blocked-hint">Plan 基底與目前草稿不同，請重新載入草稿並修訂計畫。</p> : null}

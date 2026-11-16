@@ -42,6 +42,11 @@ func savePlanOperation(ctx context.Context, tx *sql.Tx, plan *Plan, operation st
 	return err
 }
 func (p *Postgres) ConfirmPlan(ctx context.Context, id string, revision int) (*Plan, error) {
+	return p.ConfirmPlanThrough(ctx, id, revision, "")
+}
+
+// An empty boundary confirms the remaining Plan; a Stage ID confirms only through that Stage.
+func (p *Postgres) ConfirmPlanThrough(ctx context.Context, id string, revision int, through string) (*Plan, error) {
 	if revision < 1 {
 		return nil, ErrInvalid
 	}
@@ -59,31 +64,43 @@ func (p *Postgres) ConfirmPlan(ctx context.Context, id string, revision int) (*P
 		return nil, err
 	}
 	if prior != nil {
+		if stringValue(prior.ThroughStageID) != through {
+			return nil, ErrConflict
+		}
 		return prior, tx.Commit()
 	}
-	if plan.Revision != revision || plan.Status != "draft" || plan.BaseRevision != d.Revision || plan.ContextRevision != s.ContextRevision {
+	if plan.Revision != revision || (plan.Status != "draft" && plan.Status != "confirmed") || plan.BaseRevision != d.Revision || plan.ContextRevision != s.ContextRevision {
 		return nil, ErrConflict
 	}
-	hasWork := false
-	for _, stage := range plan.Stages {
-		if stage.Action != "reuse" {
-			hasWork = true
+	boundary := -1
+	firstPending := -1
+	for i, stage := range plan.Stages {
+		if stage.ID == through {
+			boundary = i
+		}
+		if stage.Status != "ready" && firstPending < 0 {
+			firstPending = i
+		}
+		if stage.Status == "ready" {
+			if err = p.retryPriorStage(ctx, tx, plan, stage, s.WorkspaceID); err != nil {
+				return nil, ErrConflict
+			}
 		}
 	}
-	if hasWork {
-		plan.Status = "running"
-		plan.Revision++
-		if _, err = tx.ExecContext(ctx, `UPDATE plans SET status='running',revision=$2 WHERE id=$1`, plan.ID, plan.Revision); err != nil {
-			return nil, err
-		}
-		if err = p.advancePlanInTx(ctx, tx, plan, d, s); err != nil {
-			return nil, err
-		}
-	} else {
-		plan, err = composePlan(ctx, tx, plan, d, s)
-		if err != nil {
-			return nil, err
-		}
+	if through != "" && (boundary < 0 || boundary < firstPending || firstPending < 0) {
+		return nil, ErrConflict
+	}
+	plan.ThroughStageID = nil
+	if through != "" {
+		plan.ThroughStageID = &through
+	}
+	plan.Status = "running"
+	plan.Revision++
+	if _, err = tx.ExecContext(ctx, `UPDATE plans SET status='running',revision=$2,through_stage_id=$3 WHERE id=$1`, plan.ID, plan.Revision, plan.ThroughStageID); err != nil {
+		return nil, err
+	}
+	if err = p.advancePlanInTx(ctx, tx, plan, d, s); err != nil {
+		return nil, err
 	}
 	if err = savePlanOperation(ctx, tx, plan, "confirm", revision); err != nil {
 		return nil, err

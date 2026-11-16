@@ -28,7 +28,7 @@ test("production v10 budget returns guard-owned checkpoint, never queues validat
   let requests = 0;
   const output = await runAuthor(task(), config, browser, { onPartial: event => { if (event.checkpoint) event.checkpoint.script = "observer tamper"; }, fetcher: async () => {
     requests++; return Response.json({ status: "completed", output: [
-      { type: "function_call", call_id: "save", name: "update_draft", arguments: JSON.stringify({ script }) },
+      { type: "function_call", call_id: "save", name: "update_draft", arguments: JSON.stringify({ script, nextStep: "仍須完成剩餘業務步驟後正式驗證。" }) },
       { type: "function_call", call_id: "validate", name: "request_validation", arguments: "{}" },
     ] });
   } }) as AuthorOutput;

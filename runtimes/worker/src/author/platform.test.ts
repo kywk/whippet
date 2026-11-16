@@ -184,7 +184,7 @@ test('observer does not count forged feedback content and observer exceptions ca
  }
 });
 
-test('only catalog search becomes provider strict in actual fetch while local guards stay strict',async()=>{
+test('only fully required schemas become provider strict while local guards stay closed',async()=>{
  const {modelTool,validateToolArguments}=await import('./registry.js');
  const registry=loadToolRegistry(),search=registry.tools.find(t=>t.name==='catalog_search')!;
  const before=JSON.stringify(search.inputSchema);
@@ -195,7 +195,7 @@ test('only catalog search becomes provider strict in actual fetch while local gu
   for(const definition of body.tools){
    const original=registry.tools.find(t=>t.name===definition.name)!;
    assert.deepEqual(definition.parameters,JSON.parse(JSON.stringify(original.inputSchema,(key,value)=>key.startsWith('x-')?undefined:value)));
-   const oldStrict=!JSON.stringify(original.inputSchema).includes('"x-max')&&!JSON.stringify(original.inputSchema).includes('"oneOf"');
+   const oldStrict=Object.keys(original.inputSchema.properties).every(name=>original.inputSchema.required.includes(name))&&!JSON.stringify(original.inputSchema).includes('"x-max')&&!JSON.stringify(original.inputSchema).includes('"oneOf"');
    assert.equal(definition.strict,definition.name==='catalog_search'?true:oldStrict);
   }
   assert.equal(body.tools.find((t:any)=>t.name==='catalog_search').strict,true);
@@ -203,7 +203,7 @@ test('only catalog search becomes provider strict in actual fetch while local gu
   return new Response('SECRET_SENTINEL strict unsupported',{status:400});
  }}),(e:any)=>e.code==='provider_failed'&&!e.message.includes('SECRET_SENTINEL'));
  assert.equal(requests,1,'provider rejection must not fallback or retry');
- for(const tool of registry.tools){const oldStrict=!JSON.stringify(tool.inputSchema).includes('"x-max')&&!JSON.stringify(tool.inputSchema).includes('"oneOf"');assert.equal(modelTool(tool).strict,tool.name==='catalog_search'?true:oldStrict);}
+ for(const tool of registry.tools){const oldStrict=Object.keys(tool.inputSchema.properties).every(name=>tool.inputSchema.required.includes(name))&&!JSON.stringify(tool.inputSchema).includes('"x-max')&&!JSON.stringify(tool.inputSchema).includes('"oneOf"');assert.equal(modelTool(tool).strict,tool.name==='catalog_search'?true:oldStrict);}
  assert.equal(JSON.stringify(search.inputSchema),before);
  for(const args of [{query:'界'.repeat(400),limit:10},{query:'x',limit:0},{query:'x',limit:21},{query:'x',limit:1.5}])assert.throws(()=>validateToolArguments(search,args));
  assert.throws(()=>modelTool({...search,inputSchema:{...search.inputSchema,required:['query']}}));

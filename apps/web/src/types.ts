@@ -207,6 +207,7 @@ export interface PlanStage extends PlanStageInput {
   error?: string;
 }
 export interface Plan {
+ throughStageId?: string;
   id: string;
   testId: string;
   editingSessionId: string;
@@ -378,7 +379,7 @@ export interface WhippetApi {
   savePlan?: (testId: string, input: { editingSessionId: string; revision: number; planRevision: number; stages: PlanStageInput[] }, signal?: AbortSignal) => Promise<Plan>;
   getStageRetry?: (planId: string, stageId: string, signal?: AbortSignal) => Promise<StageRetry>;
   retryStage?: (planId: string, stageId: string, input: StageRetryInput, signal?: AbortSignal) => Promise<Plan>;
-  confirmPlan?: (planId: string, planRevision: number, signal?: AbortSignal) => Promise<Plan>;
+  confirmPlan?: (planId: string, planRevision: number, signal?: AbortSignal, throughStageId?: string) => Promise<Plan>;
   cancelPlan?: (planId: string, planRevision: number, signal?: AbortSignal) => Promise<Plan>;
   getPlanSummary?: (planId: string, signal?: AbortSignal) => Promise<PlanSummary | null>;
   requestPlanSummary?: (planId: string, planRevision: number, validationRunId: string, signal?: AbortSignal) => Promise<Run>;

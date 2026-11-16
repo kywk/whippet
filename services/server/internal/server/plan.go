@@ -35,6 +35,7 @@ type PlanStage struct {
 	Error              *string `json:"error,omitempty"`
 }
 type Plan struct {
+	ThroughStageID   *string     `json:"throughStageId,omitempty"`
 	ID               string      `json:"id"`
 	TestID           string      `json:"testId"`
 	EditingSessionID string      `json:"editingSessionId"`
@@ -47,12 +48,12 @@ type Plan struct {
 	Error            *string     `json:"error,omitempty"`
 }
 
-const planColumns = `id,test_id,editing_session_id,revision,base_revision,context_revision,status,stages,validation_run_id,error`
+const planColumns = `id,test_id,editing_session_id,revision,base_revision,context_revision,status,stages,validation_run_id,error,through_stage_id`
 
 func scanPlan(row scanner) (*Plan, error) {
 	var p Plan
 	var raw []byte
-	err := row.Scan(&p.ID, &p.TestID, &p.EditingSessionID, &p.Revision, &p.BaseRevision, &p.ContextRevision, &p.Status, &raw, &p.ValidationRunID, &p.Error)
+	err := row.Scan(&p.ID, &p.TestID, &p.EditingSessionID, &p.Revision, &p.BaseRevision, &p.ContextRevision, &p.Status, &raw, &p.ValidationRunID, &p.Error, &p.ThroughStageID)
 	if err == nil {
 		err = json.Unmarshal(raw, &p.Stages)
 	}
@@ -232,7 +233,7 @@ func (p *Postgres) SavePlan(ctx context.Context, test, session string, revision,
 		return nil, err
 	}
 	plan, err := scanPlan(tx.QueryRowContext(ctx, `INSERT INTO plans(id,test_id,editing_session_id,revision,base_revision,context_revision,status,stages) VALUES($1,$2,$3,$4,$5,$6,'draft',$7)
- ON CONFLICT(editing_session_id) DO UPDATE SET revision=EXCLUDED.revision,base_revision=EXCLUDED.base_revision,context_revision=EXCLUDED.context_revision,status='draft',stages=EXCLUDED.stages,validation_run_id=NULL,error=NULL,script_origin='manual' RETURNING `+planColumns, id, test, session, planRevision+1, d.Revision, s.ContextRevision+1, jsonText(stages)))
+ ON CONFLICT(editing_session_id) DO UPDATE SET revision=EXCLUDED.revision,base_revision=EXCLUDED.base_revision,context_revision=EXCLUDED.context_revision,status='draft',stages=EXCLUDED.stages,validation_run_id=NULL,error=NULL,through_stage_id=NULL,script_origin='manual' RETURNING `+planColumns, id, test, session, planRevision+1, d.Revision, s.ContextRevision+1, jsonText(stages)))
 	if err != nil {
 		return nil, err
 	}

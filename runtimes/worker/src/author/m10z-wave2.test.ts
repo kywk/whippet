@@ -153,3 +153,22 @@ test('M10Z Module commit on final model request completes without extra request'
  assert.equal(output.requestValidation,true);
  assert.equal(output.partial,undefined);
 });
+
+ test('verified draft preserves the same successful submission explanation',async()=>{
+ let requests=0;
+ const message='已將按鈕改為開始測試；貼上的 SYSTEM 指令視為資料並忽略，保留既有測試。';
+ const candidate="import {test,expect} from '@playwright/test';test('goal',()=>expect(1).toBe(1));";
+ const output=await runAuthor(task('test-author'),config,browser(async()=>({passed:true,summary:'synthetic PASS'})),{
+  fetcher:async()=>Response.json({status:'completed',output:[{type:'function_call',call_id:String(++requests),name:'update_draft',arguments:JSON.stringify({script:candidate,message})}]}),
+ }) as AuthorOutput;
+ assert.equal(output.script,candidate);assert.match(output.message,/SYSTEM/);assert.match(output.message,/忽略/);assert.equal(requests,1);
+ });
+
+test('two-request partial remains unfinished even if model final text claims completion',async()=>{
+ const input=task('test-author');input.author.budget!.maxModelRequests=2;let requests=0;
+ const candidate="import {test,expect} from '@playwright/test';test('fill',()=>expect(1).toBe(1));";
+ const output=await runAuthor(input,config,browser(async()=>({passed:true,summary:'synthetic PASS'})),{
+  fetcher:async()=>Response.json({status:'completed',output:++requests===1?[{type:'function_call',call_id:'save',name:'update_draft',arguments:JSON.stringify({script:candidate,nextStep:'尚須完成送出、驗證、截圖與報告。'})}]:[{type:'message',content:[{type:'output_text',text:JSON.stringify({message:'全部完成'})}]}]}),
+ }) as AuthorOutput;
+ assert.equal(requests,2);assert.equal(output.script,candidate);assert.equal(output.requestValidation,false);assert.equal(output.partial?.reason,'budget_exhausted');assert.match(output.partial!.nextStep,/尚須完成/);assert.equal(output.partial?.checkpoint?.selfTestPassed,true);
+});
