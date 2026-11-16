@@ -3,7 +3,7 @@ import { HarnessClient } from "./harness.js";
 import { moduleAuthor, plannerAuthor } from "./platform.js";
 import { lstat, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { readAIConfig } from "../ai/config.js";
+import { readAuthorConfig } from "./runtime.js";
 import { runAuthor } from "./loop.js";
 import { explorationBrowser, type ExplorationBrowser } from "./tools.js";
 import { AuthorError, serializeAuthorArtifact, authorNeedsBrowser, validateAuthorInput } from "./types.js";
@@ -39,7 +39,7 @@ async function main(): Promise<void> {
     if(moduleAuthor(input)||plannerAuthor(input))harness=new HarnessClient(input);
     if(hasHistory(input))history=new HistoryClient(input);
     if (authorNeedsBrowser(input)) browser = explorationBrowser(process.env,{scope:input.workspaceContext?.config??unconfirmedBrowserScope(),credentials,defaultTestUrl:input.workspaceContext?.config?.defaultTestUrl||input.workspaceSettings?.defaultTestUrl,timeoutMs:input.workspaceContext?.config?.timeoutMs||input.workspaceSettings?.timeoutMs});
-    const output = await runAuthor(input, readAIConfig(process.env), browser, {
+    const output = await runAuthor(input, readAuthorConfig(process.env, input.author.runtime), browser, {
       signal: stop.signal,
       ...(diagnostics?{moduleDiagnostics:diagnostics}:{}),
       ...(diagnostics || process.env.WHIPPET_M106_OBSERVE === "1" ? {observer:(event:string)=>process.stdout.write(`${JSON.stringify({kind:"log",message:event})}\n`)} : {}),

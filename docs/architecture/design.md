@@ -148,6 +148,10 @@ PM 在各波實作前固定 HTTP／dispatch／輸出與遷移規則；Server／R
 - **工具註冊表**：`contracts/tools/registry.json` 是工具定義的單一來源，欄位包括 name、description、JSON Schema、`side`（server／worker）、`effect`（read／candidate／browser／queue）、單次上限。Go 與 TS 都從同一份檔案載入；內建引擎、MCP 與 adapter 共用。
 - **引擎**：`AgentEngine.run({instructions, context, tools, budget, model, signal, beforeRequest, onEvent})`，回傳 `{finalText, partial?}`。M10 把現有迴圈包成 builtin engine；M12 才加入開源 adapter。
 
+2026-11-16 M12.2 Wave2：Server 以後端宣告的非機密 runtime profiles 提供 Workspace 預設與主 skill 覆寫；管理 API 只接受 profile ID，與既有 builtin/external 接單模式分開。設定沿用 Workspace revision CAS；排隊交易鎖定設定並將完整有效 runtime 及 SHA256 寫進 author_payload。派工與重播只讀原快照，Test partial 的受控繼續沿用來源 runtime；後續設定只影響新排入的獨立任務。打包 skill model 是套件預設與完整性校驗，runtime 是本次有效模型選擇；工具、skill pins 與預算仍由原快照控制。精確欄位、優先序與相容性見 [v12 契約](../../contracts/mvp-v12.md#m122-wave2控制面-runtime-快照)。
+
+Worker 只從固定供應商機密設定取得金鑰，依快照覆蓋非機密環境設定；缺少對應金鑰即停止，不借用其他 provider 的 key。enable 與金鑰仍由目前後端控制，不把可撤銷機密固定進 Run。Server／Manager／Worker 共用 golden runtime digest 測資，但各自驗證。Wave2 只完成後端切片；UI、跨 Run 總預算與正式比較仍待後續 Wave。
+
 ### 資料
 
 - Test 新增 `kind`：test、module、usecase，沿用編輯週期、revision、version、摘要與發佈機制。

@@ -108,6 +108,9 @@ func validCapabilitySnapshotForMode(a *AuthorTask, mode authorValidationMode) (*
 		return nil, errCapability
 	}
 	present := len(a.Skills) > 0 || len(a.Budget) > 0 || len(a.Model) > 0 || a.ToolRegistryVersion != nil || a.ToolRegistrySHA256 != nil
+	if len(a.Runtime) > 0 && (!present || !validRuntimeSnapshot(a.Runtime)) {
+		return nil, errCapability
+	}
 	if !present {
 		return nil, nil
 	}

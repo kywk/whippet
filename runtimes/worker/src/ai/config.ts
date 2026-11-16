@@ -15,7 +15,8 @@ export interface AIConfig {
   model: string;
   reasoningEffort: ReasoningEffort;
   apiKey: string;
-  // Backend-only opt-in until control-plane snapshots arrive in M12.2.
+  // Fixed backend secret slots; never serialized into author input/output.
+  providerKeys?: Partial<Record<ProviderId, string>>;
   engine?: EngineId;
   provider?: ProviderId;
   contextWindowTokens?: number;
@@ -67,6 +68,7 @@ export function readAIConfig(env: Readonly<Record<string, string | undefined>>):
   const model = env.WHIPPET_AI_MODEL ?? (provider === "opencode" ? AI_DEFAULTS.model : "");
   const effort = env.WHIPPET_AI_REASONING_EFFORT ?? AI_DEFAULTS.reasoningEffort;
   const apiKey = (provider === "opencode" ? env.OPENCODE_API_KEY : env.WHIPPET_AI_API_KEY)?.trim() ?? "";
+  const providerKeys = { opencode: env.OPENCODE_API_KEY?.trim() ?? "", "openai-responses": env.WHIPPET_AI_API_KEY?.trim() ?? "" };
   const contextWindow = env.WHIPPET_AI_CONTEXT_WINDOW_TOKENS;
   const contextInput = env.WHIPPET_AI_CONTEXT_INPUT_TOKENS;
   const validCapacity = (value: string | undefined) => value === undefined || /^[1-9][0-9]{3,7}$/.test(value) && Number(value) <= 2097152;
@@ -82,7 +84,7 @@ export function readAIConfig(env: Readonly<Record<string, string | undefined>>):
   ) throw new AIError("invalid_config");
   return {
     enabled: enabled === "true", baseURL: parsed.toString().replace(/\/+$/, ""),
-    model, reasoningEffort: effort as ReasoningEffort, apiKey,
+    model, reasoningEffort: effort as ReasoningEffort, apiKey, providerKeys,
     engine: engine as EngineId, provider: provider as ProviderId,
     ...(contextWindow === undefined ? {} : { contextWindowTokens: Number(contextWindow) }),
     ...(contextInput === undefined ? {} : { contextInputTokens: Number(contextInput) }),

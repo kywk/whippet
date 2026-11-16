@@ -6,6 +6,7 @@ import { validateWorkspaceSettings, type WorkspaceSettings } from "../workspace.
 import { createHash } from "node:crypto";
 import { validateWorkspaceContext, validateWorkspaceConfig, type WorkspaceContext, type WorkspaceConfig } from "../workspace-context.js";
 import { validSequence, type HistoryPin } from "./history.js";
+import { validRuntime, type AuthorRuntime } from "./runtime.js";
 
 export const EDIT_TOOLS = ["read_draft", "read_validation_report", "update_draft", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login", "request_validation", "read_conversation_history"] as const;
 export interface ValidationEvidence {
@@ -26,6 +27,7 @@ export interface AuthorInput {
   workspaceContext?:WorkspaceContext|null;
   scriptOrigin?:'ai'|'manual'|'legacy';
   author: Partial<CapabilitySnapshot> & {
+    runtime?: AuthorRuntime;
     platform?: PlatformInput;
     batch?: BatchSummary;
     moduleSummary?: ModuleSummary;
@@ -125,8 +127,9 @@ export function validateAuthorInput(value: unknown): AuthorInput {
     validateWorkspaceContext(v.workspaceContext,v.workspaceId);
   } catch { throw new AuthorError("invalid_input"); }
   const a = v.author;
-  if (Object.keys(a).some((k) => !["conversationId", "baseRevision", "messages", "validation", "skillId", "skillVersion", "allowedTools", "editingSessionId", "contextRevision", "sourceVersion", "conversationSummary", "validationEvidence", "history", "skills", "budget", "model", "toolRegistryVersion", "toolRegistrySha256", "platform", "batch", "moduleSummary"].includes(k))) throw new AuthorError("invalid_input");
+  if (Object.keys(a).some((k) => !["conversationId", "baseRevision", "messages", "validation", "skillId", "skillVersion", "allowedTools", "editingSessionId", "contextRevision", "sourceVersion", "conversationSummary", "validationEvidence", "history", "skills", "budget", "model", "toolRegistryVersion", "toolRegistrySha256", "platform", "batch", "moduleSummary", "runtime"].includes(k))) throw new AuthorError("invalid_input");
   const capability = capabilitySnapshot(a);
+  if (Object.hasOwn(a, "runtime") && (!capability || !validRuntime(a.runtime))) throw new AuthorError("invalid_input");
   if (capability && (capability.skills[0]!.id !== a.skillId || capability.skills[0]!.version !== a.skillVersion)) throw new AuthorError("invalid_input");
   validatePlatform(v, !!capability);
   validateBatch(v);

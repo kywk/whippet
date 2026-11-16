@@ -126,6 +126,9 @@ func (p *Postgres) CreateWorkspaceAuthor(ctx context.Context, id, content string
 	if err = snapshotAuthor(&input); err != nil {
 		return AuthorSubmission{}, err
 	}
+	if err = snapshotRuntime(ctx, tx, id, &input); err != nil {
+		return AuthorSubmission{}, err
+	}
 	runID := NewID()
 	if _, err = tx.ExecContext(ctx, `INSERT INTO runs(id,workspace_id,test_id,kind,script_snapshot,script_hash,timeout_ms,author_payload,workspace_settings,workspace_context,script_origin,authorization_revision,scope_proposal_id,author_engine)
  VALUES($1,$2,NULL,'author','',$3,$4,$5,$6,$7,'legacy',$8,$9,$10)`, runID, id, scriptHash(""), input.Budget.MaxDurationMS, jsonText(input), settingsJSON(&w.WorkspaceSettings), jsonText(snapshot), authorization, scopeProposal, w.AuthorEngine); err != nil {

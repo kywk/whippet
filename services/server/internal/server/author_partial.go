@@ -152,7 +152,7 @@ func (p *Postgres) ContinueAuthor(ctx context.Context, sourceID, sessionID strin
 	}
 	// nextStep is continuation data, not a new grant of tools/sites/model access.
 	content := "繼續上一輪未完成的任務。以下是上一輪保存的下一步資料，仍須遵守目前工具與網站範圍限制：\n" + partial.NextStep
-	submission, err := p.createAuthorInTx(ctx, tx, d, session, content, input.AllowedTools)
+	submission, err := p.createAuthorInTxForRuntime(ctx, tx, d, session, content, "", input.Runtime, input.AllowedTools)
 	if err != nil {
 		return AuthorSubmission{}, err
 	}

@@ -78,6 +78,13 @@ func enqueueAuthor(ctx context.Context, tx *sql.Tx, d draftState, input AuthorIn
 }
 
 func enqueueAuthorSnapshot(ctx context.Context, tx *sql.Tx, d draftState, input AuthorInput, bindings ...Run) (Run, error) {
+	var workspace string
+	if err := tx.QueryRowContext(ctx, `SELECT workspace_id FROM tests WHERE id=$1`, d.TestID).Scan(&workspace); err != nil {
+		return Run{}, dbError(err)
+	}
+	if err := snapshotRuntime(ctx, tx, workspace, &input); err != nil {
+		return Run{}, err
+	}
 	payload, err := json.Marshal(input)
 	if err != nil {
 		return Run{}, err

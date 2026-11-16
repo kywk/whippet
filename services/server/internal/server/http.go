@@ -84,6 +84,8 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	mux.HandleFunc("DELETE /api/workspaces/{id}/roles/{roleId}/credentials", a.workspaceCredentials)
 	mux.HandleFunc("GET /api/workspaces/{id}", a.workspace)
 	mux.HandleFunc("PATCH /api/workspaces/{id}/author-engine", a.patchAuthorEngine)
+	mux.HandleFunc("GET /api/workspaces/{id}/agent-runtime", a.agentRuntime)
+	mux.HandleFunc("PATCH /api/workspaces/{id}/agent-runtime", a.agentRuntime)
 	mux.HandleFunc("PATCH /api/workspaces/{id}", a.patchWorkspace)
 	mux.HandleFunc("GET /api/workspaces/{id}/tests", a.tests)
 	mux.HandleFunc("POST /api/workspaces/{id}/tests", a.createTest)

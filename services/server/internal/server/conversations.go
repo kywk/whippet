@@ -125,6 +125,10 @@ func (p *Postgres) createAuthorInTx(ctx context.Context, tx *sql.Tx, d draftStat
 }
 
 func (p *Postgres) createAuthorInTxForEngine(ctx context.Context, tx *sql.Tx, d draftState, session EditingSession, content, engine string, toolCeiling ...[]string) (AuthorSubmission, error) {
+	return p.createAuthorInTxForRuntime(ctx, tx, d, session, content, engine, nil, toolCeiling...)
+}
+
+func (p *Postgres) createAuthorInTxForRuntime(ctx context.Context, tx *sql.Tx, d draftState, session EditingSession, content, engine string, runtime *AuthorRuntime, toolCeiling ...[]string) (AuthorSubmission, error) {
 	testID, sessionID, revision := d.TestID, session.ID, d.Revision
 	var active bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM runs WHERE test_id=$1 AND kind='author'
@@ -160,6 +164,7 @@ func (p *Postgres) createAuthorInTxForEngine(ctx context.Context, tx *sql.Tx, d 
 	}
 	session.ContextRevision++
 	input := editingAuthorInput(session, d, "test-author", authorContext(newest))
+	input.Runtime = runtime
 	switch testKind {
 	case "module":
 		input.SkillID = "module-authoring"

@@ -139,6 +139,7 @@ type AuthorInput struct {
 	Skills              []SkillSnapshot        `json:"skills,omitempty"`
 	Budget              *AuthorBudget          `json:"budget,omitempty"`
 	Model               *AuthorModel           `json:"model,omitempty"`
+	Runtime             *AuthorRuntime         `json:"runtime,omitempty"`
 	ToolRegistryVersion string                 `json:"toolRegistryVersion,omitempty"`
 	ToolRegistrySHA256  string                 `json:"toolRegistrySha256,omitempty"`
 	SkillID             string                 `json:"skillId,omitempty"`

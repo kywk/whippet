@@ -17,7 +17,8 @@
     "test:engine-spike": "node --test dist/author/spike/spike.test.js",
     "ai:check": "node dist/ai/cli.js check",
     "ai:probe": "node dist/ai/cli.js probe",
-    "test:adapter": "node --test dist/author/engines/*.test.js"
+    "test:adapter": "node --test dist/author/engines/*.test.js",
+    "test:runtime": "node --test dist/author/runtime.test.js"
   },
   "dependencies": {
     "@ai-sdk/openai": "4.0.118",

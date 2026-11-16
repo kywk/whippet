@@ -104,6 +104,7 @@ type AuthorTask struct {
 	Skills              json.RawMessage           `json:"skills,omitempty"`
 	Budget              json.RawMessage           `json:"budget,omitempty"`
 	Model               json.RawMessage           `json:"model,omitempty"`
+	Runtime             json.RawMessage           `json:"runtime,omitempty"`
 	ToolRegistryVersion *string                   `json:"toolRegistryVersion,omitempty"`
 	ToolRegistrySHA256  *string                   `json:"toolRegistrySha256,omitempty"`
 	ConversationID      string                    `json:"conversationId"`
@@ -122,6 +123,9 @@ type AuthorTask struct {
 }
 
 func (a *AuthorTask) UnmarshalJSON(data []byte) error {
+	if _, ok := uniqueBudgetFields(data); !ok {
+		return fmt.Errorf("invalid author fields")
+	}
 	type fields AuthorTask
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -143,6 +147,9 @@ func (a *AuthorTask) UnmarshalJSON(data []byte) error {
 	}
 	if count != 0 && count != 5 {
 		return fmt.Errorf("incomplete capability snapshot")
+	}
+	if value, exists := keys["runtime"]; exists && (count != 5 || !validRuntimeSnapshot(value)) {
+		return fmt.Errorf("invalid runtime snapshot")
 	}
 	for _, name := range []string{"skillId", "skillVersion", "allowedTools", "editingSessionId", "contextRevision", "sourceVersion", "conversationSummary", "validationEvidence", "history"} {
 		if _, exists := keys[name]; exists && (a.SkillID == nil || a.SkillVersion == nil) {

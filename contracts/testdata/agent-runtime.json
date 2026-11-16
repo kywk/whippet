@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "profileId": "vercel",
+  "engine": "vercel",
+  "provider": "opencode",
+  "baseURL": "https://opencode.ai/inference/go/openai/v1",
+  "model": "muse-spark-1.3-contributor",
+  "reasoningEffort": "xhigh",
+  "contextWindowTokens": 1048576,
+  "contextInputTokens": 65536,
+  "sha256": "3e5dfc973320ce32fd02ee086891ac32e9b35d80a9dcab014908058e4a8ec2d1"
+}

@@ -7,6 +7,7 @@ import { capabilitySnapshot, loadSkillBundle } from "./manifest.js";
 import { loadToolRegistry, sha256, modelTool, validateToolArguments, validateToolResult } from "./registry.js";
 import type { AgentEngine, EnginePartial } from "./engine.js";
 import { selectAgentEngine } from "./engines/select.js";
+import { runtimeConfig } from "./runtime.js";
 import { AIError, type AIConfig } from "../ai/config.js";
 import { buildResponsesRequest } from "../ai/responses.js";
 import { classifyDiagnosticError, type ExplorationBrowser } from "./tools.js";
@@ -30,8 +31,9 @@ export const AUTHOR_INSTRUCTIONS = [
 
 type Item = Record<string, unknown>;
 
-function noSecret(value: unknown, key: string): void {
-  if (key && JSON.stringify(value).includes(key)) throw new AuthorError("sensitive_output");
+function noSecret(value: unknown, config: AIConfig): void {
+  const text = JSON.stringify(value);
+  if ([config.apiKey, ...Object.values(config.providerKeys ?? {})].some(key => key && text.includes(key))) throw new AuthorError("sensitive_output");
 }
 
 async function bounded<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
@@ -62,8 +64,11 @@ export async function runAuthor(
   const bundle = capability ? loadSkillBundle(capability, registry) : undefined;
   if (capability) {
     // Provider configuration stays backend-owned. No model-selected endpoint or key.
-    if (capability.model.provider !== (config.provider ?? "opencode") || capability.model.model !== config.model) throw new AuthorError("invalid_input");
-    config = { ...config, reasoningEffort: capability.model.reasoningEffort };
+    if (input.author.runtime) config = runtimeConfig(config, input.author.runtime);
+    else {
+      if (capability.model.provider !== (config.provider ?? "opencode") || capability.model.model !== config.model) throw new AuthorError("invalid_input");
+      config = { ...config, reasoningEffort: capability.model.reasoningEffort };
+    }
     if (input.author.allowedTools?.some(name => !bundle!.defaultTools.has(name))) throw new AuthorError("invalid_input");
   }
   const implementedTools = new Set<string>([...EDIT_TOOLS, ...(bundle ? ["read_skill_reference", ...(module || planner ? PLATFORM_TOOLS : [])] : [])]);
@@ -149,16 +154,16 @@ export async function runAuthor(
         catch (error) { if (!signal.aborted) recordModelFailure('BODY_JSON_REJECTED'); throw error; }
         observation.body();
         if(raw && typeof raw==='object' && Array.isArray((raw as any).output) && (raw as any).output.some((i:any)=>i?.type==='function_call'))observation.emit('functionCallObserved');
-        try { noSecret(raw, config.apiKey); }
+        try { noSecret(raw, config); }
         catch (error) { recordModelFailure('RESPONSE_GUARD_REJECTED'); throw error; }
         return raw;
       },
       beforeRequest: (context) => {
-        noSecret(context, config.apiKey);
+        noSecret(context, config);
         return options.secrets ? options.secrets.clean(context) : context;
       },
       prepareRequest: (body) => {
-        noSecret(body, config.apiKey);
+        noSecret(body, config);
         return options.secrets ? options.secrets.clean(body) : body;
       },
       onEvent: (event) => {
@@ -209,11 +214,11 @@ export async function runAuthor(
               validateToolResult(definition,result);
               const ref = plannerCandidate(result);
               if(!planner || options.secrets && JSON.stringify(options.secrets.clean(result))!==JSON.stringify(result)) throw new AuthorError("tool_failed");
-              noSecret(result, config.apiKey); planRef = ref;
+              noSecret(result, config); planRef = ref;
             }
           } else if(call.name === "stage_module_candidate_part") {
             if (!module || args.stagingRevision !== stagingRevision || !Number.isSafeInteger(stagingRevision + 1)) throw new AuthorError("tool_failed");
-            noSecret(args.content, config.apiKey);
+            noSecret(args.content, config);
             if (options.secrets && options.secrets.clean(args.content) !== args.content) throw new AuthorError("sensitive_output");
             if (toolSignal.aborted) throw new AuthorError("cancelled");
             const part = args.part as "script" | "harness", content = args.content as string;
@@ -231,7 +236,7 @@ export async function runAuthor(
             validateModule(candidate.script,candidate.module);
             const next = {script:candidate.script as string,module:structuredClone(candidate.module)};
             if(next.module.slug!==input.author.platform!.module!.slug)throw new AuthorError("tool_failed");
-            noSecret(next,config.apiKey);
+            noSecret(next,config);
             if(options.secrets && JSON.stringify(options.secrets.clean(next))!==JSON.stringify(next))throw new AuthorError("sensitive_output");
             let selfTestFailure:unknown='UNKNOWN';
             let selfTestObservation:unknown={failedStepCategory:'UNOBSERVED',mainFrameNavigation:'UNOBSERVED'};
@@ -275,7 +280,7 @@ export async function runAuthor(
               const check = await withHeartbeat(browser.verifyDraft(next, { signal: toolSignal }), `author:tool:${toolCount}:${safeToolName}:heartbeat`, toolSignal);
               if (check.passed) {
                 for (const value of [args.message,args.nextStep]) if (value !== undefined) {
-                  noSecret(value, config.apiKey);
+                  noSecret(value, config);
                   if (options.secrets && options.secrets.clean(value) !== value) throw new AuthorError("sensitive_output");
                 }
                 candidateNextStep = args.nextStep as string | undefined;
@@ -328,7 +333,7 @@ export async function runAuthor(
             result=await withHeartbeat(browser.login(args.roleId as string,args.usernameSelector as string,args.passwordSelector as string,args.submitSelector as string), `author:tool:${toolCount}:${safeToolName}:heartbeat`, toolSignal);
           }
           if(options.secrets)result=options.secrets.clean(result);
-          noSecret(result, config.apiKey);
+          noSecret(result, config);
           if (capability && definition) validateToolResult(definition, result);
           if (!capability && Buffer.byteLength(JSON.stringify(result)) > 3 * 1024 * 1024) throw new AuthorError("limit");
           toolStatus = "succeeded";
@@ -389,7 +394,7 @@ export async function runAuthor(
       if (!boundedText(partial.nextStep, 8192, true)) throw new AuthorError("invalid_response");
       const cleaned = checkpoint === undefined ? undefined : options.secrets ? options.secrets.redact(checkpoint.script) : checkpoint.script;
       if (checkpoint !== undefined && cleaned === checkpoint.script && sha256(checkpoint.script) === checkpoint.scriptHash && (!config.apiKey || !checkpoint.script.includes(config.apiKey))) partial.checkpoint = { script: checkpoint.script };
-      noSecret(partial, config.apiKey);
+      noSecret(partial, config);
       options.onPartial?.(structuredClone(partial));
       // Old receivers must never see new fields. A complete v10 snapshot is the gate.
       if (!capability) throw new AuthorError("limit");
@@ -404,7 +409,7 @@ export async function runAuthor(
         output.script = savedCheckpoint.script;
         output.partial!.checkpoint = { scriptHash: savedCheckpoint.scriptHash, selfTestPassed: true };
       }
-      noSecret(output, config.apiKey);
+      noSecret(output, config);
       serializeAuthorArtifact(output);
       return output;
     }
@@ -436,7 +441,7 @@ export async function runAuthor(
       } else result = { message, requestValidation: validation, ...(changed ? { script } : {}), ...(conversationSummary !== undefined ? { conversationSummary } : {}) };
     }
     if(options.secrets)result=options.secrets.clean(result);
-    noSecret(result, config.apiKey);
+    noSecret(result, config);
     try{serializeAuthorArtifact(result,input.author.skillId);}catch(error){options.moduleDiagnostics?.failure('ARTIFACT_SERIALIZE_LIMIT');throw error;}
     return result;
   } catch (error) {
