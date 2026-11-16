@@ -11,7 +11,7 @@ import { AcceptanceSummaryCard } from './AcceptanceSummary';
 import { CapabilityStatus } from './WorkspaceSettings';
 import { isActiveRun } from './types';
 import { CheckIcon, CloseIcon, CollapseIcon, ExpandIcon, RefreshIcon, TrashIcon } from './icons';
-import type { Draft, EditingSession, Run, Version, WhippetApi, WorkspaceCapabilities } from './types';
+import type { AuthorEngine, Draft, EditingSession, Run, Version, WhippetApi, WorkspaceCapabilities } from './types';
 
 interface Props {
   api: WhippetApi;
@@ -25,6 +25,7 @@ interface Props {
   settingsRefresh: number;
   onDraftChange: (draft: Draft) => void;
   capabilities: WorkspaceCapabilities | undefined;
+  authorEngine: AuthorEngine;
   children?: ReactNode;
   session: EditingSession;
   sessionRefreshing: boolean;
@@ -55,7 +56,7 @@ export function DraftEditor(props: Props) {
   </section>;
 }
 
-function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, onDirtyChange, onRefreshRuns, settingsRefresh, onDraftChange, children, initialSettingsSequence, session, sessionRefreshing, onRefreshSession, capabilities, onDiscard, discardBusy, onReloadSession, testName, testKind, testSlug }: Props & { initial: Draft; initialSettingsSequence: number }) {
+function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, onDirtyChange, onRefreshRuns, settingsRefresh, onDraftChange, children, initialSettingsSequence, session, sessionRefreshing, onRefreshSession, capabilities, authorEngine, onDiscard, discardBusy, onReloadSession, testName, testKind, testSlug }: Props & { initial: Draft; initialSettingsSequence: number }) {
   const [draft, setDraft] = useState(initial);
   const [script, setScript] = useState(initial.script);
   const [module, setModule] = useState(() => initial.module ?? emptyModule(testSlug ?? ''));
@@ -312,7 +313,7 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
   return <div className={`studio${sideOpen ? ' side-open' : ' side-closed'}${sideExpanded ? ' side-expanded' : ''}`}>
     {sideOpen ? <div className="side-backdrop" aria-hidden="true" onClick={() => setSideOpen(false)} /> : null}
     <section className="studio-chat" aria-label="對話編輯工作區">
-      <ConversationPanel api={api} apiBase={apiBase} testId={testId} editingSessionId={session.id} aiExploration={capabilities?.aiExploration} draft={draft} draftDirty={dirty} draftBusy={planGuarded || readOnly || Boolean(busy) || syncing || settingsSyncing || settingsPending || conflict || summaryRequestBusy} runs={runs} onRun={onRun} onRefreshRuns={onRefreshRuns} onSynchronized={synchronizeDraft} onUseCandidate={useCandidate} onOpenManual={openManualEditor} onGuardChange={setConversationGuarded} onConversationChanged={() => { setInvalidatedSummaryId(session.summary?.runId); setConfirmed(false); void onRefreshSession().catch(() => undefined); }} onRefreshSession={onRefreshSession} onShowTab={showSideTab} sideOpen={sideOpen} onToggleSide={() => setSideOpen((open) => !open)} testName={testName} publishReady={eligible} planMode={testKind === 'usecase'} />
+      <ConversationPanel api={api} apiBase={apiBase} testId={testId} editingSessionId={session.id} aiExploration={capabilities?.aiExploration} authorEngine={authorEngine} testKind={testKind} draft={draft} draftDirty={dirty} draftBusy={planGuarded || readOnly || Boolean(busy) || syncing || settingsSyncing || settingsPending || conflict || summaryRequestBusy} runs={runs} onRun={onRun} onRefreshRuns={onRefreshRuns} onSynchronized={synchronizeDraft} onUseCandidate={useCandidate} onOpenManual={openManualEditor} onGuardChange={setConversationGuarded} onConversationChanged={() => { setInvalidatedSummaryId(session.summary?.runId); setConfirmed(false); void onRefreshSession().catch(() => undefined); }} onRefreshSession={onRefreshSession} onShowTab={showSideTab} sideOpen={sideOpen} onToggleSide={() => setSideOpen((open) => !open)} testName={testName} publishReady={eligible} planMode={testKind === 'usecase'} />
     </section>
     <aside className="studio-side" aria-label="腳本、驗證與發佈" hidden={!sideOpen}>
       <div className="side-tabs" role="tablist" aria-label="產物面板">
@@ -362,7 +363,7 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
       </div>
 
       <div id="side-panel-publish" role="tabpanel" aria-labelledby="side-tab-publish" className="side-panel" hidden={tab !== 'publish'}>
-        {testKind === 'usecase' ? <PlanPanel api={api} testId={testId} session={session} draft={draft} blocked={readOnly || dirty || Boolean(busy) || syncing || settingsSyncing || settingsPending || conflict || conversationGuarded || sessionRefreshing} onGuardChange={setPlanGuarded} onRun={onRun} onPublished={onPublished} onRefresh={() => { onRefreshRuns(); void onRefreshSession().catch(() => undefined); }} /> : <>
+        {testKind === 'usecase' ? <PlanPanel api={api} testId={testId} session={session} draft={draft} runs={runs} authorEngine={authorEngine} blocked={readOnly || dirty || Boolean(busy) || syncing || settingsSyncing || settingsPending || conflict || conversationGuarded || sessionRefreshing} onGuardChange={setPlanGuarded} onRun={onRun} onPublished={onPublished} onRefresh={() => { onRefreshRuns(); void onRefreshSession().catch(() => undefined); }} /> : <>
         <section className="validate-block" aria-labelledby="validate-title">
           <div className="section-heading"><h3 id="validate-title">驗證</h3><button className="button quiet compact" disabled={Boolean(busy) || syncing} onClick={() => setSyncRevision((value) => value + 1)}>{syncing ? '同步中…' : '重新整理狀態'}</button></div>
           <div className="validation-summary">
@@ -374,7 +375,7 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
           <div className="action-row"><button className="button secondary" disabled={Boolean(moduleError) || !executionAvailable || readOnly || Boolean(busy) || settingsSyncing || settingsPending || dirty || conflict || validating || !script.trim()} onClick={() => perform('validate')}>{busy === 'validate' ? '送出中…' : validating ? '驗證進行中' : '驗證此 revision'}</button></div>
           {dirty ? <p className="inline-hint">有未儲存變更，請先到「腳本」儲存；驗證只對應已儲存腳本。</p> : null}
         </section>
-        <AcceptanceSummaryCard api={api} apiBase={apiBase} testId={testId} session={session} draft={draft} runs={runs} blocked={readOnly || dirty || Boolean(busy) || syncing || settingsSyncing || settingsPending || conflict || conversationGuarded || sessionRefreshing || activeAuthor} onRun={onRun} onRefresh={onRefreshSession} onBusyChange={setSummaryRequestBusy} />
+        <AcceptanceSummaryCard api={api} apiBase={apiBase} testId={testId} session={session} draft={draft} runs={runs} authorEngine={authorEngine} blocked={readOnly || dirty || Boolean(busy) || syncing || settingsSyncing || settingsPending || conflict || conversationGuarded || sessionRefreshing || activeAuthor} onRun={onRun} onRefresh={onRefreshSession} onBusyChange={setSummaryRequestBusy} />
         <section className="publish-panel" aria-labelledby="publish-title">
           <h3 id="publish-title">確認發佈</h3>
           <ul className="conditions" aria-label="發佈條件">{conditions.map((item) => <li key={item.label} className={item.ok ? 'ok' : ''}><span className="node" aria-hidden="true">{item.ok ? <CheckIcon /> : null}</span>{item.label}<span className="sr-only">{item.ok ? '：已達成' : '：尚未達成'}</span></li>)}</ul>

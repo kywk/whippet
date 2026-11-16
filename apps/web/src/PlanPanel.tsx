@@ -2,22 +2,24 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, errorMessage } from './api';
 import { Notice, RunStatusBadge, StatusBadge } from './components';
 import { batchPublishReady, editableStage, parseStageEditor } from './plan';
-import type { Draft, EditingSession, Plan, PlanSummary, StageRetryInput, Run, Version, WhippetApi } from './types';
+import type { AuthorEngine, Draft, EditingSession, Plan, PlanSummary, StageRetryInput, Run, Version, WhippetApi } from './types';
 import './platform-preview.css';
 import { StageRetryForm } from './StageRetryForm';
+import { AuthorEngineStatus } from './AuthorEngineStatus';
 
-const planLabels = { draft: '待確認', confirmed: '已確認', running: '逐階段執行中', composed: '已組合，等待驗證／摘要', done: '整批已發佈', stopped: '已停止' };
-const stageLabels = { pending: '等待前一階段', authoring: '產稿中', validating: '驗證中', ready: '就緒', failed: '失敗' };
+const planLabels = { draft: '待確認', confirmed: '已暫停，等待繼續確認', running: '逐階段執行中', composed: '已組合，等待驗證／摘要', done: '整批已發佈', stopped: '已停止' };
+const stageLabels = { pending: '等待前一階段', authoring: '作者任務中', validating: '驗證中', ready: '就緒', failed: '失敗' };
 const actionLabels = { reuse: '複用', modify: '修改', create: '新建' };
 interface Props {
-  api: WhippetApi; testId: string; session: EditingSession; draft: Draft; blocked: boolean;
+  api: WhippetApi; testId: string; session: EditingSession; draft: Draft; runs: Run[]; authorEngine: AuthorEngine; blocked: boolean;
   onGuardChange: (guarded: boolean) => void; onRun: (run: Run) => void;
   onPublished: (version: Version) => void; onRefresh: () => void;
 }
-export function PlanPanel({ api, testId, session, draft, blocked, onGuardChange, onRun, onPublished, onRefresh }: Props) {
+export function PlanPanel({ api, testId, session, draft, runs, authorEngine, blocked, onGuardChange, onRun, onPublished, onRefresh }: Props) {
   const [plan, setPlan] = useState<Plan | null>();
   const [summary, setSummary] = useState<PlanSummary | null>();
   const [validation, setValidation] = useState<Run>();
+  const [activeStageRun, setActiveStageRun] = useState<Run>();
   const [fresh, setFresh] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -45,17 +47,21 @@ export function PlanPanel({ api, testId, session, draft, blocked, onGuardChange,
       setPlan(next); setFresh(true); setError(undefined);
       if (explicit) { setConflict(false); setConfirmation(''); setNote('已重新讀取 Server 狀態，請重新檢視後操作；沒有重送任何寫入。'); }
       if (next) {
+        const activeStageRunId = next.stages.find((stage) => stage.status === 'authoring' && stage.authorRunId)?.authorRunId;
         const results = await Promise.allSettled([
           api.getPlanSummary ? api.getPlanSummary(next.id, signal) : Promise.reject(new Error('批次摘要讀取尚未提供。')),
           next.validationRunId ? api.getRun(next.validationRunId, signal) : Promise.resolve(undefined),
+          activeStageRunId ? api.getRun(activeStageRunId, signal) : Promise.resolve(undefined),
         ]);
         if (!current()) return;
-        const [summaryResult, validationResult] = results;
+        const [summaryResult, validationResult, stageRunResult] = results;
         if (summaryResult.status === 'fulfilled') { setSummary(summaryResult.value); setSummaryError(undefined); }
         else { setSummary(undefined); setSummaryError(`批次摘要不可用：${errorMessage(summaryResult.reason)}`); }
         if (validationResult.status === 'fulfilled' && (!validationResult.value || (validationResult.value.testId === testId && validationResult.value.editingSessionId === session.id))) setValidation(validationResult.value);
         else { setValidation(undefined); setSummaryError((previous) => `${previous ?? ''} Use Case 驗證結果尚未確認。`); }
-      } else { setSummary(null); setValidation(undefined); setSummaryError(undefined); }
+        const stageRun = stageRunResult.status === 'fulfilled' ? stageRunResult.value : undefined;
+        setActiveStageRun(stageRun?.id === activeStageRunId && stageRun?.kind === 'author' ? stageRun : undefined);
+      } else { setSummary(null); setValidation(undefined); setActiveStageRun(undefined); setSummaryError(undefined); }
     } catch (cause) { if (current()) { setFresh(false); setError(`Plan 尚未確認可用：${errorMessage(cause)}`); } }
     finally { if (current()) setLoading(false); }
   }, [api, testId, session.id]);
@@ -78,6 +84,7 @@ export function PlanPanel({ api, testId, session, draft, blocked, onGuardChange,
   const mayPublish = !disabled && !editor && publishReady && Boolean(api.publishPlan);
   const validationReady = validation?.status === 'succeeded' && validation.id === plan?.validationRunId;
   const maySummarize = !disabled && !editor && plan?.status === 'composed' && plan.stages.every((stage) => stage.status === 'ready') && validationReady && Boolean(api.requestPlanSummary) && !(summary && ['queued', 'dispatched', 'running', 'collecting', 'cancelling'].includes(summary.status));
+  const summaryRun = summary ? runs.find((run) => run.id === summary.runId && run.kind === 'author' && run.authorMode === 'summary') : undefined;
 
   async function retryStage(stageId: string, input: StageRetryInput) {
     if (lock.current || disabled || editor || !plan || !api.retryStage || !api.getPlan) throw new Error('目前無法重試，請重新確認。');
@@ -99,12 +106,12 @@ export function PlanPanel({ api, testId, session, draft, blocked, onGuardChange,
     } finally { lock.current = false; if (!controller.signal.aborted) setPending(false); }
   }
 
-  async function mutate(action: 'save' | 'confirm' | 'cancel' | 'summary' | 'publish') {
+  async function mutate(action: 'save' | 'confirm' | 'cancel' | 'summary' | 'publish', throughStageId?: string) {
     if (lock.current || disabled) return;
     const currentPlan = plan;
     if (action === 'save' && (!editor || !editable || !api.savePlan)) return;
     if (action !== 'save' && !currentPlan) return;
-    if (action === 'confirm' && (editor || currentPlan?.status !== 'draft' || !api.confirmPlan || currentPlan.baseRevision !== draft.revision)) return;
+    if (action === 'confirm' && (editor || !currentPlan || !['draft', 'confirmed'].includes(currentPlan.status) || !api.confirmPlan || currentPlan.baseRevision !== draft.revision)) return;
     if (action === 'cancel' && (!api.cancelPlan || currentPlan?.status === 'done' || currentPlan?.status === 'stopped')) return;
     if (action === 'summary' && !maySummarize) return;
     if (action === 'publish' && (!mayPublish || confirmation !== confirmationKey || !summary)) return;
@@ -132,7 +139,7 @@ export function PlanPanel({ api, testId, session, draft, blocked, onGuardChange,
       } else {
         const next = action === 'save'
           ? await api.savePlan!(testId, { editingSessionId: session.id, revision: editor!.draftRevision, planRevision: editor!.planRevision, stages: stageInputs! }, controller.signal)
-          : action === 'confirm' ? await api.confirmPlan!(currentPlan!.id, currentPlan!.revision, controller.signal)
+          : action === 'confirm' ? await api.confirmPlan!(currentPlan!.id, currentPlan!.revision, controller.signal, throughStageId)
           : await api.cancelPlan!(currentPlan!.id, currentPlan!.revision, controller.signal);
         if (controller.signal.aborted) return;
         if (next.testId !== testId || next.editingSessionId !== session.id) throw new Error('Plan 回應所屬範圍不符。');
@@ -155,16 +162,17 @@ export function PlanPanel({ api, testId, session, draft, blocked, onGuardChange,
     {plan ? <><p className="identifier">{planLabels[plan.status]} · Plan r{plan.revision} · 草稿基底 r{plan.baseRevision}</p>
       <p>{plan.stages.filter((stage) => stage.status === 'ready').length} / {plan.stages.length} 階段就緒</p>
       {plan.error ? <Notice message={plan.error} /> : null}
-      <ol className="platform-stages">{plan.stages.map((stage, index) => <li key={stage.id}><div className="platform-heading"><h4>{index + 1}. {stage.title} · {actionLabels[stage.action]}</h4><strong>{stageLabels[stage.status]}</strong></div>
+      <ol className="platform-stages">{plan.stages.map((stage, index) => { const authorRun = stage.authorRunId === activeStageRun?.id ? activeStageRun : runs.find((run) => run.id === stage.authorRunId && run.kind === 'author'); return <li key={stage.id}><div className="platform-heading"><h4>{index + 1}. {stage.title} · {actionLabels[stage.action]}</h4><strong>{stageLabels[stage.status]}</strong></div>
         <p className="identifier">{stage.module?.slug ?? stage.moduleTestId ?? '待建立 Module'} · 固定來源版本 {stage.moduleVersionId ?? '新建'}</p>
         {stage.candidateVersionId ? <p className="identifier">候選版本 {stage.candidateVersionId}（尚未發佈）</p> : null}
         <details><summary>參數與回傳綁定</summary><pre className="plan-json">{JSON.stringify(stage.args, null, 2)}</pre><p>綁定別名：{stage.bind || '未設定'}</p></details>
-        {stage.authorRunId ? <p className="identifier">Author Run {stage.authorRunId}</p> : null}{stage.validationRunId ? <p className="identifier">Validation Run {stage.validationRunId}</p> : null}
+        {stage.authorRunId ? <p className="identifier">Author Run {stage.authorRunId}{authorRun ? <> · <AuthorEngineStatus engine={authorRun.authorEngine ?? 'builtin'} status={authorRun.status} /></> : null}</p> : null}{stage.validationRunId ? <p className="identifier">Validation Run {stage.validationRunId}</p> : null}
         {stage.error ? <Notice message={stage.error} /> : null}
-        {stage.status === 'failed' && stage.action !== 'reuse' ? <StageRetryForm api={api} planId={plan.id} stageId={stage.id} planRevision={plan.revision} blocked={disabled || Boolean(editor) || plan.status !== 'stopped'} onSubmit={retryStage} /> : null}</li>)}</ol>
-      <div className="action-row"><button className="button primary" disabled={disabled || Boolean(editor) || plan.status !== 'draft' || plan.baseRevision !== draft.revision || !api.confirmPlan} onClick={() => { void mutate('confirm'); }}>確認 Plan 並開始</button>
+        {(stage.status === 'failed' || (stage.status === 'ready' && index === plan.stages.length - 1 && plan.status === 'stopped' && Boolean(plan.validationRunId))) && stage.action !== 'reuse' ? <StageRetryForm api={api} planId={plan.id} stageId={stage.id} planRevision={plan.revision} blocked={disabled || Boolean(editor) || plan.status !== 'stopped'} onSubmit={retryStage} /> : null}</li>; })}</ol>
+      <div className="action-row"><button className="button primary" disabled={disabled || Boolean(editor) || !['draft', 'confirmed'].includes(plan.status) || plan.baseRevision !== draft.revision || !api.confirmPlan} onClick={() => { void mutate('confirm'); }}>{plan.status === 'confirmed' ? '確認並繼續剩餘 Stage' : '確認 Plan 並開始'}</button>
+        <button className="button secondary" disabled={disabled || Boolean(editor) || !['draft', 'confirmed'].includes(plan.status) || plan.baseRevision !== draft.revision || !api.confirmPlan || !plan.stages.some(stage => stage.status === 'pending')} onClick={() => { void mutate('confirm', plan.stages.find(stage => stage.status === 'pending')?.id); }}>確認並只執行下一個 Stage</button>
         <button className="button secondary" disabled={disabled || Boolean(editor) || ['done', 'stopped'].includes(plan.status) || !api.cancelPlan} onClick={() => { void mutate('cancel'); }}>停止 Plan</button></div>
-      {plan.status === 'stopped' ? <p className="inline-hint">已停止，不會自動重跑。失敗 Stage 可先查詢人工修復資格；修訂整份 Plan 則須儲存後重新確認。</p> : null}
+      {plan.status === 'stopped' ? <p className="inline-hint">已停止，不會自動重跑。失敗 Stage 或整體驗證失敗後的末段可先查詢人工修復資格；修訂整份 Plan 則須儲存後重新確認。</p> : null}
       {plan.status === 'draft' && plan.baseRevision !== draft.revision ? <p className="blocked-hint">Plan 基底與目前草稿不同，請重新載入草稿並修訂計畫。</p> : null}
     </> : null}
     {editable && fresh ? <div className="plan-editor">{!editor ? <button className="button secondary" disabled={disabled || !api.savePlan} onClick={() => setEditor({ text: JSON.stringify(plan?.stages.map(editableStage) ?? [], null, 2), planRevision: plan?.revision ?? 0, draftRevision: draft.revision })}>{plan ? '修訂 Stage' : '建立 Plan'}</button> : <>
@@ -177,7 +185,7 @@ export function PlanPanel({ api, testId, session, draft, blocked, onGuardChange,
       {validation ? <RunStatusBadge run={validation} /> : <p>尚未取得 Use Case 真實驗證結果。</p>}
       {summaryError ? <Notice message={summaryError} /> : null}
       <button className="button secondary" disabled={!maySummarize} onClick={() => { void mutate('summary'); }}>要求整批摘要</button>
-      <p className="inline-hint">只請求摘要，不重跑驗證；Server 仍核對每個候選與 Worker 回收狀態。</p>
+      <p className="inline-hint">新整批摘要：{authorEngine === 'external' ? '外部 Agent 接單' : '內建引擎'}。{summaryRun ? `此摘要 Run 來源：${summaryRun.authorEngine === 'external' ? '外部 Agent' : '內建引擎'}。` : '實際來源以新建 Run 快照為準。'}只請求摘要，不重跑驗證；Server 仍核對每個候選與 Worker 回收狀態。</p>
       {summary ? <><StatusBadge status={summary.status} /><p className="identifier">摘要 Run {summary.runId} · Plan r{summary.planRevision}</p>
         {summary.stale || summary.planRevision !== plan.revision || summary.planId !== plan.id ? <p className="blocked-hint">此摘要已過期或不屬於目前 Plan，不可發佈。</p> : null}
         <h4>本批次候選 Module（{summary.candidates.length}）</h4>

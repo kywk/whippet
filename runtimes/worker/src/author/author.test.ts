@@ -120,7 +120,7 @@ test("author explores, updates candidate and defers validation with stateless re
     assert.deepEqual(body.include, ["reasoning.encrypted_content"]);
     assert.equal(body.reasoning.effort, "high"); // config is honored, default is xhigh
     assert.equal(body.previous_response_id, undefined);
-    assert.equal(body.tools.length, 8);
+    assert.equal(body.tools.length, bodies.indexOf(body) >= 5 ? 1 : 8);
     assert.equal(JSON.stringify(body).includes(key), false);
   }
   assert.equal(bodies[1]!.input.find((item: any) => item.type === "reasoning").encrypted_content, "opaque_1");

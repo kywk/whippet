@@ -10,7 +10,7 @@ import (
 )
 
 func TestM10PostgresPlatformCandidateScopeAndReplay(t *testing.T) {
-	for _, mode := range []string{"cancel", "complete", "stale_ref"} {
+	for _, mode := range []string{"cancel", "complete", "stale_ref", "blocker", "omit_ref"} {
 		t.Run(mode, func(t *testing.T) { m10PlatformCandidateFlow(t, mode) })
 	}
 }
@@ -55,6 +55,36 @@ func m10PlatformCandidateFlow(t *testing.T, mode string) {
 	attempt := NewID()
 	if _, err = p.DB.ExecContext(ctx, `UPDATE runs SET status='running',manager_id='m10-platform',attempt_id=$2,slot_released=false WHERE id=$1`, run.ID, attempt); err != nil {
 		t.Fatal(err)
+	}
+	if mode == "blocker" {
+		files, e := NewLocalArtifacts(t.TempDir())
+		if e != nil {
+			t.Fatal(e)
+		}
+		p.Artifacts = files
+		artifact, e := files.Save(run.ID, attempt, "author.json", strings.NewReader(`{"message":"請先補充角色，尚未建立 Plan。"}`))
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = p.SaveArtifact(ctx, artifact); e != nil {
+			t.Fatal(e)
+		}
+		if e = p.Complete(ctx, "m10-platform", run.ID, attempt, Result{Status: "succeeded"}); e != nil {
+			t.Fatal(e)
+		}
+		got, e := p.Run(ctx, run.ID)
+		if e != nil || got.Status != "succeeded" {
+			t.Fatal("blocker did not complete", e)
+		}
+		plan, e := p.Plan(ctx, item.ID, session.ID)
+		if e != nil || plan != nil {
+			t.Fatal("blocker invented plan")
+		}
+		var count int
+		if e = p.DB.QueryRowContext(ctx, `SELECT count(*) FROM messages WHERE run_id=$1 AND role='assistant'`, run.ID).Scan(&count); e != nil || count != 1 {
+			t.Fatal("blocker conversation missing", e)
+		}
+		return
 	}
 	args, _ := json.Marshal(map[string]any{"stages": []PlanStageInput{stage}})
 	req := HarnessToolRequest{CallID: NewID(), Name: "propose_plan", Arguments: args}
@@ -107,6 +137,9 @@ func m10PlatformCandidateFlow(t *testing.T, mode string) {
 			}
 		}
 		body := jsonText(map[string]any{"message": "canonical plan", "planCandidate": map[string]any{"candidateRef": proposed.CandidateRef}})
+		if mode == "omit_ref" {
+			body = `{"message":"omit saved candidate"}`
+		}
 		artifact, e := files.Save(run.ID, attempt, "author.json", strings.NewReader(body))
 		if e != nil {
 			t.Fatal(e)

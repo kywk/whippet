@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -27,6 +28,7 @@ type containerRuntime interface {
 
 type dockerCLI struct {
 	cfg      Config
+	client   *http.Client
 	remember func(record, credentialValues) error
 }
 
@@ -113,14 +115,18 @@ func (d dockerCLI) attach(ctx context.Context, r record, emit func(string, strin
 	defer stdin.Close()
 	input := &attemptInputWriter{ctx: runCtx, input: stdin}
 	defer input.close()
-	channel := &credentialChannel{ctx: runCtx, cfg: d.cfg, r: r, input: input, client: newHTTPClient(), remember: func(values credentialValues) error {
+	client := d.client
+	if client == nil {
+		client = newHTTPClient()
+	}
+	channel := &credentialChannel{ctx: runCtx, cfg: d.cfg, r: r, input: input, client: client, remember: func(values credentialValues) error {
 		if d.remember != nil {
 			return d.remember(r, values)
 		}
 		return nil
 	}}
-	history := &historyChannel{ctx: runCtx, cfg: d.cfg, r: r, input: input, client: newHTTPClient()}
-	tools := &toolChannel{ctx: runCtx, cfg: d.cfg, r: r, input: input, client: newHTTPClient()}
+	history := &historyChannel{ctx: runCtx, cfg: d.cfg, r: r, input: input, client: client}
+	tools := &toolChannel{ctx: runCtx, cfg: d.cfg, r: r, input: input, client: client}
 	cmd.Stdout = &lineWriter{emit: touchActivity, toolFrames: r.Author != nil && len(r.Author.Skills) > 0, intercept: func(line string) bool { return channel.handle(line) || history.handle(line) || tools.handle(line) }}
 	cmd.Stderr = &lineWriter{emit: touchActivity, stderr: true}
 	if err := cmd.Start(); err != nil {

@@ -95,9 +95,23 @@ func (p *Postgres) dispatchPlanModule(ctx context.Context, tx *sql.Tx, plan *Pla
 }
 
 func (p *Postgres) enqueuePlanModuleAuthor(ctx context.Context, tx *sql.Tx, plan *Plan, stage *PlanStage, d draftState, s EditingSession, message string) (Run, error) {
+	contextData, err := p.planAuthorContext(ctx, tx, plan, stage)
+	if err != nil {
+		return Run{}, err
+	}
 	s.ContextRevision++
-	input := editingAuthorInput(s, d, "module-authoring", []ChatMessage{{Role: "user", Content: message}})
+	input := editingAuthorInput(s, d, "module-authoring", []ChatMessage{{Role: "user", Content: message}, {Role: "user", Content: contextData}})
 	input.Platform = &AuthorPlatform{PlanID: &plan.ID, StageID: &stage.ID, Module: d.Module}
+	// A ready last Module is being repaired for a failed whole-Use-Case run.
+	// Its own passing harness report is not the failure the author must fix.
+	if plan.Status == "stopped" && stage.Status == "ready" && plan.ValidationRunID != nil {
+		var id, status, detail string
+		if err := tx.QueryRowContext(ctx, `SELECT id,status,COALESCE(error,'') FROM runs WHERE id=$1 AND test_id=$2 AND editing_session_id=$3 AND workspace_id=$4 AND draft_revision=$5 AND kind='validation' AND status IN ('failed','timed_out') AND slot_released AND NOT cancel_requested`, *plan.ValidationRunID, plan.TestID, plan.EditingSessionID, s.WorkspaceID, plan.BaseRevision).Scan(&id, &status, &detail); err != nil {
+			return Run{}, err
+		}
+		input.Validation = validationSnapshot(id, status, detail)
+	}
+
 	input.AllowedTools = []string{"read_module_draft", "read_validation_report", "stage_module_candidate_part", "commit_module_candidate", "request_module_validation"}
 	auth, proposal, err := p.prepareAuthor(ctx, tx, d, &input)
 	if err != nil {

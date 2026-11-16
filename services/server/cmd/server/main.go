@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -85,11 +87,22 @@ func run(log *slog.Logger) error {
 	if databaseURL == "" || token == "" {
 		return errors.New("DATABASE_URL and MANAGER_TOKEN are required")
 	}
+	adminToken, publicOrigin := os.Getenv("WHIPPET_ADMIN_TOKEN"), os.Getenv("WHIPPET_PUBLIC_ORIGIN")
+	if adminToken != "" && subtle.ConstantTimeCompare([]byte(adminToken), []byte(token)) == 1 {
+		return errors.New("admin and Manager authentication must be distinct")
+	}
+	if publicOrigin != "" && !validPublicOrigin(publicOrigin) {
+		return errors.New("WHIPPET_PUBLIC_ORIGIN must be an exact HTTP(S) origin")
+	}
 	iceServers, err := server.ParseICEServers(os.Getenv("WHIPPET_LIVE_ICE_SERVERS"))
 	if err != nil {
 		return err
 	}
 	port := env("PORT", "8080")
+	bindHost := os.Getenv("WHIPPET_BIND_HOST")
+	if bindHost != "" && net.ParseIP(bindHost) == nil {
+		return errors.New("WHIPPET_BIND_HOST must be an IP address")
+	}
 	n, err := strconv.Atoi(port)
 	if err != nil || n < 1 || n > 65535 {
 		return errors.New("PORT must be 1..65535")
@@ -115,6 +128,12 @@ func run(log *slog.Logger) error {
 	if err := store.Migrate(startupCtx); err != nil {
 		return fmt.Errorf("database migrations: %w", err)
 	}
+	if err := store.RecoverBrowserLeases(startupCtx); err != nil {
+		return fmt.Errorf("browser lease recovery: %w", err)
+	}
+	if err := store.RecoverExternalClaims(startupCtx); err != nil {
+		return fmt.Errorf("external author recovery: %w", err)
+	}
 	artifacts, err := server.NewLocalArtifacts(env("ARTIFACT_DIR", "./data/artifacts"))
 	if err != nil {
 		return fmt.Errorf("artifact directory: %w", err)
@@ -128,12 +147,14 @@ func run(log *slog.Logger) error {
 	engine.SetLiveHub(liveHub)
 	defer liveHub.Close()
 	api := server.NewAPI(store, artifacts, engine, token, log)
+	api.WithAdminAccess(adminToken, publicOrigin)
 	ws := &gateway.Gateway{Engine: engine, Log: log}
 	live := &gateway.LiveGateway{Hub: liveHub}
 	api.WithLiveHandlers(http.HandlerFunc(live.Viewer), http.HandlerFunc(live.Media))
+	api.WithSessionLiveHandlers(http.HandlerFunc(live.SessionViewer), http.HandlerFunc(live.SessionMedia))
 	httpServer := &http.Server{
 		TLSConfig: tlsConfig,
-		Addr:      net.JoinHostPort("", port), Handler: api.Handler(ws),
+		Addr:      net.JoinHostPort(bindHost, port), Handler: api.Handler(ws),
 		ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 90 * time.Second,
 		WriteTimeout: 90 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 32 << 10,
 	}
@@ -163,6 +184,11 @@ func run(log *slog.Logger) error {
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelShutdown()
 	return httpServer.Shutdown(shutdownCtx)
+}
+
+func validPublicOrigin(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.User == nil && u.Path == "" && u.RawQuery == "" && u.Fragment == "" && u.String() == raw
 }
 
 func env(key, fallback string) string {

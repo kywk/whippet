@@ -329,7 +329,7 @@ M9歷史失敗已定位（81352430診斷回合）：模型將首次cursor輸出�
 
 ### M10 階段一：自研引擎與 Use Case（`main`）
 
-狀態：進行中。依賴：M9 已完成。
+狀態：完成（2026-11-16 Wave8 已補齊已觀測功能缺口與 M10.Z 八項分段驗收；部分黃金補驗包含 fixture／失敗回饋修復，不宣稱原14題無人工介入同批全過。歷史原始成績保留，未 merge/tag）。依賴：M9 已完成。
 
 2026-11-13 首波：PM `t3d`；新對話 Server `t4b`、Runtime `t4c`、Web `t4d`、QA `t4f`，同 space/tab、parent=t3d、crew=1。使用者改指定開發 GPT-6 Astra light（CLI low）；QA 維持 Muse Spark Contributor xhigh。M10.0 待雙方盤點後固定契約；此紀錄不代表驗證通過。
 
@@ -346,9 +346,9 @@ M9歷史失敗已定位（81352430診斷回合）：模型將首次cursor輸出�
 | M10.6 | t4c＋t4b | catalog／module／usecase／plan 工具接上註冊表與 IPC | 單元測試加一次真模型「搜尋並複用」 | 完成（registry10.2；定向測試及真模型搜尋→固定版複用→Server保存非SKIP PASS，5model/3tools；未含整批發布） |
 | M10.7 | t4d | Module 列表與詳情（簽章、引用者）、Use Case Stage 檢視、Plan 確認卡、Stage 進度、partial「繼續」卡 | build 加目視 | 完成（build＋真Module/Plan/批次發布目視；B隔離真partial/單次continue，限制見證據） |
 | M10.8 | PM＋t4p | 黃金任務集 v1（10–15 題，含新建、修復、複用、拆解、越界、注入頁、預算耗盡），放在 `scripts/test/golden/` | 用 builtin 跑一次並記錄基準 | 完成（首次真基準與離線覆核已保存：4 PASS／2 FAIL／8 UNVERIFIED；不是完整驗收通過） |
-| M10.9 | PM t4s＋Server t50＋Runtime t4z | 整合 smoke：用真模型把「登入 → 搜尋 → 下單 → 驗證」拆成 4 段並發佈 | 一條主流程 | 進行中（Plan composed/r18四Stage ready；3 author＋3 Module驗證＋整體Use Case驗證共7 Run成功並回收，待批次摘要／發佈） |
+| M10.9 | 主 Agent（Wave7收尾）；原 PM t4s／Server t50／Runtime t4z | 整合 smoke：用真模型把「登入 → 搜尋 → 下單 → 驗證」拆成4段並發佈 | 一條主流程 | 完成（原四Stage/候選不重做；Wave7 builtin批次摘要成功、原子發佈 UseCase b3382b18、正式 Run d4243565 為1/0/0/0，舊服務未升級/重啟） |
 | M10.10 | PM t4s＋t4z＋t50 | 有界Module兩段暫存／commit真自試，timeout清理與安全階段觀測 | 正負真自試、三端回收／正式驗證、一次受控真模型 | 完成（分段工具／診斷、journal與Module遮蔽修補已部署；retry7三Module自試1/0、parser/upload與正式驗證及Compose成功，秘密負向守衛保持） |
-| **M10.Z** | PM＋t33 | **階段一完整驗證**（見下方） | 全部通過後標記 `phase1-verified` | 待辦 |
+| **M10.Z** | 主 Agent 親自執行 Wave6–8（不開 subagent） | **階段一完整驗證**（見下方） | 八項矩陣與既有證據限制分別記錄；本次不自行 tag | 完成（八項既有證據沿用；Wave6–8補齊全流程、Stage修復、持續Live、真還原、Stage1暫停、注入執行稽核及真2-request checkpoint→continue正式成功。歷史raw不覆寫，補驗的fixture/修復介入與無人工14題基準分列；不自行tag。詳見 [Wave8缺口收尾](handoff/m10z-wave8-20261116.md)） |
 
 M10.Z 清單：
 1. 三個模組全部建置、型別檢查與測試（含 Postgres 整合測試）。
@@ -360,26 +360,74 @@ M10.Z 清單：
 7. 預算耗盡時保留 partial，按「繼續」能完成。
 8. 黃金任務集 builtin 成績不低於 M10.8 基準。
 
-### M11 階段二：MCP（`feat/mcp`，自 `phase1-verified` 分出）
+2026-11-14 M10.Z 本輪收尾：本機與遠端仍為 `feat/mcp`／`89a741b`，各修補批次dirty manifest與binary／image／skill pins另存。Server unit128、隔離PG226、Worker133（5 opt-in另驗）、最後Manager212 PASS（14 opt-in SKIP中5同名nested PASS、9 NOT RUN），Web／Worker建置及型別檢查通過；fixture／legacy skill大小回歸均有red→green。真builtin Module Stage重試仍停止、正式continue三Run仍partial無完成候選；先做固定安全觀測與離線最小回路，不再刷模型／增加預算。真UI Live補到同epoch兩個解碼影格，但持續串流及失敗精確分支仍UNVERIFIED，關閉／終態時間戳限制保留。黃金原14題單批執行，14/14模型／effort／預算相同、registry／skill不同，保住舊四題PASS，不能把FAIL轉UNVERIFIED稱修復。舊M10.9摘要／發佈未補；19287／19587／19787未動，收尾本次active／occupied／unreclaimed與精確Manager容器均0，保留所有資料。M10.Z不具備`phase1-verified`條件；可獨立推進下一項為Module自試固定類別與continue候選交付的離線診斷，M11既有完成狀態不變。
 
-狀態：待辦。依賴：M10.Z。
+2026-11-15 Wave2 限縮修復／驗證完成，M10.Z仍受阻（使用者要求建議並推進下一波）：Leader t6g（parent=null）保留前波成績；全新 owner t6t＝gpt-6-sol/xhigh、QA t6v／t6w＝gpt-6-sol/high，獨立tab／parent／crew／keep／cwd／no-daemon／YOLO均核實。基線`89a741b`與交接57檔SHA無漂移；本波Worker guard-confirmed commit PASS後收尾、無checkpoint文案修正均有離線red→green及獨立QA；既有Module partial仍LIMIT，未弱化ABI／驗證門檻。定向43 PASS；Worker typecheck及全144＝139 PASS／0 FAIL／5 opt-in SKIP。來源Worker113／Manager68檔、真image producer與實際557-byte安全sidecar准入皆通過，模型／effort／8-12-180000／registry／skills不變。唯一官方retry Run99904…仍FAIL，v3已證自試0PASS/1FAIL、TEST_FAILED／LIMIT，無checkpoint，Plan stopped/r7、s3 pending，後續驗證／Compose／摘要／發佈BLOCKED。Manager曾停止回報，journal安全投影證complete/reclaimed/failed後，只重連本次owned Manager重播既有結果；62 Run僅原+1、slot／精確容器全0，停滯根因UNDETERMINED。#7舊partial文案不溯及，本波不重送；黃金／Live不重跑，舊部署與資料保留，不Git／tag。詳見 [Wave2結果與下一回路](handoff/m10z-wave2-20261115.md)；後續先做自試失敗／Manager連線階段的安全分類與離線red，不刷模型。
+
+2026-11-15 Wave3 觀測切片完成，M10.Z仍受阻：前兩波71檔掃描後分四筆提交`f4eaf3e`／`d571451`／`fff8556`／`a318e64`，未push／merge／tag。全新owner t6y（gpt-6-sol/xhigh）、QA t6z／t70（gpt-6-sol/high）已核身分／獨立tab。Module自試v4的Reporter分類與主框架導覽、Manager獨立七欄傳輸快照均有無模型red→green；QA另抓callback own-shape與舊觀測殘留兩red，最小修復後獨立綠。Worker typecheck／全量148 PASS／0 FAIL／5 opt-in SKIP；Manager定向28 PASS、race28 PASS，全量命令exit0（安全名稱投影215 PASS／14 SKIP，六筆未投影狀態保留UNKNOWN）；真image唯一Docker六情境與producer獨立review PASS、Go overlay四項含六筆真payload→Manager sidecar PASS。未改模型／預算／skills／registry，無新模型Run／部署／黃金或Live重跑；原#3/#4/#7 FAIL不回填。收尾DB仍62 Run、active／occupied／unreclaimed與精確容器全0，但19887／19888／19889未監聽、QA Manager心跳過期、原Server terminal退出130，環境健康FAIL保留，未啟動替代Server／讀Vault／重啟。19287／19587／19787與五個基線容器未動。一般Test continue與舊observer未接v4；下一波先確立同Vault安全恢復、同步reader與零模型同部署觀測，再判斷單次真Stage准入。詳見 [Wave3結果與限制](handoff/m10z-wave3-20261115.md)。
+
+2026-11-15 Wave4 已完成嚴格 v1–v4 sidecar／transport 唯讀 reader 與獨立 QA（owner 10/10、奇數 QA 最終119/119 PASS，舊 reader red 5/33）；原 Wave2 真 v3 sidecar 可安全投影，新增欄位維持 UNOBSERVED，缺 transport 檔為 MISSING。Linux arm64 Manager 與 Wave3 QA Worker 候選 image 已固定，來源／registry／skills／容器內 binary SHA 相符，尚未部署。偶數 QA 核原19889 Server PID退出、19887／19888／19889未監聽、Manager心跳逾期；PG 仍62 Run、active／occupied／unreclaimed與精確Worker全0。隔離啟動腳本的原 Vault 主金鑰為程序內隨機值，receipt 未保存，同一金鑰可安全恢復的來源尚未證實，因此同批部署、零模型受控任務與真 Stage 均 BLOCKED／NOT RUN；沒有新模型或 DB 寫入。收尾另見保護埠19787無 listener，歷史容器仍running，原因未知且本波未觸碰。舊#3/#4/#7 FAIL與黃金／Live限制保留，M10.Z仍受阻，未push／merge／tag。詳見 [Wave4安全准入與 reader 驗證](handoff/m10z-wave4-20261115.md)。
+
+2026-11-15 原 Vault 復原覆核：依使用者要求在 `/private/tmp` 的 M10.Z 原場及 Wave2–Wave4 安全結構化檔案搜尋，未找到原主金鑰或可驗證的32-byte Base64候選；原啟動程式每次產生隨機金鑰且收據未保存。sandbox 外唯讀核專屬PG／Manager仍running、三專屬埠拒絕連線、DB 62 Run且名額全0，另有2筆有效加密憑證。無同一金鑰不能安全恢復原 Vault；未以新金鑰／新DB取代，未重啟或寫DB。M10.Z live准入維持BLOCKED，詳見[Wave4復原覆核](handoff/m10z-wave4-20261115.md#2026-11-15-原-vault-復原覆核)。
+
+2026-11-15 Wave5 依使用者新授權建立獨立可還原現場：新 persistent state／私有備份保存 Vault、Manager／PG／模型設定與 Server/Web/目標來源、三個 Docker image；19987–19989、專屬 PG volume/Manager，實測停機後同 key/token/DB 重啟。環境定向／獨立 QA 各5/5；零模型真 v4 sidecar+transport、slot釋放與下一個手動 Module 正式驗證 PASS。原 #1/#2/#5/#6/#8 沿用，不重驗；#3 單次真 planner LIMIT 無 Plan，#4 無 Stage，#7 新來源仍 budget_exhausted partial 無 checkpoint，無安全續接依據。Manager 一次失聯後只重啟同一容器以 journal replay 原結果，未重送模型。新 DB 5 Run、active/occupied0、Worker0；原 DB 仍62 Run、active/occupied0，舊19887–19889與保護部署狀態未變。M10.Z 仍受阻、不標記、不push/merge/tag。詳見 [Wave5可還原環境與 live 結果](handoff/m10z-wave5-20261115.md)。
+
+#
+2026-11-16 Wave6 主 Agent 親自補齊三缺漏：修正 Manager HTTP2/WS 共用 TLS config、Worker 候選交付與 canonical baseURL；#7 同 revision 正式驗證1/0/0/0。#4 原 query Stage 停止後沿原 session 真修復，正式1/0/0/0；verify 補 Plan args／上游 metadata 後正式3/0/0/0。#3 Plan done/r10，真 Compose1/0/0/0、builtin摘要、兩新Module與UseCase原子發佈、已發布正式Run1/0/0/0。新DB26 Run，active/occupied/Worker皆0，三埠與持久身分正常，私有備份更新完成；無空白volume還原演練、無其他五項重驗、無push/merge/tag。詳見[Wave6交接](handoff/m10z-wave6-20261116.md)。
+
+2026-11-16 Wave7（owner：主 Agent，不開subagent）：Stage權威args／固定上游契約已自動接線，真模型首次下游產稿與Compose1/0/0/0；LiveView真UI連續12秒7/9/10/9幀、關閉後Run繼續成功；Wave6備份真還原新volume、兩次Server啟動與26 Run/報告/身分一致。M10.9原四段摘要／原子發佈／正式執行1/0/0/0。補驗另修Planner純訊息阻礙被誤判失敗、Module五回合交付修復、Compose末段重試與失敗摘要接線；G07四Module各驗證及整體Compose全1/0/0/0。黃金原PASS不重跑，舊分數不覆寫；G05 assisted複用草稿正式通過，G09/G10真拒絕，G11/G12行為與原評分分列，G08 Stage1稿與G13/G14真耗盡條件仍未完整證實。未push/merge/tag。詳見[Wave7修復與補證](handoff/m10z-wave7-20261116.md)。
+
+2026-11-16 Wave8（owner：主 Agent，不開subagent）：G08原三段Plan只確認Stage1，真作者/正式驗證通過後confirmed暫停，後兩段無派工；G11/G12原評分PASS，G11獨立執行抓到導航後沿原session修復，定稿停網I/O稽核及正式驗證通過，G12模型前完整快照零刪除/改寫、按鈕變更及正式驗證成功；registry11.3保留修改說明與未完成nextStep，選填provider schema修正。G13補合成表單/分段fixture，固定2/2真模型耗盡→可信checkpoint r3→去重continue→r4正式1/0/0/0，五項行為與PNG/JSON各1份皆具證據。G14正確Planner路由、1/2請求保存四段Plan並回報待確認步驟。Worker66/66、Server/Manager unit、真PG Plan回歸與Web build通過；已通過項目不重驗，歷史raw及assisted界線保留。詳見[Wave8缺口收尾](handoff/m10z-wave8-20261116.md)。
+
+## M11 階段二：MCP（`feat/mcp`，基線 `ded0364`）
+
+狀態：完成（M11 限定範圍及本次集中驗收；未 merge/tag）。2026-11-14 使用者明確授權直接開發，覆蓋原 M10.Z 開發順序門檻；M10.Z 尚未完成，未建立 phase1-verified。既有驗收現場19287保留，新工作先隔離驗證。
+
+獨立 PM t52（parent=null、gpt-6-astra low）接手；Server t53、Runtime t54 為全新 gpt-6-sol high 對話，parent=t52，各自新 tab，crew=1、keep/outlive-parent、明確 repo cwd、no-daemon 與 YOLO 均已 hc 實核 working。PM 唯一 docs/contracts/Git owner；首波兩 owner 盤點最小接縫，v11 固定後實作。
 
 | 項目 | Owner | 內容 | 最小驗證 | 狀態 |
 | --- | --- | --- | --- | --- |
-| M11.0 | PM | v11 契約：MCP 工具如何對應註冊表、Agent Token、session 租約、claim／submit；tech-stack 加入 MCP Go SDK | owner 確認 | 待辦 |
-| M11.1 | t31 | MCP 端點、Token 雜湊與撤銷、速率限制、Server 端工具、稽核、prompts／resources 提供 skill | Go 測試：列出工具、撤銷後立即拒絕、跨 Workspace 拒絕 | 待辦 |
-| M11.2 | t32 | Worker `session` 模式、Manager 租約與閒置回收、browser／login 工具代理 | 建立、閒置逾時、回收後釋放名額 | 待辦 |
-| M11.3 | t31 | 接單模式：`authorEngine` 設定、claim／心跳／submit、逾時與取消收斂 | 單元測試：重複 submit、逾時、取消 | 待辦 |
-| M11.4 | t30 | Token 管理（只顯示一次）、authorEngine 設定、來源徽章、稽核列表 | build 加目視 | 待辦 |
-| M11.5 | PM | `docs/guides/mcp-agent.md` 接入指南；用一個現成 Agent 跑一次互動模式 | 外部 Agent 產出 Use Case 草稿 | 待辦 |
-| **M11.Z** | PM＋t33 | **階段二完整驗證** | 通過後 merge 回 main，標記 `phase2-verified` | 待辦 |
+| M11.0 | t52 PM | v11 契約：MCP 工具如何對應註冊表、Agent Token、session 租約、claim／submit；tech-stack 加入 MCP Go SDK | owner 確認 | 完成 |
+| M11.1 | t53/t58/t63 | MCP 端點、Token 雜湊與撤銷、速率限制、Server 端工具、稽核、prompts／resources 提供 skill | Go 測試：列出工具、撤銷後立即拒絕、跨 Workspace 拒絕 | 完成 |
+| M11.2 | t54/t59/t62 | Worker `session` 模式、Manager 租約與閒置回收、browser／login 工具代理 | 建立、閒置逾時、回收後釋放名額 | 完成 |
+| M11.3 | t5g/t5w/t60/t63 | 接單模式：`authorEngine` 設定、claim／心跳／submit、逾時與取消收斂 | 單元測試：重複 submit、逾時、取消 | 完成 |
+| M11.4 | t55/t5j/t5s/t5y/t64 | Token 管理（只顯示一次）、authorEngine 設定、來源徽章、稽核列表 | build 加目視 | 完成 |
+| M11.5 | t52＋t6c/t6d/t6f | `docs/guides/mcp-agent.md` 接入指南；用一個現成 Agent 跑一次互動模式 | 外部 Agent 產出 Use Case 草稿 | 完成 |
+| **M11.Z** | t52＋t66/t67/t68 | **階段二完整驗證** | 本次僅授權 commit/push；merge/tag 另待指示 | 完成 |
+
+2026-11-14 首波v11已固定並派實作：t53為Token／管理gate／唯讀MCP與skill resources；t54為獨立browser session核心、IPC及共用容量回收。claim/submit、互動寫入與Server session代理尚待後切片，M11.0不提前列完成。MCP啟用時管理API必須同步受保護，避免既有開發身分入口繞過Token邊界；既有19287不改。
+
+首波Web已交付管理key記憶體登入／cookie接線、Token一次顯示／撤銷／稽核及MCP代理；`npm run build`與`node scripts/check-m11-agent-api.mjs`通過，隔離真Server整合待QA t56。external engine與來源徽章尚未啟用，M11.4維持進行中。
+
+2026-11-14 首波程式與隔離驗證已交付（各子項仍進行中）：Server TestM11/Postgres與build PASS，Manager定向race/build PASS，Worker session＋privacy 7/7 PASS，Web build/API檢查及QA合成UI PASS，PM真HTTP smoke 18項PASS。修復Token遲到回應、Catalog DB錯誤誤成功與匿名session敏感快照，均有行為red→green。新隔離服務已回收，未動19287。詳見 [首波交接](handoff/m11-first-wave-20261114.md)；後續先固定Server session／claim wire，未完成項不提前列完成。
+
+2026-11-14 Wave 2 匿名瀏覽器切片已交付（M11整階段仍進行中）：registry11.0 與 v11 租約契約固定；t58 接 Server 持久租約／MCP browser 代理，t59 完成 close 重送收斂，t5b 完成本機 transport（Keychain不可互動時採0600專用憑證檔）。PM 實跑真 Docker Runtime browser/reclaim 測試 PASS（2.427s），不等同 Server 全鏈驗收。t5c租約異常QA全PASS，t5d真MCP→Server→Manager→Docker→Worker 33項全PASS（含同callId不重點擊、實際回收與容量恢復）；本機持久 MCP 已獨立安裝於19587，先使用首波Server驗接入；全新Codex QA t5f實際catalog_search與skill resource讀取皆PASS。Wave2 Server已經兩路QA通過並更新本機；stdio真連線initialize、精確9工具與Catalog皆PASS，本機Workspace未確認scope。首波 39c15cc 已依使用者要求推送。
+
+2026-11-14 Wave3 已固定test-author外部接單契約並開工：t5g Server task_claim/heartbeat/tool_call/submit與authorEngine CAS，t5h bridge metadata及external adapter說明，t5j Web引擎切換與Run狀態。t5m固定snapshot2真MCP租約異常QA已PASS，Server TestM11及external race PASS、Web build/API/UI與transport17項PASS；t5k真UI→全新Codex t5p→MCP接單/探索/提交→AI revision2→正式validation succeeded與可開啟報告全鏈PASS（1 passed，0 failed/flaky/skipped）。本機MCP已更新13工具，隔離環境已回收，腳本與正式報告保留於專用tmp證據。附帶builtin acceptance-summary Run failed，未驗摘要或發佈；詳見 [Wave3交接](handoff/m11-wave3-20261114.md)。，不以自報selfTest替代。module/usecase互動寫入、login/LiveView仍另波處理。
+
+2026-11-14 最新執行節奏：使用者授權每wave核心必要驗證後commit/push，全部功能完成後才集中完整驗收；9eb337c已推送。實作owner維持全新Sol high，QA改用本機可用gpt-6.1-terra xhigh（使用者指定Terra）。Wave4先補普通Test/Module/Plan batch外部acceptance-summary；Wave5平台化產稿/互動寫入，後續session登入/LiveView，再M11.Z。不將M10.Z或尚未實作項提前列完成。
+
+Wave4外部摘要切片完成：普通Test/Module/Plan batch沿原parser/CAS與權威驗證快照，Core Server測試/build、Web build/合成檢查、Worker15測試PASS；Terra t5t overlay真MCP/PG三分支current/stale共6 case PASS（20.358s）。validation artifact為合成證據，不算真Playwright；最後集中完整驗收。另owner誤跑舊TestM7出現未歸因line81失敗，已停止，不假稱舊baseline已知問題。
+
+Wave5核心切片已完成：t5w/t5x/t5y接外部module-authoring、usecase-planner（含Plan Stage原skill）、workspace-author；t5z Terra真in-process MCP＋隔離PG的三作者權威/CAS/冪等測試PASS。Workspace正向失敗經snapshot守衛修復後red→green；Module候選仍未自試，正式validation另排，Planner ref仍由同attempt Server發行。Web typecheck/UI/build、三skill SHA載入與Worker typecheck PASS。合成證據不當真Docker/UI，完整驗收仍待全部wave。互動create/edit/validate/report與session login/LiveView仍後波。
+
+Wave6核心切片完成：t60 Server、t61 Terra QA，registry11.2追加draft_create/get、author_start、validation_request/report；registry-manifest10測試、Server定向MCP/build、Terra真MCP＋PG四項24.967s PASS，安全報告投影追加定向PASS。修Compose保留AI來源、交易鎖序與author_start最小tombstone。合成證據非Docker/UI，W7 login/LiveView後集中完整驗收。
+
+Wave7核心切片完成：t62 Runtime/transport、t63 Server、t64 Web，t65 Terra安全QA；可信browser_login、session LiveView/管理入口與SERVER_CA_FILE接通。Worker12測試/typecheck/build、Manager credential/CA/session live定向/build、bridge、Web typecheck/遮蔽15項/build、Server精確19工具隔離PG/core/build、Terra resolver/Hub/loopbackWS皆PASS。尚未真TLS/Docker/Agent/UI全鏈；提交後開始M11.Z集中驗收。
+
+M11.Z進行中：固定34cf5ea的集中API/權限29頂層測試全PASS/0skip（合成fixture，非Docker/UI）。真UI→新MCP Agent→普通Test revision2正式validation與外部摘要成功、報告可開；claim缺testId由PM補metadata後發現並定向修復。互動Module遇W5 skill resources未公開真缺口，已資源list/read red→green；Agent兩個參數schema錯誤另列客戶端問題。session真TLS登入站成功、快照private/close容器已移除，但LiveView無首幀未過；加固定enum診斷準備新隔離probe，尚不宣稱M11.Z完成。
+
+2026-11-14 集中驗收續報：R4 真 TLS／Docker session 已驗 WebRTC 解碼前進、JPEG、roleId 登入（站端計數 +1）、敏感暫停隱藏與恢復、快照遮蔽、關閉後工具與 viewer 拒絕；PM 獨立核容器不存在、未回收租約與占用 Run 為 0。R5 UI 撤銷專用 Token 後下次 RPC 401。暫停證據僅涵蓋觀測時點，不擴稱每一影格；R3 無首幀根因仍未知。Module 真正式驗證／摘要／UI 發佈通過後，Use Case 重用正式驗證發現雙參數 Module 與 Compose 單物件 ABI 不合。保留原失敗證據，三端新增可信 moduleAbi 與私有執行 façade，定向舊形式失敗／單物件成功；正準備同一 Module 續編修復與 Use Case 再驗，M11.Z 尚未完成。
 
 M11.Z 清單：
-1. M10.Z 第 1、2 項回歸，並用 builtin 跑一次黃金任務集。
+1. 依使用者最新限制，不重跑 M1–M9 或舊 M10 全套／模型刷測；本次集中驗證 M11 受影響主流程，不把歷史證據算成本次通過。
 2. 互動模式端到端：外部 Agent 建立 Module 與 Use Case 草稿 → 真實驗證 → 人在 UI 發佈；MCP 沒有任何發佈路徑。
 3. 接單模式：UI 對話交給外部 Agent 完成；逾時、取消、重複 submit 都不重複寫入。
 4. 撤銷 Token 後立即拒絕；跨 Workspace 拒絕；session 回收後名額恢復。
-5. 檢查稽核紀錄與 log，確認沒有憑證或金鑰；用注入頁確認權限沒有被放大。
+5. 以合成秘密、公開回應／稽核投影及固定 enum 診斷檢查遮蔽；依使用者限制不讀原始對話、憑證或自由 log，不宣稱實際 log 全面掃描。用注入頁確認權限沒有被放大。
+
+
+2026-11-14 最終結果：M11 各 wave 與本次集中驗收完成。普通 Test 真 UI→外部 Agent→正式驗證／摘要／報告成功；Module 經 ABI 真 red→green 後 revision4 正式2/0/0/0、UI發佈；Use Case 經頁面前提與可執行斷言修正，Plan11四Stage ready，兩新Module正式各2/0/0/0、整體正式1/0/0/0、外部批次摘要與真UI整批發佈成功。UseCase版本 fc9f75b4-f619-4595-9b5d-2d48fcc856ef；兩候選版本 f3039cc8-9d7f-48f7-8af2-61440a08235a、d9eb63ee-353a-417a-af1e-d1302fb20f94。最後DB active/occupied/unreclaimed皆0，按Manager精確label核Docker容器為0。API31項＋ABI獨立定向與session/TLS/Live/撤銷證據及限制見[集中驗收紀錄](handoff/m11-final-20261114.md)。本機MCP19587已更新、全新Terra實測19工具及Catalog/resources；保留DB、憑證、artifact、journal與隔離現場，不動19287。未重跑M1–M9或舊M10全套，M10.Z仍待辦，未merge/tag。
 
 ### M12 階段三：Agent Adapter（`feat/agent-adapter`，自 `phase2-verified` 分出）
 

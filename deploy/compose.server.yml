@@ -31,6 +31,8 @@ services:
       ARTIFACT_DIR: /data/artifacts
       PORT: "8080"
       WHIPPET_LIVE_ICE_SERVERS: ${WHIPPET_LIVE_ICE_SERVERS:-[]}
+      WHIPPET_ADMIN_TOKEN: ${WHIPPET_ADMIN_TOKEN:-}
+      WHIPPET_PUBLIC_ORIGIN: ${WHIPPET_PUBLIC_ORIGIN:-}
     ports:
       - "127.0.0.1:${SERVER_PORT:-18081}:8080"
     volumes:

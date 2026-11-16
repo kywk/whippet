@@ -6,7 +6,7 @@ import (
 	"errors"
 )
 
-func (p *Postgres) completeModule(ctx context.Context, tx *sql.Tx, run, attempt string, input AuthorInput, d draftState, session EditingSession) error {
+func (p *Postgres) completeModule(ctx context.Context, tx *sql.Tx, run, attempt string, input AuthorInput, d draftState, session EditingSession, externalOutput []byte) error {
 	var kind, slug string
 	if err := tx.QueryRowContext(ctx, `SELECT kind,slug FROM tests WHERE id=$1`, d.TestID).Scan(&kind, &slug); err != nil {
 		return err
@@ -33,9 +33,12 @@ func (p *Postgres) completeModule(ctx context.Context, tx *sql.Tx, run, attempt 
 	if err != nil {
 		return err
 	}
-	data, err := p.readArtifactBytes(ctx, tx, run, attempt, "author.json", MaxModuleAuthorArtifactBytes)
-	if err != nil {
-		return err
+	data := externalOutput
+	if data == nil {
+		data, err = p.readArtifactBytes(ctx, tx, run, attempt, "author.json", MaxModuleAuthorArtifactBytes)
+		if err != nil {
+			return err
+		}
 	}
 	out, err := decodeModuleAuthorOutput(data, input, registry)
 	if err != nil {

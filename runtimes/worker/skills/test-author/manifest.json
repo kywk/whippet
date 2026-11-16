@@ -24,5 +24,11 @@
     "model": "muse-spark-1.3-contributor",
     "reasoningEffort": "xhigh"
   },
-  "references": []
+  "references": [
+    {
+      "id": "external-mcp",
+      "path": "references/external-mcp.md",
+      "sha256": "cc5725105c4c16b0684524ae0c2ab923aada806585e6a7f69e765a408fec6720"
+    }
+  ]
 }

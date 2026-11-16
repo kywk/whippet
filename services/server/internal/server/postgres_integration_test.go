@@ -16,6 +16,32 @@ import (
 )
 
 // Explicit opt-in: creates and removes its own schema in an existing test database.
+// The historical migration seed predates script provenance. These fixtures are
+// hand-written local specs, so copy them as manual versions for execution tests.
+func manualSeedVersions(t *testing.T, p *Postgres, ctx context.Context) {
+	t.Helper()
+	for _, seed := range []string{"20000000-0000-4000-8000-000000000001", "20000000-0000-4000-8000-000000000002"} {
+		id := NewID()
+		result, err := p.DB.ExecContext(ctx, `INSERT INTO test_versions(id,test_id,version,script,script_hash,timeout_ms,workspace_settings,workspace_context,script_origin)
+ SELECT $1,test_id,2,script,script_hash,timeout_ms,workspace_settings,workspace_context,'manual' FROM test_versions WHERE id=$2`, id, seed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows, err := result.RowsAffected()
+		if err != nil || rows != 1 {
+			t.Fatal("manual seed fixture missing", err)
+		}
+		result, err = p.DB.ExecContext(ctx, `UPDATE tests SET published_version_id=$1 WHERE published_version_id=$2`, id, seed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows, err = result.RowsAffected()
+		if err != nil || rows != 1 {
+			t.Fatal("manual seed publication missing", err)
+		}
+	}
+}
+
 func TestPostgresQueueAndAttemptInvariants(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
@@ -58,6 +84,7 @@ func TestPostgresQueueAndAttemptInvariants(t *testing.T) {
 	if err := p.Migrate(ctx); err != nil {
 		t.Fatalf("idempotent migration: %v", err)
 	}
+	manualSeedVersions(t, p, ctx)
 	workspaces, err := p.Workspaces(ctx)
 	if err != nil || len(workspaces) != 1 {
 		t.Fatalf("seed workspace: %+v %v", workspaces, err)

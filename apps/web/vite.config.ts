@@ -14,6 +14,10 @@ export default defineConfig(({ mode }) => {
           changeOrigin: false,
           ws: true,
         },
+        '^/mcp$': {
+          target: env.WHIPPET_API_PROXY_TARGET || 'http://localhost:8080',
+          changeOrigin: false,
+        },
       },
     },
   };

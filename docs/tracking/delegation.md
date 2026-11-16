@@ -169,3 +169,67 @@ M8 依相同方式先固定 proposal／機密／網路政策再並行；Runtime 
 4. 每位 owner 回報修改檔案、介面、最小驗證與剩餘限制；PM 整合後做 M10.9，再派 t33 執行 M10.Z。
 
 M11、M12 依相同方式進行：先固定契約，再並行開發，最後做 Z 項完整驗證。分支只由 PM 建立與 merge；owner 在 PM 指定的分支上工作。
+
+## M11 最新路由（2026-11-14，覆蓋歷史模型／tab 規則）
+
+獨立 PM t52 直接對使用者負責，parent=null，gpt-6-astra low。新 Server t53 與 Runtime t54（及後續 Web／QA）統一 gpt-6-sol high；全新對話，parent=t52、crew=1、keep/outlive-parent、明確 repo cwd，Codex no-daemon／完整 YOLO。不得續用舊 owner 或帶入 herdr.tab。
+
+同 space `spc410627697c591af2a35cc533b8f1ad8` 實核新 tab：PM `tb0c4939cce7992d29f9b08b2d3c759df8`（Whippet M11 PM 11-14）、Server `tb03591fb11813679ec68a0c2462ea5ed8`（Whippet M11 Server 11-14）、Runtime `tba56c70dc8c17110664c12a5c0da3684c`（Whippet M11 Runtime 11-14）。三者 argv／parent／cwd／活動皆已核對。
+
+檔案 owner 維持原角色邊界；最多三實作加 PM。子 agent 不 Git／部署／重啟共享服務。M11 先隔離測試，不動19287。首波收集 Server／Runtime 最小介面，由 PM 固定 v11；Web 待介面穩定再啟動。後續本地階段 commit 可執行，不自動 push／merge／tag。
+
+首波介面固定後啟動 Web t55（gpt-6-sol high、parent=t52），獨立 tab `tb2081d7e3947353996d4de83b21a5e8e8`，命名 Whippet M11 Web 11-14；argv/keep/outlive-parent/cwd/working 已實核。唯一 owner apps/web，先接管理gate、Token與稽核，不啟用尚未實作external engine。
+
+Web首切片交付停寫後，新增QA t56（全新gpt-6-sol high、parent=t52、crew=1、keep/outlive-parent/no-daemon/YOLO），獨立tab `tba3ee94e316121c59de0a0a2402f1743b`（Whippet M11 QA 11-14），已核cwd/argv/working。QA只寫scripts/test/m11-*及專用tmp證據，先審首波跨入口與敏感狀態，不重跑已通過build。實作中為Server、Runtime、QA三位。
+
+## M11 Wave 2（2026-11-14）
+
+使用者已明確授權首波 commit/push 與下一波，feat/mcp 已推送至 39c15cc；另授權多位 QA 並行及本機安裝 Whippet MCP。三位全新實作 owner 為 t58 Server（services/server）、t59 Runtime（services/manager、runtimes/worker）、t5b Local transport（scripts/local-mcp）；QA t5c 只寫 scripts/test/m11w2-lease-*，t5d 只寫 scripts/test/m11w2-browser-*。PM 保持 docs/contracts/deploy/Git owner。
+
+以上五位皆已實核 parent=t52、gpt-6-sol high、no-daemon/YOLO、crew=1、keep/outlive-parent 與 repo cwd；獨立新 tab 分別為 tb8f290fddf29358dcdf375296f107ebeb、tb464ca566dbdfddffa3e04f6060a7009f、tb9a82f197d54d1e3e1cb2d9840688637d、tb27fe8d8637546b54ac94e80ab6dac529、tbb63bd9e6ac285b7471fd6c222e462ebb，均在指定 space 命名。未繼承 herdr.tab，未喚醒首波舊 owner。
+
+本波契約以 v11 Wave 2 與 registry11.0 為準：匿名四項 browser 工具與租約 open/status/close，持久 requestId/callId 去重與確認回收。QA 分別驗 fake Manager 異常及真 Docker 全鏈；不把兩者證據混用。login/LiveView/claim/互動寫入仍未整合，19287 保留。
+
+本機實接QA t5f為全新gpt-6-sol high／parent=t52，argv/cwd/keep/outlive-parent/working已核，獨立tab `tb65ebfdd9f517da7b88a8a10c3cf54b94`（Whippet M11 Local MCP QA）。只以已註冊MCP讀Catalog/resources，不讀憑證檔、不以shell HTTP取代MCP，不改repo。
+
+## M11 Wave3（2026-11-14）
+
+使用者授權儘速推進剩餘wave，主線為網頁對話→MCP Agent接單→完整腳本E2E。全新owner t5g Server（services/server）、t5h Runtime/transport（services/manager、runtimes/worker、scripts/local-mcp、runtimes/agent-bridge）、t5j Web（apps/web）；QA t5k只寫scripts/test/m11w3-ui-*，t5m只寫scripts/test/m11w3-lease-*。各自gpt-6-sol high、parent=t52、crew=1、keep/outlive-parent、no-daemon/YOLO、repo cwd與working已核。
+
+新tab依序為tb9e89cf829b34ecc2b287216202d46310、tbb14905f18c014e02a554ece83efbcae4、tbde84b4868afe05b0135877a7c99a1436、tba70dad631b91f60ab33aff91879dbb74、tb5fc86a53c77f8b674897c4470fccfc40，指定space各自命名，沒有herdr.tab繼承。PM sole docs/contracts/deploy/Git；舊owners已結束、不復用。測試獨立環境，不碰19287/19587。v11 Wave3與registry11.1先固定後實作。
+
+真接單工作者t5n（Whippet M11 W3 MCP Author）為全新gpt-6-sol high、parent=t52、keep/outlive-parent/no-daemon/YOLO；metadata與working已核，獨立tab tb10442dc5bc91600cd5f997198c895888。本對話停用既有whippet，僅接私有測試whippet_e2e；Token經0700父目錄內0600 UNIX socket留記憶體，非secret argv/config。只用MCP領單/探索/提交，QA不代寫腳本；不Git/部署。
+
+本次真接單初始t5n因PM指定不存在Python executable而MCP啟動失敗，未claim；修正前先以實核Python路徑驗四工具存在，再開全新t5p，並非模型盲重試。t5p為同模型/effort與parent，metadata已核，tab tbdbdb7e50bd6f916da806fb7686a8446d（Whippet M11 W3 MCP Author Fixed）。t5p真MCP接單/探索/提交成功，t5k真UI與formal validation全PASS。
+
+## Wave4與最新驗證路由
+
+使用者於2026-11-14明確授權逐wave核心檢查後commit/push，最後集中完整驗收；QA可Terra xhigh並行。本機model metadata精確ID gpt-6.1-terra、支援xhigh，已向使用者明示，不默默替換。實作仍Sol high。
+
+Wave4 t5q Server/services/server、t5r Runtime/worker skills與transport、t5s Web/apps/web；Terra t5t只寫scripts/test/m11w4-summary-*，t5v唯讀最終規格審查且僅可寫scripts/test/m11-final-audit-*。五位皆全新對話parent=t52、crew=1、keep/outlive-parent、repo cwd、no-daemon/YOLO/working已核。指定space獨立tab依序tb763e9eeb24f24794e56afd71164bb269、tb0cb449c3fd060242a666ce253193e9aa、tbfb784a0496c51db4b9b9c44353489861、tbd70ddb90cdac5daee7ed8f858197abb2、tbe09b6bdb193fff5911fa39977fd12918，均已命名。PM仍sole docs/contracts/deploy/Git owner。
+
+
+## Wave5
+
+新實作 t5w Server、t5x Runtime、t5y Web 均 Sol high，QA t5z Terra xhigh；parent=t52、crew=1、keep/outlive-parent、no-daemon/YOLO、repo cwd已核。獨立 tab 依序 tb106e20312785a09ebe4481a01a452a04、tb8e6c826b368b07bce73071f277ffc78f、tbb9e26e4617dccb69a79112d7055151d3、tb8ede8a0e66998d0b63725194c41e64fe，指定space命名且未傳herdr.tab。owner依序 services/server、runtimes/worker與transport、apps/web、scripts/test/m11w5-platform-*。v11固定三種平台作者，互動控制另波；隔離tmpfs PG32775各用獨立schema，核心必要測試後commit/push。
+
+
+## Wave6 與 Wave7 唯讀預備
+
+Wave6 新Server t60（Sol high，services/server）及 QA t61（Terra xhigh，scripts/test/m11w6-interactive-*）皆parent=t52/no-daemon/YOLO/keep/outlive-parent/cwd已核；獨立tab為tb7d1756b22c7f2bb6ba8fab08104632fe與tbb93464a40023f1bb0b31f7e32189c2e8，指定space命名、無herdr.tab。W5 4c0eebb已push且原owner停寫後才交Server。registry11.2與v11 Wave6固定五互動控制，PG32776各自schema。
+
+W7新Runtime t62、Server t63（皆Sol high）目前僅唯讀login/LiveView最小wire提案，W6提交前不寫產品；tab tb4a8b0d84dae0ebb3ddccac59bdd4759e、tbed859cdd2c600137efd99482f19d6e9a，parent/argv/cwd/keep/outlive/working已核。PM仍sole docs/contracts/registry/Git/deploy。
+
+
+Wave6 ccbf9c3已push、t60停寫後，W7 t62 Runtime與t63 Server開始實作；新增t64 Web Sol high與t65安全QA Terra xhigh。兩位metadata已核，tab tbb4f6446418da840f89a34493383ab12e、tbbd9627d8277aee5783a3bb037e0500c4，在指定space命名。Runtime額外owner scripts/local-mcp，Server services/server，Web apps/web，QA僅scripts/test/m11w7-security-*。v11 Wave7固定session credential HTTPS/private IPC與LiveViewer權威；Manager新增SERVER_CA_FILE只載入公開CA，不改系統信任。PG32777隔離schema，PM準備deploy/m11-final-e2e-env.py但功能完成前不啟完整驗收。
+
+
+## M11 集中驗收與定向修復
+
+t66 UI、t67 session/security、t68 API 均全新 Terra xhigh；parent=t52、repo cwd、crew=1、keep/outlive-parent、no-daemon/YOLO 已核。獨立 tab 依序 tb4fb2b1cdc04599bb4646d019537b705a、tb8466e44e01b4e9940979aae092e7463a、tb71358f999da101d62f37a17322d5b58b，指定 space 命名，未傳 herdr.tab。各自只寫 scripts/test/m11-final-ui-*、session-*、api-*，PM 控制隔離環境與 Git。
+
+實際 MCP 作者為全新 Sol high：t69 普通 Test（tab tbab855418e8bc8cd730bb499bc9a4cb94）、t6b 初次 Module、t6c 修正環境後 Module（tb8fcf62d615f220f91df648f4122c094c）、t6d Use Case（tb508b04f2613835b8d23360f200614ca0）。相同 parent/cwd/keep/outlive/no-daemon/YOLO 已核；僅私有 MCP broker，Token 留記憶體，QA 不代產腳本。t6b 因資源缺口停止，產品修復後才交新 Agent；其參數錯誤獨立記錄，不算產品通過。
+
+集中驗收發現 Module harness 與 Compose ABI 不合後，由原 owner t63 Server、t62 Manager/Worker 定向修補，未改 QA 原斷言。c40b6e2 已推送；同 R5 資料保留原失敗，UI 續編原稿 formal RED，再由 t6c 修稿 formal GREEN／摘要／UI 發佈新版本，t6d 接續原 Use Case 更新固定版本。無 merge/tag，未操作19287。
+
+本機安裝最終唯讀 QA t6f 為全新 gpt-6.1-terra xhigh，parent=t52、cwd/keep/outlive/no-daemon/YOLO/working 已核；新 tab tbf042c83e594fad91a2f80db903117f52 命名 Whippet M11 Local Final QA，未傳 herdr.tab。實際 MCP 19 工具／Catalog／Module main、harness、external resources 全 PASS；不做寫入，原 Workspace 未確認 scope。

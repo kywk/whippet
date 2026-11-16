@@ -118,6 +118,54 @@ func TestAuthorOutputAndArtifactKindLimits(t *testing.T) {
 	}
 }
 
+func TestExternalAuthorOutputCannotAssertSelfTestOrValidation(t *testing.T) {
+	valid := []byte(`{"message":"候選草稿待正式驗證","script":"test('candidate', async () => {})","requestValidation":true}`)
+	out, err := decodeExternalAuthorOutput(valid)
+	if err != nil || out.Script == nil || *out.Script == "" || out.RequestValidation == nil || !*out.RequestValidation {
+		t.Fatalf("ordinary external draft must remain eligible for formal validation: %+v %v", out, err)
+	}
+	for _, raw := range []string{
+		`{"message":"x","script":"candidate","requestValidation":false,"partial":{"reason":"budget_exhausted","nextStep":"continue","checkpoint":{"scriptHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","selfTestPassed":true}}}`,
+		`{"message":"x","requestValidation":false,"partial":null}`,
+		`{"message":"x","requestValidation":false,"selfTestPassed":true}`,
+		`{"message":"x","requestValidation":false,"validated":true}`,
+		`{"message":"x","requestValidation":false,"requestValidation":true}`,
+	} {
+		if _, err := decodeExternalAuthorOutput([]byte(raw)); err == nil {
+			t.Fatalf("external result asserted untrusted proof or duplicated a field: %s", raw)
+		}
+	}
+}
+
+func TestExternalSummaryOutputUsesSummaryParser(t *testing.T) {
+	out, err := decodeExternalSummaryOutput([]byte(`{"message":"已摘要","description":"已驗證步驟","backgroundSummary":"非秘密背景","name":"  名稱  "}`))
+	if err != nil || out.Name == nil || *out.Name != "名稱" {
+		t.Fatalf("valid external summary rejected: %+v %v", out, err)
+	}
+	for _, raw := range []string{
+		`{"message":"x","description":"d","backgroundSummary":"b","script":"fake"}`,
+		`{"message":"x","description":"d","backgroundSummary":"b","requestValidation":true}`,
+		`{"message":"x","description":"d","backgroundSummary":"b","partial":null}`,
+		`{"message":"x","description":"d","backgroundSummary":"b","selfTestPassed":true}`,
+		`{"message":"x","description":"d","backgroundSummary":"b","proof":{}}`,
+		`{"message":"x","message":"y","description":"d","backgroundSummary":"b"}`,
+		`{"message":"x","description":"","backgroundSummary":"b"}`,
+	} {
+		if _, err := decodeExternalSummaryOutput([]byte(raw)); err == nil {
+			t.Fatalf("untrusted or invalid summary accepted: %s", raw)
+		}
+	}
+}
+
+func TestExternalToolBusyBeforeDispatchCanRetry(t *testing.T) {
+	if externalToolCallState(externalToolReceipt{Error: "busy", Retryable: true}) != "pending" {
+		t.Fatal("opening browser may return busy without consuming the logical call")
+	}
+	if externalToolCallState(externalToolReceipt{Error: "busy"}) != "replied" || externalToolCallState(externalToolReceipt{Error: "unknown_result"}) != "unknown" {
+		t.Fatal("in-flight or unknown browser calls must remain tombstoned")
+	}
+}
+
 func TestDispatchAuthorAndValidationUseDistinctKinds(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	engine := NewEngine(newFlowStore(), log)

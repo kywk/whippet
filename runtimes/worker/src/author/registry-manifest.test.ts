@@ -242,6 +242,10 @@ test("packaged primary skills and auxiliary recipe satisfy real manifest/hash sn
     assert.ok(bundle.instructions.includes("# " + (primary.id === "test-author" ? "Test author" : primary.id === "workspace-author" ? "Workspace author" : "Acceptance summary")));
     assert.ok(bundle.references.some(ref => ref.skillId === "playwright-authoring" && ref.referenceId === "recipe"));
     assert.match(bundle.readReference("playwright-authoring", "recipe").content, /# Playwright recipe/);
+    if (primary.id === "acceptance-summary") {
+      assert.ok(bundle.references.some(ref => ref.skillId === "acceptance-summary" && ref.referenceId === "external-mcp"));
+      assert.match(bundle.readReference("acceptance-summary", "external-mcp").content, /# External MCP acceptance summary/);
+    }
   }
 });
 
@@ -268,4 +272,13 @@ test("four platform skills load as pinned auxiliaries with registered tools and 
       assert.equal(bundle.instructions.includes(result.content), false);
     }
   }
+});
+
+test('optional update_draft explanations use provider non-strict schema while local guard stays closed',()=>{
+ const tool=loadToolRegistry().tools.find(t=>t.name==='update_draft')!;
+ assert.equal(modelTool(tool).strict,false);
+ validateToolArguments(tool,{script:'candidate',message:'保留說明'});
+ assert.throws(()=>validateToolArguments(tool,{script:'candidate',message:null}));
+ assert.throws(()=>validateToolArguments(tool,{script:'candidate',nextStep:null}));
+ assert.throws(()=>validateToolArguments(tool,{script:'candidate',extra:true}));
 });

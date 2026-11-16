@@ -121,6 +121,10 @@ func (p *Postgres) CreateAuthor(ctx context.Context, testID, sessionID, content 
 }
 
 func (p *Postgres) createAuthorInTx(ctx context.Context, tx *sql.Tx, d draftState, session EditingSession, content string, toolCeiling ...[]string) (AuthorSubmission, error) {
+	return p.createAuthorInTxForEngine(ctx, tx, d, session, content, "", toolCeiling...)
+}
+
+func (p *Postgres) createAuthorInTxForEngine(ctx context.Context, tx *sql.Tx, d draftState, session EditingSession, content, engine string, toolCeiling ...[]string) (AuthorSubmission, error) {
 	testID, sessionID, revision := d.TestID, session.ID, d.Revision
 	var active bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM runs WHERE test_id=$1 AND kind='author'
@@ -217,7 +221,7 @@ func (p *Postgres) createAuthorInTx(ctx context.Context, tx *sql.Tx, d draftStat
 		}
 		input.AllowedTools = restricted
 	}
-	run, err := enqueueAuthorSnapshot(ctx, tx, d, input, Run{authorizationRevision: auth, scopeProposalID: proposal})
+	run, err := enqueueAuthorSnapshot(ctx, tx, d, input, Run{authorizationRevision: auth, scopeProposalID: proposal, AuthorEngine: engine})
 	if err != nil {
 		return AuthorSubmission{}, err
 	}

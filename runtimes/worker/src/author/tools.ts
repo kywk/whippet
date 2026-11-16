@@ -1,4 +1,4 @@
-import type { SelfTestFailureClass } from './module-diagnostics.js';
+import {failedStepCategories, type FailedStepCategory, type MainFrameNavigation, type SelfTestFailureClass, type SelfTestObservation} from './module-diagnostics.js';
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
@@ -11,11 +11,12 @@ import { LiveObserver } from "../live/observer.js";
 import { fixtureBridge } from "../live/fixture-bridge.js";
 import {AIOriginGate,installAIOriginGate} from "./scope.js";
 import type {WorkspaceConfig} from "../workspace-context.js";
-import {CredentialClient} from '../login/client.js';
+import {CredentialClient,KnownSecrets,type CredentialResolver} from '../login/client.js';
 import {loginBroker} from '../login/broker.js';
 import {submitLogin} from '../login/helper.js';
 import {installLoginPrivacy} from '../login/privacy.js';
 import type { RuntimeSummary } from "../result.js";
+import { installModuleABI, type ModuleABI } from "../module-abi.js";
 
 const require = createRequire(import.meta.url);
 
@@ -45,18 +46,19 @@ export interface ExplorationBrowser {
   snapshot(): Promise<unknown>;
   click(selector: string): Promise<unknown>;
   fill(selector: string, value: string): Promise<unknown>;
-  login?(roleId:string,usernameSelector:string,passwordSelector:string,submitSelector:string):Promise<unknown>;
-  verifyDraft?(script: string, options?: { signal?: AbortSignal; moduleFile?: {slug:string;content:string}; onSelfTestFailure?: (value:SelfTestFailureClass)=>void }): Promise<DraftSelfTestResult>;
+  login?(roleId:string,usernameSelector:string,passwordSelector:string,submitSelector:string,callId?:string):Promise<unknown>;
+  verifyDraft?(script: string, options?: { signal?: AbortSignal; moduleFile?: ModuleABI & {content:string}; onSelfTestFailure?: (value:SelfTestFailureClass)=>void; onSelfTestObservation?: (value:SelfTestObservation)=>void }): Promise<DraftSelfTestResult>;
   close(): Promise<void>;
 }
 
-export function explorationBrowser(env: Readonly<Record<string, string | undefined>>,options:{scope?:WorkspaceConfig;executablePath?:string;credentials?:CredentialClient;defaultTestUrl?:string;timeoutMs?:number}={}): ExplorationBrowser {
+export function explorationBrowser(env: Readonly<Record<string, string | undefined>>,options:{scope?:WorkspaceConfig;executablePath?:string;credentials?:CredentialResolver;knownSecrets?:Pick<KnownSecrets,"add"|"clean">;defaultTestUrl?:string;timeoutMs?:number}={}): ExplorationBrowser {
   let browser: Browser | undefined;
   let context:BrowserContext|undefined;
   let page: Page | undefined;
   let closed = false;
   const live = new LiveObserver();
   const gate=options.scope?new AIOriginGate(options.scope):undefined;
+  const secrets=options.credentials?.secrets??options.knownSecrets??new KnownSecrets();
   let privacy:ReturnType<typeof installLoginPrivacy>|undefined;
   // Browser subprocesses do not inherit the AI key or Manager credentials.
   const browserEnv: Record<string, string> = {};
@@ -85,11 +87,11 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
   async function snapshot(): Promise<unknown> {
     const p = await getPage();
     if(gate)gate.require(p.url(),'observation');
-    if(options.credentials){
-      for(const cookie of await p.context().cookies())options.credentials.secrets.add(cookie.value);
+    {
+      for(const cookie of await p.context().cookies())secrets.add(cookie.value);
       const hidden=await p.locator('input[type="hidden"],input[type="password"]').evaluateAll((nodes)=>nodes.slice(0,100).map((n)=>(n as HTMLInputElement).value).filter((s)=>s.length<=4096));
-      for(const value of hidden)options.credentials.secrets.add(value);
-      privacy?.secrets.list().forEach((value)=>options.credentials!.secrets.add(value));
+      for(const value of hidden)secrets.add(value);
+      privacy?.secrets.list().forEach((value)=>secrets.add(value));
     }
     // This DOM extractor is fixed application code, never model-provided code.
     // It reads metadata only (not input values), and exposes no eval tool.
@@ -126,7 +128,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
     });
     const safeURL=new URL(p.url());safeURL.search='';safeURL.hash='';
     const result={ url: safeURL.href, snapshot: (await p.locator("body").ariaSnapshot({ timeout: 10000 })).slice(0, 12000), selectorHints,...(gate?{scopeIssues:gate.takeIssues()}:{}) };
-    return options.credentials?options.credentials.secrets.clean(result):result;
+    return secrets.clean(result);
   }
   return {
     async navigate(url) {
@@ -150,17 +152,20 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
       if(await input.getAttribute('type')==='password')throw new AuthorError('tool_failed');
       await input.fill(value);return {ok:true};
     },
-    async login(roleId,usernameSelector,passwordSelector,submitSelector){
+    async login(roleId,usernameSelector,passwordSelector,submitSelector,callId){
       if(!options.credentials||!gate)throw new AuthorError('tool_failed');
-      const values=await options.credentials.resolve(roleId);
+      const values=await options.credentials.resolve(roleId,callId);
       try{return await gate.duringLogin(values.loginOrigin,async()=>{const p=await getPage();if(new URL(p.url()).origin!==new URL(values.loginOrigin).origin)await p.goto(values.loginOrigin,{waitUntil:'domcontentloaded'});const result=await submitLogin(p,values,usernameSelector,passwordSelector,submitSelector);return {...result,page:await snapshot()};});}
       finally{values.username='';values.password='';}
     },
     async verifyDraft(script, runOptions = {}) {
       const failure=(value:SelfTestFailureClass)=>{try{runOptions.onSelfTestFailure?.(value);}catch{/* Diagnostic observers never change execution. */}};
-      if (closed || runOptions.signal?.aborted) { failure('CANCELLED'); throw new AuthorError("cancelled"); }
+      const observe=(value:SelfTestObservation)=>{try{runOptions.onSelfTestObservation?.(value);}catch{/* Diagnostic observers never change execution. */}};
+      const unobserved:SelfTestObservation={failedStepCategory:'UNOBSERVED',mainFrameNavigation:'UNOBSERVED'};
+      if (closed || runOptions.signal?.aborted) { failure('CANCELLED');observe(unobserved); throw new AuthorError("cancelled"); }
       if (!isValidPlaywrightSpec(script)) {
         failure('INVALID_SPEC');
+        observe(unobserved);
         return {
           passed: false,
           category: "invalid_spec",
@@ -170,6 +175,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
       }
       if (options.scope && options.scope.targets.length === 0) {
         failure('GUARD');
+        observe(unobserved);
         return {
           passed: false,
           category: "environment",
@@ -190,7 +196,9 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
           if(!/^[a-z][a-z0-9-]{0,63}$/.test(runOptions.moduleFile.slug))throw new AuthorError("invalid_input");
           await mkdir(join(taskDir,"lib"));
           await writeFile(join(taskDir,"lib",runOptions.moduleFile.slug+".ts"),runOptions.moduleFile.content,{flag:"wx"});
+          await installModuleABI(taskDir,{slug:runOptions.moduleFile.slug,exportName:runOptions.moduleFile.exportName});
         }
+        const navigationObservationPath=runOptions.onSelfTestObservation?join(taskDir,"navigation-observation.json"):undefined;
         const bridgePath = join(taskDir, "live-fixture.cjs");
         await writeFile(
           bridgePath,
@@ -198,6 +206,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
             scopeURL: new URL("./scope.js", import.meta.url).href,
             scope: options.scope ?? null,
             privacyURL: new URL("../login/privacy.js", import.meta.url).href,
+            navigationObservationPath,
           }),
           "utf8",
         );
@@ -230,7 +239,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
           timeout: selfTestTimeout,
           globalTimeout: selfTestTimeout,
           reporter: [
-            [reporterPath, { summaryPath }],
+            [reporterPath, { summaryPath, diagnostics: !!runOptions.onSelfTestObservation }],
             ["json", { outputFile: resultsPath }],
           ],
           projects: [{
@@ -248,7 +257,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
         };
         const configPath = join(taskDir, "playwright.config.cjs");
         await writeFile(configPath, `module.exports = ${JSON.stringify(config, null, 2)};\n`, "utf8");
-        if (options.credentials) {
+        if (options.credentials instanceof CredentialClient) {
           broker = await loginBroker(options.credentials);
         }
         const stderrLines: string[] = [];
@@ -311,6 +320,18 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
         const count=(value:unknown)=>typeof value==='number'&&Number.isSafeInteger(value)&&value>0;
         failure(watchdogExpired || summary?.status==='timedout' || count(summary?.timedOut) ? 'TIMEOUT' :
           summary?.status==='failed' && count(summary?.failed) ? 'TEST_FAILED' : 'UNKNOWN');
+        let failedStepCategory:FailedStepCategory='UNOBSERVED';
+        const reported=(summary as RuntimeSummary & {failedStepCategory?:unknown}|undefined)?.failedStepCategory;
+        if(failedStepCategories.includes(reported as FailedStepCategory))failedStepCategory=reported as FailedStepCategory;
+        let mainFrameNavigation:MainFrameNavigation='UNOBSERVED';
+        if(navigationObservationPath && !watchdogExpired && !runOptions.signal?.aborted){
+          try{
+            const raw=await readFile(navigationObservationPath,'utf8');
+            if(raw==='{"mainFrameNavigation":"OBSERVED"}')mainFrameNavigation='OBSERVED';
+            else if(raw==='{"mainFrameNavigation":"NOT_OBSERVED"}')mainFrameNavigation='NOT_OBSERVED';
+          }catch{/* Missing or malformed producer evidence remains UNOBSERVED. */}
+        }
+        observe({failedStepCategory,mainFrameNavigation});
         const rawErr = redact(
           summary?.errors?.[0] ??
           json?.errors?.[0]?.message ??
@@ -331,6 +352,6 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
         if (taskDir) await rm(taskDir, { recursive: true, force: true }).catch(() => undefined);
       }
     },
-    async close() { closed = true;privacy?.close();await live.close().catch(() => undefined); await browser?.close(); },
+    async close() { closed = true;options.credentials?.close();privacy?.close();await live.close().catch(() => undefined); await browser?.close(); },
   };
 }

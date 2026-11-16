@@ -15,6 +15,8 @@
 | 二：MCP | `feat/mcp`（自 `phase1-verified` 分出） | MCP 端點、Agent Token、瀏覽器租用 session、互動模式與接單模式 | 階段二完整驗證通過後 merge 回 `main`，標記 `phase2-verified` |
 | 三：Agent Adapter | `feat/agent-adapter`（自 `phase2-verified` 分出） | 開源 LLM 迴圈 adapter、多供應商設定、參考外部 Worker | 階段三完整驗證通過後 merge 回 `main`，標記 `phase3-verified` |
 
+2026-11-14 使用者決策覆蓋階段二的開發順序：直接以已推送 `ded0364` 的 `feat/mcp` 開始 M11。M10.Z 缺口保留，未建立 `phase1-verified`；這項授權不等於階段驗收通過，也不授權自動 merge、push 或 tag。
+
 - 分支是短期階段分支，不長期並行。分支期間 `main` 只收 hotfix，hotfix 同步 merge 進活躍分支。
 - 階段三的引擎選型 spike 可在階段二期間於拋棄式分支先做，只產出結論，不合併程式。
 - 推送與歷史改寫依使用者另行指示。

@@ -19,7 +19,17 @@ func platformServerTool(name string) bool {
 // Scope and authorization are checked before the persisted retry result. Run
 // locking serializes proposals and cancellation, while the callback checks epoch.
 func (p *Postgres) HarnessPlatform(ctx context.Context, manager, run, attempt string, request HarnessToolRequest, registry *ToolRegistry, authorized func() bool) (any, error) {
-	if !platformServerTool(request.Name) || !ValidID(request.CallID) || authorized == nil {
+	return p.harnessPlatform(ctx, run, attempt, request, registry, manager, nil, nil, authorized)
+}
+
+func (p *Postgres) HarnessPlatformExternal(ctx context.Context, token AgentToken, claim externalClaim, request HarnessToolRequest, registry *ToolRegistry) (any, error) {
+	return p.harnessPlatform(ctx, claim.RunID, claim.AttemptID, request, registry, "", &token, &claim, nil)
+}
+
+// Both authorities use the same platform candidate and retry transaction.
+// The external path locks its Token and claim before the Run, matching submit.
+func (p *Postgres) harnessPlatform(ctx context.Context, run, attempt string, request HarnessToolRequest, registry *ToolRegistry, manager string, token *AgentToken, claim *externalClaim, authorized func() bool) (any, error) {
+	if !platformServerTool(request.Name) || !ValidID(request.CallID) || (token == nil && authorized == nil) {
 		return nil, ErrInvalid
 	}
 	tool, ok := registry.tool(request.Name)
@@ -61,13 +71,23 @@ func (p *Postgres) HarnessPlatform(ctx context.Context, manager, run, attempt st
 	if input.SkillID != "module-authoring" && input.SkillID != "usecase-planner" {
 		return nil, ErrHistoryUnavailable
 	}
+	if token != nil {
+		current, e := p.lockExternalClaim(ctx, tx, *token, claim.RunID, claim.AttemptID, claim.LeaseID)
+		if e != nil || current.WorkspaceID != workspace || p.externalLive(ctx, tx, current) != nil {
+			return nil, ErrHistoryUnavailable
+		}
+	}
 	var assigned, currentAttempt sql.NullString
-	var status string
+	var status, engine string
 	var released bool
-	if err = tx.QueryRowContext(ctx, `SELECT manager_id,attempt_id,status,slot_released FROM runs WHERE id=$1 FOR UPDATE`, run).Scan(&assigned, &currentAttempt, &status, &released); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT manager_id,attempt_id,status,slot_released,author_engine FROM runs WHERE id=$1 FOR UPDATE`, run).Scan(&assigned, &currentAttempt, &status, &released, &engine); err != nil {
 		return nil, err
 	}
-	if assigned.String != manager || currentAttempt.String != attempt || released || (status != "running" && status != "dispatched") || !authorized() {
+	validAuthority := token != nil && engine == "external" && !assigned.Valid && status == "running"
+	if token == nil {
+		validAuthority = engine == "builtin" && assigned.String == manager && authorized()
+	}
+	if !validAuthority || currentAttempt.String != attempt || (token == nil && released) || (status != "running" && status != "dispatched") {
 		return nil, ErrHistoryUnavailable
 	}
 	// Plan-owned Module runs cannot outlive or escape their exact Stage binding.
@@ -122,7 +142,7 @@ func (p *Postgres) HarnessPlatform(ctx context.Context, manager, run, attempt st
 	var result json.RawMessage
 	err = tx.QueryRowContext(ctx, `SELECT request_hash,result FROM platform_tool_calls WHERE run_id=$1 AND attempt_id=$2 AND call_id=$3`, run, attempt, request.CallID).Scan(&priorHash, &result)
 	if err == nil {
-		if priorHash != hash || !authorized() {
+		if priorHash != hash || (token == nil && !authorized()) {
 			return nil, ErrHistoryUnavailable
 		}
 		return result, tx.Commit()
@@ -221,7 +241,7 @@ func (p *Postgres) HarnessPlatform(ctx context.Context, manager, run, attempt st
 	if _, err = tx.ExecContext(ctx, `INSERT INTO platform_tool_calls(run_id,attempt_id,call_id,request_hash,result) VALUES($1,$2,$3,$4,$5)`, run, attempt, request.CallID, hash, string(result)); err != nil {
 		return nil, err
 	}
-	if !authorized() {
+	if token == nil && !authorized() {
 		return nil, ErrHistoryUnavailable
 	}
 	return result, tx.Commit()

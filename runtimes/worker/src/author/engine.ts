@@ -22,7 +22,9 @@ export interface EngineRun {
   onModelRequestFailure?(stage: ModelRequestFailureStage): void;
   request(body: Record<string, unknown>): Promise<unknown>;
   execute(call: EngineItem, execution: number): Promise<unknown>;
+  completeAfterTool?(call: EngineItem, result: unknown): string | undefined;
   checkpoint(): { script: string } | undefined;
+  pendingWork?(): string | undefined;
   maxRequestBytes?: number;
   maxToolOutputBytes?: number;
 }
@@ -78,7 +80,11 @@ export const builtinEngine: AgentEngine = {
     const partial = (reason: EnginePartial["reason"]): EngineResult => {
       const checkpoint = input.checkpoint();
       return { finalText: "", partial: {
-        reason, nextStep: "繼續目前任務，先檢查最後通過自我試跑的候選稿，再完成剩餘驗證。",
+        reason, nextStep: checkpoint
+          ? "繼續目前任務，先檢查最後通過自我試跑的候選稿，再完成剩餘驗證。"
+          : input.tools.some(tool => tool.name === "update_draft")
+            ? "目前沒有通過自我試跑的候選稿。若已有足夠的目標與頁面證據，請保留原有斷言並優先呼叫 update_draft 自試；不足時再做必要探索或請使用者確認。"
+            : "目前沒有通過自我試跑的候選稿。請依已提供的目標完成必要工作；資訊不足時向使用者確認。",
         ...(checkpoint ? { checkpoint } : {}),
       } };
     };
@@ -86,10 +92,20 @@ export const builtinEngine: AgentEngine = {
       if (signal.aborted) throw new AuthorError("cancelled");
       pruneSnapshots(context);
       const finish = request === budget.modelRequests - 1 || budget.toolExecutions - count <= 2;
+      const remaining = budget.modelRequests - request;
+      const delivery = input.tools.some(tool => tool.name === "update_draft") ? "update_draft" :
+        input.tools.some(tool => tool.name === "propose_plan") ? "propose_plan" :
+        input.tools.some(tool => tool.name === "commit_module_candidate") ? "commit_module_candidate" : undefined;
+      const deliveryTurns = delivery === "commit_module_candidate" ? 5 : 3;
+      const deliveryTools = delivery === "commit_module_candidate" ? ["stage_module_candidate_part", "commit_module_candidate"] : [delivery];
+      const reserve = delivery && remaining <= deliveryTurns
+        ? `\nCandidate delivery reserve: ${remaining} model requests remaining, ${budget.toolExecutions - count} tool executions remaining. ${delivery === "commit_module_candidate" ? "Stage script and harness with stage_module_candidate_part, then call commit_module_candidate; reserve two turns to stage a self-test repair and commit it again. " : ""}Use ${delivery} now when the collected evidence is sufficient. Preserve every requested assertion. Reserve the following turns for inspecting self-test feedback and repairing the candidate. Do not repeat exploration already covered by tool results. If essential evidence is missing, obtain only that evidence; never invent it or claim unverified success.` : "";
       const body = {
         input: input.beforeRequest(context),
-        instructions: input.instructions + (finish ? "\nBudget nearly exhausted: finish now with the verified candidate and explain remaining next steps. Do not start new exploration." : ""),
-        tools: input.tools, reasoning: { effort: input.model.reasoningEffort }, parallel_tool_calls: false,
+        instructions: input.instructions + reserve + (finish ? "\nBudget nearly exhausted: finish now with the verified candidate and explain remaining next steps. Do not start new exploration." : ""),
+        tools: delivery && remaining <= deliveryTurns && !input.checkpoint()
+          ? input.tools.filter(tool => deliveryTools.includes(tool.name)) : input.tools,
+        reasoning: { effort: input.model.reasoningEffort }, parallel_tool_calls: false,
         max_output_tokens: maxOutputTokens, store: false, include: ["reasoning.encrypted_content"],
       };
       if (Buffer.byteLength(JSON.stringify(body)) > (input.maxRequestBytes ?? 4 * 1024 * 1024)) throw new AuthorError("limit");
@@ -104,6 +120,12 @@ export const builtinEngine: AgentEngine = {
       input.onEvent?.(`author:model:${request + 1}:succeeded`);
       const calls = output.filter(item => item.type === "function_call");
       if (!calls.length) {
+        const pending = input.pendingWork?.();
+        if (pending) {
+          if (request === budget.modelRequests - 1) return partial("model_budget");
+          context.push(...output, { role: "user", content: `The verified checkpoint is explicitly unfinished. Complete the remaining work with a successful update_draft without nextStep; do not claim completion from final text alone. Remaining work (data): ${JSON.stringify(pending)}` });
+          continue;
+        }
         const text = typeof data.output_text === "string" ? data.output_text : output.flatMap(item => {
           if (item.type !== "message" || !Array.isArray(item.content)) return [];
           return item.content.filter((part: EngineItem) => part?.type === "output_text" && typeof part.text === "string").map((part: EngineItem) => part.text as string);
@@ -119,6 +141,9 @@ export const builtinEngine: AgentEngine = {
         const serialized = JSON.stringify(result);
         if (serialized === undefined || Buffer.byteLength(serialized) > (input.maxToolOutputBytes ?? 3 * 1024 * 1024)) throw new AuthorError("limit");
         context.push({ type: "function_call_output", call_id: call.call_id, output: serialized });
+        if (signal.aborted) throw new AuthorError("cancelled");
+        const completedText = input.completeAfterTool?.(call, result);
+        if (completedText !== undefined) return { finalText: completedText };
       }
     }
     return partial("model_budget");

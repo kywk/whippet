@@ -66,11 +66,29 @@ func TestPostgresWorkspaceSettingsSnapshots(t *testing.T) {
 		if err := p.Migrate(ctx); err != nil {
 			t.Fatalf("idempotent migration: %v", err)
 		}
+		manualSeedVersions(t, p, ctx)
 		workspaces, err := p.Workspaces(ctx)
 		if err != nil || len(workspaces) != 1 {
 			t.Fatalf("workspaces: %+v %v", workspaces, err)
 		}
 		w := workspaces[0]
+		// M8 replaced direct settings PATCH with confirmed proposals. Seed an
+		// already-confirmed canonical configuration before snapshot testing.
+		baseConfig := m8Config()
+		baseConfig.Name = w.Name
+		baseConfig.TimeoutMS = w.TimeoutMS
+		baseConfig.DefaultTestURL = w.DefaultTestURL
+		baseConfig, err = normalizeConfig(baseConfig, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = p.DB.ExecContext(ctx, `UPDATE workspaces SET canonical_config=$2,lifecycle='active',scope_status='confirmed' WHERE id=$1`, w.ID, jsonText(baseConfig)); err != nil {
+			t.Fatal(err)
+		}
+		w, err = p.Workspace(ctx, w.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
 		tests, err := p.Tests(ctx, w.ID)
 		if err != nil || len(tests) != 2 {
 			t.Fatalf("seed tests: %+v %v", tests, err)
@@ -140,23 +158,52 @@ func TestPostgresWorkspaceSettingsSnapshots(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		var authorTimeoutSnapshot int
+		if err := p.DB.QueryRowContext(ctx, `SELECT timeout_ms FROM runs WHERE id=$1`, author.Run.ID).Scan(&authorTimeoutSnapshot); err != nil {
+			t.Fatal(err)
+		}
 		before, err := p.Draft(ctx, draft.TestID)
 		if err != nil {
 			t.Fatal(err)
 		}
-		noOp, err := p.PatchWorkspace(ctx, w.ID, WorkspacePatch{Revision: w.Revision, Sites: &w.Sites, TimeoutMS: &w.TimeoutMS})
+		proposalFixture := func(source string, base int, config WorkspaceConfig) string {
+			t.Helper()
+			config, err := normalizeConfig(config, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			conversation, err := p.WorkspaceConversation(ctx, w.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			id := NewID()
+			if _, err = p.DB.ExecContext(ctx, `INSERT INTO workspace_proposals(id,workspace_id,conversation_id,source_run_id,base_revision,context_revision,status,content,scope_hash,scope_confirmed)
+ VALUES($1,$2,$3,$4,$5,$6,'pending',$7,$8,true)`, id, w.ID, conversation.ID, source, base, conversation.ContextRevision, jsonText(config), workspaceScopeHash(config)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = p.DB.ExecContext(ctx, `UPDATE workspaces SET current_proposal_id=$2 WHERE id=$1`, w.ID, id); err != nil {
+				t.Fatal(err)
+			}
+			return id
+		}
+		noOpID := proposalFixture(author.Run.ID, w.Revision, baseConfig)
+		noOp, _, err := p.ActWorkspaceProposal(ctx, w.ID, noOpID, "confirm", w.Revision)
 		unchanged, draftErr := p.Draft(ctx, draft.TestID)
 		if err != nil || draftErr != nil || noOp.Revision != w.Revision || unchanged.Revision != before.Revision ||
 			unchanged.ValidationRunID == nil || *unchanged.ValidationRunID != validation.ID {
 			t.Fatalf("no-op invalidated validation: %+v %+v %v %v", noOp, unchanged, err, draftErr)
 		}
 		newURL, timeout := "https://example.test/new", 23456
-		sites := []WorkspaceSite{{Name: " New site ", URL: "https://example.test/"}}
-		updated, err := p.PatchWorkspace(ctx, w.ID, WorkspacePatch{Revision: w.Revision, Sites: &sites, DefaultTestURL: &newURL, TimeoutMS: &timeout})
+		changedConfig := baseConfig
+		changedConfig.Targets = []WorkspaceOrigin{{Name: " New site ", Origin: "https://example.test/", Purpose: "測試"}}
+		changedConfig.DefaultTestURL, changedConfig.TimeoutMS = newURL, timeout
+		changedID := proposalFixture(queued.ID, w.Revision, changedConfig)
+		updated, _, err := p.ActWorkspaceProposal(ctx, w.ID, changedID, "confirm", w.Revision)
 		if err != nil || updated.Revision != w.Revision+1 || updated.Sites[0].Name != "New site" {
 			t.Fatalf("settings PATCH: %+v %v", updated, err)
 		}
-		if _, err := p.PatchWorkspace(ctx, w.ID, WorkspacePatch{Revision: w.Revision}); !errors.Is(err, ErrConflict) {
+		staleID := proposalFixture(validation.ID, w.Revision, changedConfig)
+		if _, _, err := p.ActWorkspaceProposal(ctx, w.ID, staleID, "confirm", w.Revision); !errors.Is(err, ErrConflict) {
 			t.Fatalf("stale Workspace PATCH: %v", err)
 		}
 		reloaded, err := p.Workspace(ctx, w.ID)
@@ -194,7 +241,7 @@ func TestPostgresWorkspaceSettingsSnapshots(t *testing.T) {
 		}
 		finish(a, "cancelled")
 		a = claim(author.Run.ID)
-		if a.TimeoutMS != authorTimeoutMS || !sameWorkspaceSettings(a.WorkspaceSettings, &w.WorkspaceSettings) || a.Author.BaseRevision != before.Revision {
+		if a.TimeoutMS != authorTimeoutSnapshot || !sameWorkspaceSettings(a.WorkspaceSettings, &w.WorkspaceSettings) || a.Author.BaseRevision != before.Revision {
 			t.Fatalf("author input snapshot changed: %+v", a)
 		}
 		upload(a, "author.json", `{"message":"candidate","script":"changed candidate","requestValidation":true}`)

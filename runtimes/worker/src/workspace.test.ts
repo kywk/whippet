@@ -42,7 +42,7 @@ test("M5 real Worker runner uses snapshot baseURL and accepts legacy input", {
     const work = await mkdtemp(join(evidence, `${name}-`));
     const script = await readFile(join(fixtures, `${name}.spec.ts`), "utf8");
     const input = { runId: "11111111-1111-4111-8111-111111111111", attemptId: "22222222-2222-4222-8222-222222222222", script, timeoutMs: 20000,
-      ...(name === "workspace-relative" ? { workspaceSettings: { revision: 7, sites: [{ name: "固定站", url: "http://127.0.0.1:18765/base/" }], defaultTestUrl: "http://127.0.0.1:18765/base/", timeoutMs: 20000 } } : {}),
+      ...(name === "workspace-relative" ? { scriptOrigin: "manual", workspaceSettings: { revision: 7, sites: [{ name: "固定站", url: "http://127.0.0.1:18765/base/" }], defaultTestUrl: "http://127.0.0.1:18765/base/", timeoutMs: 20000 } } : {}),
     };
     await writeFile(join(work, "input.json"), JSON.stringify(input));
     await promisify(execFile)(process.execPath, [fileURLToPath(new URL("./runner.js", import.meta.url))], {
@@ -58,4 +58,26 @@ test("M5 real Worker runner uses snapshot baseURL and accepts legacy input", {
     }
     console.log(JSON.stringify({ fixture: name, status: result.status, work }));
   }
+});
+
+test("canonical Workspace snapshot supplies formal runner baseURL ahead of legacy settings", {
+  skip: process.env.WHIPPET_WORKSPACE_BROWSER_TEST !== "1", timeout: 45000,
+}, async () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+  const work = await mkdtemp(join(tmpdir(), "canonical-relative-"));
+  const fixtures = process.env.WHIPPET_WORKSPACE_FIXTURES ?? fileURLToPath(new URL("../examples/", import.meta.url));
+  const script = await readFile(join(fixtures, "workspace-relative.spec.ts"), "utf8");
+  const input = { runId: id, attemptId: id, workspaceId: id, testId: id, scriptOrigin: "manual", script, timeoutMs: 20000,
+    workspaceSettings: { revision: 1, sites: [], defaultTestUrl: "http://127.0.0.1:1/wrong/", timeoutMs: 20000 },
+    workspaceContext: { schemaVersion: "1", workspaceId: id, settingsRevision: 2, roleRefs: [], config: {
+      name: "canonical fixture", purpose: "", backgroundSummary: "", targets: [{name: "fixture", purpose: "", origin: "http://127.0.0.1:18765"}],
+      dependencies: [], excludedOrigins: [], exclusions: "", loginRoles: [], defaultTestUrl: "http://127.0.0.1:18765/base/", timeoutMs: 20000,
+    } },
+  };
+  await writeFile(join(work, "input.json"), JSON.stringify(input));
+  await promisify(execFile)(process.execPath, [fileURLToPath(new URL("./runner.js", import.meta.url))], {
+    env: { ...mediaEnvironment(process.env), WHIPPET_WORK_DIR: work }, timeout: 25000, maxBuffer: 512 * 1024,
+  }).catch(() => undefined);
+  const result = JSON.parse(await readFile(join(work, "output/result.json"), "utf8"));
+  assert.equal(result.status, "succeeded");
 });

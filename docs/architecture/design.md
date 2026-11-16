@@ -70,6 +70,8 @@ hello 宣告 capacity 與協定版本；reconcile 比對活躍任務、終態與
 
 Transport 只負責收送與連線；業務任務處理共用 handler。未來 Polling、HTTP Push 接相同 envelope，本輪只保留介面與設計。
 
+2026-11-15 M10.Z Wave3：沿既有 default-off M109 開關，Manager 增加獨立 `diagnostics/manager-transport.json` 有界快照，記錄固定連線／結果傳送階段、飽和計數及程序內經過時間；不含任務身分或訊息內容。觀測只持自身鎖，在既有 Manager 狀態鎖與連線鎖外記錄，檔案錯誤不改傳送結果。`SENT` 代表本地傳送返回成功，v1 仍沒有 Server 收件 ACK；結果重播沿用原 `ResultMessageID`，不重新執行 Worker。精確七欄、檔案保護與限制見 [v10 契約](../../contracts/mvp-v10.md#m10z-wave3-manager-傳輸階段觀測2026-11-15)。
+
 ## Worker 執行契約
 
 輸入：工作種類、run／attempt、腳本或草稿快照、URL／設定、timeout、模型設定引用。
@@ -77,6 +79,8 @@ Transport 只負責收送與連線；業務任務處理共用 handler。未來 P
 Manager 管理容器 CPU／記憶體限制、逾時與取消；停止寬限時間後強制終止容器，清理程序及暫存目錄。清理失敗則保留 slot、回報錯誤，其他可用 slot 可繼續。
 Playwright 內部 workers 預設 1，避免與 Manager 併發上限相乘。
 完成後由 Manager 透過 HTTP 上傳附件，確認 Server 保存後清本機檔；上傳失敗可補送，不重新執行測試。
+
+M10.Z Wave3 自試觀測 v4 只從 Reporter 結構與自試 page 主框架事件產生固定分類及導覽 enum，對應同一最近失敗自試；資料不足為 `UNOBSERVED`，成功不覆蓋先前失敗觀測。保留原錯誤與報告，不從自由文字猜根因，也不把未導覽判定為失敗原因。Worker 與 Manager 須成批切換；Manager 保留 v1–v3 精確 decoder，相容處理不改歷史 sidecar。詳見 [v4 契約](../../contracts/mvp-v10.md#m10z-wave3-自試結構觀測-v42026-11-15)。
 
 ## AI 編輯
 
@@ -150,6 +154,7 @@ PM 在各波實作前固定 HTTP／dispatch／輸出與遷移規則；Server／R
 - Module 版本保存 slug、moduleKind、簽章、輸入與回傳說明、harness 腳本。slug 在 Workspace 內唯一。
 - Use Case 的 revision 保存 stages JSON。發佈時寫入 `version_dependencies(version_id, module_version_id)`，引用版本固定且不可變。
 - Plan 屬於 Use Case 的編輯週期，保存 stages、每個 Stage 的狀態、連結的 Module Test 與失敗原因；狀態：draft → confirmed → running → composed → done／stopped。
+- `POST /api/plans/:id/confirm` 可選 `throughStageId`：只授權執行至指定 Stage。該段作者、正式驗證與回收完成後，Plan 以 `confirmed` 暫停，後續 Stage 保持 pending；再次確認可執行下一段或省略此欄繼續全部。恢復前重核草稿／context CAS 及前序固定候選證據；重送相同 revision 必須使用相同邊界，不重複派工。完整 Plan 才 Compose，沒有部分組合或部分發佈。
 - 發佈交易同時核對 Use Case 與本次新 Module 版本的驗證、摘要與 revision；任一項不成立就整批回滾。
 
 ### 執行
@@ -158,9 +163,14 @@ PM 在各波實作前固定 HTTP／dispatch／輸出與遷移規則；Server／R
 - Use Case spec 由 Server 以確定性模板產生（每個 Stage 對應一個 `test.step`，綁定值轉成區域常數），不交給 AI 產生。
 - Server 端工具（catalog、module 與 usecase 草稿讀寫、plan、驗證要求）由 Server 實作。Worker 透過 M9 history IPC 泛化而成的「harness tool IPC」呼叫，Manager 核對活躍 attempt；Worker 不持有 Manager token。
 
+### Stage 作者上下文（2026-11-16）
+
+首次 Stage 派工與原 Stage retry 由相同 Server 入口組裝附加 DATA 訊息：核准的當前 Stage args、直接 binding 來源與前一 Stage 的固定 Module 契約（slug／匯出函式／輸入／回傳／前後條件及版本 ID）。已發佈 Module 只依 Plan 固定版解析；私有候選須屬於同 Plan／Workspace，且原 author 與正式 validation 已回收、revision／context／bundle hash／驗證證據仍有效。這份資料不包含上游程式碼或 harness，不新增工具權限。上下文 JSON 上限15000字元，超限拒絕排入，不截斷參數或靜默丟契約；加上最多16000字元的本輪使用者訊息，仍在既有32000總上限內。
+
 ### 引擎能力
 
 - 預算來自 skill manifest 快照。剩最後 1 次模型請求或最後 2 次工具呼叫時，注入收尾指示；超過上限時輸出 `partial`，Server 保存自我試跑通過的候選結果並顯示「繼續」。
+- 2026-11-15 builtin Module 收尾：`commit_module_candidate` 經 Worker 守衛確認完整候選自試通過後，以內部完成鉤子結束本輪產稿，避免後續探索耗盡預算而丟失交付；只有本輪具 `request_module_validation` 權限才標記正式驗證要求，仍由 Server 另排真實驗證。失敗自試仍可在原預算修復，取消／機密守衛不變。這不新增 Module partial 或跨 Run checkpoint；其他引擎回傳的 Module partial 仍維持既有 LIMIT。一般 Test 沒有可信 checkpoint 時，partial 下一步須如實指出尚無候選，不虛稱已有通過稿；此文案修正不溯及先前保存的 partial。
 - 單一 Run 內只保留最新一份完整 snapshot，舊的壓縮成摘要。
 - Skill 依 manifest 載入；`read_skill_reference` 只能讀已打包、已快照的 references。
 
@@ -188,3 +198,7 @@ PM 在各波實作前固定 HTTP／dispatch／輸出與遷移規則；Server／R
 
 - 開源引擎只負責迴圈、供應商、重試與 compaction，工具一律來自註冊表。依賴版本鎖定在 Worker 的 lockfile，並更新 tech-stack。
 - `runtimes/agent-bridge/` 是參考外部 Worker，以 MCP 接單模式連線，不能直接存取 DB 或 Manager。
+
+2026-11-16 交付保留補強：Module 交付區間至少保留五次模型請求，才能在同一個8次總上限內完成 script、harness、commit、自試修一段及再次 commit；一般 Test／Planner 仍為三次。已驗候選依 guard 完成，不提高總模型／工具／時間預算。
+
+2026-11-16 作者收尾補強：registry 11.3 的 `update_draft` 可附 `message` 與 `nextStep`（各最多2048字元）。成功自試後保留同次修改說明；有 `nextStep` 則保留已驗 partial，不由自試成功或模型最後文字推定整體完成。用完既定請求後輸出守衛持有的 checkpoint、剩餘工作及實際用量；既有 continue 的 session/revision/context CAS 與去重不變。選填工具欄位在供應商使用 non-strict 表示，Worker／Server 仍以原 schema 拒絕 null／未知欄位。Planner 保存提案後回報模型用量與人工確認、執行、驗證、發佈的下一步。

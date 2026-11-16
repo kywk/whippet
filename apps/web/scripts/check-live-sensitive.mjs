@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source = await readFile(new URL('../src/live.ts', import.meta.url), 'utf8');
 const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { createLiveSession, createLiveOfferHistory } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+const { createLiveSession, createLiveOfferHistory, sessionLiveSocketUrl } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 const originals = new Map(['window', 'document', 'WebSocket', 'RTCPeerConnection', 'MediaStream', 'HTMLMediaElement', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'].map((key) => [key, globalThis[key]]));
 const originalNow = Date.now;
 const originalCreate = URL.createObjectURL;
@@ -109,6 +109,14 @@ async function start(mode = 'webrtc', history) {
   const pause = () => ws.json({ type: 'state', viewerId: viewer, state: 'waiting', reason: 'sensitive_input', transport: mode });
   const complete = (transport = mode, overrides = {}) => ws.json({ type: 'state', viewerId: viewer, state: 'waiting', reason: 'sensitive_input_complete', transport, ...overrides });
   return { controller, video, image, ws, states, state, offer, pause, complete };
+}
+
+async function startBrowserSession() {
+  const video = new FakeVideo(), image = new FakeImage(), states = [];
+  const controller = createLiveSession({ browserSession: { sessionId: id(801), leaseId: id(802) }, apiBase: '/api', video, image, initialMode: 'webrtc', waitingForAttempt: () => false, onChange: (state) => states.push(state) });
+  sessions.push(controller); await advance(0);
+  const ws = FakeSocket.instances.at(-1); ws.open(); ws.json({ type: 'ready', viewerId: viewer, iceServers: [] }); await flush();
+  return { controller, video, image, ws, states };
 }
 
 async function decoded(harness, peer = FakePeer.instances.at(-1)) {
@@ -239,7 +247,16 @@ try {
     eq(h.image.src, ''); ok(revoked.includes(url)); eq(h.video.srcObject, null); pending();
     eq(timers.size, 0); eq(h.image.onload, null);
   });
-  console.log(`Live sensitive checks: ${passed}/14 scenarios PASS; ${assertions} assertions. Browser/real media integration not run.`);
+  await test('browser session uses its own same-origin socket and retains sensitive masking', async () => {
+    const expected = `wss://platform.example/api/browser-sessions/${id(801)}/leases/${id(802)}/live`;
+    eq(sessionLiveSocketUrl('/api', id(801), id(802), 'https://platform.example/'), expected);
+    assert.throws(() => sessionLiveSocketUrl('https://other.example/api', id(801), id(802), 'https://platform.example/'));
+    const h = await startBrowserSession(); eq(h.ws.url, expected);
+    h.ws.json({ type: 'state', viewerId: viewer, state: 'waiting', reason: 'sensitive_input', transport: 'webrtc' });
+    eq(h.states.at(-1).sensitivePaused, true); eq(h.states.at(-1).phase, 'paused');
+    h.controller.close(); eq(h.video.srcObject, null); eq(h.image.src, '');
+  });
+  console.log(`Live sensitive checks: ${passed}/15 scenarios PASS; ${assertions} assertions. Browser/real media integration not run.`);
 } finally {
   for (const [key, value] of originals) { if (value === undefined) delete globalThis[key]; else globalThis[key] = value; }
   Date.now = originalNow; URL.createObjectURL = originalCreate; URL.revokeObjectURL = originalRevoke;

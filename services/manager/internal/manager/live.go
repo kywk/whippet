@@ -26,6 +26,12 @@ type liveSession struct {
 	cancel   context.CancelFunc
 	done     chan struct{}
 }
+type liveMediaSource struct {
+	url      string
+	dir      string
+	active   func() bool
+	diagnose func(stage, code string)
+}
 type liveControl struct {
 	ViewerID      string          `json:"viewerId"`
 	Mode          string          `json:"mode"`
@@ -92,17 +98,24 @@ func (m *Manager) startLive(ctx context.Context, env Envelope) error {
 	if len(env.Payload) > maxLiveJSON || json.Unmarshal(env.Payload, &start) != nil || !uuidPattern.MatchString(start.ViewerID) {
 		return errors.New("invalid live.start")
 	}
+	m.recordRunLiveDiagnostic(env.RunID, env.AttemptID, start.ViewerID, "command_received", "none")
 	if len(start.ICE) == 0 {
 		start.ICE = json.RawMessage(`[]`)
 	}
 	if !validLiveICE(start.ICE) {
+		m.recordRunLiveDiagnostic(env.RunID, env.AttemptID, start.ViewerID, "command_rejected", "invalid_ice")
 		return errors.New("invalid live ICE configuration")
 	}
 	m.mu.Lock()
 	r, exists := m.records[env.AttemptID]
 	active := exists && r.RunID == env.RunID && r.holdsSlot() && (r.Phase == "accepted" || r.Phase == "running") && !r.CancelRequested
 	m.mu.Unlock()
-	if !active || r.Author != nil && !authorWantsBrowser(r.Author) {
+	if !active {
+		m.recordRunLiveDiagnostic(env.RunID, env.AttemptID, start.ViewerID, "command_rejected", "attempt_inactive")
+		return errors.New("live attempt is not active")
+	}
+	if r.Author != nil && !authorWantsBrowser(r.Author) {
+		m.recordRunLiveDiagnostic(env.RunID, env.AttemptID, start.ViewerID, "command_rejected", "author_browser_disabled")
 		return errors.New("live attempt is not active")
 	}
 	m.liveMu.Lock()
@@ -124,6 +137,7 @@ func (m *Manager) startLive(ctx context.Context, env Envelope) error {
 	m.liveMu.Unlock()
 	go func() {
 		defer m.wg.Done()
+		defer m.recordRunLiveDiagnostic(r.RunID, r.AttemptID, start.ViewerID, "closed", "none")
 		defer cancel()
 		defer close(session.done)
 		defer func() {
@@ -220,10 +234,35 @@ func writeLiveControl(root *os.Root, control liveControl) error {
 
 func (m *Manager) mediaSession(ctx context.Context, r record, start liveStart) error {
 	wsURL := "ws" + strings.TrimPrefix(m.cfg.ServerURL, "http") + "/api/manager/runs/" + r.RunID + "/live?attemptId=" + url.QueryEscape(r.AttemptID) + "&viewerId=" + url.QueryEscape(start.ViewerID)
-	cfg, err := websocket.NewConfig(wsURL, m.cfg.ServerURL)
+	source := liveMediaSource{url: wsURL, dir: m.taskDir(r), active: func() bool {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		current := m.records[r.AttemptID]
+		return current.holdsSlot() && current.Phase != "collecting" && !current.CancelRequested
+	}, diagnose: func(stage, code string) {
+		m.recordRunLiveDiagnostic(r.RunID, r.AttemptID, start.ViewerID, stage, code)
+	}}
+	return m.mediaSessionFor(ctx, source, start)
+}
+
+func (m *Manager) mediaSessionFor(ctx context.Context, source liveMediaSource, start liveStart) (failure error) {
+	report := func(stage, code string) {
+		if source.diagnose != nil {
+			source.diagnose(stage, code)
+		}
+	}
+	failureCode := "media_connect_failed"
+	report("media_connecting", "none")
+	defer func() {
+		if failure != nil && ctx.Err() == nil {
+			report("media_failed", failureCode)
+		}
+	}()
+	cfg, err := websocket.NewConfig(source.url, m.cfg.ServerURL)
 	if err != nil {
 		return err
 	}
+	cfg.TlsConfig = m.tlsConfig
 	cfg.Header.Set("Authorization", "Bearer "+m.cfg.Token)
 	dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	conn, err := cfg.DialContext(dialCtx)
@@ -231,6 +270,8 @@ func (m *Manager) mediaSession(ctx context.Context, r record, start liveStart) e
 	if err != nil {
 		return err
 	}
+	failureCode = "media_stream_failed"
+	report("media_connected", "none")
 	defer conn.Close()
 	conn.MaxPayloadBytes = maxLiveJSON
 	done := make(chan struct{})
@@ -280,6 +321,7 @@ func (m *Manager) mediaSession(ctx context.Context, r record, start liveStart) e
 	lastState := ""
 	binding := liveOfferBinding{}
 	var lastFrameMod time.Time
+	controlReported, stateReported, frameReported := false, false, false
 	for {
 		select {
 		case <-ctx.Done():
@@ -317,10 +359,7 @@ func (m *Manager) mediaSession(ctx context.Context, r record, start liveStart) e
 				return errors.New("unsupported live media message")
 			}
 		case now := <-ticker.C:
-			m.mu.Lock()
-			current := m.records[r.AttemptID]
-			m.mu.Unlock()
-			if !current.holdsSlot() || current.Phase == "collecting" || current.CancelRequested {
+			if !source.active() {
 				_ = send(liveWire{Type: "state", State: "ended"})
 				return nil
 			}
@@ -331,7 +370,7 @@ func (m *Manager) mediaSession(ctx context.Context, r record, start liveStart) e
 				nextPing = now.Add(10 * time.Second)
 			}
 			if root == nil {
-				taskRoot, err := os.OpenRoot(m.taskDir(r))
+				taskRoot, err := os.OpenRoot(source.dir)
 				if err != nil {
 					continue
 				} // start may arrive just before prepare.
@@ -347,7 +386,12 @@ func (m *Manager) mediaSession(ctx context.Context, r record, start liveStart) e
 			if !now.Before(nextLease) {
 				control.Expires = now.Add(30 * time.Second).UnixMilli()
 				if err := writeLiveControl(root, control); err != nil {
+					failureCode = "control_write_failed"
 					return err
+				}
+				if !controlReported {
+					report("control_written", "none")
+					controlReported = true
 				}
 				nextLease = now.Add(5 * time.Second)
 			}
@@ -366,6 +410,7 @@ func (m *Manager) mediaSession(ctx context.Context, r record, start liveStart) e
 				if dirty {
 					control.Expires = now.Add(30 * time.Second).UnixMilli()
 					if err := writeLiveControl(root, control); err != nil {
+						failureCode = "control_write_failed"
 						return err
 					}
 					nextLease = now.Add(5 * time.Second)
@@ -373,6 +418,10 @@ func (m *Manager) mediaSession(ctx context.Context, r record, start liveStart) e
 				for _, message := range messages {
 					if err := send(message); err != nil {
 						return err
+					}
+					if message.Type == "state" && !stateReported {
+						report("state_forwarded", "none")
+						stateReported = true
 					}
 				}
 				lastState = string(data)
@@ -389,7 +438,12 @@ func (m *Manager) mediaSession(ctx context.Context, r record, start liveStart) e
 				}
 				_ = conn.SetWriteDeadline(time.Now().Add(3 * time.Second))
 				if err := websocket.Message.Send(conn, frame); err != nil {
+					failureCode = "frame_send_failed"
 					return err
+				}
+				if !frameReported {
+					report("frame_forwarded", "none")
+					frameReported = true
 				}
 				lastFrameMod = info.ModTime()
 			}

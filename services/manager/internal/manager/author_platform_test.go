@@ -216,3 +216,13 @@ func TestM106GenericCatalogRoutingAndPerToolFrameLimit(t *testing.T) {
 		t.Fatal("wrong request count")
 	}
 }
+
+func TestPlannerBlockerArtifactWithoutCandidate(t *testing.T) {
+	a := platformAuthorFixture(t, "usecase-planner")
+	dir := t.TempDir()
+	_ = os.Mkdir(filepath.Join(dir, "output"), 0700)
+	writePartial(t, dir, map[string]any{"message": "請先設定角色；尚未建立 Plan。"})
+	if !validAuthorArtifact(dir, a, nil) {
+		t.Fatal("valid planner blocker rejected")
+	}
+}

@@ -75,7 +75,7 @@ func (p *Postgres) CreatePlanSummary(ctx context.Context, id string, revision in
 	}
 	return run, tx.Commit()
 }
-func (p *Postgres) completePlanSummary(ctx context.Context, tx *sql.Tx, run, attempt string, input AuthorInput, d draftState, s EditingSession) error {
+func (p *Postgres) completePlanSummary(ctx context.Context, tx *sql.Tx, run, attempt string, input AuthorInput, d draftState, s EditingSession, externalOutput []byte) error {
 	if input.Batch == nil || input.SkillID != "acceptance-summary" || input.Platform != nil || len(input.AllowedTools) != 0 {
 		return ErrInvalid
 	}
@@ -91,11 +91,19 @@ func (p *Postgres) completePlanSummary(ctx context.Context, tx *sql.Tx, run, att
 	if err != nil || hash != input.Batch.BatchHash || hash != current.BatchHash {
 		return ErrConflict
 	}
-	data, err := p.readArtifactBytes(ctx, tx, run, attempt, "author.json", MaxAuthorArtifactBytes)
-	if err != nil {
-		return err
+	data := externalOutput
+	if data == nil {
+		data, err = p.readArtifactBytes(ctx, tx, run, attempt, "author.json", MaxAuthorArtifactBytes)
+		if err != nil {
+			return err
+		}
 	}
-	out, err := decodeSummaryOutput(data)
+	var out summaryOutput
+	if externalOutput != nil {
+		out, err = decodeExternalSummaryOutput(data)
+	} else {
+		out, err = decodeSummaryOutput(data)
+	}
 	if err != nil {
 		return err
 	}

@@ -18,6 +18,8 @@ type m109Worker struct {
 	ModelRequestFailureStage           string `json:"modelRequestFailureStage,omitempty"`
 	SchemaVersion                      int    `json:"-"`
 	LastSelfTestFailureClass           string `json:"lastSelfTestFailureClass,omitempty"`
+	LastSelfTestFailedStepCategory     string `json:"lastSelfTestFailedStepCategory,omitempty"`
+	LastSelfTestMainFrameNavigation    string `json:"lastSelfTestMainFrameNavigation,omitempty"`
 	SelfTestPassedCount                int    `json:"selfTestPassedCount"`
 	SelfTestFailedCount                int    `json:"selfTestFailedCount"`
 	CheckpointCreated                  bool   `json:"checkpointCreated"`
@@ -45,7 +47,7 @@ type m109Diagnostic struct {
 }
 
 func newM109Diagnostic() *m109Diagnostic {
-	return &m109Diagnostic{SchemaVersion: 3, Worker: m109Worker{ModelRequestFailureStage: "UNKNOWN", TerminalClass: "UNKNOWN", LastSelfTestFailureClass: "UNKNOWN"}, Manager: m109Manager{WorkerStatus: "UNKNOWN", Disposition: "UNKNOWN"}}
+	return &m109Diagnostic{SchemaVersion: 4, Worker: m109Worker{ModelRequestFailureStage: "UNKNOWN", TerminalClass: "UNKNOWN", LastSelfTestFailureClass: "UNKNOWN", LastSelfTestFailedStepCategory: "UNOBSERVED", LastSelfTestMainFrameNavigation: "UNOBSERVED"}, Manager: m109Manager{WorkerStatus: "UNKNOWN", Disposition: "UNKNOWN"}}
 }
 func m109Enabled() bool { return os.Getenv("WHIPPET_M109_DIAGNOSTICS") == "1" }
 
@@ -55,7 +57,7 @@ func decodeM109(raw []byte) (m109Worker, bool) {
 	if len(raw) > 2048 {
 		return out, false
 	}
-	types := map[string]bool{"selfTestPassedCount": false, "selfTestFailedCount": false, "checkpointCreated": true, "checkpointPresentAtFinalize": true, "checkpointRetainedAfterSecretGuard": true, "terminalClass": false, "schemaVersion": false, "lastSelfTestFailureClass": false, "modelRequestFailureStage": false}
+	types := map[string]bool{"selfTestPassedCount": false, "selfTestFailedCount": false, "checkpointCreated": true, "checkpointPresentAtFinalize": true, "checkpointRetainedAfterSecretGuard": true, "terminalClass": false, "schemaVersion": false, "lastSelfTestFailureClass": false, "modelRequestFailureStage": false, "lastSelfTestFailedStepCategory": false, "lastSelfTestMainFrameNavigation": false}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	start, err := dec.Token()
 	if err != nil || start != json.Delim('{') {
@@ -81,12 +83,12 @@ func decodeM109(raw []byte) (m109Worker, bool) {
 			if _, ok := value.(bool); !ok {
 				return out, false
 			}
-		} else if key == "terminalClass" || key == "lastSelfTestFailureClass" || key == "modelRequestFailureStage" {
+		} else if key == "terminalClass" || key == "lastSelfTestFailureClass" || key == "modelRequestFailureStage" || key == "lastSelfTestFailedStepCategory" || key == "lastSelfTestMainFrameNavigation" {
 			if _, ok := value.(string); !ok {
 				return out, false
 			}
 		} else if key == "schemaVersion" {
-			if value != float64(2) && value != float64(3) {
+			if value != float64(2) && value != float64(3) && value != float64(4) {
 				return out, false
 			}
 			out.SchemaVersion = int(value.(float64))
@@ -97,21 +99,52 @@ func decodeM109(raw []byte) (m109Worker, bool) {
 			}
 		}
 	}
-	if _, err = dec.Token(); err != nil || !(len(seen) == 6 && !seen["schemaVersion"] && !seen["lastSelfTestFailureClass"] && !seen["modelRequestFailureStage"] || len(seen) == 8 && out.SchemaVersion == 2 && seen["lastSelfTestFailureClass"] && !seen["modelRequestFailureStage"] || len(seen) == 9 && out.SchemaVersion == 3 && seen["lastSelfTestFailureClass"] && seen["modelRequestFailureStage"]) || dec.Decode(new(any)) != io.EOF || json.Unmarshal(raw, &out) != nil {
+	if _, err = dec.Token(); err != nil || dec.Decode(new(any)) != io.EOF || json.Unmarshal(raw, &out) != nil {
 		return out, false
 	}
 	if out.SchemaVersion == 0 {
 		out.SchemaVersion = 1
-	} else {
+	}
+	required := []string{"selfTestPassedCount", "selfTestFailedCount", "checkpointCreated", "checkpointPresentAtFinalize", "checkpointRetainedAfterSecretGuard", "terminalClass"}
+	if out.SchemaVersion >= 2 {
+		required = append(required, "schemaVersion", "lastSelfTestFailureClass")
+	}
+	if out.SchemaVersion >= 3 {
+		required = append(required, "modelRequestFailureStage")
+	}
+	if out.SchemaVersion >= 4 {
+		required = append(required, "lastSelfTestFailedStepCategory", "lastSelfTestMainFrameNavigation")
+	}
+	if len(seen) != len(required) {
+		return m109Worker{}, false
+	}
+	for _, key := range required {
+		if !seen[key] {
+			return m109Worker{}, false
+		}
+	}
+	if out.SchemaVersion >= 2 {
 		switch out.LastSelfTestFailureClass {
 		case "INVALID_SPEC", "GUARD", "TIMEOUT", "CANCELLED", "TEST_FAILED", "UNKNOWN":
 		default:
 			return m109Worker{}, false
 		}
 	}
-	if out.SchemaVersion == 3 {
+	if out.SchemaVersion >= 3 {
 		switch out.ModelRequestFailureStage {
 		case "UNKNOWN", "FETCH_REJECTED", "HTTP_NON_OK", "BODY_JSON_REJECTED", "RESPONSE_GUARD_REJECTED", "INCOMPLETE_MAX_OUTPUT_TOKENS", "INCOMPLETE_CONTENT_FILTER", "INCOMPLETE_UNKNOWN", "ENVELOPE_INVALID":
+		default:
+			return m109Worker{}, false
+		}
+	}
+	if out.SchemaVersion == 4 {
+		switch out.LastSelfTestFailedStepCategory {
+		case "EXPECT", "PW_API", "TEST_STEP", "OTHER", "UNOBSERVED":
+		default:
+			return m109Worker{}, false
+		}
+		switch out.LastSelfTestMainFrameNavigation {
+		case "OBSERVED", "NOT_OBSERVED", "UNOBSERVED":
 		default:
 			return m109Worker{}, false
 		}

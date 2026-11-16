@@ -41,7 +41,8 @@ func TestM8WorkspaceSliceA(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if w1.ConversationID == w2.ConversationID || w1.ExecutionAvailable || w1.Revision != 1 || w1.Settings != nil {
+	// Manual execution is available before AI scope confirmation.
+	if w1.ConversationID == w2.ConversationID || !w1.ExecutionAvailable || w1.Revision != 1 || w1.Settings != nil {
 		t.Fatal("workspace isolation/defaults")
 	}
 	test, err := p.CreateTest(ctx, w1.ID, "測試", "")
@@ -61,11 +62,38 @@ func TestM8WorkspaceSliceA(t *testing.T) {
 	if beforeDraft.WorkspaceContext == nil || beforeDraft.WorkspaceContext.WorkspaceID != w1.ID {
 		t.Fatal("new draft owner snapshot missing")
 	}
-	if _, err := p.ValidateDraft(ctx, test.ID, beforeDraft.EditingSessionID, beforeDraft.Revision); !errors.Is(err, ErrSecurityUnavailable) {
+	// Manual edits may run before confirmation. Use an AI-origin draft to keep
+	// the scope-denial assertion on the path it protects.
+	aiTest, err := p.CreateTest(ctx, w1.ID, "AI scoped draft", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	aiSession, _, err := p.StartEditingSession(ctx, aiTest.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := p.DB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, _, err := requireEditingDraft(ctx, tx, aiTest.ID, aiSession.ID)
+	if err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	d, err = saveDraftScript(ctx, tx, d, beforeDraft.Script, "ai")
+	if err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.ValidateDraft(ctx, aiTest.ID, aiSession.ID, d.Revision); !errors.Is(err, ErrScopeConfirmation) {
 		t.Fatalf("unsafe validation queued: %v", err)
 	}
 	var blockedRuns int
-	if err := p.DB.QueryRowContext(ctx, `SELECT count(*) FROM runs WHERE test_id=$1`, test.ID).Scan(&blockedRuns); err != nil || blockedRuns != 0 {
+	if err := p.DB.QueryRowContext(ctx, `SELECT count(*) FROM runs WHERE test_id=$1`, aiTest.ID).Scan(&blockedRuns); err != nil || blockedRuns != 0 {
 		t.Fatalf("blocked validation still created a Run: %d %v", blockedRuns, err)
 	}
 	const manager = "m8-isolated-manager"
@@ -93,7 +121,9 @@ func TestM8WorkspaceSliceA(t *testing.T) {
 			t.Fatal("concurrent workspace task accepted")
 		}
 		a, err := p.Claim(ctx, manager, 1)
-		if err != nil || a == nil || a.ID != s.Run.ID || !offlineAuthorAllowed(*a) {
+		if err != nil || a == nil || a.ID != s.Run.ID ||
+			(current.Settings == nil && !offlineAuthorAllowed(*a)) ||
+			(current.Settings != nil && !hasBrowserTools(a.Author)) {
 			t.Fatalf("claim workspace interview: %+v %v", a, err)
 		}
 		return a
@@ -144,7 +174,7 @@ func TestM8WorkspaceSliceA(t *testing.T) {
 		t.Fatalf("scope confirmation: %v", err)
 	}
 	confirmed, applied, err := p.ActWorkspaceProposal(ctx, w1.ID, proposal.ID, "confirm", 1)
-	if err != nil || confirmed.Revision != 2 || confirmed.Lifecycle != "active" || confirmed.Settings == nil || confirmed.ExecutionAvailable || applied.Status != "applied" {
+	if err != nil || confirmed.Revision != 2 || confirmed.Lifecycle != "active" || confirmed.Settings == nil || !confirmed.ExecutionAvailable || applied.Status != "applied" {
 		t.Fatalf("confirm: %+v %v", confirmed, err)
 	}
 	again, _, err := p.ActWorkspaceProposal(ctx, w1.ID, proposal.ID, "confirm", 1)
@@ -168,14 +198,14 @@ func TestM8WorkspaceSliceA(t *testing.T) {
 	if _, err := p.PatchWorkspace(ctx, w1.ID, WorkspacePatch{Revision: 2}); !errors.Is(err, ErrProposalRequired) {
 		t.Fatal("PATCH bypass remains")
 	}
-	if _, err := p.Publish(ctx, test.ID, afterDraft.EditingSessionID, afterDraft.Revision, NewID(), true); !errors.Is(err, ErrSecurityUnavailable) {
+	if _, err := p.Publish(ctx, test.ID, afterDraft.EditingSessionID, afterDraft.Revision, NewID(), true); !errors.Is(err, ErrConflict) {
 		t.Fatalf("new publish not gated: %v", err)
 	}
 	seedTests, err := p.Tests(ctx, legacy[0].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.CreateRun(ctx, seedTests[0].ID); !errors.Is(err, ErrSecurityUnavailable) {
+	if _, err := p.CreateRun(ctx, seedTests[0].ID); !errors.Is(err, ErrScopeConfirmation) {
 		t.Fatal("formal run not gated")
 	}
 	values := credentialValues{"synthetic-user", "synthetic-password"}

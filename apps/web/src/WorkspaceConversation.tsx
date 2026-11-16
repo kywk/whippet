@@ -9,9 +9,13 @@ import { LiveView } from './LiveView';
 import { WorkspaceAvailability, WorkspaceSettings } from './WorkspaceSettings';
 import { WorkspaceProposalCard } from './WorkspaceProposal';
 import { WorkspaceCredentials } from './WorkspaceCredentials';
+import { WorkspaceAgentAccess } from './WorkspaceAgentAccess';
+import { WorkspaceBrowserSessions } from './WorkspaceBrowserSessions';
+import { AuthorEngineSettings } from './AuthorEngineSettings';
+import { AuthorEngineStatus } from './AuthorEngineStatus';
 import { isActiveRun } from './types';
 import { ArrowRightIcon, CloseIcon, EyeIcon, PanelIcon, RefreshIcon } from './icons';
-import type { Run, WhippetApi, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal } from './types';
+import type { AuthorEngine, Run, WhippetApi, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal } from './types';
 
 interface Props {
   api: WhippetApi; apiBase: string; workspace?: WorkspaceDetail; active: boolean;
@@ -72,6 +76,10 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
   const [refreshing, setRefreshing] = useState(false);
   const [sending, setSending] = useState(false);
   const [proposalBusy, setProposalBusy] = useState(false);
+  const [engineSelection, setEngineSelection] = useState<AuthorEngine>(workspace.authorEngine);
+  const [engineBusy, setEngineBusy] = useState(false);
+  const [engineError, setEngineError] = useState<string>();
+  const [engineNote, setEngineNote] = useState<string>();
   const [credentialGuard, setCredentialGuard] = useState({ dirty: false, busy: false });
   const [loadError, setLoadError] = useState<string>();
   const [sendError, setSendError] = useState<string>();
@@ -83,6 +91,8 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
   const sequence = useRef(0);
   const controllers = useRef(new Set<AbortController>());
   const sendLock = useRef(false);
+  const engineLock = useRef(false);
+  const lastEngine = useRef(workspace.authorEngine);
   useEffect(() => () => { for (const controller of controllers.current) controller.abort(); }, []);
 
   const refresh = useCallback(async () => {
@@ -91,7 +101,11 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
     try {
       const [next, messages] = await Promise.all([api.getWorkspace(workspace.id, request.signal), api.getWorkspaceConversation(workspace.id, request.signal)]);
       if (messages.id !== next.conversationId || (next.currentProposal && next.currentProposal.conversationId !== messages.id)) throw new ApiError('設定對話或提案關聯不符。', 'WORKSPACE_CONFLICT');
-      if (!request.signal.aborted && turn === sequence.current) { setCurrent(next); setConversation(messages); setLoadError(undefined); setFresh(true); onWorkspaceUpdated(next); }
+      if (!request.signal.aborted && turn === sequence.current) {
+        setEngineSelection((selected) => selected === lastEngine.current ? next.authorEngine : selected);
+        lastEngine.current = next.authorEngine;
+        setCurrent(next); setConversation(messages); setLoadError(undefined); setFresh(true); onWorkspaceUpdated(next);
+      }
     } catch (cause) {
       if (!request.signal.aborted && turn === sequence.current) { setLoadError(errorMessage(cause)); setFresh(false); }
       throw cause;
@@ -131,9 +145,9 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
     return () => { request.abort(); clearTimeout(timer); };
   }, [api, workspace.id, trackedId, refresh]);
 
-  const mutating = sending || proposalBusy || credentialGuard.busy;
+  const mutating = sending || proposalBusy || credentialGuard.busy || engineBusy;
   // 背景執行的訪談與一般未送出的草稿文字不綁住頁面切換，只保護正在送出的請求或未保存帳密。
-  useLeaveGuard(mutating || credentialGuard.dirty, onDirtyChange);
+  useLeaveGuard(mutating || credentialGuard.dirty || engineSelection !== current.authorEngine, onDirtyChange);
   const reportCredentialGuard = useCallback((state: { dirty: boolean; busy: boolean }) => setCredentialGuard(state), []);
   const canSend = Boolean(fresh && conversation && !refreshing && !mutating && !runActive && !credentialGuard.dirty);
 
@@ -145,11 +159,32 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
       const result = await api.sendWorkspaceMessage(workspace.id, { content: content.trim(), revision: current.revision, contextRevision: conversation.contextRevision }, request.signal);
       if (request.signal.aborted) return;
       if (result.conversationId !== conversation.id) throw new ApiError('回應的設定對話不符。', 'WORKSPACE_CONFLICT');
-      setContent(''); setRun(result.run); setConversation((previous) => previous ? { ...previous, activeRunId: result.run.id } : previous); setCurrent((previous) => ({ ...previous, activeRunId: result.run.id })); setNote('訊息已保存並排入設定任務。AI 只能依 Server 已確認範圍與工具許可探索；未取得許可時只進行訪談，不會自動套用提案。');
+      setContent(''); setRun(result.run); setConversation((previous) => previous ? { ...previous, activeRunId: result.run.id } : previous); setCurrent((previous) => ({ ...previous, activeRunId: result.run.id })); setNote(`訊息已保存並排入${result.run.authorEngine === 'external' ? '外部 Agent 接單' : '內建引擎'}設定任務。未確認網站範圍時只能文字訪談；設定提案仍須人工確認。`);
       try { await refresh(); } catch { setSendError('訊息已送出，但對話同步失敗。請先重新載入，不要直接重送。'); }
     } catch (cause) {
       if (!request.signal.aborted) { setSendError(`${errorMessage(cause)} 輸入已保留；請先重新載入對話與任務狀態，不會自動重送。`); void refresh().catch(() => undefined); }
     } finally { controllers.current.delete(request); sendLock.current = false; if (!request.signal.aborted) setSending(false); }
+  }
+
+  async function saveEngine() {
+    if (engineLock.current || !fresh || refreshing || mutating || engineSelection === current.authorEngine) return;
+    engineLock.current = true; setEngineBusy(true); setEngineError(undefined); setEngineNote(undefined);
+    const request = new AbortController(); controllers.current.add(request);
+    try {
+      const next = await api.updateWorkspaceAuthorEngine(workspace.id, current.revision, engineSelection, request.signal);
+      if (request.signal.aborted) return;
+      lastEngine.current = next.authorEngine;
+      setCurrent(next); setEngineSelection(next.authorEngine); onWorkspaceUpdated(next);
+      setEngineNote(`AI 撰寫引擎已更新為${next.authorEngine === 'external' ? '外部 Agent' : '內建引擎'}；只影響後續新 Run，既有任務沿建立時的快照。`);
+      try { await refresh(); } catch { setEngineError('引擎設定已保存，但 Workspace 同步失敗；請重新載入確認。'); }
+    } catch (cause) {
+      if (!request.signal.aborted) {
+        setEngineError(cause instanceof ApiError && cause.status === 409
+          ? 'Workspace 設定版本已變更。選擇已保留，請先檢視最新 revision 再儲存。'
+          : `${errorMessage(cause)} 選擇已保留；請先重新載入確認是否已保存，避免重複送出。`);
+        void refresh().catch(() => undefined);
+      }
+    } finally { controllers.current.delete(request); engineLock.current = false; if (!request.signal.aborted) setEngineBusy(false); }
   }
 
   function proposalUpdated(proposal: WorkspaceProposal, next?: WorkspaceDetail) {
@@ -161,6 +196,7 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
 
   function returnToTests() {
     if (mutating) return;
+    if (engineSelection !== current.authorEngine && !window.confirm('AI 撰寫引擎的選擇尚未儲存。確定返回？')) return;
     if (credentialGuard.dirty && !window.confirm('返回測試工作台會清除尚未保存的帳密；一般未送出訊息會保留。確定繼續？')) return;
     setLiveSelection(undefined);
     onReturn();
@@ -194,6 +230,7 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
         <div className="test-chips">
           <span className={`chip ${current.lifecycle === 'active' ? 'ok' : 'warm'}`}>{lifecycleLabel}</span>
           <span className="chip neutral">設定 revision <span className="mono">{current.revision}</span></span>
+          <span className="chip neutral">新訪談任務：{current.authorEngine === 'external' ? '外部 Agent' : '內建引擎'}</span>
         </div>
       </div>
       <div className="test-actions">
@@ -201,12 +238,12 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
       </div>
     </header>
     <div className={`studio${sideOpen ? ' side-open' : ''}`}>
-      {sideOpen ? <div className="side-backdrop" aria-hidden="true" onClick={() => setSideOpen(false)} /> : null}
+      {sideOpen ? <div className="side-backdrop" aria-hidden="true" onClick={() => { setSideOpen(false); setSideTab('proposal'); }} /> : null}
       <section className="studio-chat" aria-labelledby="workspace-chat-title">
         <div className="chat-bar">
           <h2 id="workspace-chat-title" className="chat-bar-title">Workspace 設定對話</h2>
           <span className="chat-bar-spacer" />
-          <button className="button quiet compact side-toggle" aria-expanded={sideOpen} onClick={() => setSideOpen((open) => !open)}><PanelIcon />{sideOpen ? '收合設定面板' : '提案與登入資料'}</button>
+          <button className="button quiet compact side-toggle" aria-expanded={sideOpen} onClick={() => { if (sideOpen) setSideTab('proposal'); setSideOpen((open) => !open); }}><PanelIcon />{sideOpen ? '收合設定面板' : '提案與登入資料'}</button>
           <button className="rail-icon-button light small" aria-label="重新載入設定對話" title="重新載入設定對話" disabled={refreshing || mutating} onClick={() => { void refresh().catch(() => undefined); }}><RefreshIcon /></button>
         </div>
         <ChatScroll watch={`${messages.length}:${pendingTurn}:${trackedId}:${run?.status}:${Boolean(liveRun)}`} label="Workspace 設定對話">
@@ -226,7 +263,7 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
           {trackedId ? <section className={`artifact trail-card ${run && isActiveRun(run) ? 'is-running' : run?.status === 'failed' ? 'is-failed' : ''}`} aria-live="polite" aria-label="設定訪談狀態">
             <header className="artifact-head">
               <strong>設定訪談狀態</strong>
-              {run?.id === trackedId ? <RunStatusBadge run={run} /> : <span className="muted">讀取中…</span>}
+              {run?.id === trackedId ? <><RunStatusBadge run={run} /><AuthorEngineStatus engine={run.authorEngine ?? 'builtin'} status={run.status} /></> : <span className="muted">讀取中…</span>}
             </header>
             <div className="artifact-body">
               <p className="run-id">Run <span className="identifier">{trackedId}</span></p>
@@ -264,6 +301,11 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
         <div id="ws-panel-settings" role="tabpanel" aria-labelledby="ws-tab-settings" className="side-panel" hidden={sideTab !== 'settings'}>
           <WorkspaceAvailability workspace={current} />
           <WorkspaceSettings workspace={current} />
+          <AuthorEngineSettings current={current.authorEngine} selected={engineSelection} disabled={!fresh || refreshing || sending || proposalBusy || credentialGuard.busy} busy={engineBusy} onSelect={(value) => { setEngineSelection(value); setEngineError(undefined); setEngineNote(undefined); }} onSave={() => { void saveEngine(); }} />
+          {engineError ? <Notice message={engineError} /> : null}
+          {engineNote ? <p role="status" className="inline-hint">{engineNote}</p> : null}
+          <WorkspaceAgentAccess api={api} workspaceId={workspace.id} active={active && sideTab === 'settings'} />
+          <WorkspaceBrowserSessions api={api} apiBase={apiBase} workspaceId={workspace.id} active={active && sideTab === 'settings'} />
           {conversation?.conversationSummary ? <section className="session-background" aria-label="Workspace 對話背景"><h4>Workspace 對話背景</h4><p className="summary-content">{conversation.conversationSummary}</p></section> : null}
         </div>
       </aside>

@@ -69,8 +69,19 @@ func (p *Postgres) inspectStageRetry(ctx context.Context, tx *sql.Tx, plan *Plan
 	if cancelled || stringValue(plan.Error) == "cancelled" {
 		return retryReason(r, "cancelled"), nil
 	}
-	if stage.Status != "failed" || (stage.Action != "create" && stage.Action != "modify") {
+	composeRepair := stage.Status == "ready" && index == len(plan.Stages)-1 && plan.ValidationRunID != nil
+	if stage.Status != "failed" && !composeRepair || (stage.Action != "create" && stage.Action != "modify") {
 		return retryReason(r, "stage_not_retryable"), nil
+	}
+	if composeRepair {
+		var failed bool
+		err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM runs WHERE id=$1 AND kind='validation' AND test_id=$2 AND editing_session_id=$3 AND workspace_id=$4 AND draft_revision=$5 AND status IN ('failed','timed_out') AND NOT cancel_requested)`, *plan.ValidationRunID, plan.TestID, plan.EditingSessionID, workspace, plan.BaseRevision).Scan(&failed)
+		if err != nil {
+			return r, err
+		}
+		if !failed {
+			return retryReason(r, "stage_not_retryable"), nil
+		}
 	}
 	for _, s := range plan.Stages[index+1:] {
 		if s.Status != "pending" {
@@ -135,7 +146,7 @@ func (p *Postgres) inspectStageRetry(ctx context.Context, tx *sql.Tx, plan *Plan
 		if retryCancelled(vr) {
 			return retryReason(r, "cancelled"), nil
 		}
-		if !retryFailure(vr) {
+		if !retryFailure(vr) && !(composeRepair && vr == "succeeded") {
 			return retryReason(r, "stage_not_retryable"), nil
 		}
 	} else if !retryFailure(source.AuthorStatus) {
@@ -186,6 +197,9 @@ func (p *Postgres) inspectStageRetry(ctx context.Context, tx *sql.Tx, plan *Plan
 		if e != nil || snap.BundleHash != candidateHash || md.ValidationRunID == nil || *md.ValidationRunID != *source.ValidationRunID {
 			return retryReason(r, "snapshot_mismatch"), nil
 		}
+	}
+	if composeRepair && p.retryPriorStage(ctx, tx, plan, stage, workspace) != nil {
+		return retryReason(r, "snapshot_mismatch"), nil
 	}
 	for _, prior := range plan.Stages[:index] {
 		if prior.Status != "ready" || p.retryPriorStage(ctx, tx, plan, prior, workspace) != nil {
@@ -357,9 +371,10 @@ func (p *Postgres) RetryPlanStage(ctx context.Context, id, stageID string, reque
 	stage.DraftRevision = &d.Revision
 	stage.Error = nil
 	plan.Status = "running"
+	plan.ValidationRunID = nil
 	plan.Revision++
 	plan.Error = nil
-	if _, err = tx.ExecContext(ctx, `UPDATE plans SET status='running',revision=$2,error=NULL,stages=$3 WHERE id=$1`, id, plan.Revision, jsonText(plan.Stages)); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE plans SET status='running',revision=$2,error=NULL,stages=$3,validation_run_id=NULL WHERE id=$1`, id, plan.Revision, jsonText(plan.Stages)); err != nil {
 		return nil, err
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO plan_stage_retries(plan_id,request_plan_revision,stage_id,request,source_author_run_id,source_validation_run_id,new_author_run_id,result) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, id, request.PlanRevision, stageID, jsonText(request), source.AuthorRunID, source.ValidationRunID, run.ID, jsonText(plan)); err != nil {

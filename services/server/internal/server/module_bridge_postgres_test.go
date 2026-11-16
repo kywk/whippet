@@ -133,7 +133,7 @@ func TestM106ModuleServerBridge(t *testing.T) {
 	resultPath := filepath.Join(temp, "handoff.json")
 	callPath := filepath.Join(temp, "calls.json")
 	module := *inputAuthor.Platform.Module
-	module.Harness = "import {test,expect} from '@playwright/test'; import {prepare} from '@lib/setup'; test('module',async()=>{expect(await prepare({})).toEqual({name:'alpha'});});"
+	module.Harness = "import {test,expect} from '@playwright/test'; import {prepare} from '@lib/setup'; test('module',async({page})=>{expect(await prepare({page})).toEqual({name:'alpha'});});"
 	metadata := map[string]any{"slug": module.Slug, "moduleKind": module.ModuleKind, "exportName": module.ExportName, "signature": module.Signature, "inputs": module.Inputs, "returns": module.Returns, "preconditions": module.Preconditions, "postconditions": module.Postconditions}
 	callsInput := []any{
 		map[string]any{"name": "stage_module_candidate_part", "arguments": map[string]any{"part": "script", "content": "export async function prepare(_args:any){return {name:'alpha'};}", "stagingRevision": 0}},

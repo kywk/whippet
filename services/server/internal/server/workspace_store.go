@@ -16,12 +16,12 @@ func readWorkspaceCore(ctx context.Context, q queryDB, id string, lock bool) (Wo
 	var proposalID *string
 	stmt := `SELECT w.id,w.name,w.settings,w.lifecycle,w.canonical_config,w.authorization_revision,w.scope_status,
  (SELECT c.id FROM conversations c WHERE c.workspace_id=w.id AND c.owner_type='workspace'),
- (SELECT r.id FROM runs r WHERE r.workspace_id=w.id AND r.test_id IS NULL AND r.kind='author' AND r.status IN ('queued','dispatched','running','collecting','cancelling')),w.current_proposal_id
+ (SELECT r.id FROM runs r WHERE r.workspace_id=w.id AND r.test_id IS NULL AND r.kind='author' AND r.status IN ('queued','dispatched','running','collecting','cancelling')),w.current_proposal_id,w.author_engine
  FROM workspaces w WHERE w.id=$1`
 	if lock {
 		stmt += " FOR UPDATE OF w"
 	}
-	err := q.QueryRowContext(ctx, stmt, id).Scan(&w.ID, &w.Name, &legacy, &w.Lifecycle, &config, &w.AuthorizationRevision, &w.ScopeStatus, &w.ConversationID, &w.ActiveRunID, &proposalID)
+	err := q.QueryRowContext(ctx, stmt, id).Scan(&w.ID, &w.Name, &legacy, &w.Lifecycle, &config, &w.AuthorizationRevision, &w.ScopeStatus, &w.ConversationID, &w.ActiveRunID, &proposalID, &w.AuthorEngine)
 	if err != nil {
 		return w, nil, dbError(err)
 	}

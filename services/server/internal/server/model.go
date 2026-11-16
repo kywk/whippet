@@ -18,8 +18,9 @@ var (
 )
 
 type Workspace struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	AuthorEngine string `json:"authorEngine"`
 	WorkspaceSettings
 	Lifecycle             string                `json:"lifecycle"`
 	AuthorizationRevision int64                 `json:"authorizationRevision"`
@@ -47,6 +48,7 @@ type Test struct {
 }
 
 type Run struct {
+	AuthorEngine          string         `json:"authorEngine"`
 	AuthorPartial         *AuthorPartial `json:"authorPartial,omitempty"`
 	ScriptOrigin          string         `json:"scriptOrigin"`
 	authorizationRevision *int64
@@ -174,7 +176,8 @@ func Terminal(status string) bool {
 }
 
 type Assignment struct {
-	Files []RunFile
+	Files     []RunFile
+	ModuleABI *ModuleABI
 	Run
 	ManagerID string
 	AttemptID string
@@ -182,6 +185,11 @@ type Assignment struct {
 	TimeoutMS int
 	Acked     bool
 	Author    *AuthorInput
+}
+
+type ModuleABI struct {
+	Slug       string `json:"slug"`
+	ExportName string `json:"exportName"`
 }
 
 func stringPointer(value string) *string { return &value }

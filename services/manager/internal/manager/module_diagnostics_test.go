@@ -291,12 +291,60 @@ func TestM109V3ModelRequestStages(t *testing.T) {
 		}
 	}
 	d := newM109Diagnostic()
-	if d.SchemaVersion != 3 || d.WorkerObserved || d.Worker.ModelRequestFailureStage != "UNKNOWN" {
+	if d.SchemaVersion != 4 || d.WorkerObserved || d.Worker.ModelRequestFailureStage != "UNKNOWN" || d.Worker.LastSelfTestFailedStepCategory != "UNOBSERVED" || d.Worker.LastSelfTestMainFrameNavigation != "UNOBSERVED" {
 		t.Fatal("unobserved defaults")
 	}
 	d.consume(m109Prefix + v3)
 	d.consume(m109Prefix + strings.Replace(v3, "FETCH_REJECTED", "HTTP_NON_OK", 1))
 	if d.Worker.ModelRequestFailureStage != "FETCH_REJECTED" {
 		t.Fatal("first observation replaced")
+	}
+}
+
+func TestM10ZWave3V4StrictWorkerAndSidecarShape(t *testing.T) {
+	v3 := strings.Replace(m109Safe, "{", `{"schemaVersion":3,"modelRequestFailureStage":"UNKNOWN","lastSelfTestFailureClass":"TEST_FAILED",`, 1)
+	v4 := strings.Replace(strings.Replace(v3, `"schemaVersion":3`, `"schemaVersion":4`, 1), "{", `{"lastSelfTestFailedStepCategory":"EXPECT","lastSelfTestMainFrameNavigation":"OBSERVED",`, 1)
+	for _, step := range []string{"EXPECT", "PW_API", "TEST_STEP", "OTHER", "UNOBSERVED"} {
+		for _, navigation := range []string{"OBSERVED", "NOT_OBSERVED", "UNOBSERVED"} {
+			raw := strings.Replace(strings.Replace(v4, `"EXPECT"`, `"`+step+`"`, 1), `"OBSERVED"`, `"`+navigation+`"`, 1)
+			value, ok := decodeM109([]byte(raw))
+			if !ok || value.SchemaVersion != 4 || value.LastSelfTestFailedStepCategory != step || value.LastSelfTestMainFrameNavigation != navigation {
+				t.Fatal("valid v4 rejected")
+			}
+		}
+	}
+	d := newM109Diagnostic()
+	d.consume(m109Prefix + v4)
+	if !d.WorkerObserved || d.SchemaVersion != 4 {
+		t.Fatal("v4 producer rejected")
+	}
+	sidecar, err := json.Marshal(d)
+	if err != nil || len(sidecar)+1 > 4096 {
+		t.Fatal("v4 sidecar size")
+	}
+	var envelope map[string]any
+	if json.Unmarshal(sidecar, &envelope) != nil || len(envelope) != 4 {
+		t.Fatal("v4 sidecar envelope")
+	}
+	worker, ok := envelope["worker"].(map[string]any)
+	if !ok || len(worker) != 10 || worker["schemaVersion"] != nil || worker["lastSelfTestFailedStepCategory"] != "EXPECT" || worker["lastSelfTestMainFrameNavigation"] != "OBSERVED" {
+		t.Fatal("v4 worker sidecar keys")
+	}
+	for _, bad := range []string{
+		strings.Replace(v4, `"lastSelfTestFailedStepCategory":"EXPECT",`, "", 1),
+		strings.Replace(v4, `"lastSelfTestMainFrameNavigation":"OBSERVED",`, "", 1),
+		strings.Replace(v4, `"EXPECT"`, `null`, 1),
+		strings.Replace(v4, `"OBSERVED"`, `null`, 1),
+		strings.Replace(v4, `"EXPECT"`, `"ASSERTION"`, 1),
+		strings.Replace(v4, `"OBSERVED"`, `"UNKNOWN"`, 1),
+		strings.Replace(v4, "{", `{"lastSelfTestFailedStepCategory":"PW_API",`, 1),
+		strings.Replace(v4, "{", `{"extra":"SECRET_SENTINEL",`, 1),
+		strings.Replace(v4, `"schemaVersion":4`, `"schemaVersion":3`, 1),
+		strings.Replace(v3, "{", `{"lastSelfTestMainFrameNavigation":"OBSERVED",`, 1),
+		v4 + "SECRET_SENTINEL",
+	} {
+		if _, ok := decodeM109([]byte(bad)); ok {
+			t.Fatal("invalid v4 or mixed legacy accepted")
+		}
 	}
 }

@@ -103,6 +103,48 @@ func (g *LiveGateway) Media(w http.ResponseWriter, r *http.Request) {
 	g.serve(conn, session, endpoint, true)
 }
 
+func (g *LiveGateway) SessionViewer(w http.ResponseWriter, r *http.Request) {
+	sessionID, leaseID := r.PathValue("sessionId"), r.PathValue("leaseId")
+	if !server.ValidID(sessionID) || !server.ValidID(leaseID) {
+		http.Error(w, "invalid browser session binding", http.StatusBadRequest)
+		return
+	}
+	conn, err := upgradeLive(w, r, true)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	session, err := g.Hub.OpenSessionViewer(ctx, sessionID, leaseID)
+	cancel()
+	if err != nil {
+		rejectLive(conn, err)
+		return
+	}
+	g.serve(conn, session, session.Viewer, false)
+}
+
+func (g *LiveGateway) SessionMedia(w http.ResponseWriter, r *http.Request) {
+	sessionID, leaseID, viewerID := r.PathValue("sessionId"), r.PathValue("leaseId"), r.URL.Query().Get("viewerId")
+	if !server.ValidID(sessionID) || !server.ValidID(leaseID) || !server.ValidID(viewerID) {
+		http.Error(w, "invalid browser session live binding", http.StatusBadRequest)
+		return
+	}
+	conn, err := upgradeLive(w, r, false)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	session, endpoint, err := g.Hub.AttachSessionMedia(ctx, sessionID, leaseID, viewerID)
+	cancel()
+	if err != nil {
+		rejectLive(conn, err)
+		return
+	}
+	g.serve(conn, session, endpoint, true)
+}
+
 func (g *LiveGateway) serve(conn *websocket.Conn, session *server.LiveSession, endpoint *server.LiveEndpoint, media bool) {
 	conn.SetReadLimit(server.MaxLiveFrameBytes)
 	writerDone := make(chan struct{})

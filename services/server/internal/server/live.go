@@ -65,6 +65,7 @@ type LiveStore interface {
 type LiveCommand struct {
 	Type, ManagerEpoch, ViewerID string
 	Target                       LiveTarget
+	SessionTarget                *BrowserSessionTarget
 	ICEServers                   []ICEServer
 	OnError                      func(error)
 }
@@ -203,6 +204,7 @@ func (p *LiveEndpoint) Final() LiveMessage { return p.final }
 
 type LiveSession struct {
 	Target           LiveTarget
+	SessionTarget    *BrowserSessionTarget
 	ViewerID         string
 	Viewer           *LiveEndpoint
 	managerEpoch     string
@@ -218,19 +220,97 @@ type LiveSession struct {
 }
 
 type LiveHub struct {
-	store      LiveStore
-	controller LiveController
-	ice        []ICEServer
-	mu         sync.Mutex
-	sessions   map[string]*LiveSession
-	now        func() time.Time
+	store        LiveStore
+	controller   LiveController
+	ice          []ICEServer
+	mu           sync.Mutex
+	sessions     map[string]*LiveSession
+	sessionLives map[string]*LiveSession
+	now          func() time.Time
 }
 
 func NewLiveHub(store LiveStore, controller LiveController, ice []ICEServer) *LiveHub {
 	if ice == nil {
 		ice = []ICEServer{}
 	}
-	return &LiveHub{store: store, controller: controller, ice: ice, sessions: map[string]*LiveSession{}, now: time.Now}
+	return &LiveHub{store: store, controller: controller, ice: ice, sessions: map[string]*LiveSession{}, sessionLives: map[string]*LiveSession{}, now: time.Now}
+}
+
+type sessionLiveStore interface {
+	BrowserSessionLiveTarget(context.Context, string, string) (BrowserSessionTarget, error)
+}
+
+func (h *LiveHub) sessionTarget(ctx context.Context, sessionID, leaseID string) (BrowserSessionTarget, error) {
+	store, ok := h.store.(sessionLiveStore)
+	if !ok {
+		return BrowserSessionTarget{}, ErrNotFound
+	}
+	return store.BrowserSessionLiveTarget(ctx, sessionID, leaseID)
+}
+
+func (h *LiveHub) currentLocked(s *LiveSession) bool {
+	if s.SessionTarget != nil {
+		return h.sessionLives[s.SessionTarget.SessionID] == s
+	}
+	return h.sessions[s.Target.RunID] == s
+}
+
+func (h *LiveHub) OpenSessionViewer(ctx context.Context, sessionID, leaseID string) (*LiveSession, error) {
+	target, err := h.sessionTarget(ctx, sessionID, leaseID)
+	if err != nil {
+		return nil, &LiveError{"not_found", "Browser session is unavailable."}
+	}
+	epoch, online := h.controller.LiveManagerEpoch(target.ManagerID)
+	if !online || epoch != target.ManagerEpoch {
+		return nil, &LiveError{"unavailable", "Manager is offline or reconciling."}
+	}
+	h.mu.Lock()
+	if h.sessionLives[sessionID] != nil {
+		h.mu.Unlock()
+		return nil, &LiveError{"busy", "This browser session already has a viewer."}
+	}
+	s := &LiveSession{Target: LiveTarget{WorkspaceID: target.WorkspaceID, ManagerID: target.ManagerID}, SessionTarget: &target,
+		ViewerID: NewID(), Viewer: newLiveEndpoint(), managerEpoch: epoch, mode: "webrtc", expiresAt: h.now().Add(LiveLease)}
+	h.sessionLives[sessionID] = s
+	s.Viewer.send(LiveMessage{Type: "ready", ViewerID: s.ViewerID, ICEServers: &h.ice})
+	s.Viewer.send(LiveMessage{Type: "state", ViewerID: s.ViewerID, State: "waiting", Reason: "Waiting for live media."})
+	h.mu.Unlock()
+	command := LiveCommand{Type: "session.live.start", SessionTarget: &target, ViewerID: s.ViewerID, ManagerEpoch: epoch, ICEServers: h.ice,
+		OnError: func(error) {
+			h.terminate(s, LiveMessage{Type: "state", State: "unavailable", Reason: "Live start is unavailable."})
+		}}
+	if err := h.controller.QueueLiveCommand(command); err != nil {
+		h.terminate(s, LiveMessage{Type: "error", Code: "unavailable", Message: "Live control queue is busy."})
+	}
+	return s, nil
+}
+
+func (h *LiveHub) AttachSessionMedia(ctx context.Context, sessionID, leaseID, viewerID string) (*LiveSession, *LiveEndpoint, error) {
+	target, err := h.sessionTarget(ctx, sessionID, leaseID)
+	if err != nil {
+		return nil, nil, &LiveError{"invalid_binding", "Browser session binding does not match."}
+	}
+	epoch, online := h.controller.LiveManagerEpoch(target.ManagerID)
+	h.mu.Lock()
+	s := h.sessionLives[sessionID]
+	if !online || epoch != target.ManagerEpoch || s == nil || s.SessionTarget == nil || s.SessionTarget.LeaseID != leaseID ||
+		s.ViewerID != viewerID || s.managerEpoch != epoch || s.Target.ManagerID != target.ManagerID || !h.now().Before(s.expiresAt) {
+		h.mu.Unlock()
+		return nil, nil, &LiveError{"invalid_binding", "Live viewer or Manager binding does not match."}
+	}
+	if s.media != nil {
+		h.mu.Unlock()
+		return nil, nil, &LiveError{"busy", "Media is already connected."}
+	}
+	media := newLiveEndpoint()
+	s.media = media
+	media.send(LiveMessage{Type: "mode", Mode: s.mode})
+	ok := s.Viewer.send(LiveMessage{Type: "state", ViewerID: s.ViewerID, State: "connecting", Transport: s.mode})
+	h.mu.Unlock()
+	if !ok {
+		h.terminate(s, LiveMessage{Type: "state", State: "unavailable", Reason: "Viewer signaling queue is full."})
+	}
+	return s, media, nil
 }
 
 func (h *LiveHub) OpenViewer(ctx context.Context, runID string) (*LiveSession, error) {
@@ -295,7 +375,7 @@ func (h *LiveHub) AttachMedia(ctx context.Context, runID, attemptID, viewerID st
 func (h *LiveHub) ViewerMessage(s *LiveSession, message LiveMessage) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.sessions[s.Target.RunID] != s || !h.now().Before(s.expiresAt) {
+	if !h.currentLocked(s) || !h.now().Before(s.expiresAt) {
 		return &LiveError{"expired", "Viewer lease expired."}
 	}
 	if message.ViewerID != "" && message.ViewerID != s.ViewerID {
@@ -348,7 +428,7 @@ func (h *LiveHub) ViewerMessage(s *LiveSession, message LiveMessage) error {
 func (h *LiveHub) MediaMessage(s *LiveSession, media *LiveEndpoint, message LiveMessage) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.sessions[s.Target.RunID] != s || s.media != media || !h.now().Before(s.expiresAt) {
+	if !h.currentLocked(s) || s.media != media || !h.now().Before(s.expiresAt) {
 		return &LiveError{"invalid_binding", "Media session is no longer active."}
 	}
 	switch message.Type {
@@ -416,7 +496,7 @@ func (h *LiveHub) Frame(s *LiveSession, media *LiveEndpoint, jpeg []byte) error 
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.sessions[s.Target.RunID] != s || s.media != media || !h.now().Before(s.expiresAt) {
+	if !h.currentLocked(s) || s.media != media || !h.now().Before(s.expiresAt) {
 		return &LiveError{"invalid_binding", "Media session is no longer active."}
 	}
 	if s.mode != "jpeg" {
@@ -434,11 +514,15 @@ func (h *LiveHub) Frame(s *LiveSession, media *LiveEndpoint, jpeg []byte) error 
 
 func (h *LiveHub) terminate(s *LiveSession, final LiveMessage) {
 	h.mu.Lock()
-	if h.sessions[s.Target.RunID] != s {
+	if !h.currentLocked(s) {
 		h.mu.Unlock()
 		return
 	}
-	delete(h.sessions, s.Target.RunID)
+	if s.SessionTarget != nil {
+		delete(h.sessionLives, s.SessionTarget.SessionID)
+	} else {
+		delete(h.sessions, s.Target.RunID)
+	}
 	if final.Type == "state" {
 		final.ViewerID = s.ViewerID
 	}
@@ -448,7 +532,11 @@ func (h *LiveHub) terminate(s *LiveSession, final LiveMessage) {
 	}
 	h.mu.Unlock()
 	// Best effort stop plus media close; Runtime also has its own expiry lease.
-	_ = h.controller.QueueLiveCommand(LiveCommand{Type: "live.stop", Target: s.Target, ViewerID: s.ViewerID, ManagerEpoch: s.managerEpoch})
+	command := LiveCommand{Type: "live.stop", Target: s.Target, ViewerID: s.ViewerID, ManagerEpoch: s.managerEpoch}
+	if s.SessionTarget != nil {
+		command.Type, command.SessionTarget = "session.live.stop", s.SessionTarget
+	}
+	_ = h.controller.QueueLiveCommand(command)
 }
 
 func (h *LiveHub) CloseViewer(s *LiveSession) {
@@ -466,7 +554,7 @@ func (h *LiveHub) FailViewer(s *LiveSession, err error) {
 
 func (h *LiveHub) CloseMedia(s *LiveSession, media *LiveEndpoint) {
 	h.mu.Lock()
-	current := h.sessions[s.Target.RunID] == s && s.media == media
+	current := h.currentLocked(s) && s.media == media
 	h.mu.Unlock()
 	if current {
 		h.terminate(s, LiveMessage{Type: "state", State: "unavailable", Reason: "Media disconnected."})
@@ -479,6 +567,15 @@ func (h *LiveHub) EndRun(runID string) {
 	h.mu.Unlock()
 	if s != nil {
 		h.terminate(s, LiveMessage{Type: "state", State: "ended", Reason: "Run ended."})
+	}
+}
+
+func (h *LiveHub) EndBrowserSession(sessionID string) {
+	h.mu.Lock()
+	s := h.sessionLives[sessionID]
+	h.mu.Unlock()
+	if s != nil {
+		h.terminate(s, LiveMessage{Type: "state", State: "ended", Reason: "Browser session ended."})
 	}
 }
 
@@ -497,6 +594,9 @@ func (h *LiveHub) snapshot() []*LiveSession {
 	for _, s := range h.sessions {
 		items = append(items, s)
 	}
+	for _, s := range h.sessionLives {
+		items = append(items, s)
+	}
 	return items
 }
 
@@ -510,6 +610,15 @@ func (h *LiveHub) Sweep(ctx context.Context, now time.Time) {
 			continue
 		}
 		queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		if s.SessionTarget != nil {
+			target, err := h.sessionTarget(queryCtx, s.SessionTarget.SessionID, s.SessionTarget.LeaseID)
+			cancel()
+			epoch, online := h.controller.LiveManagerEpoch(s.Target.ManagerID)
+			if err != nil || !online || epoch != s.managerEpoch || target.ManagerID != s.Target.ManagerID || target.ManagerEpoch != s.managerEpoch {
+				h.terminate(s, LiveMessage{Type: "state", State: "unavailable", Reason: "Browser session binding is no longer available."})
+			}
+			continue
+		}
 		target, err := h.store.LiveTarget(queryCtx, s.Target.RunID)
 		cancel()
 		if err != nil || target.AttemptID != s.Target.AttemptID || target.ManagerID != s.Target.ManagerID {

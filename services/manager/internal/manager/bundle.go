@@ -5,6 +5,7 @@ import (
 	"errors"
 	"regexp"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -17,6 +18,24 @@ type RunFile struct {
 	Path    string `json:"path"`
 	Content string `json:"content"`
 	Origin  string `json:"origin"`
+}
+
+type ModuleABI struct {
+	Slug       string `json:"slug"`
+	ExportName string `json:"exportName"`
+}
+
+func validModuleABIName(name string) bool {
+	if name == "" || strings.Contains(" await break case catch class const continue debugger default delete do else enum eval export extends false finally for function if implements import in instanceof interface let new null package private protected public return static super switch this throw true try typeof var void while with yield arguments ", " "+name+" ") {
+		return false
+	}
+	for i, r := range name {
+		if r == '_' || r == '$' || unicode.IsLetter(r) || i > 0 && (unicode.IsDigit(r) || unicode.Is(unicode.Mn, r) || unicode.Is(unicode.Mc, r) || r == '\u200c' || r == '\u200d') {
+			continue
+		}
+		return false
+	}
+	return utf8.ValidString(name)
 }
 
 func (f *RunFile) UnmarshalJSON(raw []byte) error {
@@ -37,6 +56,9 @@ func (f *RunFile) UnmarshalJSON(raw []byte) error {
 }
 func normalizeBundle(d *Dispatch) error {
 	if d.Files == nil {
+		if d.ModuleABI != nil {
+			return errBundle
+		}
 		return nil
 	}
 	if !validScriptOrigin(d.ScriptOrigin) || d.Kind != "run" || d.Author != nil || len(d.Files) < 1 || len(d.Files) > 64 {
@@ -64,6 +86,9 @@ func normalizeBundle(d *Dispatch) error {
 		}
 	}
 	if strings.TrimSpace(entry) == "" || d.Script != "" && d.Script != entry {
+		return errBundle
+	}
+	if d.ModuleABI != nil && (len(d.Files) != 2 || !bundleModulePath.MatchString("lib/"+d.ModuleABI.Slug+".ts") || !paths["lib/"+d.ModuleABI.Slug+".ts"] || !validModuleABIName(d.ModuleABI.ExportName)) {
 		return errBundle
 	}
 	d.Script = entry

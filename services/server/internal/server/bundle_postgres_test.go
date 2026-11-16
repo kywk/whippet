@@ -42,6 +42,9 @@ func TestM10PostgresModuleHarnessBundleGate(t *testing.T) {
 	if err != nil || a == nil || a.ID != run.ID || a.Script != metadata.Harness || len(a.Files) != 2 {
 		t.Fatal("harness not dispatched", err)
 	}
+	if a.ModuleABI == nil || a.ModuleABI.Slug != "setup" || a.ModuleABI.ExportName != "prepare" {
+		t.Fatal("module ABI missing from verified validation bundle")
+	}
 	if _, err := p.DB.ExecContext(ctx, `UPDATE runs SET files_snapshot='[]' WHERE id=$1`, run.ID); err == nil {
 		t.Fatal("immutable files mutated")
 	}
@@ -85,7 +88,7 @@ func TestM10PostgresModuleHarnessBundleGate(t *testing.T) {
 		t.Fatal("metadata edit retained validation")
 	}
 	replay, err := p.Assignments(ctx, "m10-bundle")
-	if err != nil || len(replay) != 1 || jsonText(replay[0].Files) != jsonText(a.Files) {
+	if err != nil || len(replay) != 1 || jsonText(replay[0].Files) != jsonText(a.Files) || replay[0].ModuleABI == nil || *replay[0].ModuleABI != *a.ModuleABI {
 		t.Fatal("replay reread draft", err)
 	}
 	if _, err = p.CreateSummary(ctx, module.ID, session.ID, draft.Revision, run.ID); !errors.Is(err, ErrConflict) {
@@ -167,6 +170,9 @@ func TestM10PostgresUseCasePinnedBundleReplay(t *testing.T) {
 	}
 	if len(a.Files) != 2 || a.Files[0].Content != m10BundleModule {
 		t.Fatal("claim followed new version")
+	}
+	if a.ModuleABI != nil {
+		t.Fatal("Use Case bundle disclosed Module ABI")
 	}
 	replay, err := p.Assignments(ctx, "m10-pinned")
 	if err != nil || len(replay) != 1 || jsonText(replay[0].Files) != jsonText(a.Files) {

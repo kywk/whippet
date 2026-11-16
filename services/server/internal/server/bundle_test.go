@@ -48,6 +48,21 @@ func TestM10BundleHashAndDispatch(t *testing.T) {
 	if err = json.Unmarshal(peer.messages[0].Payload, &wire); err != nil || wire.Script != b.entry() || len(wire.Files) != 2 || wire.ScriptOrigin != "ai" {
 		t.Fatal("dispatch bundle lost", err)
 	}
+	if strings.Contains(string(peer.messages[0].Payload), `"moduleAbi"`) {
+		t.Fatal("Use Case dispatch exposed Module ABI")
+	}
+	modulePeer := &recordPeer{}
+	moduleSession := &Session{managerID: "m10", peer: modulePeer, sent: map[string]time.Time{}}
+	a.ModuleABI = &ModuleABI{Slug: "setup", ExportName: "prepare"}
+	if err := engine.send(moduleSession, a, "dispatch"); err != nil {
+		t.Fatal(err)
+	}
+	var moduleWire struct {
+		ModuleABI *ModuleABI `json:"moduleAbi"`
+	}
+	if json.Unmarshal(modulePeer.messages[0].Payload, &moduleWire) != nil || moduleWire.ModuleABI == nil || *moduleWire.ModuleABI != *a.ModuleABI {
+		t.Fatal("Module dispatch lost trusted ABI")
+	}
 }
 func TestM10BundleInvalidInputsAndMetadataGate(t *testing.T) {
 	for _, path := range []string{"../outside.ts", "lib/../outside.ts", "/tmp/x", "lib/x\\y.ts", "lib/a/b.ts"} {

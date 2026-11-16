@@ -161,6 +161,17 @@ func (p *Postgres) StartEditingSession(ctx context.Context, testID string) (Edit
 		return EditingSession{}, false, err
 	}
 	defer tx.Rollback()
+	s, created, err := startEditingSessionInTx(ctx, tx, testID)
+	if err != nil {
+		return s, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return s, false, err
+	}
+	return s, created, nil
+}
+
+func startEditingSessionInTx(ctx context.Context, tx *sql.Tx, testID string, initialOrigin ...string) (EditingSession, bool, error) {
 	settings, err := lockEditingTest(ctx, tx, testID)
 	if err != nil {
 		return EditingSession{}, false, err
@@ -181,6 +192,9 @@ func (p *Postgres) StartEditingSession(ctx context.Context, testID string) (Edit
 		var module, stages []byte
 		if err = tx.QueryRowContext(ctx, `SELECT COALESCE(v.script,''),COALESCE(v.script_origin,'legacy'),COALESCE(v.module,'null'::jsonb),COALESCE(v.stages,'[]'::jsonb) FROM tests t LEFT JOIN test_versions v ON v.id=t.published_version_id WHERE t.id=$1`, testID).Scan(&script, &origin, &module, &stages); err != nil {
 			return s, false, err
+		}
+		if len(initialOrigin) != 0 {
+			origin = initialOrigin[0]
 		}
 		var revision int
 		workspaceContext, contextErr := contextForTest(ctx, tx, testID)
@@ -204,9 +218,6 @@ func (p *Postgres) StartEditingSession(ctx context.Context, testID string) (Edit
 	}
 	s, err = fillEditing(ctx, tx, s)
 	if err != nil {
-		return s, false, err
-	}
-	if err = tx.Commit(); err != nil {
 		return s, false, err
 	}
 	return s, created, nil

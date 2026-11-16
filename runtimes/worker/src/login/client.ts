@@ -6,6 +6,8 @@ import {attemptIO,MAX_ATTEMPT_FRAME} from '../attempt-io.js';
 export const MAX_CREDENTIAL_FRAME=MAX_ATTEMPT_FRAME;
 export class CredentialError extends Error {constructor(){super('credential_operation_failed');}}
 export interface Credentials {workspaceId:string;runId:string;attemptId:string;roleId:string;secretRef:string;secretVersion:number;loginOrigin:string;username:string;password:string;}
+export type LoginValues=Pick<Credentials,"loginOrigin"|"username"|"password">;
+export interface CredentialResolver {readonly secrets:KnownSecrets;resolve(roleId:string,callId?:string):Promise<LoginValues>;close():void;}
 export type LoginInput={workspaceId?:string;runId:string;attemptId:string;workspaceContext?:WorkspaceContext|null};
 export function validCredentialText(value:unknown):value is string{return typeof value==='string'&&value.trim()!==''&&!value.includes('\0')&&Buffer.byteLength(value)<=4096&&Buffer.from(value).toString('utf8')===value;}
 

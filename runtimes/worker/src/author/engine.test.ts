@@ -121,3 +121,51 @@ test("author artifact serialization counts UTF8 JSON plus newline at exactly 13M
   assert.ok(Buffer.byteLength(result) > 12 * 1024 * 1024);
   assert.ok(Buffer.byteLength(result) < MAX_AUTHOR_ARTIFACT_BYTES);
 });
+
+test('author reserves model turns for candidate self-test before exploration consumes the budget', async () => {
+ const instructions:string[]=[]; const choices:unknown[]=[];
+ await builtinEngine.run(setup({
+  tools:[{name:'browser_snapshot'},{name:'update_draft'}],
+  budget:{modelRequests:8,toolExecutions:12},
+  request:async body=>{
+   instructions.push(String(body.instructions)); choices.push(body.tools);
+   return {status:'completed',output:[{type:'function_call',name:'browser_snapshot',call_id:String(instructions.length),arguments:'{}'}]};
+  }
+ }));
+ assert.deepEqual(choices[5],[{name:"update_draft"}]);
+ assert.deepEqual(choices[7],[{name:"update_draft"}]);
+ assert.deepEqual(choices[0],[{name:"browser_snapshot"},{name:"update_draft"}]);
+ assert.match(instructions[5]!,/update_draft/);
+ assert.match(instructions[5]!,/3 model requests remaining/);
+ assert.doesNotMatch(instructions[0]!,/Candidate delivery reserve/);
+});
+
+test('module delivery reserves both staging calls, commit, and self-test repair', async () => {
+ const choices:unknown[]=[];const instructions:string[]=[];
+ await builtinEngine.run(setup({
+  tools:[{name:'browser_snapshot'},{name:'stage_module_candidate_part'},{name:'commit_module_candidate'}],
+  budget:{modelRequests:8,toolExecutions:12},
+  request:async body=>{
+   choices.push(body.tools);instructions.push(String(body.instructions));
+   return {status:'completed',output:[{type:'function_call',name:'browser_snapshot',call_id:String(choices.length),arguments:'{}'}]};
+  }
+ }));
+ assert.deepEqual(choices[3],[{name:'stage_module_candidate_part'},{name:'commit_module_candidate'}]);
+ assert.match(instructions[3]!,/commit_module_candidate/);
+ assert.match(instructions[3]!,/5 model requests remaining/);
+});
+
+test('Module delivery can repair and recommit a failed self-test within eight requests',async()=>{
+ let requests=0,staged=0,commits=0,repair=false;
+ const result=await builtinEngine.run(setup({
+  tools:[{name:'browser_snapshot'},{name:'stage_module_candidate_part'},{name:'commit_module_candidate'}],budget:{modelRequests:8,toolExecutions:12},
+  request:async body=>{requests++;const tools=body.tools as {name:string}[];let name='browser_snapshot';
+   if(!tools.some(t=>t.name==='browser_snapshot'))name=staged<2||repair?'stage_module_candidate_part':'commit_module_candidate';
+   return {status:'completed',output:[{type:'function_call',name,call_id:String(requests),arguments:'{}'}]};
+  },
+  execute:async call=>{if(call.name==='stage_module_candidate_part'){staged++;repair=false;return {staged:true};}
+   if(call.name==='commit_module_candidate'){commits++;repair=commits===1;return {passed:!repair};}return {};},
+  completeAfterTool:(_call,result)=>(result as {passed?:boolean}).passed?'verified':undefined,
+ }));
+ assert.equal(result.partial,undefined);assert.equal(result.finalText,'verified');assert.equal(commits,2);assert.equal(requests,8);
+});

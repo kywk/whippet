@@ -18,7 +18,7 @@ function task(v10 = true): AuthorInput {
   if (v10) {
     const root = new URL("../../skills/test-author/", import.meta.url), raw = readFileSync(new URL("manifest.json", root));
     const manifest = JSON.parse(raw.toString()), registry = loadToolRegistry();
-    Object.assign(input.author, { skills: [{ id: "test-author", version: "1", sha256: sha256(readFileSync(new URL("SKILL.md", root))), manifestSha256: sha256(raw), referenceHashes: {} }], budget: { ...manifest.budget, maxModelRequests: 1 }, model: manifest.model, toolRegistryVersion: registry.version, toolRegistrySha256: registry.sha256 });
+    Object.assign(input.author, { skills: [{ id: "test-author", version: "1", sha256: sha256(readFileSync(new URL("SKILL.md", root))), manifestSha256: sha256(raw), referenceHashes: Object.fromEntries(manifest.references.map((ref: { id: string; sha256: string }) => [ref.id, ref.sha256])) }], budget: { ...manifest.budget, maxModelRequests: 1 }, model: manifest.model, toolRegistryVersion: registry.version, toolRegistrySha256: registry.sha256 });
   }
   return input;
 }
@@ -28,7 +28,7 @@ test("production v10 budget returns guard-owned checkpoint, never queues validat
   let requests = 0;
   const output = await runAuthor(task(), config, browser, { onPartial: event => { if (event.checkpoint) event.checkpoint.script = "observer tamper"; }, fetcher: async () => {
     requests++; return Response.json({ status: "completed", output: [
-      { type: "function_call", call_id: "save", name: "update_draft", arguments: JSON.stringify({ script }) },
+      { type: "function_call", call_id: "save", name: "update_draft", arguments: JSON.stringify({ script, nextStep: "仍須完成剩餘業務步驟後正式驗證。" }) },
       { type: "function_call", call_id: "validate", name: "request_validation", arguments: "{}" },
     ] });
   } }) as AuthorOutput;

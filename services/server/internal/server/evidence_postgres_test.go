@@ -17,6 +17,7 @@ func TestPostgresEvidenceArtifacts(t *testing.T) {
 	if err := p.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
+	manualSeedVersions(t, p, ctx)
 	const testID = "10000000-0000-4000-8000-000000000001"
 	run, err := p.CreateRun(ctx, testID)
 	if err != nil {

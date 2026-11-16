@@ -3,14 +3,14 @@ import { errorMessage, resolveReportUrl } from './api';
 import { Notice, RunStatusBadge, StatusBadge } from './components';
 import { CancelRunButton } from './TestActions';
 import { isActiveRun } from './types';
-import type { Draft, EditingSession, Run, WhippetApi } from './types';
+import type { AuthorEngine, Draft, EditingSession, Run, WhippetApi } from './types';
 
 interface Props {
-  api: WhippetApi; apiBase: string; testId: string; session: EditingSession; draft: Draft; runs: Run[]; blocked: boolean;
+  api: WhippetApi; apiBase: string; testId: string; session: EditingSession; draft: Draft; runs: Run[]; blocked: boolean; authorEngine: AuthorEngine;
   onRun: (run: Run) => void; onRefresh: () => Promise<EditingSession | undefined>; onBusyChange: (busy: boolean) => void;
 }
 
-export function AcceptanceSummaryCard({ api, apiBase, testId, session, draft, runs, blocked, onRun, onRefresh, onBusyChange }: Props) {
+export function AcceptanceSummaryCard({ api, apiBase, testId, session, draft, runs, blocked, authorEngine, onRun, onRefresh, onBusyChange }: Props) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
   const [requested, setRequested] = useState<Run>();
@@ -55,6 +55,7 @@ export function AcceptanceSummaryCard({ api, apiBase, testId, session, draft, ru
 
   return <section className="acceptance-summary" aria-labelledby="acceptance-summary-title">
     <div className="section-heading"><h4 id="acceptance-summary-title">驗收摘要</h4>{run ? <RunStatusBadge run={run} /> : summary ? <StatusBadge status={summary.status} /> : <span className="muted">尚未產生</span>}</div>
+    <p className="inline-hint">新摘要任務：{authorEngine === 'external' ? '外部 Agent 接單' : '內建引擎'}。{run ? `此摘要 Run 來源：${run.authorEngine === 'external' ? '外部 Agent' : '內建引擎'}。` : '實際來源以新建 Run 快照為準。'}摘要完成仍須符合目前驗證與報告資格，並由你確認發佈。</p>
     {!valid ? <p className="inline-hint">目前 revision 驗證成功且報告就緒後，建立一次摘要任務。摘要失敗可獨立重試，不重跑成功驗證。</p> : null}
     {error ? <Notice message={error} /> : null}
     {run?.error ? <pre className="run-error">{run.error}</pre> : null}

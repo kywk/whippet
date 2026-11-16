@@ -28,7 +28,34 @@ export interface WorkspaceRoleRef {
   configured: boolean;
 }
 
+export interface AgentToken {
+  id: string;
+  workspaceId: string;
+  name: string;
+  createdAt: string;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+}
+
+export interface BrowserSession {
+  sessionId: string;
+  leaseId: string;
+  state: 'opening' | 'ready';
+  createdAt: string;
+  deadlineAt: string;
+}
+
+export interface AgentToolAudit {
+  id: string;
+  tokenId: string;
+  workspaceId: string;
+  toolName: string;
+  decision: 'allowed' | 'denied' | 'rate_limited' | 'failed';
+  occurredAt: string;
+}
+
 export type ScriptOrigin = 'ai' | 'manual' | 'legacy';
+export type AuthorEngine = 'builtin' | 'external';
 export interface WorkspaceCapability { available: boolean; reason: string | null }
 export interface WorkspaceCapabilities {
   aiExploration?: WorkspaceCapability;
@@ -54,6 +81,7 @@ export interface WorkspaceProposal {
 }
 
 export interface WorkspaceDetail extends Workspace, WorkspaceSettingsSnapshot {
+  authorEngine: AuthorEngine;
   lifecycle: 'draft' | 'needs_confirmation' | 'active';
   revision: number;
   authorizationRevision: number;
@@ -179,6 +207,7 @@ export interface PlanStage extends PlanStageInput {
   error?: string;
 }
 export interface Plan {
+ throughStageId?: string;
   id: string;
   testId: string;
   editingSessionId: string;
@@ -228,6 +257,7 @@ export interface Run {
   workspaceSettings?: WorkspaceSettingsSnapshot;
   editingSessionId?: string | null;
   authorMode?: 'edit' | 'summary' | 'workspace';
+  authorEngine?: AuthorEngine;
   scriptOrigin?: ScriptOrigin;
   progressEvents?: string[];
   authorPartial?: AuthorPartial;
@@ -338,11 +368,18 @@ export function isActiveRun(run: Run): boolean {
 }
 
 export interface WhippetApi {
+  setAdminToken?: (token: string) => void;
+  logout?: (signal?: AbortSignal) => Promise<void>;
+  listAgentTokens?: (workspaceId: string, signal?: AbortSignal) => Promise<AgentToken[]>;
+  listBrowserSessions?: (workspaceId: string, signal?: AbortSignal) => Promise<BrowserSession[]>;
+  createAgentToken?: (workspaceId: string, name: string, signal?: AbortSignal) => Promise<{ token: string; agentToken: AgentToken }>;
+  revokeAgentToken?: (workspaceId: string, tokenId: string, signal?: AbortSignal) => Promise<void>;
+  listAgentToolAudit?: (workspaceId: string, before?: string, signal?: AbortSignal) => Promise<{ items: AgentToolAudit[]; nextCursor: string | null }>;
   getPlan?: (testId: string, editingSessionId: string, signal?: AbortSignal) => Promise<Plan | null>;
   savePlan?: (testId: string, input: { editingSessionId: string; revision: number; planRevision: number; stages: PlanStageInput[] }, signal?: AbortSignal) => Promise<Plan>;
   getStageRetry?: (planId: string, stageId: string, signal?: AbortSignal) => Promise<StageRetry>;
   retryStage?: (planId: string, stageId: string, input: StageRetryInput, signal?: AbortSignal) => Promise<Plan>;
-  confirmPlan?: (planId: string, planRevision: number, signal?: AbortSignal) => Promise<Plan>;
+  confirmPlan?: (planId: string, planRevision: number, signal?: AbortSignal, throughStageId?: string) => Promise<Plan>;
   cancelPlan?: (planId: string, planRevision: number, signal?: AbortSignal) => Promise<Plan>;
   getPlanSummary?: (planId: string, signal?: AbortSignal) => Promise<PlanSummary | null>;
   requestPlanSummary?: (planId: string, planRevision: number, validationRunId: string, signal?: AbortSignal) => Promise<Run>;
@@ -376,6 +413,7 @@ export interface WhippetApi {
   discardEditingSession(testId: string, sessionId: string, revision: number, signal?: AbortSignal): Promise<EditingSession>;
   requestSummary(testId: string, editingSessionId: string, revision: number, validationRunId: string, signal?: AbortSignal): Promise<Run>;
   getWorkspace(workspaceId: string, signal?: AbortSignal): Promise<WorkspaceDetail>;
+  updateWorkspaceAuthorEngine(workspaceId: string, revision: number, authorEngine: AuthorEngine, signal?: AbortSignal): Promise<WorkspaceDetail>;
   createWorkspace(name: string | undefined, signal?: AbortSignal): Promise<WorkspaceDetail>;
   getWorkspaceConversation(workspaceId: string, signal?: AbortSignal): Promise<WorkspaceConversationData>;
   sendWorkspaceMessage(workspaceId: string, input: { content: string; revision: number; contextRevision: number }, signal?: AbortSignal): Promise<{ run: Run; conversationId: string }>;

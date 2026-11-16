@@ -69,10 +69,32 @@ test('only authoritative Module primary gets 25MiB final and pending IDs select 
 test('real Module self-test executes both files through @lib and rejects a failing harness',async()=>{
  const browser=explorationBrowser({PATH:process.env.PATH,HOME:process.env.HOME,TMPDIR:process.env.TMPDIR});
  try {
-  const passed=await browser.verifyDraft!(metadata.harness,{moduleFile:{slug:'search',content:'export function search(){return 1}'}});
+  const harness="import {test,expect} from '@playwright/test';import {search} from '@lib/search';test('intent',async({page})=>{expect(await search({page})).toBe(1)});";
+  const passed=await browser.verifyDraft!(harness,{moduleFile:{slug:'search',exportName:'search',content:'export function search({page}){return 1}'}});
   assert.equal(passed.passed,true,passed.error);
-  const failed=await browser.verifyDraft!(metadata.harness,{moduleFile:{slug:'search',content:'export function search(){return 2}'}});
+  const failed=await browser.verifyDraft!(harness,{moduleFile:{slug:'search',exportName:'search',content:'export function search({page}){return 2}'}});
   assert.equal(failed.passed,false);
+ }finally{await browser.close();}
+});
+
+test('Module harness rejects two arguments and accepts the Compose object ABI',async()=>{
+ const browser=explorationBrowser({});
+ const legacyHarness="import {test,expect} from '@playwright/test';import {run} from '@lib/search';test('legacy',async({page})=>{expect(await run(page,{term:'ok'})).toBe('ok')});";
+ const objectHarness="import {test,expect} from '@playwright/test';import {run} from '@lib/search';test('object',async({page})=>{expect(await run({page,term:'ok'})).toBe('ok')});";
+ try{
+  const legacy=await browser.verifyDraft!(legacyHarness,{moduleFile:{slug:'search',exportName:'run',content:'export async function run(page,input){return input.term}'}});
+  assert.equal(legacy.passed,false,'two-argument harness must not validate a Module');
+  const object=await browser.verifyDraft!(objectHarness,{moduleFile:{slug:'search',exportName:'run',content:'export async function run({page,term}){return term}'}});
+  assert.equal(object.passed,true,object.error);
+ }finally{await browser.close();}
+});
+
+test('Module harness cannot import the execution-only ABI source directly',async()=>{
+ const browser=explorationBrowser({});
+ const bypass="import {test,expect} from '@playwright/test';import {run} from '@lib/.whippet-abi-source-search';test('bypass',async({page})=>{expect(await run(page,{term:'ok'})).toBe('ok')});";
+ try{
+  const result=await browser.verifyDraft!(bypass,{moduleFile:{slug:'search',exportName:'run',content:'export async function run(page,input){return input.term}'}});
+  assert.equal(result.passed,false,'direct source import must not bypass the ABI facade');
  }finally{await browser.close();}
 });
 
@@ -108,7 +130,7 @@ test('catalog parameter rejection reaches real loop and model corrects query bef
   return new Response(JSON.stringify({status:'completed',output:op?[{type:'function_call',call_id:`opaque-${n}`,name:op[0],arguments:JSON.stringify(op[1])}]:[{type:'message',content:[{type:'output_text',text:finalText}]}]}),{status:200,headers:{'content-type':'application/json'}});
  }});
  for(const event of ['feedbackFrameAccepted','feedbackQueued','feedbackIncludedAtFetch','toolsIncludedAtFetch','functionCallObserved'])assert(observed.some(e=>e.endsWith(':'+event)));
- assert.deepEqual(cursors,['first','synthetic']);assert.equal(frames,4);assert.equal(requests,5);assert.equal((out as any).planCandidate.candidateRef,id);assert.equal(v.author.budget!.maxModelRequests,8);
+ assert.deepEqual(cursors,['first','synthetic']);assert.equal(frames,4);assert.equal(requests,4);assert.equal((out as any).planCandidate.candidateRef,id);assert.equal(v.author.budget!.maxModelRequests,8);
  }finally{client.close();read.destroy();write.destroy();}
 });
 test('catalog feedback IPC remains scoped to pending tool and exact error frame',async()=>{
@@ -162,7 +184,7 @@ test('observer does not count forged feedback content and observer exceptions ca
  }
 });
 
-test('only catalog search becomes provider strict in actual fetch while local guards stay strict',async()=>{
+test('only fully required schemas become provider strict while local guards stay closed',async()=>{
  const {modelTool,validateToolArguments}=await import('./registry.js');
  const registry=loadToolRegistry(),search=registry.tools.find(t=>t.name==='catalog_search')!;
  const before=JSON.stringify(search.inputSchema);
@@ -173,7 +195,7 @@ test('only catalog search becomes provider strict in actual fetch while local gu
   for(const definition of body.tools){
    const original=registry.tools.find(t=>t.name===definition.name)!;
    assert.deepEqual(definition.parameters,JSON.parse(JSON.stringify(original.inputSchema,(key,value)=>key.startsWith('x-')?undefined:value)));
-   const oldStrict=!JSON.stringify(original.inputSchema).includes('"x-max')&&!JSON.stringify(original.inputSchema).includes('"oneOf"');
+   const oldStrict=Object.keys(original.inputSchema.properties).every(name=>original.inputSchema.required.includes(name))&&!JSON.stringify(original.inputSchema).includes('"x-max')&&!JSON.stringify(original.inputSchema).includes('"oneOf"');
    assert.equal(definition.strict,definition.name==='catalog_search'?true:oldStrict);
   }
   assert.equal(body.tools.find((t:any)=>t.name==='catalog_search').strict,true);
@@ -181,7 +203,7 @@ test('only catalog search becomes provider strict in actual fetch while local gu
   return new Response('SECRET_SENTINEL strict unsupported',{status:400});
  }}),(e:any)=>e.code==='provider_failed'&&!e.message.includes('SECRET_SENTINEL'));
  assert.equal(requests,1,'provider rejection must not fallback or retry');
- for(const tool of registry.tools){const oldStrict=!JSON.stringify(tool.inputSchema).includes('"x-max')&&!JSON.stringify(tool.inputSchema).includes('"oneOf"');assert.equal(modelTool(tool).strict,tool.name==='catalog_search'?true:oldStrict);}
+ for(const tool of registry.tools){const oldStrict=Object.keys(tool.inputSchema.properties).every(name=>tool.inputSchema.required.includes(name))&&!JSON.stringify(tool.inputSchema).includes('"x-max')&&!JSON.stringify(tool.inputSchema).includes('"oneOf"');assert.equal(modelTool(tool).strict,tool.name==='catalog_search'?true:oldStrict);}
  assert.equal(JSON.stringify(search.inputSchema),before);
  for(const args of [{query:'界'.repeat(400),limit:10},{query:'x',limit:0},{query:'x',limit:21},{query:'x',limit:1.5}])assert.throws(()=>validateToolArguments(search,args));
  assert.throws(()=>modelTool({...search,inputSchema:{...search.inputSchema,required:['query']}}));
@@ -202,7 +224,7 @@ test('registry 10.2 real loop traverses two pages with unchanged opaque cursor t
  try{const out=await runAuthor(v,config,undefined,{harness:client,fetcher:async(_url,init)=>{
   const body=JSON.parse(String(init?.body));const tool=body.tools.find((t:any)=>t.name==='catalog_next_page');assert.equal(tool.strict,false);assert.equal(tool.parameters.properties.cursor.minLength,1);
   const n=requests++,op=operations[n];return Response.json({status:'completed',output:op?[{type:'function_call',call_id:`opaque-${n}`,name:op[0],arguments:JSON.stringify(op[1])}]:[{type:'message',content:[{type:'output_text',text:finalText}]}]});
- }});assert.equal((out as any).planCandidate.candidateRef,id);assert.deepEqual(names,['catalog_search','catalog_next_page','catalog_get','propose_plan']);assert.equal(requests,5);
+ }});assert.equal((out as any).planCandidate.candidateRef,id);assert.deepEqual(names,['catalog_search','catalog_next_page','catalog_get','propose_plan']);assert.equal(requests,4);
  }finally{client.close();read.destroy();write.destroy();}
 });
 test('registry 10.2 search rejects cursor and next-page retains exact schema and Unicode/UTF8 guards',async()=>{
@@ -286,4 +308,25 @@ test('M109 v2 real verifier classification survives loop LIMIT independently',as
   }}}));
   d.finish('UNKNOWN',value=>{const x=value as any;assert.equal(x.selfTestFailedCount,1);assert.equal(x.selfTestPassedCount,0);assert.equal(x.lastSelfTestFailureClass,'INVALID_SPEC');assert.equal(x.terminalClass,'LIMIT');assert(!JSON.stringify(x).includes('SECRET_SENTINEL'));});
  }finally{await browser.close();}
+});
+
+test('planner preserves authoritative proposal without another model call',async()=>{
+ const v=input('usecase-planner');let requests=0;
+ const stages=[{id:'one',title:'reuse',action:'reuse',moduleVersionId:id,args:{}}];
+ const out=await runAuthor(v,config,undefined,{
+  harness:{async call(){return {candidate:true,candidateRef:id,stages};}},
+  fetcher:async()=>{
+   requests++;
+   return Response.json({status:'completed',output:[{type:'function_call',name:'propose_plan',call_id:'proposal-'+requests,arguments:JSON.stringify({stages})}]});
+  }
+ });
+ assert.equal(requests,1,'a successful canonical proposal needs no extra model turn');
+ assert.deepEqual((out as any).planCandidate,{candidateRef:id});
+});
+
+test('planner can report a blocker without inventing a Plan candidate',async()=>{
+ const v=input('usecase-planner');
+ const out=await runAuthor(v,config,undefined,{fetcher:async()=>Response.json({status:'completed',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({message:'請先設定 Workspace 登入角色；尚未建立 Plan。'})}]}]})});
+ assert.equal(out.message,'請先設定 Workspace 登入角色；尚未建立 Plan。');
+ assert.equal((out as any).planCandidate,undefined);assert.equal(out.script,undefined);assert.equal(out.requestValidation,undefined);
 });

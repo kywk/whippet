@@ -127,8 +127,8 @@ func (p *Postgres) CreateWorkspaceAuthor(ctx context.Context, id, content string
 		return AuthorSubmission{}, err
 	}
 	runID := NewID()
-	if _, err = tx.ExecContext(ctx, `INSERT INTO runs(id,workspace_id,test_id,kind,script_snapshot,script_hash,timeout_ms,author_payload,workspace_settings,workspace_context,script_origin,authorization_revision,scope_proposal_id)
- VALUES($1,$2,NULL,'author','',$3,$4,$5,$6,$7,'legacy',$8,$9)`, runID, id, scriptHash(""), input.Budget.MaxDurationMS, jsonText(input), settingsJSON(&w.WorkspaceSettings), jsonText(snapshot), authorization, scopeProposal); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO runs(id,workspace_id,test_id,kind,script_snapshot,script_hash,timeout_ms,author_payload,workspace_settings,workspace_context,script_origin,authorization_revision,scope_proposal_id,author_engine)
+ VALUES($1,$2,NULL,'author','',$3,$4,$5,$6,$7,'legacy',$8,$9,$10)`, runID, id, scriptHash(""), input.Budget.MaxDurationMS, jsonText(input), settingsJSON(&w.WorkspaceSettings), jsonText(snapshot), authorization, scopeProposal, w.AuthorEngine); err != nil {
 		return AuthorSubmission{}, err
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO messages(id,conversation_id,role,content,run_id) VALUES($1,$2,'user',$3,$4)`, NewID(), c.ID, content, runID); err != nil {
@@ -177,6 +177,12 @@ func assignWorkspaceRoles(ctx context.Context, tx *sql.Tx, id string, c *Workspa
 }
 
 func (p *Postgres) completeWorkspaceAuthor(ctx context.Context, workspaceID, managerID, runID, attemptID string, incoming Result) error {
+	return p.completeWorkspaceAuthorWith(ctx, workspaceID, runID, attemptID, incoming,
+		func(tx *sql.Tx) (string, error) { return lockAttempt(ctx, tx, managerID, runID, attemptID) }, nil, nil)
+}
+
+func (p *Postgres) completeWorkspaceAuthorWith(ctx context.Context, workspaceID, runID, attemptID string, incoming Result,
+	lock func(*sql.Tx) (string, error), externalOutput []byte, finish func(*sql.Tx) error) error {
 	tx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -190,7 +196,7 @@ func (p *Postgres) completeWorkspaceAuthor(ctx context.Context, workspaceID, man
 	if err != nil {
 		return err
 	}
-	status, err := lockAttempt(ctx, tx, managerID, runID, attemptID)
+	status, err := lock(tx)
 	if err != nil {
 		return err
 	}
@@ -216,7 +222,10 @@ func (p *Postgres) completeWorkspaceAuthor(ctx context.Context, workspaceID, man
 		} else if input.BaseRevision != w.Revision || input.ContextRevision != c.ContextRevision {
 			result = Result{Status: "failed", Error: "Workspace settings or conversation changed; this result was not applied."}
 		} else {
-			data, outputErr := p.readArtifactBytes(ctx, tx, runID, attemptID, "author.json", MaxAuthorArtifactBytes)
+			data, outputErr := externalOutput, error(nil)
+			if data == nil {
+				data, outputErr = p.readArtifactBytes(ctx, tx, runID, attemptID, "author.json", MaxAuthorArtifactBytes)
+			}
 			var output workspaceAuthorOutput
 			if outputErr == nil {
 				output, outputErr = decodeWorkspaceAuthorOutput(data)
@@ -262,6 +271,11 @@ func (p *Postgres) completeWorkspaceAuthor(ctx context.Context, workspaceID, man
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE runs SET status=$2,error=$3,finished_at=now(),author_reported_status=$4,acknowledged_at=COALESCE(acknowledged_at,now()) WHERE id=$1`, runID, result.Status, result.Error, incoming.Status); err != nil {
 		return err
+	}
+	if finish != nil {
+		if err = finish(tx); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
