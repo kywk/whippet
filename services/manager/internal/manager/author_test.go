@@ -38,6 +38,41 @@ func TestM3AuthorWhitelistAndIndependentEntrypoint(t *testing.T) {
 	}
 }
 
+func TestM12AdapterEnvironmentAuthorOnly(t *testing.T) {
+	d := dockerCLI{cfg: Config{WorkerImage: "fixture", ManagerID: "synthetic"}}
+	r := record{RunID: newID(), AttemptID: newID(), Kind: "author"}
+	parent := []string{"PATH=/bin", "WHIPPET_AI_ENGINE=vercel", "WHIPPET_AI_PROVIDER=openai-responses", "WHIPPET_AI_API_KEY=synthetic-m12-key", "WHIPPET_AI_CONTEXT_WINDOW_TOKENS=131072", "WHIPPET_AI_CONTEXT_INPUT_TOKENS=65536"}
+	args := strings.Join(d.createArgs(r, "/synthetic/work"), " ")
+	for _, name := range []string{"WHIPPET_AI_ENGINE", "WHIPPET_AI_PROVIDER", "WHIPPET_AI_API_KEY", "WHIPPET_AI_CONTEXT_WINDOW_TOKENS", "WHIPPET_AI_CONTEXT_INPUT_TOKENS"} {
+		if !strings.Contains(args, "--env "+name) {
+			t.Fatalf("missing author setting %s", name)
+		}
+	}
+	if strings.Contains(args, "synthetic-m12-key") {
+		t.Fatal("key value leaked to docker arguments")
+	}
+	r.Kind = "run"
+	if strings.Contains(strings.Join(d.createArgs(r, "/synthetic/work"), " "), "--env") || strings.Contains(strings.Join(workerCLIEnvironment("run", parent), " "), "WHIPPET_AI_") {
+		t.Fatal("ordinary run inherited adapter settings")
+	}
+	if !strings.Contains(strings.Join(workerCLIEnvironment("author", parent), " "), "WHIPPET_AI_API_KEY=synthetic-m12-key") {
+		t.Fatal("explicit provider key was lost")
+	}
+}
+
+func TestM12ContextProgressContainsOnlyBoundedCounts(t *testing.T) {
+	for _, value := range []string{"1", "6", "12"} {
+		if !authorContextPattern.MatchString("author:context:compacted:" + value) {
+			t.Fatal("valid compaction count rejected")
+		}
+	}
+	for _, value := range []string{"0", "13", "9999", "1 SECRET", "1\n", "https://example.invalid", "../secret"} {
+		if authorContextPattern.MatchString("author:context:compacted:" + value) {
+			t.Fatal("invalid progress value accepted")
+		}
+	}
+}
+
 func TestM3AuthorInputJournalAndArtifactIsolation(t *testing.T) {
 	m, _, ctx := lifecycleManager(t, 1)
 	d := authorDispatch()

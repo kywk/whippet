@@ -429,16 +429,16 @@ M11.Z 清單：
 
 2026-11-14 最終結果：M11 各 wave 與本次集中驗收完成。普通 Test 真 UI→外部 Agent→正式驗證／摘要／報告成功；Module 經 ABI 真 red→green 後 revision4 正式2/0/0/0、UI發佈；Use Case 經頁面前提與可執行斷言修正，Plan11四Stage ready，兩新Module正式各2/0/0/0、整體正式1/0/0/0、外部批次摘要與真UI整批發佈成功。UseCase版本 fc9f75b4-f619-4595-9b5d-2d48fcc856ef；兩候選版本 f3039cc8-9d7f-48f7-8af2-61440a08235a、d9eb63ee-353a-417a-af1e-d1302fb20f94。最後DB active/occupied/unreclaimed皆0，按Manager精確label核Docker容器為0。API31項＋ABI獨立定向與session/TLS/Live/撤銷證據及限制見[集中驗收紀錄](handoff/m11-final-20261114.md)。本機MCP19587已更新、全新Terra實測19工具及Catalog/resources；保留DB、憑證、artifact、journal與隔離現場，不動19287。未重跑M1–M9或舊M10全套，M10.Z仍待辦，未merge/tag。
 
-### M12 階段三：Agent Adapter（M12.0：`spike/m12-engine-20261116`，自 main `5768166` 分出）
+### M12 階段三：Agent Adapter（`feat/agent-adapter`；M12.0 spike起點main `5768166`）
 
-狀態：進行中（M12.0完成，M12.1路線已定，尚待正式實作）。依賴：M11.Z 已完成且由使用者 merge/push；本輪自 main `5768166` 建立獨立 spike，不自行 merge/tag。
+狀態：進行中（M12.0完成，M12.1 Wave1正式adapter／容量保護切片完成，整項尚待後續控制面與跨Run界限）。依賴：M11.Z 已完成且由使用者 merge/push；M12.0自main `5768166`建立spike，Wave1自已提交`73fe101`建立獨立feat/agent-adapter，不自行merge/tag。
 
 2026-11-16 接續準備完成（owner：主 Agent，不開subagent）：使用者已merge/push至main（60498a9）。依新授權退役62舊容器、17 volumes、11 networks、92映像標籤、157 tmp項目；15份DB及歷史資料先冷備份，其他專案16容器保留。M12僅保留builtin19987–19989與本機MCP19587兩基準（共3個Docker容器）。新增m12-dev-env.py start/status；受控停機→恢復PASS，11份身分SHA不變、builtin81 Run、兩庫名額0、MCP19工具、模型Run新增0。OS重開機由使用者稍後執行；[恢復指引](../guides/mcp-agent.md#m12-保留環境與重開機恢復2026-11-16)。M12.0尚未開工，不將環境整理當引擎spike完成。
 
 | 項目 | Owner | 內容 | 最小驗證 | 狀態 |
 | --- | --- | --- | --- | --- |
 | M12.0 | M12 獨立 Leader（主 Agent，不開 subagent） | 2 天 spike：pi-agent-core＋pi-ai 與 Vercel AI SDK，依規格的淘汰條件與黃金子集比較；PM 裁定並更新 tech-stack | 結論文件放在 `docs/research/` | 完成（2026-11-16；兩套可執行 seam、固定版本、四淘汰條件通過，定向39/39無SKIP、build/typecheck通過；原始真子集各3 PASS/1 FAIL，G11補context另存assisted PASS。選Vercel，預設仍builtin；[決策與證據](../research/m12-engine-spike-20261116.md)） |
-| M12.1 | M12 Leader（待正式實作） | 開源引擎 adapter（只用註冊表工具）、多供應商 provider 設定、`beforeRequest` 遮蔽 | adapter 單元測試：遮蔽 hook、取消 1 秒內停止、沒有內建工具；長對話容量預檢／合法compaction／固定預算續接驗收依架構容量策略 | 待辦（路線已定Vercel AI SDK；先正式整合既有guarded request與共用policy，再做容量預檢／合法compaction／固定總預算續接，不以spike通過當完成） |
+| M12.1 | M12 獨立 Leader（不開 subagent） | 開源引擎 adapter（只用註冊表工具）、多供應商 provider 設定、`beforeRequest` 遮蔽 | adapter 單元測試：遮蔽 hook、取消 1 秒內停止、沒有內建工具；長對話容量預檢／合法compaction／固定預算續接驗收依架構容量策略 | 進行中（Wave1完成：正式Vercel／provider opt-in、共用收尾、final guard、已核官方capacity與可取回資料壓縮；Worker143/143、production容器11/11、Manager定向/build/typecheck及真Muse/xhigh入口1-request＋自試正負PASS。跨Run總額、一般對話／超大Stage與控制面快照仍待辦；[交接](handoff/m12-wave1-20261116.md)） |
 | M12.2 | t31／t30 | 依 Workspace 或 skill 設定 engine、provider、model，並快照進 Run；UI 設定 | Go 測試加目視 | 待辦 |
 | M12.3 | t32 | `runtimes/agent-bridge/` 參考外部 Worker（MCP 接單模式客戶端） | 完成一筆接單任務 | 待辦 |
 | M12.4 | t33＋PM | 兩個引擎跑黃金任務集；PM 依成功率、工具呼叫數、token、延遲決定預設引擎 | 比較紀錄放在 devlog | 待辦 |

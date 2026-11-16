@@ -6,6 +6,8 @@ export const AI_DEFAULTS = {
 } as const;
 
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
+export type EngineId = "builtin" | "vercel";
+export type ProviderId = "opencode" | "openai-responses";
 
 export interface AIConfig {
   enabled: boolean;
@@ -13,6 +15,11 @@ export interface AIConfig {
   model: string;
   reasoningEffort: ReasoningEffort;
   apiKey: string;
+  // Backend-only opt-in until control-plane snapshots arrive in M12.2.
+  engine?: EngineId;
+  provider?: ProviderId;
+  contextWindowTokens?: number;
+  contextInputTokens?: number;
 }
 
 export type AIErrorCode =
@@ -25,7 +32,7 @@ export type AIErrorCode =
 const errorMessages: Record<AIErrorCode, string> = {
   invalid_config: "AI 設定無效；請核對 HTTPS base URL、model、reasoning effort 與啟用值。",
   disabled: "AI 尚未明確啟用；需要 WHIPPET_AI_ENABLED=true。",
-  missing_key: "OPENCODE_API_KEY 尚未設定。",
+  missing_key: "目前模型供應商的 API key 尚未設定。",
   invalid_session: "需要由呼叫者提供固定 session ID（1..128 個英數字、點、底線、冒號或連字號）。",
   invalid_input: "Responses 輸入必須是非空文字。",
   live_required: "probe 需要明確指定 --live；本次未發送請求。",
@@ -54,14 +61,20 @@ export class AIError extends Error {
 
 export function readAIConfig(env: Readonly<Record<string, string | undefined>>): AIConfig {
   const enabled = env.WHIPPET_AI_ENABLED ?? "false";
-  const baseURL = env.WHIPPET_AI_BASE_URL ?? AI_DEFAULTS.baseURL;
-  const model = env.WHIPPET_AI_MODEL ?? AI_DEFAULTS.model;
+  const engine = env.WHIPPET_AI_ENGINE ?? "builtin";
+  const provider = env.WHIPPET_AI_PROVIDER ?? "opencode";
+  const baseURL = env.WHIPPET_AI_BASE_URL ?? (provider === "opencode" ? AI_DEFAULTS.baseURL : "");
+  const model = env.WHIPPET_AI_MODEL ?? (provider === "opencode" ? AI_DEFAULTS.model : "");
   const effort = env.WHIPPET_AI_REASONING_EFFORT ?? AI_DEFAULTS.reasoningEffort;
-  const apiKey = env.OPENCODE_API_KEY?.trim() ?? "";
+  const apiKey = (provider === "opencode" ? env.OPENCODE_API_KEY : env.WHIPPET_AI_API_KEY)?.trim() ?? "";
+  const contextWindow = env.WHIPPET_AI_CONTEXT_WINDOW_TOKENS;
+  const contextInput = env.WHIPPET_AI_CONTEXT_INPUT_TOKENS;
+  const validCapacity = (value: string | undefined) => value === undefined || /^[1-9][0-9]{3,7}$/.test(value) && Number(value) <= 2097152;
   let parsed: URL;
   try { parsed = new URL(baseURL); } catch { throw new AIError("invalid_config"); }
   if (
-    !["true", "false"].includes(enabled) || parsed.protocol !== "https:" ||
+    !["true", "false"].includes(enabled) || !["builtin", "vercel"].includes(engine) || !["opencode", "openai-responses"].includes(provider) ||
+    !validCapacity(contextWindow) || !validCapacity(contextInput) || parsed.protocol !== "https:" ||
     parsed.username !== "" || parsed.password !== "" || parsed.search !== "" || parsed.hash !== "" ||
     parsed.pathname.replace(/\/+$/, "").endsWith("/responses") ||
     !/^[a-zA-Z0-9][a-zA-Z0-9_./:-]{0,127}$/.test(model) || model.startsWith("opencode-go/") ||
@@ -70,6 +83,9 @@ export function readAIConfig(env: Readonly<Record<string, string | undefined>>):
   return {
     enabled: enabled === "true", baseURL: parsed.toString().replace(/\/+$/, ""),
     model, reasoningEffort: effort as ReasoningEffort, apiKey,
+    engine: engine as EngineId, provider: provider as ProviderId,
+    ...(contextWindow === undefined ? {} : { contextWindowTokens: Number(contextWindow) }),
+    ...(contextInput === undefined ? {} : { contextInputTokens: Number(contextInput) }),
   };
 }
 
@@ -78,6 +94,7 @@ export function checkAIConfig(config: AIConfig) {
     ok: true,
     network: "not_used",
     enabled: config.enabled,
+    engine: config.engine ?? "builtin", provider: config.provider ?? "opencode",
     keyConfigured: config.apiKey !== "",
     ready: config.enabled && config.apiKey !== "",
     message: config.apiKey === "" ? "API key 尚未設定；未連線。" : "API key 已設定；未連線、未驗證 key 或訂閱資格。",

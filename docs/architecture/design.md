@@ -199,6 +199,8 @@ PM 在各波實作前固定 HTTP／dispatch／輸出與遷移規則；Server／R
 - 開源引擎只負責迴圈、供應商、重試與 compaction，工具一律來自註冊表。依賴版本鎖定在 Worker 的 lockfile，並更新 tech-stack。
 - `runtimes/agent-bridge/` 是參考外部 Worker，以 MCP 接單模式連線，不能直接存取 DB 或 Manager。
 
+2026-11-16 M12.1 Wave1：正式Vercel adapter由後端明確opt-in，預設builtin。兩引擎共用收尾與output限額；final `prepareRequest(body)`在SDK序列化與安全壓縮後做整份機密守衛，再委派既有Responses傳輸。capacity使用已核官方模型能力扣除固定output與safety，採保守text估算；僅把能由當前工具取回的固定Catalog版／打包reference換成有精確read-back args與hash的DATA摘要，保留對話、草稿、Stage與證據、call/result配對及reasoning。超界停止、截斷不執行半份args；可信checkpoint與原nextStep由guard保留，無自動跨Run重試。這是工具資料壓縮切片，不是通用長對話／跨Run總預算策略完成。細節見[v12 Runtime約定](../../contracts/mvp-v12.md)，實測及後續見[Wave1交接](../tracking/handoff/m12-wave1-20261116.md)。
+
 2026-11-16 交付保留補強：Module 交付區間至少保留五次模型請求，才能在同一個8次總上限內完成 script、harness、commit、自試修一段及再次 commit；一般 Test／Planner 仍為三次。已驗候選依 guard 完成，不提高總模型／工具／時間預算。
 
 2026-11-16 作者收尾補強：registry 11.3 的 `update_draft` 可附 `message` 與 `nextStep`（各最多2048字元）。成功自試後保留同次修改說明；有 `nextStep` 則保留已驗 partial，不由自試成功或模型最後文字推定整體完成。用完既定請求後輸出守衛持有的 checkpoint、剩餘工作及實際用量；既有 continue 的 session/revision/context CAS 與去重不變。選填工具欄位在供應商使用 non-strict 表示，Worker／Server 仍以原 schema 拒絕 null／未知欄位。Planner 保存提案後回報模型用量與人工確認、執行、驗證、發佈的下一步。

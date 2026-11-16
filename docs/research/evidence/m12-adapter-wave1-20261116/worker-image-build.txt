@@ -1,0 +1,47 @@
+#0 building with "orbstack" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 1.20kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for mcr.microsoft.com/playwright:v1.64.1-noble
+#2 DONE 0.4s
+
+#3 [1/8] FROM mcr.microsoft.com/playwright:v1.64.1-noble@sha256:2f05f8a734509a7b3f26a912639488ee08f58a7b292d14d62271bcff9038768f
+#3 resolve mcr.microsoft.com/playwright:v1.64.1-noble@sha256:2f05f8a734509a7b3f26a912639488ee08f58a7b292d14d62271bcff9038768f 0.0s done
+#3 DONE 0.0s
+
+#4 [internal] load build context
+#4 transferring context: 8.87kB 0.0s done
+#4 DONE 0.0s
+
+#5 [2/8] WORKDIR /opt/whippet/worker
+#5 CACHED
+
+#6 [6/8] COPY runtimes/worker/skills ./skills
+#6 CACHED
+
+#7 [3/8] COPY runtimes/worker/package.json runtimes/worker/package-lock.json runtimes/worker/tsconfig.json ./
+#7 CACHED
+
+#8 [4/8] RUN npm ci --include=dev --ignore-scripts --no-audit --no-fund
+#8 CACHED
+
+#9 [5/8] COPY runtimes/worker/src ./src
+#9 CACHED
+
+#10 [7/8] COPY contracts/tools/registry.json /app/contracts/tools/registry.json
+#10 CACHED
+
+#11 [8/8] RUN npm run build && npm prune --omit=dev --ignore-scripts --no-audit --no-fund
+#11 CACHED
+
+#12 exporting to image
+#12 exporting layers done
+#12 exporting manifest sha256:96246feb05d5e93a290475bc9e3bcf129e76fcde202c19100351874a108d58d4 done
+#12 exporting config sha256:fc361eb5969eab3383d98723e6926c49f016e7607b692ac1a0193fd80668f788 done
+#12 exporting attestation manifest sha256:04809a2726ce580424b802b28de7905ad81fb8fd01f491bda56bea61b198dded done
+#12 exporting manifest list sha256:1c9d823d4ee21d521c291b4828c6e6afe4b07b3ad7c39909fec0f996b22adcae done
+#12 naming to docker.io/library/whippet-worker:m12-w1-20261116 done
+#12 unpacking to docker.io/library/whippet-worker:m12-w1-20261116 done
+#12 DONE 0.0s

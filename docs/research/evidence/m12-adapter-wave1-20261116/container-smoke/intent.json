@@ -1,0 +1,17 @@
+{
+  "candidateImage": "sha256:1c9d823d4ee21d521c291b4828c6e6afe4b07b3ad7c39909fec0f996b22adcae",
+  "engine": "vercel",
+  "model": {
+    "provider": "opencode",
+    "model": "muse-spark-1.3-contributor",
+    "reasoningEffort": "xhigh"
+  },
+  "budget": {
+    "maxModelRequests": 8,
+    "maxToolCalls": 12,
+    "maxDurationMs": 180000,
+    "maxOutputTokens": 8192
+  },
+  "registrySha256": "cfe9c33bc50f5d803d96ecf052ac090c1de38ffd8ff7bf1310fd5f69221571c3",
+  "noServerWrites": true
+}

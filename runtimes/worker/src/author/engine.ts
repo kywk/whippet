@@ -1,11 +1,12 @@
 import type { ModelRequestFailureStage } from "./module-diagnostics.js";
 import type { AIConfig } from "../ai/config.js";
 import { AuthorError } from "./types.js";
+import { guardRequest, outputTokenLimit, partialResult, requestSettings } from "./engine-policy.js";
 
 export type EngineItem = Record<string, unknown>;
 export interface EngineTool { name: string }
 export interface EnginePartial {
-  reason: "model_budget" | "tool_budget";
+  reason: "model_budget" | "tool_budget" | "context_capacity" | "output_truncated";
   nextStep: string;
   checkpoint?: { script: string };
 }
@@ -18,6 +19,8 @@ export interface EngineRun {
   model: Pick<AIConfig, "reasoningEffort">;
   signal: AbortSignal;
   beforeRequest(context: EngineItem[]): EngineItem[];
+  // Final serialized-body guard; called after SDK serialization and compaction.
+  prepareRequest?(body: EngineItem): EngineItem;
   onEvent?(event: string): void;
   onModelRequestFailure?(stage: ModelRequestFailureStage): void;
   request(body: Record<string, unknown>): Promise<unknown>;
@@ -60,9 +63,7 @@ export function pruneSnapshots(context: EngineItem[]): void {
 export const builtinEngine: AgentEngine = {
   async run(input) {
     const { signal, budget } = input;
-    if (!Number.isInteger(budget.modelRequests) || budget.modelRequests < 1 || !Number.isInteger(budget.toolExecutions) || budget.toolExecutions < 0) throw new AuthorError("invalid_input");
-    const maxOutputTokens = budget.maxOutputTokens === undefined ? 8192 : budget.maxOutputTokens;
-    if (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 1 || maxOutputTokens > 16384) throw new AuthorError('invalid_input');
+    const maxOutputTokens = outputTokenLimit(input);
     const context = structuredClone(input.context);
     const execute = toolDispatcher(input.tools, input.execute);
     const invalidEnvelope = (raw: unknown): never => {
@@ -77,37 +78,17 @@ export const builtinEngine: AgentEngine = {
       throw new AuthorError('invalid_response');
     };
     let count = 0;
-    const partial = (reason: EnginePartial["reason"]): EngineResult => {
-      const checkpoint = input.checkpoint();
-      return { finalText: "", partial: {
-        reason, nextStep: checkpoint
-          ? "繼續目前任務，先檢查最後通過自我試跑的候選稿，再完成剩餘驗證。"
-          : input.tools.some(tool => tool.name === "update_draft")
-            ? "目前沒有通過自我試跑的候選稿。若已有足夠的目標與頁面證據，請保留原有斷言並優先呼叫 update_draft 自試；不足時再做必要探索或請使用者確認。"
-            : "目前沒有通過自我試跑的候選稿。請依已提供的目標完成必要工作；資訊不足時向使用者確認。",
-        ...(checkpoint ? { checkpoint } : {}),
-      } };
-    };
+    const partial = (reason: EnginePartial["reason"]): EngineResult => partialResult(input, reason);
     for (let request = 0; request < budget.modelRequests; request++) {
       if (signal.aborted) throw new AuthorError("cancelled");
       pruneSnapshots(context);
-      const finish = request === budget.modelRequests - 1 || budget.toolExecutions - count <= 2;
-      const remaining = budget.modelRequests - request;
-      const delivery = input.tools.some(tool => tool.name === "update_draft") ? "update_draft" :
-        input.tools.some(tool => tool.name === "propose_plan") ? "propose_plan" :
-        input.tools.some(tool => tool.name === "commit_module_candidate") ? "commit_module_candidate" : undefined;
-      const deliveryTurns = delivery === "commit_module_candidate" ? 5 : 3;
-      const deliveryTools = delivery === "commit_module_candidate" ? ["stage_module_candidate_part", "commit_module_candidate"] : [delivery];
-      const reserve = delivery && remaining <= deliveryTurns
-        ? `\nCandidate delivery reserve: ${remaining} model requests remaining, ${budget.toolExecutions - count} tool executions remaining. ${delivery === "commit_module_candidate" ? "Stage script and harness with stage_module_candidate_part, then call commit_module_candidate; reserve two turns to stage a self-test repair and commit it again. " : ""}Use ${delivery} now when the collected evidence is sufficient. Preserve every requested assertion. Reserve the following turns for inspecting self-test feedback and repairing the candidate. Do not repeat exploration already covered by tool results. If essential evidence is missing, obtain only that evidence; never invent it or claim unverified success.` : "";
-      const body = {
+      const settings = requestSettings(input, request, count);
+      const body = guardRequest(input, {
         input: input.beforeRequest(context),
-        instructions: input.instructions + reserve + (finish ? "\nBudget nearly exhausted: finish now with the verified candidate and explain remaining next steps. Do not start new exploration." : ""),
-        tools: delivery && remaining <= deliveryTurns && !input.checkpoint()
-          ? input.tools.filter(tool => deliveryTools.includes(tool.name)) : input.tools,
+        ...settings,
         reasoning: { effort: input.model.reasoningEffort }, parallel_tool_calls: false,
         max_output_tokens: maxOutputTokens, store: false, include: ["reasoning.encrypted_content"],
-      };
+      });
       if (Buffer.byteLength(JSON.stringify(body)) > (input.maxRequestBytes ?? 4 * 1024 * 1024)) throw new AuthorError("limit");
       input.onEvent?.(`author:model:${request + 1}:started`);
       const raw = await input.request(body);

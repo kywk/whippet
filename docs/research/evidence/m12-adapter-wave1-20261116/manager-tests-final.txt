@@ -1,0 +1,1 @@
+ok  	whippet/services/manager/internal/manager	0.553s

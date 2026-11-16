@@ -1,0 +1,878 @@
+TAP version 13
+# Subtest: offline check accepts disabled/no-key setup and never exposes credentials
+ok 1 - offline check accepts disabled/no-key setup and never exposes credentials
+  ---
+  duration_ms: 0.665583
+  type: 'test'
+  ...
+# Subtest: request uses exact native Responses endpoint, model, reasoning and stable caller session
+ok 2 - request uses exact native Responses endpoint, model, reasoning and stable caller session
+  ---
+  duration_ms: 0.149458
+  type: 'test'
+  ...
+# Subtest: disabled, missing key and invalid session stop before fetch
+ok 3 - disabled, missing key and invalid session stop before fetch
+  ---
+  duration_ms: 0.282833
+  type: 'test'
+  ...
+# Subtest: configuration rejects endpoint credentials, CLI model syntax and unknown reasoning effort
+ok 4 - configuration rejects endpoint credentials, CLI model syntax and unknown reasoning effort
+  ---
+  duration_ms: 0.117625
+  type: 'test'
+  ...
+# Subtest: Responses success extracts text using one mocked POST
+ok 5 - Responses success extracts text using one mocked POST
+  ---
+  duration_ms: 22.837458
+  type: 'test'
+  ...
+# Subtest: 401/403/429/5xx fail once without body/header disclosure or fallback
+ok 6 - 401/403/429/5xx fail once without body/header disclosure or fallback
+  ---
+  duration_ms: 0.816792
+  type: 'test'
+  ...
+# Subtest: network, incomplete and invalid replies remain explicit sanitized failures
+ok 7 - network, incomplete and invalid replies remain explicit sanitized failures
+  ---
+  duration_ms: 0.630167
+  type: 'test'
+  ...
+# Subtest: probe without --live stops before config/key use; offline CLI is usable without key
+ok 8 - probe without --live stops before config/key use; offline CLI is usable without key
+  ---
+  duration_ms: 200.056542
+  type: 'test'
+  ...
+# Subtest: M5 Workspace settings remain fixed DATA in author requests without navigation or timeout override
+ok 9 - M5 Workspace settings remain fixed DATA in author requests without navigation or timeout override
+  ---
+  duration_ms: 6.949459
+  type: 'test'
+  ...
+# Subtest: packaged Playwright authoring skill reaches a real request body from a different cwd
+ok 10 - packaged Playwright authoring skill reaches a real request body from a different cwd
+  ---
+  duration_ms: 1.845583
+  type: 'test'
+  ...
+# Subtest: author explores, updates candidate and defers validation with stateless reasoning/call outputs
+ok 11 - author explores, updates candidate and defers validation with stateless reasoning/call outputs
+  ---
+  duration_ms: 5.138417
+  type: 'test'
+  ...
+# Subtest: author enforces 8 requests and 12 executed tools without further requests
+ok 12 - author enforces 8 requests and 12 executed tools without further requests
+  ---
+  duration_ms: 6.560958
+  type: 'test'
+  ...
+# Subtest: no-key/disabled, provider errors and secret echoes do not leak or retry
+ok 13 - no-key/disabled, provider errors and secret echoes do not leak or retry
+  ---
+  duration_ms: 3.530959
+  type: 'test'
+  ...
+# Subtest: timeout and cancellation bound the whole loop including a fetch that ignores abort
+ok 14 - timeout and cancellation bound the whole loop including a fetch that ignores abort
+  ---
+  duration_ms: 6.427417
+  type: 'test'
+  ...
+# Subtest: unsupported eval and non-HTTP navigation return sanitized tool errors; questions need no script
+ok 15 - unsupported eval and non-HTTP navigation return sanitized tool errors; questions need no script
+  ---
+  duration_ms: 1.571958
+  type: 'test'
+  ...
+# Subtest: author input validates bounds before any provider or browser work
+ok 16 - author input validates bounds before any provider or browser work
+  ---
+  duration_ms: 0.164959
+  type: 'test'
+  ...
+# Subtest: validation snapshot is optional and repair reads only supplied status/error without running a spec
+ok 17 - validation snapshot is optional and repair reads only supplied status/error without running a spec
+  ---
+  duration_ms: 2.269375
+  type: 'test'
+  ...
+# Subtest: update_draft with verifyDraft self-tests, allows repair on failure, and blocks unverified drafts on environment errors
+ok 18 - update_draft with verifyDraft self-tests, allows repair on failure, and blocks unverified drafts on environment errors
+  ---
+  duration_ms: 3.842042
+  type: 'test'
+  ...
+# Subtest: batch requires summary-only nested snapshot, bounded metadata, unique pinned modules and matching evidence
+ok 19 - batch requires summary-only nested snapshot, bounded metadata, unique pinned modules and matching evidence
+  ---
+  duration_ms: 29.764917
+  type: 'test'
+  ...
+# Subtest: summary engine sees full batch and hash with zero tools and unchanged final parser
+ok 20 - summary engine sees full batch and hash with zero tools and unchanged final parser
+  ---
+  duration_ms: 4.343125
+  type: 'test'
+  ...
+# Subtest: builtin returns model budget partial and asks for a final answer before exhaustion
+ok 21 - builtin returns model budget partial and asks for a final answer before exhaustion
+  ---
+  duration_ms: 1.164458
+  type: 'test'
+  ...
+# Subtest: tool budget stops before the extra execution and preserves verified checkpoint
+ok 22 - tool budget stops before the extra execution and preserves verified checkpoint
+  ---
+  duration_ms: 0.690375
+  type: 'test'
+  ...
+# Subtest: snapshot compaction preserves latest page, IDs, hints and reasoning including login page
+ok 23 - snapshot compaction preserves latest page, IDs, hints and reasoning including login page
+  ---
+  duration_ms: 0.088791
+  type: 'test'
+  ...
+# Subtest: dispatcher rejects duplicate bindings and abort does not become partial
+ok 24 - dispatcher rejects duplicate bindings and abort does not become partial
+  ---
+  duration_ms: 0.308375
+  type: 'test'
+  ...
+# Subtest: harness checkpoint keeps last passing candidate after failed repair, without extending wire
+ok 25 - harness checkpoint keeps last passing candidate after failed repair, without extending wire
+  ---
+  duration_ms: 9.651125
+  type: 'test'
+  ...
+# Subtest: partial checkpoint comes only from Worker guard and redaction changes discard it
+ok 26 - partial checkpoint comes only from Worker guard and redaction changes discard it
+  ---
+  duration_ms: 5.381125
+  type: 'test'
+  ...
+# Subtest: model final JSON cannot inject script, partial or checkpoint
+ok 27 - model final JSON cannot inject script, partial or checkpoint
+  ---
+  duration_ms: 2.342958
+  type: 'test'
+  ...
+# Subtest: author artifact serialization counts UTF8 JSON plus newline at exactly 13MiB
+ok 28 - author artifact serialization counts UTF8 JSON plus newline at exactly 13MiB
+  ---
+  duration_ms: 167.584666
+  type: 'test'
+  ...
+# Subtest: author reserves model turns for candidate self-test before exploration consumes the budget
+ok 29 - author reserves model turns for candidate self-test before exploration consumes the budget
+  ---
+  duration_ms: 0.776834
+  type: 'test'
+  ...
+# Subtest: module delivery reserves both staging calls, commit, and self-test repair
+ok 30 - module delivery reserves both staging calls, commit, and self-test repair
+  ---
+  duration_ms: 0.360875
+  type: 'test'
+  ...
+# Subtest: Module delivery can repair and recommit a failed self-test within eight requests
+ok 31 - Module delivery can repair and recommit a failed self-test within eight requests
+  ---
+  duration_ms: 0.179334
+  type: 'test'
+  ...
+# Subtest: backend engine/provider selection is explicit, defaults to builtin and never falls back
+ok 32 - backend engine/provider selection is explicit, defaults to builtin and never falls back
+  ---
+  duration_ms: 1.243708
+  type: 'test'
+  ...
+# Subtest: production route applies one final body guard to instructions and every tool-result request
+ok 33 - production route applies one final body guard to instructions and every tool-result request
+  ---
+  duration_ms: 46.94625
+  type: 'test'
+  ...
+# Subtest: runAuthor selects Vercel without injection; an unfinished checkpoint survives text-only completion and resumes within budget
+ok 34 - runAuthor selects Vercel without injection; an unfinished checkpoint survives text-only completion and resumes within budget
+  ---
+  duration_ms: 20.62675
+  type: 'test'
+  ...
+# Subtest: only fixed retrievable versions compact; eight-turn loop preserves protected facts, call/result pairs and encrypted reasoning
+ok 35 - only fixed retrievable versions compact; eight-turn loop preserves protected facts, call/result pairs and encrypted reasoning
+  ---
+  duration_ms: 44.100083
+  type: 'test'
+  ...
+# {"requests":8,"toolResults":7,"compacted":6,"estimatedInputTokens":17604,"limit":24000}
+# Subtest: capacity failure protects conversation/draft/evidence without sending and returns truthful partial
+ok 36 - capacity failure protects conversation/draft/evidence without sending and returns truthful partial
+  ---
+  duration_ms: 3.48975
+  type: 'test'
+  ...
+# Subtest: truncated output never executes partial arguments; only a guard-owned checkpoint allows partial
+ok 37 - truncated output never executes partial arguments; only a guard-owned checkpoint allows partial
+  ---
+  duration_ms: 11.039666
+  type: 'test'
+  ...
+# Subtest: production provider abort settles and closes the socket within 1 second
+ok 38 - production provider abort settles and closes the socket within 1 second
+  ---
+  duration_ms: 5.44125
+  type: 'test'
+  ...
+# {"abortSettleAndCloseMs":1.479,"thresholdMs":1000}
+# Subtest: unknown tools, duplicate IDs, HTTP failures and output limits stop without retries or extra effects
+ok 39 - unknown tools, duplicate IDs, HTTP failures and output limits stop without retries or extra effects
+  ---
+  duration_ms: 10.757208
+  type: 'test'
+  ...
+# Subtest: unrecoverable, mutable or inaccessible data cannot be silently compacted
+ok 40 - unrecoverable, mutable or inaccessible data cannot be silently compacted
+  ---
+  duration_ms: 5.228875
+  type: 'test'
+  ...
+# Subtest: frozen skill references compact with exact read-back arguments and never become validation evidence
+ok 41 - frozen skill references compact with exact read-back arguments and never become validation evidence
+  ---
+  duration_ms: 1.023459
+  type: 'test'
+  ...
+# Subtest: unknown model capacity fails closed; an override cannot exceed known provider capacity
+ok 42 - unknown model capacity fails closed; an override cannot exceed known provider capacity
+  ---
+  duration_ms: 0.176417
+  type: 'test'
+  ...
+# (node:54559) ExperimentalWarning: The MockTimers API is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: M9 unique stdin demux routes interleaved credential/history frames without sharing credential payload
+ok 43 - M9 unique stdin demux routes interleaved credential/history frames without sharing credential payload
+  ---
+  duration_ms: 6.279875
+  type: 'test'
+  ...
+# Subtest: M9 history validates owner/cutoff, UTF-8 byte fragments and continuation without numeric sequence loss
+ok 44 - M9 history validates owner/cutoff, UTF-8 byte fragments and continuation without numeric sequence loss
+  ---
+  duration_ms: 1.888292
+  type: 'test'
+  ...
+# Subtest: M9 history failure quota, timeout, cancel, wrong-attempt and late reply stay attempt-local
+ok 45 - M9 history failure quota, timeout, cancel, wrong-attempt and late reply stay attempt-local
+  ---
+  duration_ms: 1.658083
+  type: 'test'
+  ...
+# Subtest: M9 model retrieves an older decision on demand, sees only bounded data and never expands defaults
+ok 46 - M9 model retrieves an older decision on demand, sees only bounded data and never expands defaults
+  ---
+  duration_ms: 8.136959
+  type: 'test'
+  ...
+# Subtest: M9 workspace history stays browser-free, cleans known secrets and counts failed calls toward four pages
+ok 47 - M9 workspace history stays browser-free, cleans known secrets and counts failed calls toward four pages
+  ---
+  duration_ms: 4.352666
+  type: 'test'
+  ...
+# Subtest: M9 model cursor accepts JSON null and exact literal null while rejecting empty whitespace and invalid strings
+ok 48 - M9 model cursor accepts JSON null and exact literal null while rejecting empty whitespace and invalid strings
+  ---
+  duration_ms: 13.659375
+  type: 'test'
+  ...
+# Subtest: M10 v10 history uses generic IPC and stable transport UUID independent of provider opaque ID
+ok 49 - M10 v10 history uses generic IPC and stable transport UUID independent of provider opaque ID
+  ---
+  duration_ms: 1.83875
+  type: 'test'
+  ...
+# Subtest: M10 v10 history rejects foreign scope, ignores late replies and cancels attempt-local pending calls
+ok 50 - M10 v10 history rejects foreign scope, ignores late replies and cancels attempt-local pending calls
+  ---
+  duration_ms: 1.623875
+  type: 'test'
+  ...
+# Subtest: M10 demux retains separate 64KiB history/credential and 14MiB tool frame limits
+ok 51 - M10 demux retains separate 64KiB history/credential and 14MiB tool frame limits
+  ---
+  duration_ms: 4.6305
+  type: 'test'
+  ...
+# Subtest: M10 actual author loop maps generic history back to original model call ID
+ok 52 - M10 actual author loop maps generic history back to original model call ID
+  ---
+  duration_ms: 2.57275
+  type: 'test'
+  ...
+# Subtest: M10Z module guard PASS survives exploratory budget and requests separate validation
+ok 53 - M10Z module guard PASS survives exploratory budget and requests separate validation
+  ---
+  duration_ms: 11.912
+  type: 'test'
+  ...
+# Subtest: M10Z continue synthetic repeated exploration has no verified candidate
+ok 54 - M10Z continue synthetic repeated exploration has no verified candidate
+  ---
+  duration_ms: 7.630708
+  type: 'test'
+  ...
+# Subtest: M10Z failed Module self-test remains repairable before guard completion
+ok 55 - M10Z failed Module self-test remains repairable before guard completion
+  ---
+  duration_ms: 12.391292
+  type: 'test'
+  ...
+# Subtest: M10Z Module guard completion does not grant unavailable validation tool
+ok 56 - M10Z Module guard completion does not grant unavailable validation tool
+  ---
+  duration_ms: 2.925583
+  type: 'test'
+  ...
+# Subtest: M10Z Module partial remains LIMIT for legacy engine and forged checkpoints
+ok 57 - M10Z Module partial remains LIMIT for legacy engine and forged checkpoints
+  ---
+  duration_ms: 3.422625
+  type: 'test'
+  ...
+# Subtest: M10Z Module commit on final model request completes without extra request
+ok 58 - M10Z Module commit on final model request completes without extra request
+  ---
+  duration_ms: 3.706542
+  type: 'test'
+  ...
+# Subtest: M10Z verified Test candidate completes without spending remaining model budget
+ok 59 - M10Z verified Test candidate completes without spending remaining model budget
+  ---
+  duration_ms: 1.370375
+  type: 'test'
+  ...
+# Subtest: verified draft preserves the same successful submission explanation
+ok 60 - verified draft preserves the same successful submission explanation
+  ---
+  duration_ms: 1.535416
+  type: 'test'
+  ...
+# Subtest: two-request partial remains unfinished even if model final text claims completion
+ok 61 - two-request partial remains unfinished even if model final text claims completion
+  ---
+  duration_ms: 1.505375
+  type: 'test'
+  ...
+# Subtest: M10.Z Wave3 red: actual no-browser verifyDraft expect failure needs a step category
+ok 62 - M10.Z Wave3 red: actual no-browser verifyDraft expect failure needs a step category
+  ---
+  duration_ms: 637.022417
+  type: 'test'
+  ...
+# Subtest: M10.Z Wave3 red: actual no-browser verifyDraft request API failure needs a distinct step category
+ok 63 - M10.Z Wave3 red: actual no-browser verifyDraft request API failure needs a distinct step category
+  ---
+  duration_ms: 587.77275
+  type: 'test'
+  ...
+# Subtest: M10.Z Wave3 red: actual main-frame navigation is a page event
+ok 64 - M10.Z Wave3 red: actual main-frame navigation is a page event
+  ---
+  duration_ms: 902.581417
+  type: 'test'
+  ...
+# {"kind":"log","message":"SECRET_SENTINEL"}
+# {"kind":"log","message":"failed: synthetic (1ms)"}
+# {"kind":"log","message":"Playwright finished: failed"}
+# Subtest: M10.Z Wave3 red: Reporter expect error-bearing step needs its own category
+ok 65 - M10.Z Wave3 red: Reporter expect error-bearing step needs its own category
+  ---
+  duration_ms: 1.158583
+  type: 'test'
+  ...
+# {"kind":"log","message":"SECRET_SENTINEL"}
+# {"kind":"log","message":"failed: synthetic (1ms)"}
+# {"kind":"log","message":"Playwright finished: failed"}
+# Subtest: M10.Z Wave3 red: Reporter pw:api error-bearing step needs its own category
+ok 66 - M10.Z Wave3 red: Reporter pw:api error-bearing step needs its own category
+  ---
+  duration_ms: 1.249291
+  type: 'test'
+  ...
+# Subtest: M10.Z Wave3 red: absent browser fixture is UNOBSERVED
+ok 67 - M10.Z Wave3 red: absent browser fixture is UNOBSERVED
+  ---
+  duration_ms: 556.056333
+  type: 'test'
+  ...
+# Subtest: M10.Z Wave3 red: page fixture without a navigation event is NOT_OBSERVED
+ok 68 - M10.Z Wave3 red: page fixture without a navigation event is NOT_OBSERVED
+  ---
+  duration_ms: 834.752542
+  type: 'test'
+  ...
+# Subtest: M10.Z Wave3: last failed observation survives a later pass and excludes raw Reporter evidence
+ok 69 - M10.Z Wave3: last failed observation survives a later pass and excludes raw Reporter evidence
+  ---
+  duration_ms: 0.159166
+  type: 'test'
+  ...
+# Subtest: M10.Z Wave3: observation callback failure cannot change failed self-test result
+ok 70 - M10.Z Wave3: observation callback failure cannot change failed self-test result
+  ---
+  duration_ms: 521.808917
+  type: 'test'
+  ...
+# Subtest: M7 edit captures flat pinned context, executes only allowed tools, maintains conversation summary
+ok 71 - M7 edit captures flat pinned context, executes only allowed tools, maintains conversation summary
+  ---
+  duration_ms: 10.663833
+  type: 'test'
+  ...
+# Subtest: M7 summary accepts empty chat and produces only bounded summary fields with no browser or tools
+ok 72 - M7 summary accepts empty chat and produces only bounded summary fields with no browser or tools
+  ---
+  duration_ms: 1.774458
+  type: 'test'
+  ...
+# Subtest: M7 invalid pin/context/evidence is rejected before any model request
+ok 73 - M7 invalid pin/context/evidence is rejected before any model request
+  ---
+  duration_ms: 2.419041
+  type: 'test'
+  ...
+# Subtest: M7 summary rejects function calls, scripts, validation flags, metadata and byte overflow without retry
+ok 74 - M7 summary rejects function calls, scripts, validation flags, metadata and byte overflow without retry
+  ---
+  duration_ms: 15.356709
+  type: 'test'
+  ...
+# Subtest: M8 workspace interview captures packaged skill and flat nullable context without browser/tools
+ok 75 - M8 workspace interview captures packaged skill and flat nullable context without browser/tools
+  ---
+  duration_ms: 14.040084
+  type: 'test'
+  ...
+# Subtest: M8 refuses alternate owners, authorization fields, secrets and origin conflicts before model
+ok 76 - M8 refuses alternate owners, authorization fields, secrets and origin conflicts before model
+  ---
+  duration_ms: 1.454
+  type: 'test'
+  ...
+# Subtest: M8 proposal output rejects permission/secret fields, cross-Workspace role and overflow without retry
+ok 77 - M8 proposal output rejects permission/secret fields, cross-Workspace role and overflow without retry
+  ---
+  duration_ms: 21.618333
+  type: 'test'
+  ...
+# Subtest: M8 typed Workspace context reaches readonly M7 summary as DATA without granting tools
+ok 78 - M8 typed Workspace context reaches readonly M7 summary as DATA without granting tools
+  ---
+  duration_ms: 1.091709
+  type: 'test'
+  ...
+# Subtest: M8 edit rejects undeclared validation and B accepts Server-granted validation
+ok 79 - M8 edit rejects undeclared validation and B accepts Server-granted validation
+  ---
+  duration_ms: 13.059583
+  type: 'test'
+  ...
+# Subtest: B AI origin gate distinguishes targets, dependency purpose, login and safe denial details
+ok 80 - B AI origin gate distinguishes targets, dependency purpose, login and safe denial details
+  ---
+  duration_ms: 4.163041
+  type: 'test'
+  ...
+# Subtest: B credential stdin correlates one request, rejects late/wrong-attempt replies and bounds bytes
+ok 81 - B credential stdin correlates one request, rejects late/wrong-attempt replies and bounds bytes
+  ---
+  duration_ms: 2.510625
+  type: 'test'
+  ...
+# Subtest: B original Playwright embedded ZIP redacts string leaves, preserving real failure counts and code shell
+ok 82 - B original Playwright embedded ZIP redacts string leaves, preserving real failure counts and code shell
+  ---
+  duration_ms: 21.6375
+  type: 'test'
+  ...
+# Subtest: B author passes safe scope refusal to the next model request without raw URL or false success
+ok 83 - B author passes safe scope refusal to the next model request without raw URL or false success
+  ---
+  duration_ms: 8.698667
+  type: 'test'
+  ...
+# Subtest: eight successful exploration calls without a Module candidate stop at the pinned model budget
+ok 84 - eight successful exploration calls without a Module candidate stop at the pinned model budget
+  ---
+  duration_ms: 12.763208
+  type: 'test'
+  ...
+# Subtest: staged candidate uses real engine/fetch tool sequence and never IPC; commit alone creates final
+ok 85 - staged candidate uses real engine/fetch tool sequence and never IPC; commit alone creates final
+  ---
+  duration_ms: 9.36125
+  type: 'test'
+  ...
+# Subtest: staging CAS and schema rejection never advance accepted revision or bypass full candidate guards
+ok 86 - staging CAS and schema rejection never advance accepted revision or bypass full candidate guards
+  ---
+  duration_ms: 4.661666
+  type: 'test'
+  ...
+# Subtest: failed repair preserves prior verified candidate and staging never becomes a checkpoint
+ok 87 - failed repair preserves prior verified candidate and staging never becomes a checkpoint
+  ---
+  duration_ms: 17.253542
+  type: 'test'
+  ...
+# Subtest: secret parts and cancellation cannot create a verified checkpoint
+ok 88 - secret parts and cancellation cannot create a verified checkpoint
+  ---
+  duration_ms: 4.299416
+  type: 'test'
+  ...
+# Subtest: duplicate commit call ID never repeats self-test; late pass after abort never creates checkpoint
+ok 89 - duplicate commit call ID never repeats self-test; late pass after abort never creates checkpoint
+  ---
+  duration_ms: 6.669875
+  type: 'test'
+  ...
+# Subtest: independent Module summary strictly binds body/harness and mutually exclusive nested snapshots
+ok 90 - independent Module summary strictly binds body/harness and mutually exclusive nested snapshots
+  ---
+  duration_ms: 40.853125
+  type: 'test'
+  ...
+# Subtest: Module summary prompt contains complete body metadata harness hashes and evidence with no tools
+ok 91 - Module summary prompt contains complete body metadata harness hashes and evidence with no tools
+  ---
+  duration_ms: 4.001667
+  type: 'test'
+  ...
+# Subtest: Module summary accepts two raw 2MiB files despite JSON escaping and rejects either raw overflow
+ok 92 - Module summary accepts two raw 2MiB files despite JSON escaping and rejects either raw overflow
+  ---
+  duration_ms: 304.626458
+  type: 'test'
+  ...
+# Subtest: output budget engine defaults and explicit values reach request; invalid values never request
+ok 93 - output budget engine defaults and explicit values reach request; invalid values never request
+  ---
+  duration_ms: 1.744792
+  type: 'test'
+  ...
+# Subtest: output budget snapshot and manifest validate both effective bounds and immutable pins
+ok 94 - output budget snapshot and manifest validate both effective bounds and immutable pins
+  ---
+  duration_ms: 5.3835
+  type: 'test'
+  ...
+# Subtest: output budget strict malformed fields and non-module elevation fail closed
+ok 95 - output budget strict malformed fields and non-module elevation fail closed
+  ---
+  duration_ms: 6.737917
+  type: 'test'
+  ...
+# Subtest: output budget auxiliary module cannot elevate primary snapshot
+ok 96 - output budget auxiliary module cannot elevate primary snapshot
+  ---
+  duration_ms: 2.763584
+  type: 'test'
+  ...
+# Subtest: output budget true author fetch pins module and legacy defaults across requests
+ok 97 - output budget true author fetch pins module and legacy defaults across requests
+  ---
+  duration_ms: 20.993583
+  type: 'test'
+  ...
+# Subtest: output budget no-capability author remains 8192 and invalid capability fails before fetch
+ok 98 - output budget no-capability author remains 8192 and invalid capability fails before fetch
+  ---
+  duration_ms: 3.34125
+  type: 'test'
+  ...
+# Subtest: production v10 budget returns guard-owned checkpoint, never queues validation
+ok 99 - production v10 budget returns guard-owned checkpoint, never queues validation
+  ---
+  duration_ms: 5.996125
+  type: 'test'
+  ...
+# Subtest: v10 partial omits script for failed/unverified/redacted candidates and ignores EnginePartial forgeries
+ok 100 - v10 partial omits script for failed/unverified/redacted candidates and ignores EnginePartial forgeries
+  ---
+  duration_ms: 6.4865
+  type: 'test'
+  ...
+# Subtest: v9 test-author and legacy do not emit new fields; cancellation is not partial
+ok 101 - v9 test-author and legacy do not emit new fields; cancellation is not partial
+  ---
+  duration_ms: 2.815417
+  type: 'test'
+  ...
+# Subtest: platform accepts nested only and rejects missing, top-level, duplicate and invalid null pairs
+ok 102 - platform accepts nested only and rejects missing, top-level, duplicate and invalid null pairs
+  ---
+  duration_ms: 4.781916
+  type: 'test'
+  ...
+# Subtest: Module final is rebuilt from last passing body+harness and rejects forged final or partial
+ok 103 - Module final is rebuilt from last passing body+harness and rejects forged final or partial
+  ---
+  duration_ms: 7.808333
+  type: 'test'
+  ...
+# Subtest: planner final takes last successful canonical candidateRef, never model injection
+ok 104 - planner final takes last successful canonical candidateRef, never model injection
+  ---
+  duration_ms: 2.359084
+  type: 'test'
+  ...
+# Subtest: only authoritative Module primary gets 25MiB final and pending IDs select 26MiB frames
+ok 105 - only authoritative Module primary gets 25MiB final and pending IDs select 26MiB frames
+  ---
+  duration_ms: 203.961791
+  type: 'test'
+  ...
+# Subtest: real Module self-test executes both files through @lib and rejects a failing harness
+ok 106 - real Module self-test executes both files through @lib and rejects a failing harness
+  ---
+  duration_ms: 1890.570833
+  type: 'test'
+  ...
+# Subtest: Module harness rejects two arguments and accepts the Compose object ABI
+ok 107 - Module harness rejects two arguments and accepts the Compose object ABI
+  ---
+  duration_ms: 1637.085791
+  type: 'test'
+  ...
+# Subtest: Module harness cannot import the execution-only ABI source directly
+ok 108 - Module harness cannot import the execution-only ABI source directly
+  ---
+  duration_ms: 286.756959
+  type: 'test'
+  ...
+# Subtest: Module candidate is discarded if later secret discovery changes body or harness bytes
+ok 109 - Module candidate is discarded if later secret discovery changes body or harness bytes
+  ---
+  duration_ms: 4.400125
+  type: 'test'
+  ...
+# Subtest: catalog parameter rejection reaches real loop and model corrects query before guarded Plan success
+ok 110 - catalog parameter rejection reaches real loop and model corrects query before guarded Plan success
+  ---
+  duration_ms: 5.526334
+  type: 'test'
+  ...
+# Subtest: catalog feedback IPC remains scoped to pending tool and exact error frame
+ok 111 - catalog feedback IPC remains scoped to pending tool and exact error frame
+  ---
+  duration_ms: 3.657458
+  type: 'test'
+  ...
+# Subtest: optional observer distinguishes provider/body/tool deadline and external cancellation without changing behavior
+ok 112 - optional observer distinguishes provider/body/tool deadline and external cancellation without changing behavior
+  ---
+  duration_ms: 283.824041
+  type: 'test'
+  ...
+# Subtest: observer does not count forged feedback content and observer exceptions cannot alter output
+ok 113 - observer does not count forged feedback content and observer exceptions cannot alter output
+  ---
+  duration_ms: 3.007375
+  type: 'test'
+  ...
+# Subtest: only fully required schemas become provider strict while local guards stay closed
+ok 114 - only fully required schemas become provider strict while local guards stay closed
+  ---
+  duration_ms: 2.079583
+  type: 'test'
+  ...
+# Subtest: registry 10.2 real loop traverses two pages with unchanged opaque cursor then pins guarded reuse
+ok 115 - registry 10.2 real loop traverses two pages with unchanged opaque cursor then pins guarded reuse
+  ---
+  duration_ms: 2.588916
+  type: 'test'
+  ...
+# Subtest: registry 10.2 search rejects cursor and next-page retains exact schema and Unicode/UTF8 guards
+ok 116 - registry 10.2 search rejects cursor and next-page retains exact schema and Unicode/UTF8 guards
+  ---
+  duration_ms: 0.430041
+  type: 'test'
+  ...
+# Subtest: M109 diagnostics discriminate module branches without changing engine outputs
+ok 117 - M109 diagnostics discriminate module branches without changing engine outputs
+  ---
+  duration_ms: 17.735542
+  type: 'test'
+  ...
+# Subtest: M109 diagnostic sink errors and persistence terminal never affect task results
+ok 118 - M109 diagnostic sink errors and persistence terminal never affect task results
+  ---
+  duration_ms: 0.1215
+  type: 'test'
+  ...
+# Subtest: M109 real entry flag is silent when off and persistence failure emits one safe terminal
+ok 119 - M109 real entry flag is silent when off and persistence failure emits one safe terminal
+  ---
+  duration_ms: 788.053
+  type: 'test'
+  ...
+# Subtest: M109 real loop timeout cancellation and provider rejection retain fixed terminal classes
+ok 120 - M109 real loop timeout cancellation and provider rejection retain fixed terminal classes
+  ---
+  duration_ms: 56.772292
+  type: 'test'
+  ...
+# Subtest: M109 v2 real verifier classification survives loop LIMIT independently
+ok 121 - M109 v2 real verifier classification survives loop LIMIT independently
+  ---
+  duration_ms: 1.406459
+  type: 'test'
+  ...
+# Subtest: planner preserves authoritative proposal without another model call
+ok 122 - planner preserves authoritative proposal without another model call
+  ---
+  duration_ms: 1.249709
+  type: 'test'
+  ...
+# Subtest: planner can report a blocker without inventing a Plan candidate
+ok 123 - planner can report a blocker without inventing a Plan candidate
+  ---
+  duration_ms: 0.89575
+  type: 'test'
+  ...
+# Subtest: registry uses raw bytes and module-relative path, fails closed and maps one schema
+ok 124 - registry uses raw bytes and module-relative path, fails closed and maps one schema
+  ---
+  duration_ms: 4.066209
+  type: 'test'
+  ...
+# Subtest: registry checks unknown/missing/type parameters and JSON UTF8 limits without truncation
+ok 125 - registry checks unknown/missing/type parameters and JSON UTF8 limits without truncation
+  ---
+  duration_ms: 0.948125
+  type: 'test'
+  ...
+# Subtest: manifest verifies all pins, loads main only, reads only a pinned reference
+ok 126 - manifest verifies all pins, loads main only, reads only a pinned reference
+  ---
+  duration_ms: 3.455333
+  type: 'test'
+  ...
+# Subtest: partial snapshots never downgrade; primary budget/model and auxiliary ordering are checked
+ok 127 - partial snapshots never downgrade; primary budget/model and auxiliary ordering are checked
+  ---
+  duration_ms: 1.675167
+  type: 'test'
+  ...
+# Subtest: main 8192-byte boundary is raw UTF8, manifest whitespace changes hash
+ok 128 - main 8192-byte boundary is raw UTF8, manifest whitespace changes hash
+  ---
+  duration_ms: 2.2835
+  type: 'test'
+  ...
+# Subtest: references reject traversal, symlinks and oversized complete JSON results
+ok 129 - references reject traversal, symlinks and oversized complete JSON results
+  ---
+  duration_ms: 5.673583
+  type: 'test'
+  ...
+# Subtest: real author wiring uses pinned registry/manifest/reference and server-reduced budget
+ok 130 - real author wiring uses pinned registry/manifest/reference and server-reduced budget
+  ---
+  duration_ms: 7.962833
+  type: 'test'
+  ...
+# Subtest: v10 tool output overflow is a safe result and per-tool timeout stops browser reuse
+ok 131 - v10 tool output overflow is a safe result and per-tool timeout stops browser reuse
+  ---
+  duration_ms: 8.952584
+  type: 'test'
+  ...
+# Subtest: packaged primary skills and auxiliary recipe satisfy real manifest/hash snapshots
+ok 132 - packaged primary skills and auxiliary recipe satisfy real manifest/hash snapshots
+  ---
+  duration_ms: 1.692333
+  type: 'test'
+  ...
+# Subtest: four platform skills load as pinned auxiliaries with registered tools and on-demand references
+ok 133 - four platform skills load as pinned auxiliaries with registered tools and on-demand references
+  ---
+  duration_ms: 2.079583
+  type: 'test'
+  ...
+# Subtest: optional update_draft explanations use provider non-strict schema while local guard stays closed
+ok 134 - optional update_draft explanations use provider non-strict schema while local guard stays closed
+  ---
+  duration_ms: 0.417041
+  type: 'test'
+  ...
+# Subtest: 10.1 schemas reject unsupported constructs, invalid types and UTF8 overflow
+ok 135 - 10.1 schemas reject unsupported constructs, invalid types and UTF8 overflow
+  ---
+  duration_ms: 1.237791
+  type: 'test'
+  ...
+# Subtest: Plan enforces union, bounds, required fields and safe JSON literals
+ok 136 - Plan enforces union, bounds, required fields and safe JSON literals
+  ---
+  duration_ms: 1.125875
+  type: 'test'
+  ...
+# Subtest: Module schema enforces full metadata and raw UTF8 limits
+ok 137 - Module schema enforces full metadata and raw UTF8 limits
+  ---
+  duration_ms: 54.256667
+  type: 'test'
+  ...
+# Subtest: M109 v2 actual self-test branches, off equivalence, safe fixed evidence
+ok 138 - M109 v2 actual self-test branches, off equivalence, safe fixed evidence
+  ---
+  duration_ms: 12333.866208
+  type: 'test'
+  ...
+# Subtest: M109 v2 malicious failure classes cannot enter summary; success retains last failure
+ok 139 - M109 v2 malicious failure classes cannot enter summary; success retains last failure
+  ---
+  duration_ms: 0.227959
+  type: 'test'
+  ...
+# Subtest: M109 v2 observer failure cannot change real invalid-spec result
+ok 140 - M109 v2 observer failure cannot change real invalid-spec result
+  ---
+  duration_ms: 0.354333
+  type: 'test'
+  ...
+# Subtest: M109 v2 actual in-flight self-test cancellation is observed without changing cancellation
+ok 141 - M109 v2 actual in-flight self-test cancellation is observed without changing cancellation
+  ---
+  duration_ms: 507.653917
+  type: 'test'
+  ...
+# Subtest: non-OK response cleanup obeys total deadline and cancellation without changing provider failure
+ok 142 - non-OK response cleanup obeys total deadline and cancellation without changing provider failure
+  ---
+  duration_ms: 82.582625
+  type: 'test'
+  ...
+# Subtest: real main entry emits fixed observations only for explicit M109 or legacy M106 opt-in
+ok 143 - real main entry emits fixed observations only for explicit M109 or legacy M106 opt-in
+  ---
+  duration_ms: 1820.86625
+  type: 'test'
+  ...
+1..143
+# tests 143
+# suites 0
+# pass 143
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13637.952958

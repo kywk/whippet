@@ -1,0 +1,55 @@
+#0 building with "orbstack" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 1.20kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for mcr.microsoft.com/playwright:v1.64.1-noble
+#2 DONE 0.3s
+
+#3 [1/8] FROM mcr.microsoft.com/playwright:v1.64.1-noble@sha256:2f05f8a734509a7b3f26a912639488ee08f58a7b292d14d62271bcff9038768f
+#3 resolve mcr.microsoft.com/playwright:v1.64.1-noble@sha256:2f05f8a734509a7b3f26a912639488ee08f58a7b292d14d62271bcff9038768f 0.0s done
+#3 DONE 0.0s
+
+#4 [internal] load build context
+#4 transferring context: 57.50kB 0.0s done
+#4 DONE 0.0s
+
+#5 [3/8] COPY runtimes/worker/package.json runtimes/worker/package-lock.json runtimes/worker/tsconfig.json ./
+#5 CACHED
+
+#6 [2/8] WORKDIR /opt/whippet/worker
+#6 CACHED
+
+#7 [4/8] RUN npm ci --include=dev --ignore-scripts --no-audit --no-fund
+#7 CACHED
+
+#8 [5/8] COPY runtimes/worker/src ./src
+#8 DONE 0.0s
+
+#9 [6/8] COPY runtimes/worker/skills ./skills
+#9 DONE 0.0s
+
+#10 [7/8] COPY contracts/tools/registry.json /app/contracts/tools/registry.json
+#10 DONE 0.0s
+
+#11 [8/8] RUN npm run build && npm prune --omit=dev --ignore-scripts --no-audit --no-fund
+#11 0.171 
+#11 0.171 > @whippet/worker@0.1.0 build
+#11 0.171 > tsc -p tsconfig.json
+#11 0.171 
+#11 3.065 
+#11 3.065 removed 106 packages in 1s
+#11 DONE 3.1s
+
+#12 exporting to image
+#12 exporting layers
+#12 exporting layers 0.3s done
+#12 exporting manifest sha256:ba45d5745d6ae26c9163e74061040af5599f3fd092047fbba2660c1372b2b2d9 0.0s done
+#12 exporting config sha256:790824a5211e0f230e38c0c901ad2b50d0d29f849cff57420d26d4a7920f5f67 0.1s done
+#12 exporting attestation manifest sha256:1dbc6b4d53e31c982f4612abfd83b208617cfda6bd4edeffb2acfbea73fef4c7 0.0s done
+#12 exporting manifest list sha256:5eeaf8ac7637bc84353515bb495732ba14600d2ceb6fb91e3ad578f2bcc9405a
+#12 exporting manifest list sha256:5eeaf8ac7637bc84353515bb495732ba14600d2ceb6fb91e3ad578f2bcc9405a done
+#12 naming to docker.io/library/whippet-worker:m12-w1-final-20261116 done
+#12 unpacking to docker.io/library/whippet-worker:m12-w1-final-20261116 0.1s done
+#12 DONE 0.5s

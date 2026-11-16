@@ -30,7 +30,7 @@ export function buildResponsesRequest(config: AIConfig, request: CodingRequest) 
         "Content-Type": "application/json",
         Accept: "application/json",
         "User-Agent": AI_DEFAULTS.userAgent,
-        "x-opencode-session": request.sessionId,
+        ...((config.provider ?? "opencode") === "opencode" ? { "x-opencode-session": request.sessionId } : {}),
       },
       body: JSON.stringify({
         model: config.model,

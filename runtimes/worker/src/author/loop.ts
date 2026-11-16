@@ -5,7 +5,8 @@ import { moduleAuthor, plannerAuthor, PLATFORM_TOOLS, PLATFORM_SERVER_TOOLS, val
 import { HarnessClient } from "./harness.js";
 import { capabilitySnapshot, loadSkillBundle } from "./manifest.js";
 import { loadToolRegistry, sha256, modelTool, validateToolArguments, validateToolResult } from "./registry.js";
-import { builtinEngine, type AgentEngine, type EnginePartial } from "./engine.js";
+import type { AgentEngine, EnginePartial } from "./engine.js";
+import { selectAgentEngine } from "./engines/select.js";
 import { AIError, type AIConfig } from "../ai/config.js";
 import { buildResponsesRequest } from "../ai/responses.js";
 import { classifyDiagnosticError, type ExplorationBrowser } from "./tools.js";
@@ -61,7 +62,7 @@ export async function runAuthor(
   const bundle = capability ? loadSkillBundle(capability, registry) : undefined;
   if (capability) {
     // Provider configuration stays backend-owned. No model-selected endpoint or key.
-    if (capability.model.provider !== "opencode" || capability.model.model !== config.model) throw new AuthorError("invalid_input");
+    if (capability.model.provider !== (config.provider ?? "opencode") || capability.model.model !== config.model) throw new AuthorError("invalid_input");
     config = { ...config, reasoningEffort: capability.model.reasoningEffort };
     if (input.author.allowedTools?.some(name => !bundle!.defaultTools.has(name))) throw new AuthorError("invalid_input");
   }
@@ -117,7 +118,7 @@ export async function runAuthor(
   try {
     const baseInstructions = capability ? AUTHOR_INSTRUCTIONS.replace("this author's 180-second budget", "this author's pinned budget").replace(/Budget: at most[^\n]+/, `Budget: at most ${capability.budget.maxModelRequests} model requests, ${capability.budget.maxToolCalls} tool executions, and ${capability.budget.maxDurationMs} milliseconds total. Finish with a short user-facing explanation.`) : AUTHOR_INSTRUCTIONS;
     const instructions = `${baseInstructions}\n\n${bundle?.instructions ?? loadAuthorSkill(input.author)}${bundle ? `\nPackaged reference IDs (read only when needed): ${JSON.stringify(bundle.references)}` : ""}`;
-    const engineResult = await (options.engine ?? builtinEngine).run({
+    const engineResult = await (options.engine ?? selectAgentEngine(config)).run({
       instructions, context: transcript, tools: allowedTools,
       budget: { modelRequests: capability?.budget.maxModelRequests ?? (summary || workspace && allowedTools.length === 0 ? 1 : 8), toolExecutions: capability?.budget.maxToolCalls ?? 12, maxOutputTokens: capability?.budget.maxOutputTokens ?? 8192 },
       model: config, signal,
@@ -155,6 +156,10 @@ export async function runAuthor(
       beforeRequest: (context) => {
         noSecret(context, config.apiKey);
         return options.secrets ? options.secrets.clean(context) : context;
+      },
+      prepareRequest: (body) => {
+        noSecret(body, config.apiKey);
+        return options.secrets ? options.secrets.clean(body) : body;
       },
       onEvent: (event) => {
         const match = /^author:model:(\d+):started$/.exec(event);
@@ -376,8 +381,10 @@ export async function runAuthor(
       if (summary || workspace || module || planner) throw new AuthorError("limit");
       // The adapter's claimed checkpoint is never authority. Rebuild from guard state.
       const { reason, nextStep } = engineResult.partial;
-      if (!["model_budget", "tool_budget"].includes(reason) || !boundedText(nextStep, 8192, true)) throw new AuthorError("invalid_response");
-      const savedNextStep = checkpoint && candidateNextStep ? candidateNextStep : nextStep;
+      if (!["model_budget", "tool_budget", "context_capacity", "output_truncated"].includes(reason) || !boundedText(nextStep, 8192, true)) throw new AuthorError("invalid_response");
+      const savedNextStep = checkpoint && candidateNextStep
+        ? reason === "context_capacity" || reason === "output_truncated" ? `${nextStep}\n剩餘工作：${candidateNextStep}` : candidateNextStep
+        : nextStep;
       const partial: EnginePartial = { reason, nextStep: options.secrets ? options.secrets.redact(savedNextStep) : savedNextStep };
       if (!boundedText(partial.nextStep, 8192, true)) throw new AuthorError("invalid_response");
       const cleaned = checkpoint === undefined ? undefined : options.secrets ? options.secrets.redact(checkpoint.script) : checkpoint.script;
@@ -389,7 +396,7 @@ export async function runAuthor(
       const savedCheckpoint = partial.checkpoint && checkpoint && allowedTools.some(tool => tool.name === "update_draft") &&
         (!options.secrets || options.secrets.redact(checkpoint.script) === checkpoint.script) ? checkpoint : undefined;
       const output: AuthorOutput = {
-        message: `本輪模型請求 ${modelRequests}/${capability.budget.maxModelRequests}。` + (savedCheckpoint ? "已達預算上限，已保留最後通過自我試跑的候選稿；剩餘工作尚未完成，仍須正式驗證。" : "已達預算上限，尚無可保留的已驗證候選稿。可繼續完成剩餘工作。"),
+        message: `本輪模型請求 ${modelRequests}/${capability.budget.maxModelRequests}。` + (reason === "context_capacity" ? "輸入已達容量保護界限。" : reason === "output_truncated" ? "模型輸出達固定上限而截斷。" : "已達預算上限，") + (savedCheckpoint ? "已保留最後通過自我試跑的候選稿；剩餘工作尚未完成，仍須正式驗證。" : "尚無可保留的已驗證候選稿。請縮小剩餘工作後繼續。"),
         requestValidation: false,
         partial: { reason: "budget_exhausted", nextStep: partial.nextStep },
       };

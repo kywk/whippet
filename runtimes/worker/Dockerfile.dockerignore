@@ -1,0 +1,14 @@
+# Worker builds need only these reviewed inputs, never local state or secrets.
+**
+!runtimes/
+!runtimes/worker/
+!runtimes/worker/package.json
+!runtimes/worker/package-lock.json
+!runtimes/worker/tsconfig.json
+!runtimes/worker/src/
+!runtimes/worker/src/**
+!runtimes/worker/skills/
+!runtimes/worker/skills/**
+!contracts/
+!contracts/tools/
+!contracts/tools/registry.json

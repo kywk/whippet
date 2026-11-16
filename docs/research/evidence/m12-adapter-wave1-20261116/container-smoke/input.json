@@ -1,0 +1,79 @@
+{
+  "kind": "author",
+  "runId": "641a88c7-c549-4147-96a5-0e4fd61e7ac4",
+  "attemptId": "272f856f-7a00-4a8b-a6f9-b2a574d9afeb",
+  "workspaceId": "641a88c7-c549-4147-96a5-0e4fd61e7ac4",
+  "testId": "641a88c7-c549-4147-96a5-0e4fd61e7ac4",
+  "script": "",
+  "scriptOrigin": "ai",
+  "timeoutMs": 180000,
+  "workspaceContext": {
+    "schemaVersion": "1",
+    "workspaceId": "641a88c7-c549-4147-96a5-0e4fd61e7ac4",
+    "settingsRevision": 1,
+    "config": {
+      "name": "M12 synthetic setContent",
+      "purpose": "candidate engine smoke",
+      "backgroundSummary": "synthetic only",
+      "targets": [
+        {
+          "name": "synthetic",
+          "purpose": "setContent fixture; do not navigate",
+          "origin": "https://m12-fixture.invalid"
+        }
+      ],
+      "dependencies": [],
+      "excludedOrigins": [],
+      "exclusions": "no navigation, login or filesystem",
+      "loginRoles": [],
+      "defaultTestUrl": "",
+      "timeoutMs": 25000
+    },
+    "roleRefs": []
+  },
+  "author": {
+    "conversationId": "641a88c7-c549-4147-96a5-0e4fd61e7ac4",
+    "baseRevision": 1,
+    "messages": [
+      {
+        "role": "user",
+        "content": "請新建單一 Playwright TypeScript 測試，使用 import { test, expect } from \"@playwright/test\"。只用 page.setContent 建立 <h1>Whippet ready</h1><button>Run test</button>，斷言 Run test 按鈕可見。不要導覽、不連外、不讀檔。完成 update_draft 自試後交付，不需要額外探索。"
+      }
+    ],
+    "skillId": "test-author",
+    "skillVersion": "1",
+    "editingSessionId": "641a88c7-c549-4147-96a5-0e4fd61e7ac4",
+    "contextRevision": 0,
+    "sourceVersion": null,
+    "conversationSummary": null,
+    "allowedTools": [
+      "read_draft",
+      "update_draft",
+      "request_validation",
+      "browser_snapshot"
+    ],
+    "budget": {
+      "maxModelRequests": 8,
+      "maxToolCalls": 12,
+      "maxDurationMs": 180000
+    },
+    "model": {
+      "provider": "opencode",
+      "model": "muse-spark-1.3-contributor",
+      "reasoningEffort": "xhigh"
+    },
+    "skills": [
+      {
+        "id": "test-author",
+        "version": "1",
+        "sha256": "f0cea029a11f6f6e44e85c77baccc724d4d185effd043e7e11f1ab98d1454ca2",
+        "manifestSha256": "b26ac00ef7d966907feba552181003529adeb1fffcd532caf7556e5c1305d0b9",
+        "referenceHashes": {
+          "external-mcp": "cc5725105c4c16b0684524ae0c2ab923aada806585e6a7f69e765a408fec6720"
+        }
+      }
+    ],
+    "toolRegistryVersion": "11.3",
+    "toolRegistrySha256": "cfe9c33bc50f5d803d96ecf052ac090c1de38ffd8ff7bf1310fd5f69221571c3"
+  }
+}

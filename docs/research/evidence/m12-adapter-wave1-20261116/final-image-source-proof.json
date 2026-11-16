@@ -1,0 +1,17 @@
+{
+  "files": {
+    "dist/ai/config.js": "7c833c715e2576fb184881a2e6d2ffbf017c40a3324413b78811dcaa5efdff83",
+    "dist/ai/capacity.js": "1e8b7d8966a706751247c262a8f77c927fba0c65e7f6301cfae4f8e0dee6a0ef",
+    "dist/ai/responses.js": "1198ccdbcf6bf5019937d70ab3525a04c1afe18660ef85c885f0b19701c4efc1",
+    "dist/author/engine.js": "f3c6bfda88e18cd07ffd52f9ec1289a65a6795780b5f300f4f04800b6ef67fbe",
+    "dist/author/engine-policy.js": "826d4268267383bd709bd71c6e40393b4cdaf57703c61a2b9fdb3c8aa9cb2025",
+    "dist/author/loop.js": "35bd49b31d804b9a7cad12d20fbc6bb2150e7c0dd7b432537f1b2da05183120a",
+    "dist/author/engines/context.js": "92d6f2cc3be2cf96235f95f1d9ec823131e28f22214ca5a04e6ea752a14c4302",
+    "dist/author/engines/policy.js": "b27fc79e18757a26c1be87d3479b5cd42a725628e0e99dc3903bdd61c61a3cff",
+    "dist/author/engines/vercel.js": "8d2b3e6d072a5b36f399a3ff7177ec351ce915e8ade56e1da030bb9189d75dc5",
+    "dist/author/engines/select.js": "360273a74abd856f2017a6bae557165f7596bc41a065c5c9929f64632755ae5b"
+  },
+  "piDependencyPresent": false,
+  "image": "sha256:449b5a5984e783c0470a57d8ac5ec2b4357865cfea3586754e1702b8c5bca882",
+  "allHostCompiledHashesMatch": true
+}

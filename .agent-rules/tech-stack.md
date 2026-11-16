@@ -20,3 +20,5 @@ Server 使用官方 `github.com/modelcontextprotocol/go-sdk v1.3.1`（Go1.23相�
 ## M12.0 引擎 spike（2026-11-16）
 
 獨立 spike 鎖定 pi-agent-core＋pi-ai 0.73.1、Vercel `ai` 7.0.173＋`@ai-sdk/openai` 4.0.118、peer zod 4.1.12；版本與 integrity 見 Worker package-lock。M12.1 選 Vercel，沿用既有 guarded Responses request；pi 保留比較程式，不進預設選擇。正式整合時移除未採用的 production 依賴。Node仍22，預設仍builtin，未部署至保留基準。實際結果與限制見 [M12.0決策](../docs/research/m12-engine-spike-20261116.md)。
+
+M12.1 Wave1已將Vercel接上正式Worker opt-in入口，精確版本不變；pi兩套件改為dev-only，production已裁剪。新增明確provider與後端capacity設定，規則見[v12 Runtime約定](../contracts/mvp-v12.md)。預設仍builtin，兩個固定基準未部署候選；跨Run總額與控制面快照仍待後續Wave。

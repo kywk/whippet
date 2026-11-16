@@ -1,0 +1,21 @@
+✔ backend engine/provider selection is explicit, defaults to builtin and never falls back (0.758514ms)
+✔ production route applies one final body guard to instructions and every tool-result request (34.03897ms)
+✔ runAuthor selects Vercel without injection; an unfinished checkpoint survives text-only completion and resumes within budget (17.475744ms)
+✔ only fixed retrievable versions compact; eight-turn loop preserves protected facts, call/result pairs and encrypted reasoning (15.682335ms)
+ℹ {"requests":8,"toolResults":7,"compacted":6,"estimatedInputTokens":17604,"limit":24000}
+✔ capacity failure protects conversation/draft/evidence without sending and returns truthful partial (2.388087ms)
+✔ truncated output never executes partial arguments; only a guard-owned checkpoint allows partial (11.644551ms)
+✔ production provider abort settles and closes the socket within 1 second (2.659841ms)
+ℹ {"abortSettleAndCloseMs":0.834,"thresholdMs":1000}
+✔ unknown tools, duplicate IDs, HTTP failures and output limits stop without retries or extra effects (6.662916ms)
+✔ unrecoverable, mutable or inaccessible data cannot be silently compacted (0.727347ms)
+✔ frozen skill references compact with exact read-back arguments and never become validation evidence (0.643595ms)
+✔ unknown model capacity fails closed; an override cannot exceed known provider capacity (0.115419ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1249.563457
