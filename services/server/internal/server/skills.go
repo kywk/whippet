@@ -183,6 +183,9 @@ func snapshotAuthor(input *AuthorInput) error {
 	tools := []string{}
 	seen := map[string]bool{}
 	for _, tool := range input.AllowedTools {
+		if tool == "record_conversation_memory" {
+			continue
+		} // Granted only with the pinned history capability below.
 		if defaults[tool] && !seen[tool] {
 			tools = append(tools, tool)
 			seen[tool] = true
@@ -193,6 +196,10 @@ func snapshotAuthor(input *AuthorInput) error {
 	}
 	if (input.SkillID == "test-author" || input.SkillID == "module-authoring") && defaults["read_author_snapshot"] && !seen["read_author_snapshot"] {
 		tools = append(tools, "read_author_snapshot")
+	}
+	if input.History != nil && seen["read_conversation_history"] && defaults["record_conversation_memory"] &&
+		(input.SkillID == "test-author" || input.SkillID == "module-authoring" || input.SkillID == "workspace-author" || input.SkillID == "usecase-planner") {
+		tools = append(tools, "record_conversation_memory")
 	}
 	sort.Strings(tools)
 	budget := primary.Budget

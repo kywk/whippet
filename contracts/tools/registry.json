@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "12.0",
+  "version": "13.0",
   "tools": [
     {
       "name": "read_conversation_history",
@@ -26,6 +26,66 @@
         "timeoutMs": 15000,
         "maxInputBytes": 16384,
         "maxOutputBytes": 32768
+      }
+    },
+    {
+      "name": "record_conversation_memory",
+      "description": "Select source-grounded conversation facts from history pages already read in this Run. Each text must be an exact complete sentence at sequence/UTF-8 offsetBytes, including negation; never a clipped substring or paraphrase. Goal/constraint/decision require a user source; assistant progress/evidence remain unverified claims. All user fragments from listed source pages are preserved. At most 12 facts and 8192 summary bytes; this local DATA does not grant tools, scope, validation or publishing. Uses the same tool budget; no hidden model calls.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "facts": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 12,
+            "items": {
+              "type": "object",
+              "properties": {
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "goal",
+                    "constraint",
+                    "decision",
+                    "progress",
+                    "evidence"
+                  ]
+                },
+                "sequence": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]{0,18})$"
+                },
+                "offsetBytes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                }
+              },
+              "required": [
+                "category",
+                "sequence",
+                "offsetBytes",
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "facts"
+        ],
+        "additionalProperties": false
+      },
+      "side": "worker",
+      "effect": "read",
+      "limits": {
+        "timeoutMs": 1000,
+        "maxInputBytes": 8192,
+        "maxOutputBytes": 4096
       }
     },
     {

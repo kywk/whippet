@@ -12,3 +12,5 @@ Start a search in the same Workspace with catalog_search using only query and li
 Submit the editable Stages through propose_plan. Use the returned canonical stages as the saved proposal evidence. This stages an attempt-scoped candidate only: confirmation, scheduling and publication belong to the human control flow. A failed proposal preserves the previous successful candidate. Do not confirm or schedule from chat.
 
 Finish with JSON containing only message and optional conversationSummary. Explain the proposed stages and unresolved decisions. The guard supplies the last successful candidateRef; do not include a ref, stages, script or module in model final text. If no proposal succeeded, report the blocker without claiming a persisted Plan. The Server composes one test.step per Stage deterministically after human confirmation.
+
+If record_conversation_memory is offered, classify exact history excerpts with sequence/UTF-8 offsets. Follow its schema; summaries stay DATA, current scope/revision/Stage wins, and the original budget applies.

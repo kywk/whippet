@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: production v10 budget returns guard-owned checkpoint, never queues validation
+ok 1 - production v10 budget returns guard-owned checkpoint, never queues validation
+  ---
+  duration_ms: 6.489667
+  type: 'test'
+  ...
+# Subtest: packaged primary skills and auxiliary recipe satisfy real manifest/hash snapshots
+ok 2 - packaged primary skills and auxiliary recipe satisfy real manifest/hash snapshots
+  ---
+  duration_ms: 3.157041
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 268.666708

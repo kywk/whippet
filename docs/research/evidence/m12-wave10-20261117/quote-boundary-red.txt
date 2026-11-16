@@ -1,0 +1,27 @@
+TAP version 13
+# Subtest: unread, invented, inverted-role, invalid UTF-8-offset, unknown fields and drifting sources fail closed
+not ok 1 - unread, invented, inverted-role, invalid UTF-8-offset, unknown fields and drifting sources fail closed
+  ---
+  duration_ms: 1.862333
+  type: 'test'
+  location: '/Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/author/conversation-memory.test.js:42:1'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception (AuthorError).'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/author/conversation-memory.test.js:52:16)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.start (node:internal/test_runner/test:944:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 73.122875

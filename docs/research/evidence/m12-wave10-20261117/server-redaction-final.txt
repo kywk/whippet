@@ -1,0 +1,6 @@
+=== RUN   TestConversationMemoryPostgresWorkerPersistAndReadBack
+--- PASS: TestConversationMemoryPostgresWorkerPersistAndReadBack (0.44s)
+=== RUN   TestConversationMemorySnapshotGate
+--- PASS: TestConversationMemorySnapshotGate (0.01s)
+PASS
+ok  	github.com/whippet/whippet/services/server/internal/server	0.772s

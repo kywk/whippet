@@ -14,7 +14,8 @@
     "browser_snapshot",
     "browser_click",
     "browser_fill",
-    "browser_login"
+    "browser_login",
+    "record_conversation_memory"
   ],
   "budget": {
     "maxModelRequests": 8,

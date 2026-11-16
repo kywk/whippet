@@ -202,3 +202,29 @@ final僅接受既有普通Test輸出欄位，拒絕partial、自報proof／valid
 已驗證：保留已完成候選前段→拆分→兩段各自驗證與暫停→Compose；驗證失敗停止；併發／重送／CAS／注入拒絕／不可變額度；兩正式 Worker 引擎各在4／6／90000內完成合成流程；真候選 API 的 UI 儲存／重讀與409保留編輯。模型與自試為合成，不能當作付費模型、真 Playwright 或階段全套驗收。見 [Wave9交接](../docs/tracking/handoff/m12-wave9-20261116.md)。
 
 本波不實作自動語意拆解、失敗 Stage 的自動恢復、Module 跨 Run checkpoint、任意大候選分段編輯或一般長對話語意摘要。金額計價與跨獨立任務／Stage retry／整個 Plan／帳號的共用配額移至後續里程碑；M12 保留受控 continue 與拆分群組的原固定資源上限，既有獨立任務不被聲稱為全平台總額控制。
+
+## M12.1 Wave10：有界結構化對話記憶（registry 13.0）
+
+2026-11-17。新增 Worker 內部 `record_conversation_memory`，由同一次作者迴圈的模型在已讀凍結歷史中選取完整原句，分類為 `goal`、`constraint`、`decision`、`progress`、`evidence`。這是可核對來源的摘錄，不是自由改寫摘要，也沒有額外摘要模型請求或自動讀取。Server／Manager／Worker 必須一起打包新的 registry、四主 skill 的內容與 pins；歷史 Run 不重釘、不改 digest。沒有 DB migration、HTTP／WS／artifact 欄位變更，預設仍 builtin，固定基準未部署候選。
+
+### 能力與輸入
+
+只有完整 capability 快照、凍結 `history.maxSequence`、`read_conversation_history` 權限與可用 history client 同時存在時才開工具。適用 test-author、workspace-author、module-authoring、usecase-planner；摘要 skill、legacy 與 MCP 接單工具皆不開放。Server 不接受 caller 自行加入此權限；Manager 重新核對 registry 與 history gate。MCP 參考 Worker 維持原工具子集。
+
+工具只接受 `{facts:[{category,sequence,offsetBytes,text}]}`，每次1–12項，未知／缺欄拒絕。`sequence` 是既有十進位字串，`offsetBytes` 是訊息原文的 UTF-8 byte 位置；每項原文非空且最多512 bytes。模型不能提交來源 role、hash、scope、revision 或證據權威。Worker 逐項對照本 Run 已成功讀取且未經遮蔽改寫的頁面，拒絕未讀、超出 pin、改寫、錯誤位移或僅截取否定句一部分的內容。摘錄必須從訊息起點或句界開始，並在句界或完整訊息結尾停止；這是句界與原文一致性檢查，不能證明所有語意都已涵蓋。
+
+`goal`／`constraint`／`decision` 必須來自 user；assistant 的進度與證據引用仍標示 assistant，不能變成使用者確認或正式驗證。每次成功記錄合併既有事實，不允許後次呼叫刪除；同一事實重送不新增，單次重複與累計超過12項拒絕，原記憶保留。
+
+### 保存與壓縮
+
+Worker 以既有 `conversationSummary` 字串保存最多8192 UTF-8 bytes 的 JSON：`schemaVersion:1`、`kind:"whippet-conversation-memory"`、`dataOnly:true`、`validationEvidence:false`，以及實際 conversation／base revision／context revision／Stage、凍結 maxSequence、分類摘錄及來源頁。每個來源保留原 cursor、模型所見 `{items,nextCursor}` 原回應 SHA256、fragment 位置／長度、完整 user fragments 及 nextCursor。`coverage:"listed-pages-only"` 表示最後一次成功記錄時所列頁面；後來新讀的頁面不隱式更新已存摘要，需要原預算內再記錄。
+
+當前 Run 的壓縮副本在舊 history 結果加入已核對的分類摘錄與該頁完整 user fragments，即使模型未選取某條限制也保留。當前訊息、scope、revision、Stage、證據與最新完整工具結果沿原保護規則；工具 call/result、provider reasoning 項目不刪除。所有引用仍具原 cursor／hash，讀回消耗原工具與 history 額度；最新完整結果若與舊引用的指標及 bytes 完全相同，無須重複預留未來讀取，其他不同引用仍各自計數。
+
+每次記錄、壓縮使用與輸出前都重新套用既有機密守衛，新增辨識的秘密不能透過衍生摘要重現。遮蔽後 bytes 已變的歷史頁不作為記憶來源，避免錯誤宣稱原文 byte 位移／hash；既有歷史讀取功能仍可使用。若完整 user fragments 或記憶超量，拒絕記錄／停止容量流程，不裁掉限制來通過。
+
+### 預算、信任與範圍
+
+記錄工具照原工具執行入口扣額，包括失敗嘗試。history 每 attempt 最多4次、原每頁6片段／8192 bytes、總8模型／12工具／180000ms與單次 output 上限不變；受控 continue 或拆分 Run 仍用其已減少的分配，沒有額外呼叫、重試或補額。取消不回傳摘要 artifact 或執行後續候選。
+
+下次 Run 只收到既有背景 DATA 字串；目前 scope／revision／Stage 與正式證據優先。既有摘要字串不自動匯入本 Run 的已核對來源集合，若要再次建立來源摘錄需明確重讀。此切片不涵蓋任意長對話全量語意、跨 Run 自動合併、任意大候選編輯或 Module checkpoint。一般 Test 的真 Server／Postgres→Worker→保存→下輪原文讀回、兩引擎合成模型流程與拒絕案例見 [Wave10交接](../docs/tracking/handoff/m12-wave10-20261117.md)。

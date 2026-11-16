@@ -99,7 +99,7 @@ func validAuthorMetadataForMode(a *AuthorTask, script *string, mode authorValida
 	}
 	if workspaceAuthor(a) {
 		for _, tool := range *a.AllowedTools {
-			if !strings.HasPrefix(tool, "browser_") && tool != "read_conversation_history" && !(registry != nil && tool == "read_skill_reference") {
+			if !strings.HasPrefix(tool, "browser_") && tool != "read_conversation_history" && !(registry != nil && (tool == "read_skill_reference" || tool == "record_conversation_memory")) {
 				return invalid
 			}
 		}
@@ -116,12 +116,15 @@ func validAuthorMetadataForMode(a *AuthorTask, script *string, mode authorValida
 		}
 		if registry != nil {
 			// Only runtime-implemented capabilities can be advertised.
-			known = known || name == "read_skill_reference" || name == "read_author_snapshot" || platformTool(name)
+			known = known || name == "read_skill_reference" || name == "record_conversation_memory" || name == "read_author_snapshot" || platformTool(name)
 			registered := false
 			for _, tool := range registry.Tools {
 				registered = registered || tool.Name == name
 			}
 			known = known && registered
+		}
+		if name == "record_conversation_memory" && (registry == nil || a.History == nil || !historyAuthor(a) || !hasAllowedTool(a, "read_conversation_history")) {
+			return invalid
 		}
 		if !known || seen[name] || !allowedPlatformTool(a, name) {
 			return invalid

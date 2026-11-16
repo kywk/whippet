@@ -5,7 +5,7 @@ import { capabilitySnapshot, type CapabilitySnapshot } from "./manifest.js";
 import { validateWorkspaceSettings, type WorkspaceSettings } from "../workspace.js";
 import { createHash } from "node:crypto";
 import { validateWorkspaceContext, validateWorkspaceConfig, type WorkspaceContext, type WorkspaceConfig } from "../workspace-context.js";
-import { validSequence, type HistoryPin } from "./history.js";
+import { validSequence, hasHistory, type HistoryPin } from "./history.js";
 import { validRuntime, type AuthorRuntime } from "./runtime.js";
 
 export const EDIT_TOOLS = ["read_draft", "read_author_snapshot", "read_validation_report", "update_draft", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login", "request_validation", "read_conversation_history"] as const;
@@ -134,6 +134,7 @@ export function validateAuthorInput(value: unknown): AuthorInput {
   if (Array.isArray(a.allowedTools) && a.allowedTools.includes("read_author_snapshot") && !capability) throw new AuthorError("invalid_input");
   if (Object.hasOwn(a, "runtime") && (!capability || !validRuntime(a.runtime))) throw new AuthorError("invalid_input");
   if (capability && (capability.skills[0]!.id !== a.skillId || capability.skills[0]!.version !== a.skillVersion)) throw new AuthorError("invalid_input");
+  if (a.allowedTools?.includes("record_conversation_memory") && (!capability || !hasHistory(v))) throw new AuthorError("invalid_input");
   validatePlatform(v, !!capability);
   validateBatch(v);
   validateModuleSummary(v);
@@ -142,14 +143,14 @@ export function validateAuthorInput(value: unknown): AuthorInput {
     if (!["test-author", "acceptance-summary","workspace-author","module-authoring","usecase-planner"].includes(a.skillId ?? "") || a.skillVersion !== "1" || (!isWorkspaceAuthor(v)&&!uuid.test(a.editingSessionId ?? "")) ||
       !Number.isSafeInteger(a.contextRevision) || a.contextRevision! < 0 || a.baseRevision < 1 || !Object.hasOwn(a,"sourceVersion") || !Object.hasOwn(a,"conversationSummary") ||
       a.conversationSummary !== null && !boundedText(a.conversationSummary,8192) || !Array.isArray(a.allowedTools) || new Set(a.allowedTools).size !== a.allowedTools.length ||
-      a.allowedTools.some((name) => !(EDIT_TOOLS as readonly string[]).includes(name) && !(capability && (name === "read_skill_reference" || (PLATFORM_TOOLS as readonly string[]).includes(name))))) throw new AuthorError("invalid_input");
+      a.allowedTools.some((name) => !(EDIT_TOOLS as readonly string[]).includes(name) && !(capability && (name === "read_skill_reference" || name === "record_conversation_memory" || (PLATFORM_TOOLS as readonly string[]).includes(name))))) throw new AuthorError("invalid_input");
     const s = a.sourceVersion;
     if (s !== null && (!s || typeof s !== "object" || Array.isArray(s) || !uuid.test(s.id) ||
       Object.keys(s).some((k) => !["id","description","backgroundSummary"].includes(k)) ||
       s.description !== null && !boundedText(s.description,16384) || s.backgroundSummary !== null && !boundedText(s.backgroundSummary,8192))) throw new AuthorError("invalid_input");
     if(isWorkspaceAuthor(v)){
       if(v.script!==""||!v.workspaceId||v.testId!==null||!v.workspaceContext||v.workspaceContext.settingsRevision!==a.baseRevision||
-        a.editingSessionId!==null||s!==null||a.allowedTools.some((t)=>!t.startsWith('browser_')&&t!=="read_conversation_history"&&!(capability&&t==="read_skill_reference"))||a.validation!=null||a.validationEvidence!==undefined)throw new AuthorError("invalid_input");
+        a.editingSessionId!==null||s!==null||a.allowedTools.some((t)=>!t.startsWith('browser_')&&t!=="read_conversation_history"&&!(capability&&(t==="read_skill_reference"||t==="record_conversation_memory")))||a.validation!=null||a.validationEvidence!==undefined)throw new AuthorError("invalid_input");
     }
     if (isSummary(v)) {
       const e = a.validationEvidence;

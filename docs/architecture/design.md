@@ -203,6 +203,8 @@ M12引擎整合的設計與驗收要求（依Wave逐項實作）：
 
 2026-11-16 Wave9有界拆分：新增人工管理操作，將未嘗試的create Stage拆成兩個線性Stage，保留其他Stage狀態及固定驗證綁定。原Stage的模型／工具／作者時間額度預先分配，原8／12／180000拆成各4／6／90000，單次output不變；凍結policy及每子段唯一Run分配不可變。確認前不排任務；既有逐段確認／回收後續接／Compose／人工發佈門檻保留。父Stage原目標與binding上游契約留在子段DATA，超限停止。拆分子段不遞迴拆分或補額重試，Plan不允許整份覆寫抹除分配。精確範圍見[v12 Wave9](../../contracts/mvp-v12.md#m121-wave9有界-stage-拆分與保留進度續接)。
 
+2026-11-17 Wave10對話記憶：registry13.0新增Worker內部record_conversation_memory，僅在完整pins與凍結history能力成立時開給四主skill，不暴露於MCP接單。原迴圈模型選擇已讀完整原句並分類，Worker核對sequence／UTF-8位移／句界／來源role，保存原頁hash／cursor、當前revision／Stage及完整user片段；已選事實只能合併，不能刪除。摘要沿既有conversationSummary最多8192 bytes，下輪仍為DATA且需重讀才能建立新的已核對來源。壓縮保留該頁所有user片段與最新完整結果，其他assistant文字可按需讀回；若保護資料仍超量就停止。遮蔽改寫的頁面不能建立失準原文引用，使用前重新檢查秘密。工具與模型／時間額度不變，無額外摘要請求；真Server／Postgres保存及雙引擎合成流程通過，未宣稱全量語意涵蓋。精確界限見[v12 Wave10](../../contracts/mvp-v12.md#m121-wave10有界結構化對話記憶registry-130)。
+
 M12範圍收斂（2026-11-16，依本輪同意的推進建議）：供應商金額計價與跨獨立任務／Stage retry／全Plan／帳號的共用配額移至後續里程碑，不作M12完成門檻；與MVP原先不含完整配額系統一致。M12仍必須保證受控continue及Stage拆分不增加原資源上限；一般長對話語意摘要、任意大候選與Module跨Run checkpoint等未完成能力持續明列，不用放寬預算取代實作。
 
 ### MCP（M11）

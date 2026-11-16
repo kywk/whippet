@@ -9,7 +9,8 @@
     "read_usecase_draft",
     "read_plan",
     "propose_plan",
-    "read_conversation_history"
+    "read_conversation_history",
+    "record_conversation_memory"
   ],
   "budget": {
     "maxModelRequests": 8,

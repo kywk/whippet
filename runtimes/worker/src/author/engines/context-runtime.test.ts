@@ -101,10 +101,20 @@ test("both production engines compact frozen history, read it back through IPC a
 test("history quota exhaustion stops without an unrecoverable summary or hidden fifth read", async () => {
   for (const engine of ["builtin", "vercel"] as const) {
     const input = task(engine), source = history(input);
+    // Four distinct pages need future reads after the quota is exhausted.
+    // Repeated reads of one page are already fully present in the latest result
+    // and therefore do not exercise the unrecoverable-source condition.
+    const first = source.pages.get(null)!;
+    source.pages.clear();
+    for (let i = 0; i < 4; i++) {
+      const sequence = String(BigInt(pin) - BigInt(i));
+      source.pages.set(i === 0 ? null : `${sequence}:0`, { ...first, items: [{ ...first.items[0]!, sequence }], nextCursor: i < 3 ? `${BigInt(sequence) - 1n}:0` : null });
+    }
     let requests = 0;
     try {
       const out = await runAuthor(input, config, undefined, { history: source.client, fetcher: async () => {
-        return Response.json(envelope([call("read_conversation_history", `read-${++requests}`, { cursor: null })]));
+        const cursor = requests === 0 ? null : `${BigInt(pin) - BigInt(requests)}:0`;
+        return Response.json(envelope([call("read_conversation_history", `read-${++requests}`, { cursor })]));
       } }) as AuthorOutput;
       assert.equal(requests, 4); assert.equal(source.cursors.length, 4);
       assert.equal(out.partial?.usage?.modelRequests, 4); assert.equal(out.partial?.usage?.toolCalls, 4);

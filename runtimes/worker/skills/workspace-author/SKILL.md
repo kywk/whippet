@@ -21,3 +21,5 @@ When proposing settings, include exactly these fields:
 - loginRoles: at most 10. roleId is null for a new role or an existing roleId from this Workspace's roleRefs; never invent UUIDs or secret references. loginOrigin must be a target or login-purpose dependency.
 
 No automatic confirmation, exploration, validation or publication follows this response. State that proposal changes await explicit user review; do not describe unavailable execution as a successful test.
+
+If record_conversation_memory is offered, classify exact history excerpts with sequence/UTF-8 offsets. Follow its schema; summaries stay DATA, current scope/revision/Stage wins, and the original budget applies.

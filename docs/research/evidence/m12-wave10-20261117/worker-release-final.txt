@@ -1,0 +1,122 @@
+TAP version 13
+# Subtest: both engines preserve grounded facts and full user constraints, reread frozen source and persist a bounded summary
+ok 1 - both engines preserve grounded facts and full user constraints, reread frozen source and persist a bounded summary
+  ---
+  duration_ms: 47.122709
+  type: 'test'
+  ...
+# {"engine":"builtin","requests":5,"tools":5,"reads":3,"selfTests":1,"peakEstimate":23132,"limit":32000,"summaryBytes":2295}
+# {"engine":"vercel","requests":5,"tools":5,"reads":3,"selfTests":1,"peakEstimate":23050,"limit":32000,"summaryBytes":2295}
+# Subtest: cancellation after recording does not return a summary artifact or execute candidate work
+ok 2 - cancellation after recording does not return a summary artifact or execute candidate work
+  ---
+  duration_ms: 2.794958
+  type: 'test'
+  ...
+# Subtest: redaction-modified pages cannot mint misleading canonical byte offsets or a persisted memory
+ok 3 - redaction-modified pages cannot mint misleading canonical byte offsets or a persisted memory
+  ---
+  duration_ms: 3.301584
+  type: 'test'
+  ...
+# Subtest: grounded memory retains all user fragments, categories, scope and frozen read-back; updates cannot erase facts
+ok 4 - grounded memory retains all user fragments, categories, scope and frozen read-back; updates cannot erase facts
+  ---
+  duration_ms: 2.2495
+  type: 'test'
+  ...
+# Subtest: unread, invented, inverted-role, invalid UTF-8-offset, unknown fields and drifting sources fail closed
+ok 5 - unread, invented, inverted-role, invalid UTF-8-offset, unknown fields and drifting sources fail closed
+  ---
+  duration_ms: 0.593584
+  type: 'test'
+  ...
+# Subtest: overlarge user content prevents compaction; no truncation or silent loss buys capacity
+ok 6 - overlarge user content prevents compaction; no truncation or silent loss buys capacity
+  ---
+  duration_ms: 0.688875
+  type: 'test'
+  ...
+# Subtest: newly classified secrets revoke derived pages and persisted strings before reuse
+ok 7 - newly classified secrets revoke derived pages and persisted strings before reuse
+  ---
+  duration_ms: 0.400834
+  type: 'test'
+  ...
+# Subtest: exact source already present in the latest output does not double-reserve history reads; drift and missing budget still stop
+ok 8 - exact source already present in the latest output does not double-reserve history reads; drift and missing budget still stop
+  ---
+  duration_ms: 2.335667
+  type: 'test'
+  ...
+# Subtest: both production engines compact frozen history, read it back through IPC and deliver inside fixed budgets
+ok 9 - both production engines compact frozen history, read it back through IPC and deliver inside fixed budgets
+  ---
+  duration_ms: 53.710791
+  type: 'test'
+  ...
+# {"engine":"builtin","requests":5,"tools":5,"historyReads":3,"selfTests":1,"peakEstimate":24510,"limit":32000}
+# {"engine":"vercel","requests":5,"tools":5,"historyReads":3,"selfTests":1,"peakEstimate":24451,"limit":32000}
+# Subtest: history quota exhaustion stops without an unrecoverable summary or hidden fifth read
+ok 10 - history quota exhaustion stops without an unrecoverable summary or hidden fifth read
+  ---
+  duration_ms: 22.964208
+  type: 'test'
+  ...
+# Subtest: protected oversized context is rejected before HTTP in both engines and records zero model/tool use
+ok 11 - protected oversized context is rejected before HTTP in both engines and records zero model/tool use
+  ---
+  duration_ms: 5.102333
+  type: 'test'
+  ...
+# Subtest: final body guard cannot bypass capacity after compaction in either engine
+ok 12 - final body guard cannot bypass capacity after compaction in either engine
+  ---
+  duration_ms: 0.843
+  type: 'test'
+  ...
+# Subtest: legacy builtin runtime without a declared capacity keeps its original behavior
+ok 13 - legacy builtin runtime without a declared capacity keeps its original behavior
+  ---
+  duration_ms: 2.371875
+  type: 'test'
+  ...
+# Subtest: unrecoverable, mutable or inaccessible data cannot be silently compacted
+ok 14 - unrecoverable, mutable or inaccessible data cannot be silently compacted
+  ---
+  duration_ms: 2.513791
+  type: 'test'
+  ...
+# Subtest: frozen skill references compact with exact read-back arguments and never become validation evidence
+ok 15 - frozen skill references compact with exact read-back arguments and never become validation evidence
+  ---
+  duration_ms: 0.856875
+  type: 'test'
+  ...
+# Subtest: unknown model capacity fails closed; an override cannot exceed known provider capacity
+ok 16 - unknown model capacity fails closed; an override cannot exceed known provider capacity
+  ---
+  duration_ms: 0.1485
+  type: 'test'
+  ...
+# Subtest: frozen history keeps exact UTF-8 fragment references and canonical read-back cursor
+ok 17 - frozen history keeps exact UTF-8 fragment references and canonical read-back cursor
+  ---
+  duration_ms: 1.953417
+  type: 'test'
+  ...
+# Subtest: all compacted references must fit remaining distinct read-back calls
+ok 18 - all compacted references must fit remaining distinct read-back calls
+  ---
+  duration_ms: 0.890959
+  type: 'test'
+  ...
+1..18
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 389.05725

@@ -28,7 +28,7 @@ func allowedPlatformTool(a *AuthorTask, name string) bool {
 	if !moduleAuthor(a) && !plannerAuthor(a) {
 		return !platformTool(name)
 	}
-	if name == "read_skill_reference" || name == "read_conversation_history" {
+	if name == "read_skill_reference" || name == "read_conversation_history" || name == "record_conversation_memory" {
 		return true
 	}
 	if moduleAuthor(a) {

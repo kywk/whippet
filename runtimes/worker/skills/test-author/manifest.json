@@ -13,7 +13,8 @@
     "browser_fill",
     "browser_login",
     "request_validation",
-    "read_skill_reference"
+    "read_skill_reference",
+    "record_conversation_memory"
   ],
   "budget": {
     "maxModelRequests": 8,

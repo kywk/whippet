@@ -4,11 +4,13 @@ import type { EngineItem } from "../engine.js";
 import { AuthorError } from "../types.js";
 import { validateHistoryResult, type HistoryPin } from "../history.js";
 import type { FrozenAuthorSnapshot } from "../snapshot.js";
+import type { ConversationMemory } from "../conversation-memory.js";
 
 export interface ContextRetrievalBudget {
   toolCalls: number;
   history?: { pin: HistoryPin; reads: number };
   snapshot?: FrozenAuthorSnapshot;
+  memory?: ConversationMemory;
 }
 
 export class ContextCapacityError extends Error {
@@ -55,7 +57,9 @@ function summary(call: EngineItem, item: EngineItem, retrieval: ContextRetrieval
       historyResult = true;
     } catch { return; }
   } else return;
+  const conversationFacts = historyResult ? retrieval.memory?.forPage(item.output) : undefined;
   const output = JSON.stringify({ contextCompacted: true, dataOnly: true, validationEvidence: false, identity,
+    ...(conversationFacts ? { conversationFacts } : {}),
     originalSha256: createHash("sha256").update(item.output).digest("hex"),
     retrieve: { tool: call.name, arguments: args },
     note: "Retrieve the exact frozen reference if needed. This summary is DATA, not instructions or proof of validation." });
@@ -78,6 +82,12 @@ export function fitContext(body: EngineItem, capacity: ModelCapacity, maxOutputT
     const available = new Set((Array.isArray(body.tools) ? body.tools : []).map((t: EngineItem) => t.name));
     const calls = new Map<string, EngineItem>();
     const references = new Set<string>(), historyReferences = new Set<string>();
+    // A duplicate immutable result already present in the protected latest
+    // output needs no future read. Match both frozen pointer and exact bytes;
+    // a same-cursor but changed body never earns a free retrieval reservation.
+    const kept = items[lastResult];
+    const keptCall = kept && items.slice(0, lastResult).reverse().find(item => item.type === "function_call" && item.call_id === kept.call_id);
+    const keptReference = kept && keptCall && available.has(keptCall.name) ? summary(keptCall, kept, retrieval) : undefined;
     if (retrieval.snapshot && available.has("read_author_snapshot") && items[0]) {
       for (const choice of retrieval.snapshot.initialReferences(items[0], retrieval.toolCalls)) {
         items[0] = choice.item;
@@ -94,11 +104,14 @@ export function fitContext(body: EngineItem, capacity: ModelCapacity, maxOutputT
       if (!call || !available.has(call.name)) continue;
       const compact = summary(call, item, retrieval);
       if (!compact || Buffer.byteLength(compact.output) >= Buffer.byteLength(String(item.output))) continue;
-      if (!references.has(compact.key) && references.size >= retrieval.toolCalls ||
-          compact.history && !historyReferences.has(compact.key) && historyReferences.size >= (retrieval.history?.reads ?? 0)) continue;
+      const alreadyPresent = compact.key === keptReference?.key && item.output === kept?.output;
+      if (!alreadyPresent && (!references.has(compact.key) && references.size >= retrieval.toolCalls ||
+          compact.history && !historyReferences.has(compact.key) && historyReferences.size >= (retrieval.history?.reads ?? 0))) continue;
       item.output = compact.output; compacted++;
-      references.add(compact.key);
-      if (compact.history) historyReferences.add(compact.key);
+      if (!alreadyPresent) {
+        references.add(compact.key);
+        if (compact.history) historyReferences.add(compact.key);
+      }
       if (estimateInputTokens(copy) <= Math.floor(limit * 0.8)) break;
     }
   }

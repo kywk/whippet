@@ -18,6 +18,7 @@ import { loadAuthorSkill } from "./skill.js";
 import {BrowserScopeError} from "./scope.js";
 import {CredentialError,type KnownSecrets} from '../login/client.js';
 import { hasHistory, HistoryError, type HistoryClient } from "./history.js";
+import { ConversationMemory } from "./conversation-memory.js";
 
 export const AUTHOR_INSTRUCTIONS = [
   "You are Whippet's task agent. Follow the selected packaged skill; shared Playwright examples are reference, not permission to act.",
@@ -74,9 +75,16 @@ export async function runAuthor(
     }
     if (input.author.allowedTools?.some(name => !bundle!.defaultTools.has(name))) throw new AuthorError("invalid_input");
   }
-  const implementedTools = new Set<string>([...EDIT_TOOLS, ...(bundle ? ["read_skill_reference", ...(module || planner ? PLATFORM_TOOLS : [])] : [])]);
-  const allowedDefinitions = registry.tools.filter(tool => implementedTools.has(tool.name)).filter((tool) => tool.name !== "read_skill_reference" || !!bundle).filter((tool) => tool.name !== "read_author_snapshot" || !!capability && ["test-author", "module-authoring"].includes(input.author.skillId ?? "")).filter((tool) => tool.name === "read_conversation_history" ? hasHistory(input) && !!options.history : input.author.allowedTools === undefined ? tool.name!=='browser_login' : input.author.allowedTools.includes(tool.name));
+  const implementedTools = new Set<string>([...EDIT_TOOLS, ...(bundle ? ["read_skill_reference", "record_conversation_memory", ...(module || planner ? PLATFORM_TOOLS : [])] : [])]);
+  const allowedDefinitions = registry.tools.filter(tool => implementedTools.has(tool.name)).filter((tool) => tool.name !== "read_skill_reference" || !!bundle).filter((tool) => tool.name !== "read_author_snapshot" || !!capability && ["test-author", "module-authoring"].includes(input.author.skillId ?? "")).filter(tool => tool.name !== "record_conversation_memory" || !!capability && hasHistory(input) && !!options.history).filter((tool) => tool.name === "read_conversation_history" ? hasHistory(input) && !!options.history : input.author.allowedTools === undefined ? tool.name!=='browser_login' : input.author.allowedTools.includes(tool.name));
   const allowedTools = allowedDefinitions.map(modelTool);
+  const guardMemory = (value: unknown): void => {
+    noSecret(value, config);
+    if (options.secrets && JSON.stringify(options.secrets.clean(value)) !== JSON.stringify(value)) throw new AuthorError("sensitive_output");
+  };
+  const memory = allowedTools.some(tool => tool.name === "record_conversation_memory")
+    ? new ConversationMemory({ conversationId: input.author.conversationId, baseRevision: input.author.baseRevision,
+        contextRevision: input.author.contextRevision!, stageId: input.author.platform?.stageId ?? null }, input.author.history!, guardMemory) : undefined;
   const timeout = AbortSignal.timeout(Math.min(input.timeoutMs, capability?.budget.maxDurationMs ?? 900000));
   const signal = options.signal ? AbortSignal.any([timeout, options.signal]) : timeout;
   const fetcher = options.fetcher ?? globalThis.fetch;
@@ -136,7 +144,7 @@ export async function runAuthor(
       budget: { modelRequests: capability?.budget.maxModelRequests ?? (summary || workspace && allowedTools.length === 0 ? 1 : 8), toolExecutions: capability?.budget.maxToolCalls ?? 12, maxOutputTokens: capability?.budget.maxOutputTokens ?? 8192 },
       model: config, signal,
       capacity: availableModelCapacity(config),
-      snapshot,
+      snapshot, memory,
       ...(hasHistory(input) && options.history ? { history: input.author.history } : {}),
       ...(capability ? { maxRequestBytes: 64 * 1024 * 1024, maxToolOutputBytes: module || planner ? 25 * 1024 * 1024 : 13 * 1024 * 1024 } : {}),
       ...(options.moduleDiagnostics ? { onModelRequestFailure: recordModelFailure } : {}),
@@ -209,6 +217,7 @@ export async function runAuthor(
         if (typeof call.call_id !== "string" || !call.call_id || callsSeen.has(call.call_id) || typeof call.arguments !== "string" || typeof call.name !== "string") throw new AuthorError("invalid_response");
         callsSeen.add(call.call_id);
         let result: unknown;
+        let originalHistoryResult: string | undefined;
         const definition = allowedDefinitions.find(tool => tool.name === call.name);
         const toolSignal = capability && definition ? AbortSignal.any([signal, AbortSignal.timeout(definition.limits.timeoutMs)]) : signal;
         const safeToolName = allowedTools.some((tool) => tool.name === call.name) ? call.name : "unknown";
@@ -281,6 +290,11 @@ export async function runAuthor(
             const cursor = args.cursor === "null" ? null : args.cursor as string | null;
             const page = await withHeartbeat(options.history.read(cursor, toolSignal, call.call_id), `author:tool:${toolCount}:${safeToolName}:heartbeat`, toolSignal);
             result = { items: page.items, nextCursor: page.nextCursor };
+            originalHistoryResult = JSON.stringify(result);
+          }
+          else if (call.name === "record_conversation_memory") {
+            if (!memory) throw new AuthorError("tool_failed");
+            result = memory.record(args);
           }
           else if (call.name === "read_author_snapshot") {
             if (!snapshot) throw new AuthorError("tool_failed");
@@ -355,6 +369,12 @@ export async function runAuthor(
           noSecret(result, config);
           if (capability && definition) validateToolResult(definition, result);
           if (!capability && Buffer.byteLength(JSON.stringify(result)) > 3 * 1024 * 1024) throw new AuthorError("limit");
+          if (call.name === "read_conversation_history" && memory && JSON.stringify(result) === originalHistoryResult) {
+            const cursor = args.cursor === "null" ? null : args.cursor as string | null;
+            // Redaction changes canonical byte offsets/hash even on a complete
+            // message. Such pages cannot become grounded memory sources.
+            try { memory.observe(cursor, result); } catch (error) { if (error instanceof AuthorError) throw error; }
+          }
           toolStatus = "succeeded";
         } catch (error) {
           if (signal.aborted || error instanceof AuthorError && ["sensitive_output", "limit"].includes(error.code)) throw error;
@@ -431,6 +451,8 @@ export async function runAuthor(
         output.script = savedCheckpoint.script;
         output.partial!.checkpoint = { scriptHash: savedCheckpoint.scriptHash, selfTestPassed: true };
       }
+      const conversationSummary = memory?.summary();
+      if (conversationSummary) output.conversationSummary = conversationSummary;
       noSecret(output, config);
       serializeAuthorArtifact(output);
       return output;
@@ -464,6 +486,8 @@ export async function runAuthor(
     }
     if(options.secrets)result=options.secrets.clean(result);
     noSecret(result, config);
+    const groundedSummary = memory?.summary();
+    if (groundedSummary && !summary) (result as AuthorOutput).conversationSummary = groundedSummary;
     try{serializeAuthorArtifact(result,input.author.skillId);}catch(error){options.moduleDiagnostics?.failure('ARTIFACT_SERIALIZE_LIMIT');throw error;}
     return result;
   } catch (error) {

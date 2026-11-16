@@ -1,0 +1,6 @@
+=== RUN   TestConversationMemoryCapabilityAndProgress
+--- PASS: TestConversationMemoryCapabilityAndProgress (0.04s)
+=== RUN   TestV10RegistrySnapshotForwardingAndHash
+--- PASS: TestV10RegistrySnapshotForwardingAndHash (0.01s)
+PASS
+ok  	whippet/services/manager/internal/manager	0.186s

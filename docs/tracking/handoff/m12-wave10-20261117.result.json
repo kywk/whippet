@@ -1,0 +1,118 @@
+{
+  "date": "2026-11-17",
+  "timezone": "Asia/Taipei",
+  "recordedAt": "2026-11-17T02:53:37.596171+08:00",
+  "baseCommit": "ec10b5455c5df21b9ac6c71c6d00a8071ef3dd80",
+  "branch": "feat/agent-adapter",
+  "scope": "bounded source-grounded extractive conversation memory; unchanged budgets",
+  "registryVersion": "13.0",
+  "memory": {
+    "schemaVersion": 1,
+    "maxFacts": 12,
+    "maxFactUtf8Bytes": 512,
+    "maxSummaryUtf8Bytes": 8192,
+    "coverage": "listed-pages-only",
+    "dataOnly": true,
+    "validationEvidence": false,
+    "implicitHistoryReads": 0,
+    "extraSummaryModelRequests": 0,
+    "mcpExposed": false
+  },
+  "verification": {
+    "distinctTopLevelPassed": 25,
+    "workerMemoryAndContextPassed": 18,
+    "workerCompatibilityPassed": 2,
+    "serverPassed": 2,
+    "managerPassed": 2,
+    "mcpReferenceClientPassed": 1,
+    "finalFailures": 0,
+    "skipped": 0,
+    "paidModelRequests": 0,
+    "fullRegressionRun": false,
+    "livePlaywrightRun": false,
+    "uiRun": false,
+    "builds": {
+      "worker": "PASS",
+      "agentBridge": "PASS",
+      "serverGo1.23.12": "PASS",
+      "managerGo1.25.0": "PASS"
+    }
+  },
+  "representativeFlow": {
+    "modelRequestsPerEngine": 5,
+    "toolCallsPerEngine": 5,
+    "historyReadsPerEngine": 3,
+    "syntheticSelfTestsPerEngine": 1,
+    "summaryUtf8Bytes": 2295,
+    "inputEstimateLimit": 32000,
+    "peakInputEstimate": {
+      "builtin": 23132,
+      "vercel": 23050
+    },
+    "serverWorkerModelRequests": 3,
+    "serverWorkerHistoryReads": 1,
+    "historicalAuthorPayloadUnchanged": true,
+    "nextRunReadsSameFrozenPage": true
+  },
+  "budget": {
+    "maxModelRequests": 8,
+    "maxToolCalls": 12,
+    "maxDurationMs": 180000,
+    "historyReads": 4,
+    "maxOutputTokens": 8192,
+    "moduleMaxOutputTokens": 16384,
+    "continuationAndSplitAllocationsUnchanged": true
+  },
+  "baseline": {
+    "main": "576816622d988049d36453c7b3dabed9feeadd28",
+    "stateValid": true,
+    "managerIdentityValid": true,
+    "portsAllTrue": true,
+    "mcpPinsValid": true,
+    "mcpReady": true,
+    "candidateDeployed": false
+  },
+  "cleanup": {
+    "ownedTmpfsPostgresRemoved": true,
+    "ownedContainersRemaining": 0,
+    "ownedBaselineSourceCopyRemoved": true,
+    "retainedVolumesTouched": false
+  },
+  "remaining": [
+    "arbitrary-length complete semantic coverage",
+    "arbitrary large candidate editing",
+    "cross-Run Module checkpoints",
+    "formal engine comparison, second provider live check and M12.Z"
+  ],
+  "rawEvidenceNotes": {
+    "ec10b54-context-control.txt": "incomplete fixture ENOENT; not root-cause proof",
+    "ec10b54-context-complete-control.txt": "unmodified base, full fixture; valid reproduction",
+    "worker-final.txt": "intermediate failure retained; superseded by worker-release-final.txt"
+  },
+  "sha256": {
+    "baseline-status-final.json": "edb3f16770e1b70d60d09bc32210b7d66c65cc86231ee58a6f7b9f7c9535a5ab",
+    "bridge-final.txt": "2627e1b159a3273c93a77bea8e0cfe120a3c468911fd42fb7d30e4ae0f0cb9c7",
+    "bridge-release-final.txt": "e9540ee206f365a82bc041af8690533399846e97ac38df82fdaa41a695163ea6",
+    "context-capacity-red.txt": "9686b1a10363034621c150b35d72fe617f215236ea316dde50ff45c01c6884ba",
+    "ec10b54-context-complete-control.txt": "caf0d3e084c30527f68c0ba71ed09dee48adca77acb4c9322845b3c085b55b9a",
+    "ec10b54-context-control.txt": "71be62ad0ca834f098b9eb6baf6526c7db94a57adf9f4046104a88828038d485",
+    "manager-build-final.txt": "f2b66847b98c5db36fea5fc5f956e4fc81c8351f0a3e8eac24dc53262486917d",
+    "manager-final.txt": "b47aaf032a49a433b050f8106a192f589415cd3d45d73395a313346500df6102",
+    "manager-release-final.txt": "32f099fc05374f8c6f311ae2480790b89de66efa5e51f4c49c3223f6b750f75c",
+    "quote-boundary-red.txt": "b64b41b7587a2a364ca0e738ecd2f09b736ca8e0b463f45d93f4773325398a8e",
+    "server-final.txt": "19c194ff6eb12224aeb1fffd9e5d88f89ee9323ebace08fc790e706166ff22c2",
+    "server-redaction-final.txt": "a827b6ce304c70e25c2efc4c86d5984f0c33d11fc2946f500a7922d42040b46f",
+    "server-release-final.txt": "0340595815523238dfbb5deb35e076397c8f575978b149fa98d0d993b5a37cec",
+    "worker-compat-final.txt": "dece15ca3fe5ea4abd4038bdd72edbb8d1731c64c4ef4de94c05406bbce74761",
+    "worker-final.txt": "59f3b583410f001a43ac2bec2ec4a1b33da317c31427aafe8646a2741511206f",
+    "worker-fixed-final.txt": "168eb2cbd88a0412538a7308c4fa4e8bfcfe427ceb9c4f6acab99e28b2fba4ec",
+    "worker-redaction-final.txt": "4b405acd1eb055158988ee628776fa9c40a4acd938e42f30cbbd7dc7e873e674",
+    "worker-release-compat.txt": "e0c0ae56e1efda2a4b15fe83e59bf488889df4b565e78b987ac33feff2569a38",
+    "worker-release-final.txt": "9f991a48139e6bf29073aeb28e1f20785be2ff9d0c4eb2b010fcdc9ef7bae554"
+  },
+  "secretScan": {
+    "files": 53,
+    "findings": 0,
+    "valuesPrinted": false
+  }
+}

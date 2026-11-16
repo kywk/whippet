@@ -3,3 +3,7 @@
 docs/research/evidence/m12-adapter-wave1-20261116/worker-image-final.txt whitespace=-blank-at-eol,-blank-at-eof
 docs/research/evidence/m12-adapter-wave1-20261116/worker-image-profile-final.txt whitespace=-blank-at-eol,-blank-at-eof
 docs/research/evidence/m12-adapter-wave1-20261116/worker-typecheck.txt whitespace=-blank-at-eol,-blank-at-eof
+# Wave10 assertion receipts retain the original Node diagnostic whitespace.
+docs/research/evidence/m12-wave10-20261117/context-capacity-red.txt whitespace=-blank-at-eol,-blank-at-eof
+docs/research/evidence/m12-wave10-20261117/ec10b54-context-complete-control.txt whitespace=-blank-at-eol,-blank-at-eof
+docs/research/evidence/m12-wave10-20261117/worker-final.txt whitespace=-blank-at-eol,-blank-at-eof

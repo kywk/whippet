@@ -1,0 +1,28 @@
+TAP version 13
+# Subtest: both production engines compact frozen history, read it back through IPC and deliver inside fixed budgets
+not ok 1 - both production engines compact frozen history, read it back through IPC and deliver inside fixed budgets
+  ---
+  duration_ms: 1.668209
+  type: 'test'
+  location: '/Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/.wave10-baseline/runtimes/worker/dist/author/engines/context-runtime.test.js:54:1'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/.wave10-baseline/contracts/testdata/agent-runtime.json'"
+  code: 'ENOENT'
+  stack: |-
+    readFileSync (node:fs:440:20)
+    task (file:///Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/.wave10-baseline/runtimes/worker/dist/author/engines/context-runtime.test.js:23:32)
+    TestContext.<anonymous> (file:///Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/.wave10-baseline/runtimes/worker/dist/author/engines/context-runtime.test.js:56:23)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.start (node:internal/test_runner/test:944:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 263.011292
