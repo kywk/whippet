@@ -1,0 +1,68 @@
+=== RUN   TestM12RepresentativeUseCaseFlow
+    m12_usecase_live_test.go:241: starting seed-summary live
+{"event":"author:model:1:started"}
+{"event":"author:model:1:succeeded"}
+    m12_usecase_live_test.go:241: completed seed-summary
+    m12_usecase_live_test.go:258: starting planner live
+{"event":"author:model:1:started"}
+{"event":"author:model:1:succeeded"}
+{"event":"author:tool:1:read_usecase_draft:started"}
+{"event":"author:tool:1:read_usecase_draft:succeeded"}
+{"event":"author:model:2:started"}
+(node:58492) Warning: AI SDK Warning System: To turn off warning logging, set the AI_SDK_LOG_WARNINGS global to false.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:58492) Warning: AI SDK Warning (openai.responses / muse-spark-1.3-contributor): The feature "JSON Schema propertyNames" is used in a compatibility mode. OpenAI does not support JSON Schema propertyNames. It was removed before sending the schema, so OpenAI will not enforce property-name constraints.
+{"event":"author:model:2:succeeded"}
+{"event":"author:tool:2:read_plan:started"}
+{"event":"author:tool:2:read_plan:succeeded"}
+{"event":"author:model:3:started"}
+(node:58492) Warning: AI SDK Warning (openai.responses / muse-spark-1.3-contributor): The feature "JSON Schema propertyNames" is used in a compatibility mode. OpenAI does not support JSON Schema propertyNames. It was removed before sending the schema, so OpenAI will not enforce property-name constraints.
+{"event":"author:model:3:succeeded"}
+{"event":"author:tool:3:read_skill_reference:started"}
+{"event":"author:tool:3:read_skill_reference:succeeded"}
+{"event":"author:model:4:started"}
+(node:58492) Warning: AI SDK Warning (openai.responses / muse-spark-1.3-contributor): The feature "JSON Schema propertyNames" is used in a compatibility mode. OpenAI does not support JSON Schema propertyNames. It was removed before sending the schema, so OpenAI will not enforce property-name constraints.
+{"event":"author:model:4:succeeded"}
+{"event":"author:tool:4:catalog_search:started"}
+{"event":"author:tool:4:catalog_search:succeeded"}
+{"event":"author:model:5:started"}
+(node:58492) Warning: AI SDK Warning (openai.responses / muse-spark-1.3-contributor): The feature "JSON Schema propertyNames" is used in a compatibility mode. OpenAI does not support JSON Schema propertyNames. It was removed before sending the schema, so OpenAI will not enforce property-name constraints.
+{"event":"author:model:5:succeeded"}
+{"event":"author:tool:5:catalog_search:started"}
+{"event":"author:tool:5:catalog_search:succeeded"}
+{"event":"author:model:6:started"}
+(node:58492) Warning: AI SDK Warning (openai.responses / muse-spark-1.3-contributor): The feature "JSON Schema propertyNames" is used in a compatibility mode. OpenAI does not support JSON Schema propertyNames. It was removed before sending the schema, so OpenAI will not enforce property-name constraints.
+{"event":"author:model:6:succeeded"}
+{"event":"author:tool:6:propose_plan:started"}
+{"event":"author:tool:6:propose_plan:succeeded"}
+(node:58492) Warning: AI SDK Warning (openai.responses / muse-spark-1.3-contributor): The feature "JSON Schema propertyNames" is used in a compatibility mode. OpenAI does not support JSON Schema propertyNames. It was removed before sending the schema, so OpenAI will not enforce property-name constraints.
+    m12_usecase_live_test.go:258: completed planner
+    m12_usecase_live_test.go:276: starting module live
+{"event":"author:model:1:started"}
+{"event":"author:model:1:succeeded"}
+{"event":"author:tool:1:read_skill_reference:started"}
+{"event":"author:tool:1:read_skill_reference:succeeded"}
+{"event":"author:model:2:started"}
+{"event":"author:model:2:succeeded"}
+{"event":"author:tool:2:read_module_draft:started"}
+{"event":"author:tool:2:read_module_draft:succeeded"}
+{"event":"author:model:3:started"}
+{"event":"author:model:3:succeeded"}
+{"event":"author:tool:3:stage_module_candidate_part:started"}
+{"event":"author:tool:3:stage_module_candidate_part:succeeded"}
+{"event":"author:model:4:started"}
+{"event":"author:model:4:succeeded"}
+{"event":"author:tool:4:stage_module_candidate_part:started"}
+{"event":"author:tool:4:stage_module_candidate_part:succeeded"}
+{"event":"author:model:5:started"}
+{"event":"author:model:5:succeeded"}
+{"event":"author:tool:5:commit_module_candidate:started"}
+{"event":"author:tool:5:commit_module_candidate:succeeded"}
+    m12_usecase_live_test.go:276: completed module
+    m12_usecase_live_test.go:312: starting summary live
+{"event":"author:model:1:started"}
+{"event":"author:model:1:succeeded"}
+    m12_usecase_live_test.go:312: completed summary
+    m12_usecase_live_test.go:348: representative Use Case complete: real Plan/Stage/Compose, keyless Docker Playwright, batch summary and atomic publication
+--- PASS: TestM12RepresentativeUseCaseFlow (64.40s)
+PASS

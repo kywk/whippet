@@ -1,0 +1,8 @@
+{
+  "opencodeControlledKey": true,
+  "openaiKeyInParent": false,
+  "anthropicKeyInParent": false,
+  "secondProfileInParent": false,
+  "secondProviderLive": "UNVERIFIED",
+  "reason": "No second authorized provider/model profile and key; model/effort not changed"
+}

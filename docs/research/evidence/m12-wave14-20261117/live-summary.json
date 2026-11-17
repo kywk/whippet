@@ -1,0 +1,183 @@
+{
+  "baseCommit": "740415b4fcf22bc953d170ab9ac171738db6a5bd",
+  "productionEngine": "vercel",
+  "imageReference": "sha256:d9526cd4ee5e8535808f44270c44a492bce8997650a14fff9b652d8d677e7775",
+  "registryVersion": "16.0",
+  "model": "muse-spark-1.3-contributor",
+  "effort": "xhigh",
+  "paidTotals": {
+    "modelRequests": 12,
+    "toolCalls": 11,
+    "inputTokens": 54727,
+    "outputTokens": 4493,
+    "authorLatencyMsSum": 54011
+  },
+  "roles": [
+    {
+      "role": "planner",
+      "budget": {
+        "maxModelRequests": 8,
+        "maxToolCalls": 12,
+        "maxDurationMs": 180000
+      },
+      "metrics": {
+        "modelRequests": 6,
+        "toolCalls": 6,
+        "inputTokens": 22833,
+        "outputTokens": 1073,
+        "tokenUsageObserved": true,
+        "selfTests": []
+      },
+      "latencyMs": 17200
+    },
+    {
+      "role": "module",
+      "budget": {
+        "maxModelRequests": 8,
+        "maxToolCalls": 12,
+        "maxDurationMs": 180000,
+        "maxOutputTokens": 16384
+      },
+      "metrics": {
+        "modelRequests": 5,
+        "toolCalls": 5,
+        "inputTokens": 29144,
+        "outputTokens": 1832,
+        "tokenUsageObserved": true,
+        "selfTests": [
+          {
+            "passed": true,
+            "scriptSha256": "8913f26d934fbf2558c8ee66291cb7aff86d1f8bf190ae76ec41accae581ff3b",
+            "bodySha256": "fa8701cc411c67ae8c23c22b54ee2dea382543c1047518e601bf472a965868cf"
+          }
+        ]
+      },
+      "latencyMs": 20168
+    },
+    {
+      "role": "summary",
+      "budget": {
+        "maxModelRequests": 1,
+        "maxToolCalls": 0,
+        "maxDurationMs": 180000
+      },
+      "metrics": {
+        "modelRequests": 1,
+        "toolCalls": 0,
+        "inputTokens": 2750,
+        "outputTokens": 1588,
+        "tokenUsageObserved": true,
+        "selfTests": []
+      },
+      "latencyMs": 16643
+    }
+  ],
+  "liveResult": {
+    "engine": "vercel",
+    "formalPlaywrightRuns": 3,
+    "golden14UnassistedProven": false,
+    "independentAcceptancePassed": true,
+    "mode": "live",
+    "paidModels": true,
+    "publishedModuleCount": 1,
+    "roles": [
+      {
+        "role": "seed-summary",
+        "runId": "f190943b-6344-49dd-ab98-8b343780a292",
+        "status": "PASS",
+        "synthetic": true
+      },
+      {
+        "role": "planner",
+        "runId": "ae3bed25-55de-49fd-b809-16a0c66549f3",
+        "status": "PASS",
+        "synthetic": false
+      },
+      {
+        "role": "module",
+        "runId": "9eefa863-5178-47dc-b493-08c37eb201cb",
+        "status": "PASS",
+        "synthetic": false
+      },
+      {
+        "role": "summary",
+        "runId": "ba612b85-b593-49c3-8eaa-83f4dbe1f227",
+        "status": "PASS",
+        "synthetic": false
+      }
+    ],
+    "scriptedControlConfirmation": true,
+    "status": "PASS",
+    "uiPublication": true
+  },
+  "UI": {
+    "status": "PASS",
+    "realAPI": true,
+    "realPlanPanel": true,
+    "scriptedUserConfirmation": true,
+    "publishedVersionId": "bc441ed0-a034-4737-b330-16882f4f4565",
+    "publishedModuleCount": 1,
+    "posts": 1,
+    "pageErrors": 0,
+    "httpErrors": 0,
+    "smallViewportFits": true,
+    "paidModelRequests": 0
+  },
+  "formalReports": [
+    {
+      "kind": "seed-validation",
+      "stats": {
+        "startTime": "2026-11-17T02:04:32.532Z",
+        "duration": 763.686,
+        "expected": 1,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "errors": 0,
+      "resultsSha256": "c49758ead7cbdf716d1c264e7780cfb9b6232010432a93a174e7adb2add64e56"
+    },
+    {
+      "kind": "module-validation",
+      "stats": {
+        "startTime": "2026-11-17T02:05:12.230Z",
+        "duration": 717.5649999999999,
+        "expected": 1,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "errors": 0,
+      "resultsSha256": "35e7e3a15a7cd905efb57251653eb431c117e564fd8d150bc24f16ebade0b83f"
+    },
+    {
+      "kind": "usecase-validation",
+      "stats": {
+        "startTime": "2026-11-17T02:05:14.804Z",
+        "duration": 709.384,
+        "expected": 1,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "errors": 0,
+      "resultsSha256": "9bcac5b7f04ba095d456faae8dc528aa152efde0035c50084c47232c352cebd5"
+    }
+  ],
+  "independentAcceptance": {
+    "kind": "independent-acceptance",
+    "stats": {
+      "startTime": "2026-11-17T02:05:13.536Z",
+      "duration": 693.462,
+      "expected": 1,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "errors": 0,
+    "resultsSha256": "06a37dadc2583d9b2993dde8c1598c1eacacd3cdda07c93ccdd683c0bac3cb9e"
+  },
+  "defaultDecision": "builtin retained; Vercel opt-in",
+  "original14SameBatchUnassisted": "UNPROVEN",
+  "secondProvider": "UNVERIFIED"
+}

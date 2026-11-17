@@ -1,0 +1,38 @@
+{
+  "baseCommit": "740415b4fcf22bc953d170ab9ac171738db6a5bd",
+  "registryVersion": "16.0",
+  "scope": "evidence-backed comparison and one real production Vercel UseCase",
+  "live": "PASS",
+  "syntheticRehearsal": "PASS after seed proof fixture correction",
+  "paidModels": 12,
+  "paidTools": 11,
+  "inputTokens": 54727,
+  "outputTokens": 4493,
+  "formalDockerPlaywright": {
+    "seed": "1/0/0/0",
+    "module": "1/0/0/0",
+    "usecase": "1/0/0/0"
+  },
+  "independentAcceptance": "1/0/0/0",
+  "UI": "PASS, one scripted checkbox/POST200, no page/HTTP errors, 390px fits",
+  "manager": "actual assignment/artifact parser bridge; complete WS/TLS lifecycle reused from prior evidence",
+  "modelRetries": 0,
+  "defaultEngine": "builtin",
+  "secondProvider": "UNVERIFIED: second authorized profile/key unavailable",
+  "original14SameBatchUnassisted": "UNPROVEN",
+  "retainedRawRoot": "/Users/kywk/.local/share/whippet/evidence/m12-wave14-20261117",
+  "rawFiles": 142,
+  "rawBytes": 16730230,
+  "rawIndexSha256": "5e9f7caa579cbf785a56b717f8ec226b2919d81f8a5097621cb9b6d9fef408f1",
+  "baselineHealthy": true,
+  "candidateDeployed": false,
+  "ownedPGRemoved": true,
+  "retainedVolumesTouched": false,
+  "secretScan": {
+    "files": 69,
+    "knownValueHits": 0,
+    "genericPatternHits": 0,
+    "valuesPrinted": false
+  },
+  "remaining": "M12.Z consolidated gate record and minimal release verification; no merge/tag"
+}

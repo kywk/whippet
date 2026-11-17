@@ -1,0 +1,170 @@
+{
+  "config": {
+    "argv": [
+      "/usr/bin/node",
+      "/opt/whippet/worker/node_modules/@playwright/test/cli.js",
+      "test",
+      "--config",
+      "/tmp/whippet-playwright-IXDpnx/playwright.config.cjs"
+    ],
+    "configFile": "/tmp/whippet-playwright-IXDpnx/playwright.config.cjs",
+    "rootDir": "/tmp/whippet-playwright-IXDpnx",
+    "failOnFlakyTests": false,
+    "forbidOnly": true,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 60000,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/work/output/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/tmp/whippet-playwright-IXDpnx",
+        "testIgnore": [],
+        "testMatch": [
+          "tests/test.spec.ts"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "filteredProjects": [
+      {
+        "grep": {},
+        "grepInvert": null,
+        "outputDir": "/work/output/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "name": "chromium",
+        "testDir": "/tmp/whippet-playwright-IXDpnx",
+        "snapshotDir": "/tmp/whippet-playwright-IXDpnx",
+        "testIgnore": [],
+        "testMatch": "tests/test.spec.ts",
+        "timeout": 60000,
+        "use": {
+          "browserName": "chromium",
+          "headless": true,
+          "trace": "retain-on-failure",
+          "screenshot": "only-on-failure",
+          "video": "off"
+        },
+        "dependencies": [],
+        "ignoreSnapshots": false,
+        "__projectId": "chromium"
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "/opt/whippet/worker/dist/reporter.js",
+        {
+          "summaryPath": "/tmp/whippet-playwright-IXDpnx/runtime-summary.json"
+        }
+      ],
+      [
+        "html",
+        {
+          "outputFolder": "/work/output/html",
+          "open": "never",
+          "attachmentsBaseURL": "data/",
+          "noCopyPrompt": true
+        }
+      ],
+      [
+        "json",
+        {
+          "outputFile": "/work/output/results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "default",
+    "updateSourceMethod": "patch",
+    "version": "1.64.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "tests/test.spec.ts",
+      "file": "tests/test.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "case",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 157,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "Stage 1: prepare",
+                      "duration": 7
+                    },
+                    {
+                      "title": "Stage 2: verify",
+                      "duration": 65
+                    }
+                  ],
+                  "startTime": "2026-11-17T02:01:52.725Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e0e5c6321cedaeb39e74-7076d879210611216363",
+          "file": "tests/test.spec.ts",
+          "line": 1,
+          "column": 87
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-11-17T02:01:52.430Z",
+    "duration": 814.4660000000001,
+    "expected": 1,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

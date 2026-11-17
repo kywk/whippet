@@ -15,3 +15,5 @@ docs/research/evidence/m12-wave11-20261117/ui-layout-red.txt whitespace=-blank-a
 docs/research/evidence/m12-wave11-20261117/worker-checkpoint-first.txt whitespace=-blank-at-eol,-blank-at-eof
 docs/research/evidence/m12-wave11-20261117/worker-final2.txt whitespace=-blank-at-eol,-blank-at-eof
 docs/research/evidence/m12-wave11-20261117/worker-release-final.txt whitespace=-blank-at-eol,-blank-at-eof
+# Wave14 build receipt retains original BuildKit whitespace and SHA.
+docs/research/evidence/m12-wave14-20261117/worker-image-build.txt whitespace=-blank-at-eol,-blank-at-eof
