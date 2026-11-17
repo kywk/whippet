@@ -192,23 +192,8 @@ func (p *Postgres) ContinueAuthor(ctx context.Context, sourceID, sessionID strin
 	if standaloneModule(input) {
 		// Fresh authorization may narrow access, but a continuation cannot silently
 		// switch pins, model, credentials revision, scope or execution routing.
-		var same bool
-		err = tx.QueryRowContext(ctx, `SELECT s.workspace_context IS NOT DISTINCT FROM n.workspace_context
- AND s.workspace_settings IS NOT DISTINCT FROM n.workspace_settings
- AND s.authorization_revision IS NOT DISTINCT FROM n.authorization_revision
- AND s.scope_proposal_id IS NOT DISTINCT FROM n.scope_proposal_id
- AND s.author_engine=n.author_engine
- AND s.author_payload->'skills'=n.author_payload->'skills'
- AND s.author_payload->'model'=n.author_payload->'model'
- AND s.author_payload->'runtime' IS NOT DISTINCT FROM n.author_payload->'runtime'
- AND s.author_payload->'toolRegistryVersion'=n.author_payload->'toolRegistryVersion'
- AND s.author_payload->'toolRegistrySha256'=n.author_payload->'toolRegistrySha256'
- FROM runs s JOIN runs n ON n.id=$2 WHERE s.id=$1`, sourceID, submission.Run.ID).Scan(&same)
-		if err != nil {
+		if err = sameModuleContinuationSnapshot(ctx, tx, sourceID, submission.Run.ID); err != nil {
 			return AuthorSubmission{}, err
-		}
-		if !same {
-			return AuthorSubmission{}, ErrConflict
 		}
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO author_continuations(source_run_id,run_id,editing_session_id,revision) VALUES($1,$2,$3,$4)`, sourceID, submission.Run.ID, sessionID, revision); err != nil {

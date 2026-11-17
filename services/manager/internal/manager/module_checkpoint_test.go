@@ -19,7 +19,13 @@ func TestModuleCheckpointArtifactGuards(t *testing.T) {
 	if !validPlatformArtifact(raw, a) {
 		t.Fatal("valid Module partial rejected")
 	}
-	for _, name := range []string{"hash", "harness", "slug", "no-usage", "over-budget", "validation", "duplicate", "null", "plan", "old-pin"} {
+	paired := *a
+	paired.Platform, _ = json.Marshal(map[string]any{"planId": "11111111-1111-4111-8111-111111111111", "stageId": "s", "module": module})
+	if !validPlatformArtifact(raw, &paired) {
+		t.Fatal("bound Stage checkpoint rejected")
+	}
+
+	for _, name := range []string{"hash", "harness", "slug", "no-usage", "over-budget", "validation", "duplicate", "null", "incomplete-plan", "old-pin"} {
 		t.Run(name, func(t *testing.T) {
 			var fields map[string]any
 			if json.Unmarshal(raw, &fields) != nil {
@@ -44,8 +50,8 @@ func TestModuleCheckpointArtifactGuards(t *testing.T) {
 				fields["requestValidation"] = true
 			case "null":
 				fields["partial"] = nil
-			case "plan":
-				v.Platform = json.RawMessage(`{"planId":"11111111-1111-4111-8111-111111111111","stageId":"s","module":{}}`)
+			case "incomplete-plan":
+				v.Platform, _ = json.Marshal(map[string]any{"planId": "11111111-1111-4111-8111-111111111111", "stageId": nil, "module": module})
 			case "old-pin":
 				old := "13.0"
 				v.ToolRegistryVersion = &old

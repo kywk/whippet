@@ -1,0 +1,43 @@
+=== RUN   TestPlanCheckpointPostgresSplitOneSlotContinuation
+=== RUN   TestPlanCheckpointPostgresSplitOneSlotContinuation/builtin
+    plan_continue_postgres_test.go:82: state conflict
+=== RUN   TestPlanCheckpointPostgresSplitOneSlotContinuation/vercel
+    plan_continue_postgres_test.go:82: state conflict
+--- FAIL: TestPlanCheckpointPostgresSplitOneSlotContinuation (0.51s)
+    --- FAIL: TestPlanCheckpointPostgresSplitOneSlotContinuation/builtin (0.29s)
+    --- FAIL: TestPlanCheckpointPostgresSplitOneSlotContinuation/vercel (0.22s)
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/request-cas
+    plan_continue_postgres_test.go:159: state conflict
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/module-revision
+    plan_continue_postgres_test.go:159: state conflict
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/module-context
+    plan_continue_postgres_test.go:159: state conflict
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/usecase-context
+    plan_continue_postgres_test.go:159: state conflict
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/authorization
+    plan_continue_postgres_test.go:159: state conflict
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/binding
+    plan_continue_postgres_test.go:159: state conflict
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/prefix
+    plan_continue_postgres_test.go:159: state conflict
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/cancel
+    plan_continue_postgres_test.go:159: state conflict
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/budget
+    plan_continue_postgres_test.go:159: state conflict
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/unconfirmed
+    plan_continue_postgres_test.go:159: state conflict
+--- FAIL: TestPlanCheckpointPostgresRejectsDriftAndExhaustion (2.26s)
+    --- FAIL: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/request-cas (0.22s)
+    --- FAIL: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/module-revision (0.22s)
+    --- FAIL: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/module-context (0.21s)
+    --- FAIL: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/usecase-context (0.24s)
+    --- FAIL: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/authorization (0.23s)
+    --- FAIL: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/binding (0.24s)
+    --- FAIL: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/prefix (0.23s)
+    --- FAIL: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/cancel (0.23s)
+    --- FAIL: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/budget (0.22s)
+    --- FAIL: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/unconfirmed (0.22s)
+FAIL
+FAIL	github.com/whippet/whippet/services/server/internal/server	3.121s
+FAIL

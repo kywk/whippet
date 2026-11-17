@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "15.0",
+  "version": "16.0",
   "tools": [
     {
       "name": "read_conversation_history",
@@ -1039,7 +1039,7 @@
     },
     {
       "name": "edit_module_candidate",
-      "description": "Apply at most 16 exact UTF-8 byte edits to the current frozen or staged Module parts, then self-test the complete candidate. Both current SHA256 values and stagingRevision must match. Offsets refer to the original version, edits cannot overlap; unchanged bytes/assertions are preserved. Never guess omitted source. Full parts remain <=2MiB; inserted text totals <=8192 bytes and entire tool input <=8192 bytes. Only a passing candidate can be delivered. Optional nextStep pauses a standalone Module only; Plan Stage calls omit it. No publishing or extra budget.",
+      "description": "Apply at most 16 exact UTF-8 byte edits to the current frozen or staged Module parts, then self-test the complete candidate. Both current SHA256 values and stagingRevision must match. Offsets refer to the original version, edits cannot overlap; unchanged bytes/assertions are preserved. Never guess omitted source. Full parts remain <=2MiB; inserted text totals <=8192 bytes and entire tool input <=8192 bytes. Only a passing candidate can be delivered. Optional nextStep saves a complete passing but unfinished candidate and pauses for human continuation, including a bound Plan Stage. No publishing or extra budget.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1177,7 +1177,7 @@
     },
     {
       "name": "commit_module_candidate",
-      "description": "After both script and harness have been staged in this attempt, self-test them together with the supplied complete metadata. Use the current stagingRevision. Only a passing full candidate replaces the verified checkpoint; failure preserves the previous passing candidate. Does not publish. For a standalone Module only, optional nextStep explicitly saves a passing but unfinished candidate and pauses for human continuation; no formal validation is queued. Plan Stage calls must omit nextStep. Original shared budget applies.",
+      "description": "After both script and harness have been staged in this attempt, self-test them together with the supplied complete metadata. Use the current stagingRevision. Only a passing full candidate replaces the verified checkpoint; failure preserves the previous passing candidate. Does not publish. Optional nextStep explicitly saves a passing but unfinished candidate and pauses for human continuation, including a bound Plan Stage; no formal validation is queued. Original shared budget applies.",
       "inputSchema": {
         "type": "object",
         "properties": {

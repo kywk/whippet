@@ -69,16 +69,18 @@ test('both engines pause a verified standalone Module and complete a second Run 
   }
 });
 
-test('Plan stages cannot request a standalone checkpoint and failed self-tests cannot mint one', async () => {
-  for (const mode of ['plan', 'failed'] as const) {
-    const v = input('builtin'); if (mode === 'plan') { v.author.platform!.planId = id; v.author.platform!.stageId = 'stage'; }
-    let requests = 0, tests = 0;
-    await assert.rejects(runAuthor(v, config(v), { verifyDraft: async () => { tests++; return { passed: false, summary: 'synthetic failure' }; } } as any, { fetcher: async () => {
-      const item = sequence(true)[requests++];
-      return Response.json(envelope(item ? [call(item[0], `t-${requests}`, item[1])] : [{type:'message',role:'assistant',content:[{type:'output_text',text:'{"message":"未保存"}'}]}]));
-    } }), e => e instanceof AuthorError && e.code === 'invalid_response');
-    assert.equal(tests, mode === 'plan' ? 0 : 1);
+test('both engines save a bound Stage checkpoint; failed self-tests still cannot mint one', async () => {
+  for (const engine of ['builtin','vercel'] as const) {
+    const v=input(engine);v.author.platform!.planId=id;v.author.platform!.stageId='stage';let requests=0,tests=0;
+    const out=await runAuthor(v,config(v),{verifyDraft:async()=>{tests++;return {passed:true,summary:'synthetic'};}} as any,{fetcher:async()=>{
+      const item=sequence(true)[requests++];assert.ok(item);return Response.json(envelope([call(item[0],`t-${requests}`,item[1])]));
+    }}) as AuthorOutput;
+    assert.equal(out.partial?.reason,'checkpoint_saved');assert.equal(out.requestValidation,false);assert.equal(tests,1);assert.equal(requests,3);
   }
+  const v=input('builtin');let requests=0,tests=0;
+  await assert.rejects(runAuthor(v,config(v),{verifyDraft:async()=>{tests++;return {passed:false,summary:'synthetic failure'};}} as any,{fetcher:async()=>{
+    const item=sequence(true)[requests++];return Response.json(envelope(item?[call(item[0],`t-${requests}`,item[1])]:[{type:'message',role:'assistant',content:[{type:'output_text',text:'{"message":"未保存"}'}]}]));
+  }}),e=>e instanceof AuthorError&&e.code==='invalid_response');assert.equal(tests,1);
 });
 
 test('cancellation and newly discovered secrets discard a Module checkpoint before artifact output', async () => {

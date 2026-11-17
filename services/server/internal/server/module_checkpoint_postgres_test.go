@@ -123,7 +123,7 @@ func TestModuleCheckpointPostgresRealSelfTests(t *testing.T) {
 				if json.Unmarshal(raw, &result) != nil || !result.ExpectedFailure || result.CheckpointCreated {
 					t.Fatal("failed self-test receipt")
 				}
-				if err = f.p.Complete(f.ctx, "module-checkpoint", f.a.ID, f.a.AttemptID, Result{Status: "failed"}); err != nil {
+				if err = f.p.Complete(f.ctx, f.a.ManagerID, f.a.ID, f.a.AttemptID, Result{Status: "failed"}); err != nil {
 					t.Fatal(err)
 				}
 				after, err := f.p.EditingSession(f.ctx, f.item.ID, f.session.ID)
@@ -144,7 +144,7 @@ func (f moduleCheckpointFixture) finish(t *testing.T, raw []byte, status string)
 	if err = f.p.SaveArtifact(f.ctx, artifact); err != nil {
 		t.Fatal(err)
 	}
-	if err = f.p.Complete(f.ctx, "module-checkpoint", f.a.ID, f.a.AttemptID, Result{Status: status}); err != nil {
+	if err = f.p.Complete(f.ctx, f.a.ManagerID, f.a.ID, f.a.AttemptID, Result{Status: status}); err != nil {
 		t.Fatal(err)
 	}
 	r, err := f.p.Run(f.ctx, f.a.ID)

@@ -119,7 +119,7 @@ func (c authorChainBudget) constrain(input *AuthorInput) error {
 	if slices.Contains(input.AllowedTools, "edit_module_candidate") && slices.Contains(input.AllowedTools, "read_module_candidate_part") && slices.Contains(input.AllowedTools, "commit_module_candidate") {
 		minimum = 1
 	}
-	if standaloneModule(*input) && (b.MaxModelRequests < minimum || b.MaxToolCalls < minimum) {
+	if moduleCheckpointAuthor(*input) && (b.MaxModelRequests < minimum || b.MaxToolCalls < minimum) {
 		return ErrContinuationBudget
 	}
 	output := min(effectiveOutputTokens(&b), effectiveOutputTokens(&c.Limit))
@@ -149,7 +149,7 @@ func readAuthorChainBudget(ctx context.Context, tx *sql.Tx, source string) (auth
 }
 
 func saveAuthorChainBudget(ctx context.Context, tx *sql.Tx, runID string, input AuthorInput, chain *authorChainBudget) error {
-	if input.SkillID != "test-author" && !standaloneModule(input) {
+	if input.SkillID != "test-author" && !moduleCheckpointAuthor(input) {
 		return nil
 	}
 	if chain == nil {

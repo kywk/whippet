@@ -1,0 +1,7 @@
+# github.com/whippet/whippet/services/server/internal/server [github.com/whippet/whippet/services/server/internal/server.test]
+internal/server/plan_continue_postgres_test.go:6:2: "encoding/json" imported and not used
+internal/server/plan_continue_postgres_test.go:45:35: cannot use a.TestID (variable of type *string) as string value in argument to p.EditingSession
+internal/server/plan_continue_postgres_test.go:49:62: cannot use a.TestID (variable of type *string) as string value in struct literal
+internal/server/plan_continue_postgres_test.go:49:113: cannot use ms (variable of type *EditingSession) as EditingSession value in struct literal
+FAIL	github.com/whippet/whippet/services/server/internal/server [build failed]
+FAIL

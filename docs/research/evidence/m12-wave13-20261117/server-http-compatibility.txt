@@ -1,0 +1,8 @@
+=== RUN   TestPlanCheckpointPostgresHTTP
+    plan_continue_postgres_test.go:274: invalid body 200
+--- FAIL: TestPlanCheckpointPostgresHTTP (0.67s)
+=== RUN   TestStageSplitPostgresFailureAndStrictInput
+--- PASS: TestStageSplitPostgresFailureAndStrictInput (0.21s)
+FAIL
+FAIL	github.com/whippet/whippet/services/server/internal/server	1.253s
+FAIL

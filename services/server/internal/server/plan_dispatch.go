@@ -128,6 +128,9 @@ func (p *Postgres) enqueuePlanModuleAuthor(ctx context.Context, tx *sql.Tx, plan
 	if err != nil {
 		return Run{}, err
 	}
+	if err = savePlanStageBinding(ctx, tx, plan, stage, d.TestID, run.ID); err != nil {
+		return Run{}, err
+	}
 	if split {
 		if _, err = tx.ExecContext(ctx, `INSERT INTO plan_stage_split_runs(plan_id,stage_id,run_id) VALUES($1,$2,$3)`, plan.ID, stage.ID, run.ID); err != nil {
 			return Run{}, err

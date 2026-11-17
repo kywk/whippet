@@ -1,0 +1,8 @@
+=== RUN   TestPlanCheckpointPostgresSplitOneSlotContinuation
+=== RUN   TestPlanCheckpointPostgresSplitOneSlotContinuation/builtin
+=== RUN   TestPlanCheckpointPostgresSplitOneSlotContinuation/vercel
+--- PASS: TestPlanCheckpointPostgresSplitOneSlotContinuation (4.55s)
+    --- PASS: TestPlanCheckpointPostgresSplitOneSlotContinuation/builtin (3.62s)
+    --- PASS: TestPlanCheckpointPostgresSplitOneSlotContinuation/vercel (0.94s)
+PASS
+ok  	github.com/whippet/whippet/services/server/internal/server	4.885s

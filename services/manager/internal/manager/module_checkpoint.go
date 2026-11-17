@@ -33,7 +33,7 @@ func validModulePartialArtifact(partial json.RawMessage, a *AuthorTask, script s
 		PlanID  *string `json:"planId"`
 		StageID *string `json:"stageId"`
 	}
-	if json.Unmarshal(a.Platform, &scope) != nil || scope.PlanID != nil || scope.StageID != nil {
+	if json.Unmarshal(a.Platform, &scope) != nil || (scope.PlanID == nil) != (scope.StageID == nil) || scope.PlanID != nil && (!uuidPattern.MatchString(*scope.PlanID) || !boundedAuthorText(*scope.StageID, 64, true)) {
 		return false
 	}
 	if _, ok := uniqueBudgetFields(partial); !ok {

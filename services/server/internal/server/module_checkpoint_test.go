@@ -23,7 +23,18 @@ func TestModuleCheckpointArtifactGuards(t *testing.T) {
 	if _, err := decodeModuleAuthorOutput(raw, input, registry); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"hash", "harness", "metadata", "no-checkpoint", "no-usage", "over-budget", "validation", "unknown", "duplicate", "null", "plan", "old-pin"} {
+	paired := input
+	platform := *input.Platform
+	planID := NewID()
+	stageID := "s"
+	platform.PlanID = &planID
+	platform.StageID = &stageID
+	paired.Platform = &platform
+	if _, err := decodeModuleAuthorOutput(raw, paired, registry); err != nil {
+		t.Fatal("bound Stage checkpoint rejected", err)
+	}
+
+	for _, name := range []string{"hash", "harness", "metadata", "no-checkpoint", "no-usage", "over-budget", "validation", "unknown", "duplicate", "null", "incomplete-plan", "old-pin"} {
 		t.Run(name, func(t *testing.T) {
 			var out moduleAuthorOutput
 			if json.Unmarshal(raw, &out) != nil {
@@ -45,12 +56,13 @@ func TestModuleCheckpointArtifactGuards(t *testing.T) {
 				out.Partial.Usage.ModelRequests = 9
 			case "validation":
 				*out.RequestValidation = true
-			case "plan":
+			case "incomplete-plan":
 				p := *input.Platform
 				id := NewID()
 				stage := "s"
 				p.PlanID = &id
-				p.StageID = &stage
+				p.StageID = nil
+				_ = stage
 				v.Platform = &p
 			case "old-pin":
 				v.ToolRegistryVersion = "13.0"

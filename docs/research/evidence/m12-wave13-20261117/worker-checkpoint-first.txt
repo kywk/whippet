@@ -1,0 +1,36 @@
+TAP version 13
+# Subtest: both engines pause a verified standalone Module and complete a second Run within the original allocation
+ok 1 - both engines pause a verified standalone Module and complete a second Run within the original allocation
+  ---
+  duration_ms: 45.179291
+  type: 'test'
+  ...
+# {"engine":"builtin","totalRequests":6,"totalTests":2,"firstUsage":{"modelRequests":3,"toolCalls":3,"durationMs":8},"maxRequests":8,"maxTools":12}
+# {"engine":"vercel","totalRequests":6,"totalTests":2,"firstUsage":{"modelRequests":3,"toolCalls":3,"durationMs":23},"maxRequests":8,"maxTools":12}
+# Subtest: both engines save a bound Stage checkpoint; failed self-tests still cannot mint one
+ok 2 - both engines save a bound Stage checkpoint; failed self-tests still cannot mint one
+  ---
+  duration_ms: 13.198959
+  type: 'test'
+  ...
+# Subtest: cancellation and newly discovered secrets discard a Module checkpoint before artifact output
+ok 3 - cancellation and newly discovered secrets discard a Module checkpoint before artifact output
+  ---
+  duration_ms: 5.420792
+  type: 'test'
+  ...
+# Subtest: truncated commit arguments never execute or promote staged parts to a Module checkpoint
+ok 4 - truncated commit arguments never execute or promote staged parts to a Module checkpoint
+  ---
+  duration_ms: 6.185667
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 366.067167

@@ -288,3 +288,25 @@ Server 原子寫入完整 Module 草稿的新 revision、清除舊正式驗證�
 成功編輯直接完成（或依Wave11的獨立Module nextStep明確保存partial），不需要額外模型收尾或legacy雙staging。Server只對同時固定edit／read／commit能力的獨立Module，允許餘額1模型／1工具的continue；沒有新能力的legacy路線仍至少3／3。這是實際呼叫數降低，不重設用量、不補額。真Server→Worker→Manager parser→保存／回收→continue以實際7模型／7工具的首Run測試，次Run只分配1模型／5工具，使用1／1完成；正式驗證仍僅於完成並回收後排程一次。
 
 本波不開放Plan Stage nextStep；任意大候選或任意大小patch亦不在此有界介面內。精確結果與保留的中間失敗見[Wave12交接](../docs/tracking/handoff/m12-wave12-20261117.md)。
+
+## M12.1 Wave13：Plan Stage checkpoint／人工續接（registry 16.0）
+
+`module-authoring` 的 `edit_module_candidate`／`commit_module_candidate` 選填nextStep現在可用於已綁定Plan Stage；完整候選、Module hash、實際receipt及原自試／機密／取消守衛沿Wave11／12，不接受provider半份args或MCP自報partial。Stage的partial同樣requestValidation=false，不產生plan_module_candidates或module_validation_requests。
+
+Server只在成功Run**實際回收後**，把Plan設為stopped、保留Stage.status=authoring、記下applied draft revision並顯示等待人工續接；沒有自動模型重試。原Stage失敗或無可信候選仍維持失敗停止。
+
+人工呼叫 `POST /api/plans/{id}/stages/{stageId}/continue`：
+
+```json
+{"planRevision":6,"sourceRunId":"來源UUID","moduleRevision":2,"confirmed":true}
+```
+
+只接受這四個非null欄位；4096-byte JSON上限，重複／未知欄位拒絕。Server於原子交易核對：Workspace權限；Plan CAS、原UseCase編輯週期／revision／context、checkpoint暫停原因；Stage綁定／source／完整候選雙hash／Module編輯週期與context；成功、無cancel且已回收；沒有其他執行中或未回收任務。所有前段仍ready且原正式證據有效，後段仍pending。取消已暫停Plan後不得續接。
+
+migration029記錄不可變的根Run Plan綁定（完整ready前段、後段、目前Stage輸入／Module ID／decomposition、父基底與context、執行邊界）與續接request／result。新Run重用來源runtime、skill／registry pins、model、scope／設定與授權revision／proposal、內部執行路由及原工具上限；任何漂移回滾。nextStep只追加DATA，保留原Stage及父拆分契約，超過原12則／32000字元即拒絕，不截掉原目標。
+
+沿migration027共用鏈：最多三筆Run（含首筆），子Run只取原剩餘模型／工具／時間，output上限不變。未拆分Stage維持原8／12／180000／16384；兩段拆分各4／6／90000／16384，包含其所有continue，不重新進applyStageSplit、不新增或修改plan_stage_split_runs根分配。全平台金額／跨獨立重試或全Plan總額依原範圍延後，這裡不宣稱涵蓋。
+
+成功只更新當前Stage.authorRunId與Plan revision／running；前段／後段／邊界保持。相同source及完整request並行或重送只產生一個子Run，回傳已保存的Plan receipt；不同body拒絕，UI再GET取得現況，不把舊receipt當最新狀態。最後完成的Module才走原正式驗證；Stage及整批發佈門檻不變。
+
+PlanPanel顯示候選nextStep與人工續接按鈕，409／未知寫入結果須重新載入，不自動更新CAS或重送；可明確停止已暫停Plan。沒有取消／崩潰時的隱式checkpoint或任意大小產物。[Wave13交接](../docs/tracking/handoff/m12-wave13-20261117.md)記錄真Worker／Manager／PG／Chrome／UI結果與限制。

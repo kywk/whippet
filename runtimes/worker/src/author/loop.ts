@@ -109,7 +109,7 @@ export async function runAuthor(
   const moduleEditing = !!moduleCandidates && ["read_module_candidate_part","edit_module_candidate","commit_module_candidate"].every(name=>allowedTools.some(tool=>tool.name===name));
   let moduleCheckpoint: {script:string;module:ModuleMetadata} | undefined;
   let moduleNextStep: string | undefined;
-  const canCheckpointModule = module && !!capability && input.author.platform!.planId === null && allowedTools.some(tool => tool.name === "commit_module_candidate");
+  const canCheckpointModule = module && !!capability && allowedTools.some(tool => tool.name === "commit_module_candidate");
   let planRef: string | undefined;
   let candidateMessage: string | undefined;
   let candidateNextStep: string | undefined;

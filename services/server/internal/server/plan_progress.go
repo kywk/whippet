@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 )
 
@@ -67,7 +68,8 @@ func (p *Postgres) advancePlanInTx(ctx context.Context, tx *sql.Tx, plan *Plan, 
 			}
 			var status string
 			var released bool
-			if err := tx.QueryRowContext(ctx, `SELECT status,slot_released FROM runs WHERE id=$1`, *stage.AuthorRunID).Scan(&status, &released); err != nil {
+			var partialRaw []byte
+			if err := tx.QueryRowContext(ctx, `SELECT status,slot_released,author_partial FROM runs WHERE id=$1`, *stage.AuthorRunID).Scan(&status, &released, &partialRaw); err != nil {
 				return err
 			}
 			if !Terminal(status) {
@@ -79,6 +81,14 @@ func (p *Postgres) advancePlanInTx(ctx context.Context, tx *sql.Tx, plan *Plan, 
 			}
 			if !released {
 				return nil
+			}
+			if len(partialRaw) > 0 {
+				var partial AuthorPartial
+				if json.Unmarshal(partialRaw, &partial) != nil || partial.Reason != "checkpoint_saved" || partial.Checkpoint == nil || partial.Checkpoint.ModuleHash == nil || partial.AppliedRevision == nil {
+					return stop("Module checkpoint unavailable")
+				}
+				stage.DraftRevision = partial.AppliedRevision
+				return stop(stageCheckpointPause)
 			}
 			var candidate string
 			var revision int

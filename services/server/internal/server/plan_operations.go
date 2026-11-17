@@ -127,7 +127,7 @@ func (p *Postgres) CancelPlan(ctx context.Context, id string, revision int) (*Pl
 	if prior != nil {
 		return prior, tx.Commit()
 	}
-	if plan.Revision != revision || plan.Status == "done" || plan.Status == "stopped" {
+	if plan.Revision != revision || plan.Status == "done" || plan.Status == "stopped" && stringValue(plan.Error) != stageCheckpointPause {
 		return nil, ErrConflict
 	}
 	runs := []string{}

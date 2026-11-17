@@ -79,7 +79,8 @@ export function PlanPanel({ api, testId, session, draft, runs, authorEngine, blo
     return () => { controller.abort(); clearTimeout(timer); sequence.current++; };
   }, [reload]);
 
-  const editable = !plan || plan.status === 'draft' || plan.status === 'stopped';
+  const checkpointPaused = plan?.status === 'stopped' && plan.error === 'Module 候選已保存，等待人工續接' && plan.stages.some(stage => stage.status === 'authoring');
+  const editable = !plan || plan.status === 'draft' || plan.status === 'stopped' && !checkpointPaused;
   const disabled = blocked || pending || loading || !fresh || conflict;
   const confirmationKey = plan && summary ? JSON.stringify({ plan, summary }) : '';
   const publishReady = !summaryError && batchPublishReady(plan, summary);
@@ -105,6 +106,22 @@ export function PlanPanel({ api, testId, session, draft, runs, authorEngine, blo
     } catch (cause) {
       if (!controller.signal.aborted) { setConflict(true); setFresh(false); setError(`${errorMessage(cause)} 重試結果需重新確認；不會自動重送或更新 CAS。`); }
       throw cause;
+    } finally { lock.current = false; if (!controller.signal.aborted) setPending(false); }
+  }
+
+  async function continueStage(stageId: string, run: Run) {
+    if (lock.current || disabled || editor || splitEditor || !plan || !api.continuePlanStage || !api.getPlan || !run.authorPartial?.appliedRevision) return;
+    lock.current = true; sequence.current++; setPending(true); setFresh(false); setError(undefined); setNote(undefined);
+    const controller = new AbortController(); mutationController.current = controller;
+    try {
+      const receipt = await api.continuePlanStage(plan.id, stageId, {planRevision: plan.revision, sourceRunId: run.id, moduleRevision: run.authorPartial.appliedRevision, confirmed: true}, controller.signal);
+      if (receipt.testId !== testId || receipt.editingSessionId !== session.id) throw new Error('續接回應所屬範圍不符。');
+      const current = await api.getPlan(testId, session.id, controller.signal);
+      if (controller.signal.aborted) return;
+      setPlan(current); setFresh(true); setActiveStageRun(undefined);
+      setNote('已接受 Stage 續接；沿用已保存候選與原剩餘額度，不重跑前段。'); onRefresh();
+    } catch (cause) {
+      if (!controller.signal.aborted) { setConflict(true); setFresh(false); setError(`${errorMessage(cause)} 請重新載入並檢視；不會自動重送或替換 CAS，額度不足時需縮小工作範圍。`); }
     } finally { lock.current = false; if (!controller.signal.aborted) setPending(false); }
   }
 
@@ -178,22 +195,23 @@ export function PlanPanel({ api, testId, session, draft, runs, authorEngine, blo
     {error ? <Notice message={error} /> : null}{note ? <p role="status">{note}</p> : null}
     {loading && plan === undefined ? <p role="status">正在讀取 Plan…</p> : null}
     {plan === null && fresh ? <p>此編輯週期尚無 Plan。可由對話提出計畫，或手動編輯 Stage。</p> : null}
-    {plan ? <><p className="identifier">{planLabels[plan.status]} · Plan r{plan.revision} · 草稿基底 r{plan.baseRevision}</p>
+    {plan ? <><p className="identifier">{checkpointPaused ? '已暫停，等待候選續接' : planLabels[plan.status]} · Plan r{plan.revision} · 草稿基底 r{plan.baseRevision}</p>
       <p>{plan.stages.filter((stage) => stage.status === 'ready').length} / {plan.stages.length} 階段就緒</p>
-      {plan.error ? <Notice message={plan.error} /> : null}
-      <ol className="platform-stages">{plan.stages.map((stage, index) => { const authorRun = stage.authorRunId === activeStageRun?.id ? activeStageRun : runs.find((run) => run.id === stage.authorRunId && run.kind === 'author'); return <li key={stage.id}><div className="platform-heading"><h4>{index + 1}. {stage.title} · {actionLabels[stage.action]}</h4><strong>{stageLabels[stage.status]}</strong></div>
+      {plan.error ? checkpointPaused ? <p role="status">{plan.error}</p> : <Notice message={plan.error} /> : null}
+      <ol className="platform-stages">{plan.stages.map((stage, index) => { const authorRun = stage.authorRunId === activeStageRun?.id ? activeStageRun : runs.find((run) => run.id === stage.authorRunId && run.kind === 'author'); return <li key={stage.id}><div className="platform-heading"><h4>{index + 1}. {stage.title} · {actionLabels[stage.action]}</h4><strong>{checkpointPaused && stage.status === 'authoring' ? '等待人工續接' : stageLabels[stage.status]}</strong></div>
         <p className="identifier">{stage.module?.slug ?? stage.moduleTestId ?? '待建立 Module'} · 固定來源版本 {stage.moduleVersionId ?? '新建'}</p>
         {stage.candidateVersionId ? <p className="identifier">候選版本 {stage.candidateVersionId}（尚未發佈）</p> : null}
         <details><summary>參數與回傳綁定</summary><pre className="plan-json">{JSON.stringify(stage.args, null, 2)}</pre><p>綁定別名：{stage.bind || '未設定'}</p></details>
         {stage.authorRunId ? <p className="identifier">Author Run {stage.authorRunId}{authorRun ? <> · <AuthorEngineStatus engine={authorRun.authorEngine ?? 'builtin'} status={authorRun.status} /></> : null}</p> : null}{stage.validationRunId ? <p className="identifier">Validation Run {stage.validationRunId}</p> : null}
         {stage.error ? <Notice message={stage.error} /> : null}
+        {checkpointPaused && stage.status === 'authoring' && authorRun?.authorPartial?.reason === 'checkpoint_saved' ? <section className="platform-card" aria-label="Stage 候選續接"><h5>候選已保存，等待人工續接</h5><p className="summary-content">{authorRun.authorPartial.nextStep}</p><p>沿原 Stage、已驗前段與父契約繼續，只使用原剩餘額度；自試通過尚未代表正式驗證或可發佈。</p><button className="button primary" disabled={disabled || Boolean(editor) || Boolean(splitEditor) || !api.continuePlanStage} onClick={() => { void continueStage(stage.id, authorRun); }}>確認續接此 Stage</button><p>Server 已在回收後暫停；送出時仍會重新核對。</p></section> : null}
         {stage.decomposition ? <p>由 {stage.decomposition.sourceStageId} 拆分 · 第 {stage.decomposition.ordinal}／{stage.decomposition.count} 段 · 上限 {stage.decomposition.budget.maxModelRequests} 次模型請求、{stage.decomposition.budget.maxToolCalls} 次工具、{stage.decomposition.budget.maxDurationMs / 1000} 秒。</p> : null}
         {['draft', 'confirmed'].includes(plan.status) && stage.status === 'pending' && stage.action === 'create' && !stage.decomposition ? <button className="button secondary" disabled={disabled || Boolean(editor) || Boolean(splitEditor) || !api.splitPlanStage} onClick={() => setSplitEditor({ plan, index })}>拆分此 Stage 並保留進度</button> : null}
         {(stage.status === 'failed' || (stage.status === 'ready' && index === plan.stages.length - 1 && plan.status === 'stopped' && Boolean(plan.validationRunId))) && stage.action !== 'reuse' ? <StageRetryForm api={api} planId={plan.id} stageId={stage.id} planRevision={plan.revision} blocked={disabled || Boolean(editor) || Boolean(splitEditor) || plan.status !== 'stopped'} onSubmit={retryStage} /> : null}</li>; })}</ol>
       <div className="action-row"><button className="button primary" disabled={disabled || Boolean(editor) || Boolean(splitEditor) || !['draft', 'confirmed'].includes(plan.status) || plan.baseRevision !== draft.revision || !api.confirmPlan} onClick={() => { void mutate('confirm'); }}>{plan.status === 'confirmed' ? '確認並繼續剩餘 Stage' : '確認 Plan 並開始'}</button>
         <button className="button secondary" disabled={disabled || Boolean(editor) || Boolean(splitEditor) || !['draft', 'confirmed'].includes(plan.status) || plan.baseRevision !== draft.revision || !api.confirmPlan || !plan.stages.some(stage => stage.status === 'pending')} onClick={() => { void mutate('confirm', plan.stages.find(stage => stage.status === 'pending')?.id); }}>確認並只執行下一個 Stage</button>
-        <button className="button secondary" disabled={disabled || Boolean(editor) || Boolean(splitEditor) || ['done', 'stopped'].includes(plan.status) || !api.cancelPlan} onClick={() => { void mutate('cancel'); }}>停止 Plan</button></div>
-      {plan.status === 'stopped' ? <p className="inline-hint">已停止，不會自動重跑。失敗 Stage 或整體驗證失敗後的末段可先查詢人工修復資格；修訂整份 Plan 則須儲存後重新確認。</p> : null}
+        <button className="button secondary" disabled={disabled || Boolean(editor) || Boolean(splitEditor) || (plan.status === 'done' || plan.status === 'stopped' && !checkpointPaused) || !api.cancelPlan} onClick={() => { void mutate('cancel'); }}>停止 Plan</button></div>
+      {plan.status === 'stopped' ? <p className="inline-hint">{checkpointPaused ? '候選已保存，不會自動續接；可確認沿原剩餘額度繼續，或停止 Plan。' : '已停止，不會自動重跑。失敗 Stage 或整體驗證失敗後的末段可先查詢人工修復資格；修訂整份 Plan 則須儲存後重新確認。'}</p> : null}
       {plan.status === 'draft' && plan.baseRevision !== draft.revision ? <p className="blocked-hint">Plan 基底與目前草稿不同，請重新載入草稿並修訂計畫。</p> : null}
     </> : null}
     {splitEditor ? <StageSplitForm plan={splitEditor.plan} index={splitEditor.index} disabled={disabled} onSubmit={splitStage} onClose={() => setSplitEditor(undefined)} /> : null}

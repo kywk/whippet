@@ -1,0 +1,132 @@
+{
+  "date": "2026-11-17",
+  "timezone": "Asia/Taipei",
+  "recordedAt": "2026-11-17T09:34:44.276732+08:00",
+  "baseCommit": "e762b610a70c78bc78df15100dd55c53dc618a55",
+  "branch": "feat/agent-adapter",
+  "registryVersion": "16.0",
+  "migration": "029_plan_stage_continuations.sql",
+  "scope": "explicit Plan Stage checkpoint and manual continuation within its original allocation",
+  "verification": {
+    "mode": "targeted checks plus failure-specific reruns; not a full-regression batch",
+    "distinctTopLevelPassed": 16,
+    "workerCheckpoint": 4,
+    "workerPins": 1,
+    "managerParser": 1,
+    "managerWorkerBridgeDistinct": 1,
+    "serverDistinct": 9,
+    "latestFailures": 0,
+    "latestSkipped": 0,
+    "paidModelRequests": 0,
+    "actualPlaywrightPassed": 2,
+    "expectedPlaywrightAssertionFailure": 1,
+    "actualUIFlowsPassed": 1,
+    "uiCountedInServer": true,
+    "formalValidationScheduled": true,
+    "formalValidationExecuted": false,
+    "builds": {
+      "worker": "PASS",
+      "web": "PASS",
+      "serverGo1.23.12": "PASS",
+      "managerGo1.25.0": "PASS"
+    },
+    "serverResults": {
+      "moduleParser": "server-parser-first.txt",
+      "splitOneSlot": "server-plan-manager-fixed.txt",
+      "rejections13AndThreeRunCap": "server-plan-rejections-ui-first.txt",
+      "httpUiAndLegacyRetry": "server-http-ui-final.txt",
+      "legacySplit": "server-http-compatibility.txt (this target PASS; HTTP in same file failed and was fixed)",
+      "failedRealRepair": "server-real-failure-final.txt"
+    }
+  },
+  "continuation": {
+    "engines": [
+      "builtin",
+      "vercel"
+    ],
+    "splitRootBudget": {
+      "models": 4,
+      "tools": 6,
+      "durationMs": 90000,
+      "outputTokens": 16384
+    },
+    "firstActualModels": 3,
+    "firstActualTools": 3,
+    "childModelAllocation": 1,
+    "childToolAllocation": 3,
+    "childActualModels": 1,
+    "childActualTools": 1,
+    "maxRuns": 3,
+    "concurrentRequests": 2,
+    "allocatedChildren": 1,
+    "rootSplitReservations": 1,
+    "sourcePayloadUnchanged": true,
+    "prefixSuffixBoundaryPreserved": true,
+    "workspacePreferenceDoesNotChangeSourceRuntimeOrRouting": true
+  },
+  "baseline": {
+    "main": "576816622d988049d36453c7b3dabed9feeadd28",
+    "healthy": true,
+    "candidateDeployed": false
+  },
+  "cleanup": {
+    "ownedTmpfsPostgresRemoved": true,
+    "candidateProcessesStopped": true,
+    "templatesRemoved": true,
+    "retainedVolumesTouched": false
+  },
+  "secretScan": {
+    "files": 58,
+    "knownValueHits": 0,
+    "genericPatternHits": 0,
+    "valuesPrinted": false
+  },
+  "rawNotes": {
+    "server-plan-first.txt": "new test fixture pointer/import compile errors",
+    "server-plan-second.txt": "wrong command working directory then same compile errors; raw kept",
+    "server-plan-third.txt": "singleton Manager conflict in new fixture",
+    "server-plan-diagnostic.txt": "narrowed fixture conflict",
+    "server-plan-diagnostic2.txt": "narrowed fixture conflict",
+    "server-plan-diagnostic3.txt": "located attempted second Manager registration; fixture fixed to original manager",
+    "server-http-compatibility.txt": "duplicate HTTP fields accepted (FAIL); legacy split target PASS; strict parser fixed and HTTP final PASS",
+    "server-plan-rejections-ui-first.txt": "all targets PASS; UI later rechecked after status wording improvement"
+  },
+  "remaining": [
+    "M12.4 evidence-backed engine comparison",
+    "representative new-engine UseCase flow",
+    "second-provider live verification if configured",
+    "M12.Z consolidation without merge/tag"
+  ],
+  "sha256": {
+    "baseline-status-final.json": "edb3f16770e1b70d60d09bc32210b7d66c65cc86231ee58a6f7b9f7c9535a5ab",
+    "manager-final.txt": "812e9e43c79d178da3262e8fa9ef54cc7d7c2a891279eecf5da2444ed604df5d",
+    "server-http-compatibility.txt": "021632e8038ee1e277736663162c4cd3c7cbb96fd7fe56128b010a43fc802b95",
+    "server-http-ui-final.txt": "edf18c3eb9270019a2e72ec252c0044206ba8c82cb071483100c3f105ca4e5a1",
+    "server-parser-first.txt": "69fffef30161f81ce11ef26af2d3488b19b70123a3eb0e985717a46b3333d90e",
+    "server-plan-diagnostic.txt": "16298a445ac0d89544cdc1337b3958dd56f5b3c0070eea53bc4c275c7e3273f7",
+    "server-plan-diagnostic2.txt": "f14210a79c425c5ced52918acc5f038803c29a9b03a0fa3f508f9125d2bf1023",
+    "server-plan-diagnostic3.txt": "7947ececf10f890f4e28395de1221d8b2dc6308c0b5d5faac55991c406ca2545",
+    "server-plan-first.txt": "6c0a9f98a917fc804b9e7baa4a6b202036205ce1a5aa7fa70daa61efbcdc0732",
+    "server-plan-manager-fixed.txt": "388aa05eb8e5fe1aa30271cd63e8b5ee86e89a8f4f996facc6c189ca0075a065",
+    "server-plan-rejections-ui-first.txt": "f36ea6f21f5923d6a1c4552560c1817d8de5829fa266e208ffd13dd5764214a7",
+    "server-plan-second.txt": "6c0a9f98a917fc804b9e7baa4a6b202036205ce1a5aa7fa70daa61efbcdc0732",
+    "server-plan-third.txt": "cd8b86abbd159ec1609f6135207f355989954e7a41671a293919ebfd6a2214ce",
+    "server-real-failure-final.txt": "5044833995da34c4243c3c31fe83e33911c77795666608cd65fc09d6718d477f",
+    "ui-final/cleanup.json": "874a6a3e56a4370fa79bae0f9c536cec2c318725e3610a901ed28188cf4ad85f",
+    "ui-final/desktop.png": "f034b39ed68e44f70e0ce223a9e3107c1c2a038eddb1e59433e71f8eb7cbde1b",
+    "ui-final/layout.json": "0dfc521083f18deb00ff599fa57254eac326687cfc31fb75632a18fbbd76c985",
+    "ui-final/lifecycle.json": "24040d5b4e6ae343fa3950f991d0ee47ee936c76f2811452132ade61c053837e",
+    "ui-final/narrow.png": "13198919c56e4f0fab7632bc57c05494fb77817c0113067f607438183dcafb08",
+    "ui-final/result.json": "8f6063c00cfd1dd7e3290486aee8979c9175628111206f651879587c81a2f580",
+    "ui-release-final/cleanup.json": "4f72b14d6e6c5e206e1f609dca050dd2df9654812d8dfba21a25f3fbf119f54a",
+    "ui-release-final/desktop.png": "aa97406fdcf075f8895695890574ef0ca73342bdc2e826fbb7d180294807dd83",
+    "ui-release-final/layout.json": "0dfc521083f18deb00ff599fa57254eac326687cfc31fb75632a18fbbd76c985",
+    "ui-release-final/lifecycle.json": "47781944cbc1b58c31baa8fbc4c4a4eab752afb54700fdf658f7256b2587c3a8",
+    "ui-release-final/narrow.png": "b36fdd588eacd00086565ad03af46086ba2530c196956a84a30c6b753843e43b",
+    "ui-release-final/result.json": "2dcc34941ad2ea25d9eddca9b0be46ed139e6aa4f7c33f7c3e0f233604a0c0ea",
+    "web-build-final.txt": "6dd44b49526d18ca0d800cd070812fbfae89fe78a63f5b094ba112e6e5692fee",
+    "web-build.txt": "1e4031035e43d9830ac4c371aae5afaf2b0cebbfb35bd440a384823c53148a52",
+    "worker-checkpoint-first.txt": "58177fcdcfb6e91843990b5571690f41f04d0289f3c206adec932d61decde1f0",
+    "worker-pins-final.txt": "236525e91f55ca183e2b8e2672602eb4e3705513cb7c5d5881fdbc32976ec5e1"
+  }
+}

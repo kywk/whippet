@@ -1,0 +1,15 @@
+{
+  "status": "PASS",
+  "realAPI": true,
+  "realPlanPanel": true,
+  "sourceRunId": "7c456a4a-3db0-4811-80f3-27baf0dccfed",
+  "continuedRunId": "43ae0f7b-59b1-4400-babb-421e97a60c6f",
+  "checkpointReasonDisplayed": true,
+  "fullCandidatePreserved": true,
+  "prefixAndSuffixPreserved": true,
+  "posts": 1,
+  "pageErrors": 0,
+  "httpErrors": 0,
+  "smallViewportFits": true,
+  "paidModelRequests": 0
+}

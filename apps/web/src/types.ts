@@ -400,6 +400,7 @@ export interface WhippetApi {
   getPlan?: (testId: string, editingSessionId: string, signal?: AbortSignal) => Promise<Plan | null>;
   savePlan?: (testId: string, input: { editingSessionId: string; revision: number; planRevision: number; stages: PlanStageInput[] }, signal?: AbortSignal) => Promise<Plan>;
   getStageRetry?: (planId: string, stageId: string, signal?: AbortSignal) => Promise<StageRetry>;
+  continuePlanStage?: (planId: string, stageId: string, input: {planRevision: number; sourceRunId: string; moduleRevision: number; confirmed: true}, signal?: AbortSignal) => Promise<Plan>;
   retryStage?: (planId: string, stageId: string, input: StageRetryInput, signal?: AbortSignal) => Promise<Plan>;
   splitPlanStage?: (planId: string, stageId: string, input: { planRevision: number; confirmed: true; stages: PlanStageInput[] }, signal?: AbortSignal) => Promise<Plan>;
   confirmPlan?: (planId: string, planRevision: number, signal?: AbortSignal, throughStageId?: string) => Promise<Plan>;

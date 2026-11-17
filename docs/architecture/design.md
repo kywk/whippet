@@ -209,6 +209,8 @@ M12引擎整合的設計與驗收要求（依Wave逐項實作）：
 
 2026-11-17 Wave12：registry15.0新增Worker本機不可變Module候選版本與有界UTF-8局部編輯。模型以版本／雙hash／byte位移指定修改，完整metadata與組裝後本體／harness仍經原自試與機密守衛；單次edit可在最後1模型／1工具額度內交付，原legacy雙staging仍需3／3。分頁／compaction綁定確切數字版本與原讀回額度，引用及失敗候選均非驗證證據。既有2MiB parts、8KiB工具輸入、固定總額不變，未開Plan Stage partial，見[v12 Wave12](../../contracts/mvp-v12.md#m121-wave12有界-module-編輯與不可變候選引用registry-150)。
 
+2026-11-17 Wave13：registry16.0開放已綁定Plan Stage明確nextStep checkpoint。成功且回收後暫停Plan、不建立正式候選／驗證；人工continue透過migration029不可變根綁定與續接receipt、migration027共享鏈核對完整前段／父契約／後段／執行邊界及來源候選hash。子Run只取原Stage剩餘額度，拆分Stage重用原根分配而不進初始分配路徑；最多三Run、pins／runtime／scope／路由不變。PlanPanel接上真API，取消已暫停Plan後不能續接；完成才排原正式驗證。精確介面與限制見[v12 Wave13](../../contracts/mvp-v12.md#m121-wave13plan-stage-checkpoint人工續接registry-160)。
+
 M12範圍收斂（2026-11-16，依本輪同意的推進建議）：供應商金額計價與跨獨立任務／Stage retry／全Plan／帳號的共用配額移至後續里程碑，不作M12完成門檻；與MVP原先不含完整配額系統一致。M12仍必須保證受控continue及Stage拆分不增加原資源上限；一般長對話語意摘要、任意大候選與Module跨Run checkpoint等未完成能力持續明列，不用放寬預算取代實作。
 
 ### MCP（M11）

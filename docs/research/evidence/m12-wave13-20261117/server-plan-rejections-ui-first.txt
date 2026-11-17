@@ -1,0 +1,35 @@
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/request-cas
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/module-revision
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/module-context
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/usecase-context
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/authorization
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/binding
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/prefix
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/cancel
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/budget
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/unconfirmed
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/source
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/pins
+=== RUN   TestPlanCheckpointPostgresRejectsDriftAndExhaustion/wrong-stage
+--- PASS: TestPlanCheckpointPostgresRejectsDriftAndExhaustion (7.37s)
+    --- PASS: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/request-cas (0.63s)
+    --- PASS: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/module-revision (0.56s)
+    --- PASS: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/module-context (0.56s)
+    --- PASS: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/usecase-context (0.54s)
+    --- PASS: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/authorization (0.57s)
+    --- PASS: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/binding (0.58s)
+    --- PASS: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/prefix (0.57s)
+    --- PASS: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/cancel (0.56s)
+    --- PASS: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/budget (0.57s)
+    --- PASS: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/unconfirmed (0.56s)
+    --- PASS: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/source (0.56s)
+    --- PASS: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/pins (0.56s)
+    --- PASS: TestPlanCheckpointPostgresRejectsDriftAndExhaustion/wrong-stage (0.55s)
+=== RUN   TestPlanCheckpointPostgresThreeRunCap
+--- PASS: TestPlanCheckpointPostgresThreeRunCap (1.21s)
+=== RUN   TestPlanCheckpointPostgresUI
+    plan_continue_ui_postgres_test.go:61: real API + PlanPanel: one explicit POST, original split reservation, one-slot child, preserved candidate/prefix/suffix
+--- PASS: TestPlanCheckpointPostgresUI (4.43s)
+PASS
+ok  	github.com/whippet/whippet/services/server/internal/server	13.454s

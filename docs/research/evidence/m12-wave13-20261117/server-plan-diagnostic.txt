@@ -1,0 +1,9 @@
+=== RUN   TestPlanCheckpointPostgresSplitOneSlotContinuation
+=== RUN   TestPlanCheckpointPostgresSplitOneSlotContinuation/builtin
+    plan_continue_postgres_test.go:83: prefix fixture ready confirmed 3
+    plan_continue_postgres_test.go:83: state conflict
+--- FAIL: TestPlanCheckpointPostgresSplitOneSlotContinuation (0.27s)
+    --- FAIL: TestPlanCheckpointPostgresSplitOneSlotContinuation/builtin (0.27s)
+FAIL
+FAIL	github.com/whippet/whippet/services/server/internal/server	0.666s
+FAIL

@@ -1,0 +1,13 @@
+=== RUN   TestPlanCheckpointPostgresHTTP
+--- PASS: TestPlanCheckpointPostgresHTTP (0.67s)
+=== RUN   TestPlanCheckpointPostgresUI
+    plan_continue_ui_postgres_test.go:61: real API + PlanPanel: one explicit POST, original split reservation, one-slot child, preserved candidate/prefix/suffix
+--- PASS: TestPlanCheckpointPostgresUI (4.32s)
+=== RUN   TestM109StageRetryAtomicAndIdempotent
+=== RUN   TestM109StageRetryAtomicAndIdempotent/author_failed
+=== RUN   TestM109StageRetryAtomicAndIdempotent/validation_failed
+--- PASS: TestM109StageRetryAtomicAndIdempotent (0.36s)
+    --- PASS: TestM109StageRetryAtomicAndIdempotent/author_failed (0.18s)
+    --- PASS: TestM109StageRetryAtomicAndIdempotent/validation_failed (0.18s)
+PASS
+ok  	github.com/whippet/whippet/services/server/internal/server	5.528s

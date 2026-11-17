@@ -545,6 +545,13 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
       if (plan.id !== planId) throw new ApiError('拆分回應所屬 Plan 不符。', 'INVALID_RESPONSE');
       return plan;
     },
+    async continuePlanStage(planId, stageId, input, signal) {
+      if (!Number.isSafeInteger(input.planRevision) || input.planRevision < 1 || !Number.isSafeInteger(input.moduleRevision) || input.moduleRevision < 1 || !input.sourceRunId || input.confirmed !== true) throw new ApiError('Stage 續接 CAS 格式不符。', 'INVALID_REQUEST');
+      const data = record(await request(`/plans/${id(planId)}/stages/${id(stageId)}/continue`, 'POST', signal, input, false, 200));
+      const plan = parsePlan(data.plan);
+      if (plan.id !== planId) throw new ApiError('續接回應所屬 Plan 不符。', 'INVALID_RESPONSE');
+      return plan;
+    },
     async retryStage(planId, stageId, input, signal) {
       if (!validRepairContent(input.content) || input.confirmed !== true || !Number.isSafeInteger(input.planRevision) || input.planRevision < 1 || !Number.isSafeInteger(input.moduleRevision) || input.moduleRevision < 1 || !Number.isSafeInteger(input.moduleContextRevision) || input.moduleContextRevision < 0) throw new ApiError('修復指示或重試 CAS 格式不符。', 'INVALID_REQUEST');
       const { planRevision, moduleRevision, moduleContextRevision, confirmed, content } = input;

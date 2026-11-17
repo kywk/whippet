@@ -1,0 +1,4 @@
+=== RUN   TestPlanCheckpointPostgresFailedRealRepair
+--- PASS: TestPlanCheckpointPostgresFailedRealRepair (2.04s)
+PASS
+ok  	github.com/whippet/whippet/services/server/internal/server	2.558s

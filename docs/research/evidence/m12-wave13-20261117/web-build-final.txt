@@ -1,0 +1,17 @@
+
+> @whippet/web@0.1.0 build
+> npm run typecheck && vite build
+
+
+> @whippet/web@0.1.0 typecheck
+> tsc --noEmit
+
+vite v7.1.9 building for production...
+transforming...
+✓ 70 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.55 kB │ gzip:   0.36 kB
+dist/assets/index-BFcLxEdY.css   44.59 kB │ gzip:   9.15 kB
+dist/assets/index-CXfgoYNi.js   450.54 kB │ gzip: 137.43 kB
+✓ built in 436ms
