@@ -20,9 +20,16 @@ def main():
     p.add_argument('--manager-test', type=Path, required=True)
     p.add_argument('--out', type=Path, required=True)
     p.add_argument('--synthetic', action='store_true')
+    p.add_argument('--replay-artifacts', type=Path, help='explicit frozen real-model Module receipts; replay is marked synthetic/assisted')
+    p.add_argument('--reviewed-plan', action='store_true', help='explicit assisted fixture Plan review; never reruns a failed planner')
+    p.add_argument('--full', action='store_true', help='M12.Z: one reuse, two new modules and post-publication Run')
     args = p.parse_args()
-    if not args.database.startswith('postgres://postgres:postgres@127.0.0.1:') or '/whippet_m12_w14?' not in args.database:
+    if not args.database.startswith('postgres://postgres:postgres@127.0.0.1:') or not any('/whippet_m12_w'+str(w)+'?' in args.database for w in [14,15]):
         raise ValueError('owned_database_required')
+    if args.replay_artifacts and (not args.reviewed_plan or not args.replay_artifacts.resolve().is_relative_to(REPO/'docs/research/evidence/m12-wave15-20261117')):
+        raise ValueError('owned_reviewed_replay_required')
+    if args.reviewed_plan and not args.full:
+        raise ValueError('reviewed_plan_requires_full_scope')
     if not args.image.startswith('sha256:') or len(args.image) != 71:
         raise ValueError('pinned_candidate_image_required')
     env = {k: os.environ[k] for k in ['PATH','HOME','TMPDIR','LANG'] if k in os.environ}
@@ -40,10 +47,10 @@ def main():
     out = args.out.resolve()
     out.mkdir(mode=0o700, parents=False, exist_ok=False)
     env.update(TEST_DATABASE_URL=args.database, WHIPPET_M12_USECASE_MODE='synthetic' if args.synthetic else 'live',
-        WHIPPET_M12_USECASE_OUT=str(out), WHIPPET_M12_USECASE_SERVER=str(args.server.resolve()), WHIPPET_M12_USECASE_IMAGE=args.image,
+        WHIPPET_M12_USECASE_OUT=str(out), WHIPPET_M12_USECASE_REPLAY=str(args.replay_artifacts.resolve()) if args.replay_artifacts else '', WHIPPET_M12_USECASE_FULL='1' if args.full else '0', WHIPPET_M12_USECASE_REVIEWED_PLAN='1' if args.reviewed_plan else '0', WHIPPET_M12_USECASE_WAVE='15' if args.full else '14', WHIPPET_M12_USECASE_SERVER=str(args.server.resolve()), WHIPPET_M12_USECASE_IMAGE=args.image,
         WHIPPET_M12_MODULE_MANAGER_TEST=str(args.manager_test.resolve()))
     (out/'intent.json').write_text(json.dumps({'mode':env['WHIPPET_M12_USECASE_MODE'],'image':args.image,
-        'engine':'vercel','scope':'one owned Plan, no model retries/failover or baseline mutations',
+        'engine':'vercel','scope':'one owned Plan, no model retries/failover or baseline mutations','newModules':2 if args.full else 1,'assistedPlanReview':args.reviewed_plan,'replayArtifacts':str(args.replay_artifacts.resolve()) if args.replay_artifacts else None,'postPublicationRun':args.full,
         'budget':'original per-skill snapshots; no increase','provider2':'UNVERIFIED: no second authorized profile/key supplied'},indent=2)+'\n')
     result = subprocess.run([str(args.binary.resolve()),'-test.run=^TestM12RepresentativeUseCaseFlow$','-test.v','-test.timeout=15m'],cwd=REPO,env=env)
     return result.returncode

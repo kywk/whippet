@@ -1,0 +1,48 @@
+=== RUN   TestM12RepresentativeUseCaseFlow
+    m12_usecase_live_test.go:268: starting seed-summary synthetic
+{"event":"author:model:1:started"}
+{"event":"author:model:1:succeeded"}
+    m12_usecase_live_test.go:268: completed seed-summary
+    m12_usecase_live_test.go:335: starting module live
+{"event":"author:model:1:started"}
+{"event":"author:model:1:succeeded"}
+{"event":"author:tool:1:read_module_draft:started"}
+{"event":"author:tool:1:read_module_draft:succeeded"}
+{"event":"author:model:2:started"}
+{"event":"author:model:2:succeeded"}
+{"event":"author:tool:2:read_skill_reference:started"}
+{"event":"author:tool:2:read_skill_reference:succeeded"}
+{"event":"author:model:3:started"}
+{"event":"author:model:3:succeeded"}
+{"event":"author:tool:3:stage_module_candidate_part:started"}
+{"event":"author:tool:3:stage_module_candidate_part:succeeded"}
+{"event":"author:model:4:started"}
+{"event":"author:model:4:succeeded"}
+{"event":"author:tool:4:stage_module_candidate_part:started"}
+{"event":"author:tool:4:stage_module_candidate_part:succeeded"}
+{"event":"author:model:5:started"}
+{"event":"author:model:5:succeeded"}
+{"event":"author:tool:5:commit_module_candidate:started"}
+{"event":"author:tool:5:commit_module_candidate:succeeded"}
+    m12_usecase_live_test.go:335: completed module
+    m12_usecase_live_test.go:355: starting module-confirm live
+{"event":"author:model:1:started"}
+{"event":"author:model:1:succeeded"}
+{"event":"author:tool:1:read_skill_reference:started"}
+{"event":"author:tool:1:read_skill_reference:succeeded"}
+{"event":"author:model:2:started"}
+{"event":"author:model:2:succeeded"}
+{"event":"author:tool:2:stage_module_candidate_part:started"}
+{"event":"author:tool:2:stage_module_candidate_part:succeeded"}
+{"event":"author:model:3:started"}
+{"event":"author:model:3:succeeded"}
+{"event":"author:tool:3:stage_module_candidate_part:started"}
+{"event":"author:tool:3:stage_module_candidate_part:succeeded"}
+{"event":"author:model:4:started"}
+{"event":"author:model:4:succeeded"}
+{"event":"author:tool:4:commit_module_candidate:started"}
+{"event":"author:tool:4:commit_module_candidate:succeeded"}
+    m12_usecase_live_test.go:355: completed module-confirm
+    m12_usecase_live_test.go:366: browser assertion failed independent-confirm-acceptance timed_out
+--- FAIL: TestM12RepresentativeUseCaseFlow (114.44s)
+FAIL

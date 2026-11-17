@@ -1,0 +1,41 @@
+TAP version 13
+# Subtest: backend engine/provider selection is explicit, defaults to builtin and never falls back
+ok 1 - backend engine/provider selection is explicit, defaults to builtin and never falls back
+  ---
+  duration_ms: 0.956666
+  type: 'test'
+  ...
+# Subtest: production route applies one final body guard to instructions and every tool-result request
+ok 2 - production route applies one final body guard to instructions and every tool-result request
+  ---
+  duration_ms: 32.8415
+  type: 'test'
+  ...
+# Subtest: capacity failure protects conversation/draft/evidence without sending and returns truthful partial
+ok 3 - capacity failure protects conversation/draft/evidence without sending and returns truthful partial
+  ---
+  duration_ms: 3.734125
+  type: 'test'
+  ...
+# Subtest: production provider abort settles and closes the socket within 1 second
+ok 4 - production provider abort settles and closes the socket within 1 second
+  ---
+  duration_ms: 4.721875
+  type: 'test'
+  ...
+# {"abortSettleAndCloseMs":0.93,"thresholdMs":1000}
+# Subtest: unknown tools, duplicate IDs, HTTP failures and output limits stop without retries or extra effects
+ok 5 - unknown tools, duplicate IDs, HTTP failures and output limits stop without retries or extra effects
+  ---
+  duration_ms: 16.187417
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1324.248083

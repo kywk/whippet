@@ -1,0 +1,269 @@
+{
+  "baseCommit": "cd671d124d4c9634d107e9f2039e0d6a03821647",
+  "status": "PASS_ASSISTED_PLAN_AND_FROZEN_REPLAY",
+  "originalUnassistedPlanContract": "FAIL; exact canonical mismatch was not captured before old fixture DB cleanup",
+  "originalIndependentFixture": "FAIL missing upstream heading alpha; source Module contract/output correctly contained heading",
+  "paidTotalsAcrossAllAttempts": {
+    "modelRequests": 16,
+    "toolCalls": 15,
+    "inputTokens": 85010,
+    "outputTokens": 11200
+  },
+  "actualProviderRoles": [
+    {
+      "attempt": "live-full",
+      "role": "planner",
+      "metrics": {
+        "modelRequests": 6,
+        "toolCalls": 6,
+        "inputTokens": 25525,
+        "outputTokens": 1191,
+        "tokenUsageObserved": true,
+        "selfTests": []
+      },
+      "latencyMs": 15265,
+      "receiptSha256": "9dcd42a044c299f6df3d12f075012f35e5c2e6a6dd658c508fe9fd52aa0f756d"
+    },
+    {
+      "attempt": "live-reviewed-plan",
+      "role": "module",
+      "metrics": {
+        "modelRequests": 5,
+        "toolCalls": 5,
+        "inputTokens": 31273,
+        "outputTokens": 2992,
+        "tokenUsageObserved": true,
+        "selfTests": [
+          {
+            "passed": true,
+            "scriptSha256": "86bb3d0bff938de4981931072d275ec4b03f6ff2497a0a42505d940c4012e1cc",
+            "bodySha256": "5038b3d88ad5a52be95856e6a08d28238b424b0874b3d64acfb98afc57822e7c"
+          }
+        ]
+      },
+      "latencyMs": 22033,
+      "receiptSha256": "45f861d145e8b5d525efcd479ae0309c7165628d778509963591e7dd5b26815b"
+    },
+    {
+      "attempt": "live-reviewed-plan",
+      "role": "module-confirm",
+      "metrics": {
+        "modelRequests": 4,
+        "toolCalls": 4,
+        "inputTokens": 25026,
+        "outputTokens": 2729,
+        "tokenUsageObserved": true,
+        "selfTests": [
+          {
+            "passed": true,
+            "scriptSha256": "1a9f7d12a7cd2fc1aec10fc0fef1c323f965752f10c617cec68e58c9305561d6",
+            "bodySha256": "3c3fac24e293e5607570f6016fcc7daac41b84e877136728a08ba5a7e0bdf597"
+          }
+        ]
+      },
+      "latencyMs": 25083,
+      "receiptSha256": "154b7eb9281e1a19cce6767c72118a23e2e086aafbe157a164e6a6d30feef4fb"
+    },
+    {
+      "attempt": "reviewed-frozen-modules-final",
+      "role": "summary",
+      "metrics": {
+        "modelRequests": 1,
+        "toolCalls": 0,
+        "inputTokens": 3186,
+        "outputTokens": 4288,
+        "tokenUsageObserved": true,
+        "selfTests": []
+      },
+      "latencyMs": 31276,
+      "receiptSha256": "71aace25a8e12dc2ad1b84e0d0fe91d8b2f3d79d421c7c5b814a322050ee185b"
+    }
+  ],
+  "modelRetries": 0,
+  "frozenReplayTransport": "synthetic; no repeated Module provider requests",
+  "sourceBytesPreserved": {
+    "module": {
+      "scriptSha256": "5038b3d88ad5a52be95856e6a08d28238b424b0874b3d64acfb98afc57822e7c",
+      "harnessSha256": "86bb3d0bff938de4981931072d275ec4b03f6ff2497a0a42505d940c4012e1cc",
+      "metadataEqual": true
+    },
+    "module-confirm": {
+      "scriptSha256": "3c3fac24e293e5607570f6016fcc7daac41b84e877136728a08ba5a7e0bdf597",
+      "harnessSha256": "1a9f7d12a7cd2fc1aec10fc0fef1c323f965752f10c617cec68e58c9305561d6",
+      "metadataEqual": true
+    }
+  },
+  "formalReports": [
+    {
+      "role": "seed-validation",
+      "stats": {
+        "startTime": "2026-11-17T02:54:51.995Z",
+        "duration": 732.222,
+        "expected": 1,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "sha256": "af3a44971b57053f26165295e10c92c5a23d942a9132b41ba29927973ff44adb"
+    },
+    {
+      "role": "module-validation",
+      "stats": {
+        "startTime": "2026-11-17T02:54:55.532Z",
+        "duration": 731.646,
+        "expected": 1,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "sha256": "f28b3a6eabe3fda477745cbe85e891db1777f164b723d49c1baf620e35b030df"
+    },
+    {
+      "role": "module-confirm-validation",
+      "stats": {
+        "startTime": "2026-11-17T02:54:59.841Z",
+        "duration": 695.5150000000001,
+        "expected": 1,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "sha256": "f7b38530934f0122188174b06a312017a73789b72b7b37eed3a8a81549725509"
+    },
+    {
+      "role": "usecase-validation",
+      "stats": {
+        "startTime": "2026-11-17T02:55:02.399Z",
+        "duration": 712.43,
+        "expected": 1,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "sha256": "b20e7bca816f739ac7693f3392555d8749c2923f9c4987fdbc3be872148fb9c5"
+    },
+    {
+      "role": "published-execution",
+      "stats": {
+        "startTime": "2026-11-17T02:55:39.225Z",
+        "duration": 807.219,
+        "expected": 1,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "sha256": "9e9ac009d35190cf69e65d12cec09815ad7165c3d483d1c4bd9aa777b0579450"
+    }
+  ],
+  "independentReports": [
+    {
+      "role": "independent-acceptance",
+      "stats": {
+        "startTime": "2026-11-17T02:54:56.857Z",
+        "duration": 752.03,
+        "expected": 1,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "sha256": "aad8622782c90fa5c48972eb21b2179c8447d120052236b74621271b4662a868"
+    },
+    {
+      "role": "independent-confirm-acceptance",
+      "stats": {
+        "startTime": "2026-11-17T02:55:01.138Z",
+        "duration": 706.748,
+        "expected": 1,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "sha256": "21e3dfb5a61889ebdea7c95151fc14ce421f2f9f431f9dbe2d626b57f2393881"
+    }
+  ],
+  "publishedRun": {
+    "authorEngine": "builtin",
+    "scriptOrigin": "ai",
+    "workspaceId": "05cbacc0-51f2-4c43-bef1-483e50217ec8",
+    "id": "47b4d066-4bbe-4f28-8df2-2236bb3e787a",
+    "testId": "d565451e-9e80-42c7-be9a-a50aeedb83c7",
+    "workspaceContext": {
+      "schemaVersion": "1",
+      "workspaceId": "05cbacc0-51f2-4c43-bef1-483e50217ec8",
+      "settingsRevision": 1,
+      "config": {
+        "name": "M12 representative",
+        "purpose": "owned offline DOM fixture",
+        "backgroundSummary": "Published setup returns {name:alpha}; all page content is local synthetic fixture",
+        "targets": [
+          {
+            "name": "fixture",
+            "purpose": "test",
+            "origin": "https://example.test"
+          }
+        ],
+        "dependencies": [],
+        "excludedOrigins": [],
+        "exclusions": "",
+        "loginRoles": [],
+        "defaultTestUrl": "",
+        "timeoutMs": 60000
+      },
+      "roleRefs": []
+    },
+    "status": "succeeded",
+    "createdAt": "2026-11-17T02:55:38.598773Z",
+    "finishedAt": "2026-11-17T02:55:40.167454Z",
+    "reportUrl": "/api/runs/47b4d066-4bbe-4f28-8df2-2236bb3e787a/artifacts/report.html",
+    "kind": "run",
+    "versionId": "0a5e7b05-ee8a-41e2-ab6d-3737f88c961f",
+    "workspaceSettings": {
+      "revision": 1,
+      "sites": [],
+      "defaultTestUrl": "",
+      "timeoutMs": 60000
+    },
+    "editingSessionId": null
+  },
+  "UI": {
+    "status": "PASS",
+    "realAPI": true,
+    "realPlanPanel": true,
+    "scriptedUserConfirmation": true,
+    "publishedVersionId": "0a5e7b05-ee8a-41e2-ab6d-3737f88c961f",
+    "publishedModuleCount": 2,
+    "posts": 1,
+    "pageErrors": 0,
+    "httpErrors": 0,
+    "smallViewportFits": true,
+    "paidModelRequests": 0
+  },
+  "mobileVisual": {
+    "originalFullPagePNG": "capture tiling artifact retained",
+    "finalReadOnlyViewportSnapshot": {
+      "status": "PASS",
+      "readOnlyVisualSnapshot": true,
+      "realAPIFlow": false,
+      "layout": {
+        "width": 390,
+        "viewport": 390,
+        "regions": 1
+      },
+      "noNetworkMutations": true,
+      "paidModels": 0
+    }
+  },
+  "releaseGuardsPassed": 5,
+  "implicitAudit": {
+    "engine": "vercel",
+    "passed": true,
+    "implicitReads": 0,
+    "filesystemChecks": 235,
+    "registeredTools": 0
+  },
+  "mcpReferenceTask": "PASS; real HTTP, synthetic model 2, lost submit replayed identical body, one draft update",
+  "secondProvider": "UNVERIFIED: no second authorized profile/key",
+  "original14SameBatchUnassisted": "UNPROVEN",
+  "defaultEngine": "builtin",
+  "candidateDeployed": false
+}

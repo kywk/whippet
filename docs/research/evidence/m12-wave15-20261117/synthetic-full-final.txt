@@ -1,0 +1,49 @@
+=== RUN   TestM12RepresentativeUseCaseFlow
+    m12_usecase_live_test.go:254: starting seed-summary synthetic
+{"event":"author:model:1:started"}
+{"event":"author:model:1:succeeded"}
+    m12_usecase_live_test.go:254: completed seed-summary
+    m12_usecase_live_test.go:279: starting planner synthetic
+{"event":"author:model:1:started"}
+{"event":"author:model:1:succeeded"}
+{"event":"author:tool:1:propose_plan:started"}
+{"event":"author:tool:1:propose_plan:succeeded"}
+(node:60982) Warning: AI SDK Warning System: To turn off warning logging, set the AI_SDK_LOG_WARNINGS global to false.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:60982) Warning: AI SDK Warning (openai.responses / muse-spark-1.3-contributor): The feature "JSON Schema propertyNames" is used in a compatibility mode. OpenAI does not support JSON Schema propertyNames. It was removed before sending the schema, so OpenAI will not enforce property-name constraints.
+    m12_usecase_live_test.go:279: completed planner
+    m12_usecase_live_test.go:309: starting module synthetic
+{"event":"author:model:1:started"}
+{"event":"author:model:1:succeeded"}
+{"event":"author:tool:1:stage_module_candidate_part:started"}
+{"event":"author:tool:1:stage_module_candidate_part:succeeded"}
+{"event":"author:model:2:started"}
+{"event":"author:model:2:succeeded"}
+{"event":"author:tool:2:stage_module_candidate_part:started"}
+{"event":"author:tool:2:stage_module_candidate_part:succeeded"}
+{"event":"author:model:3:started"}
+{"event":"author:model:3:succeeded"}
+{"event":"author:tool:3:commit_module_candidate:started"}
+{"event":"author:tool:3:commit_module_candidate:succeeded"}
+    m12_usecase_live_test.go:309: completed module
+    m12_usecase_live_test.go:329: starting module-confirm synthetic
+{"event":"author:model:1:started"}
+{"event":"author:model:1:succeeded"}
+{"event":"author:tool:1:stage_module_candidate_part:started"}
+{"event":"author:tool:1:stage_module_candidate_part:succeeded"}
+{"event":"author:model:2:started"}
+{"event":"author:model:2:succeeded"}
+{"event":"author:tool:2:stage_module_candidate_part:started"}
+{"event":"author:tool:2:stage_module_candidate_part:succeeded"}
+{"event":"author:model:3:started"}
+{"event":"author:model:3:succeeded"}
+{"event":"author:tool:3:commit_module_candidate:started"}
+{"event":"author:tool:3:commit_module_candidate:succeeded"}
+    m12_usecase_live_test.go:329: completed module-confirm
+    m12_usecase_live_test.go:363: starting summary synthetic
+{"event":"author:model:1:started"}
+{"event":"author:model:1:succeeded"}
+    m12_usecase_live_test.go:363: completed summary
+    m12_usecase_live_test.go:416: representative Use Case complete: real Plan/Stage/Compose, keyless Docker Playwright, batch summary and atomic publication
+--- PASS: TestM12RepresentativeUseCaseFlow (17.74s)
+PASS

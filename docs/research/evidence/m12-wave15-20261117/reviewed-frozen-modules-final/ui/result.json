@@ -1,0 +1,13 @@
+{
+  "status": "PASS",
+  "realAPI": true,
+  "realPlanPanel": true,
+  "scriptedUserConfirmation": true,
+  "publishedVersionId": "0a5e7b05-ee8a-41e2-ab6d-3737f88c961f",
+  "publishedModuleCount": 2,
+  "posts": 1,
+  "pageErrors": 0,
+  "httpErrors": 0,
+  "smallViewportFits": true,
+  "paidModelRequests": 0
+}

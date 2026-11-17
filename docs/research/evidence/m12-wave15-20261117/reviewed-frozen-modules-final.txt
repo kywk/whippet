@@ -1,0 +1,40 @@
+=== RUN   TestM12RepresentativeUseCaseFlow
+    m12_usecase_live_test.go:295: starting seed-summary synthetic
+{"event":"author:model:1:started"}
+{"event":"author:model:1:succeeded"}
+    m12_usecase_live_test.go:295: completed seed-summary
+    m12_usecase_live_test.go:362: starting module synthetic
+{"event":"author:model:1:started"}
+{"event":"author:model:1:succeeded"}
+{"event":"author:tool:1:stage_module_candidate_part:started"}
+{"event":"author:tool:1:stage_module_candidate_part:succeeded"}
+{"event":"author:model:2:started"}
+{"event":"author:model:2:succeeded"}
+{"event":"author:tool:2:stage_module_candidate_part:started"}
+{"event":"author:tool:2:stage_module_candidate_part:succeeded"}
+{"event":"author:model:3:started"}
+{"event":"author:model:3:succeeded"}
+{"event":"author:tool:3:commit_module_candidate:started"}
+{"event":"author:tool:3:commit_module_candidate:succeeded"}
+    m12_usecase_live_test.go:362: completed module
+    m12_usecase_live_test.go:382: starting module-confirm synthetic
+{"event":"author:model:1:started"}
+{"event":"author:model:1:succeeded"}
+{"event":"author:tool:1:stage_module_candidate_part:started"}
+{"event":"author:tool:1:stage_module_candidate_part:succeeded"}
+{"event":"author:model:2:started"}
+{"event":"author:model:2:succeeded"}
+{"event":"author:tool:2:stage_module_candidate_part:started"}
+{"event":"author:tool:2:stage_module_candidate_part:succeeded"}
+{"event":"author:model:3:started"}
+{"event":"author:model:3:succeeded"}
+{"event":"author:tool:3:commit_module_candidate:started"}
+{"event":"author:tool:3:commit_module_candidate:succeeded"}
+    m12_usecase_live_test.go:382: completed module-confirm
+    m12_usecase_live_test.go:416: starting summary live
+{"event":"author:model:1:started"}
+{"event":"author:model:1:succeeded"}
+    m12_usecase_live_test.go:416: completed summary
+    m12_usecase_live_test.go:469: representative Use Case complete: real Plan/Stage/Compose, keyless Docker Playwright, batch summary and atomic publication
+--- PASS: TestM12RepresentativeUseCaseFlow (48.92s)
+PASS

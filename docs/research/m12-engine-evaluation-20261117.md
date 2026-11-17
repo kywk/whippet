@@ -46,3 +46,9 @@ UI單次確認checkbox及POST200、pageerror0／HTTP錯誤0，390px無水平溢�
 - 原始失敗、assisted分類與未驗證項目維持；任意大產物、任意長對話全量語意、程序崩潰／取消的隱式checkpoint與跨全Plan金額／帳號配額沒有宣稱提供。未merge／tag，來源不等於部署。
 
 全部raw保留於~/.local/share/whippet/evidence/m12-wave14-20261117；Git保留必要receipt／來源assignment／真結果JSON／UI圖片及完整[raw SHA索引](evidence/m12-wave14-20261117/raw-index.json)，不把重複HTML／artifact store塞入Git，也不覆寫任何舊raw。
+
+## Wave15補充：指定三階段與品質界線
+
+M12.Z指定的1複用＋2新Module及發佈後正式執行，最後以ASSISTED Plan review＋凍結原真模型Module產物重播完成；5份正式與2份獨立報告各1/0/0/0。原三段自主Plan提案未通過fixture契約（6實際模型請求），保留FAIL；具體差異在舊fixture清除前未捕捉，沒有假定原因或宣稱自主提案已修好。後續獨立fixture漏heading前提已補齊，兩Module原body／metadata／harness完全不變。完整來源與逐步判讀見[M12.Z集中紀錄](m12-stage3-verification-20261117.md)。
+
+Wave15真provider合計16請求／15工具、85010 input／11200 output，含原失敗planner；重播用合成transport並明列，不算新的provider成功。這進一步支持保留人工Plan檢視與builtin預設；不是原14題無人工同批全過證據，也不與Wave14單新Module的無修稿代表流程混成一個成功率。

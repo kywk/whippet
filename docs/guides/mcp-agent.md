@@ -161,3 +161,15 @@ browser_login沿原schema只傳roleId與三個selector；username/password只經
 管理者在Workspace設定「瀏覽器 session」清單只會看到當下有效opening/ready租約，ready可開始監看。關閉監看或離頁只停媒體，不關browser；租約逾時、撤銷、scope/epoch失效則終止監看。敏感輸入期間沿原遮蔽/暫停，viewer心跳不延長browser期限。使用同源管理cookie與精確Origin，不在URL放Token。
 
 本機19587已部署19工具並經全新對話實際唯讀驗收。原Workspace仍未確認scope，沒有繞過人工授權；本機HTTP入口不提供可信HTTPS登入resolver，browser_login需另行配置TLS與有效scope/role。真TLS登入與LiveView已在隔離環境驗證，不能等同本機HTTP服務已具備該設定。
+
+## M12 候選來源與升級對齊（2026-11-17）
+
+`feat/agent-adapter` 的M12來源與兩個持續保留的部署分開。builtin19987–19989及MCP19587仍使用各自已驗固定版本；恢復繼續執行本頁原start／status，不把候選image、Web、binary或registry digest填回舊state。
+
+候選採registry16.0、migration029、Vercel ai7.0.173／openai4.0.118，預設仍builtin。需要升級時，Server／Manager／Worker／Web及MCP參考client須對齊同一份registry與skill raw pins；Worker候選image及六個打包skill的[來源比對](../research/evidence/m12-wave15-20261117/candidate-source-admission.json)可供檢視。這份比對不是自動部署動作。
+
+舊排隊或已claim的Run保留原runtime、模型、scope、技能／registry及路由快照；不能把新包冒充舊pin或修改digest令檢查通過。新包遇舊快照不相符會停止，原包重播及保留基準恢復仍沿原版本。沒有重建Vault／token或重裝保留環境的步驟。
+
+新增能力維持既有有界限制：history／原稿精確讀回、來源摘錄記憶、Module每part2MiB／單次8KiB局部修改、最多三Run的原額度continue。Stage checkpoint成功且回收後才暫停Plan，人工續接須重核原Stage／父契約／前後段與候選hash；拆分子段沿4模型／6工具／90秒，續接不重新分配。最後完成仍須正式驗證及UI確認發佈。
+
+多provider設定只由後端受控profile及key slot供應；本輪第二provider沒有可用的受控profile／key，真測明列UNVERIFIED，沒有借用其他服務金鑰或換模型。完整限制、實際流程與預設決策見[比較紀錄](../research/m12-engine-evaluation-20261117.md)。沒有通用任意長語意摘要、任意大產物或取消／崩潰隱式checkpoint；金額／全Plan／帳號配額仍在後續里程碑。

@@ -17,7 +17,7 @@ assert.ok(process.env.TEST_DATABASE_URL?.startsWith('postgres://postgres:postgre
 await mkdir(out,{recursive:true});
 async function port(){const s=createServer();await new Promise(r=>s.listen(0,'127.0.0.1',r));const n=s.address().port;await new Promise(r=>s.close(r));return n;}
 const apiURL=`http://127.0.0.1:${await port()}`,webURL=`http://127.0.0.1:${await port()}`;
-const admin=randomUUID()+randomUUID(),name=`m12-wave14-${randomUUID()}`;
+const admin=randomUUID()+randomUUID(),name=`m12-wave${fixture.wave??'14'}-${randomUUID()}`;
 const html=resolve(repo,`apps/web/dist/${name}.html`),jsx=resolve(repo,`apps/web/dist/${name}.jsx`),processes=[];
 let browser,stage='start';const responses=[];
 async function ready(url,child){const end=Date.now()+15000;while(Date.now()<end&&child.exitCode===null){try{if((await fetch(url)).ok)return;}catch{}await new Promise(r=>setTimeout(r,100));}throw new Error('candidate_not_ready');}
@@ -42,12 +42,13 @@ function App(){const [session,setSession]=useState();useEffect(()=>{void api.get
   const checkbox=page.getByRole('checkbox',{name:/我已檢視全部候選清單與整批摘要/});await checkbox.waitFor();
   await page.waitForFunction(()=>[...document.querySelectorAll('input[type=checkbox]')].some(x=>!x.disabled));
   assert.match(await page.getByRole('region',{name:'Use Case Plan 與整批發佈'}).innerText(),/m12-verify/);
-  await page.screenshot({path:resolve(out,'desktop.png'),fullPage:true});await page.setViewportSize({width:390,height:844});await page.screenshot({path:resolve(out,'narrow.png'),fullPage:true});
+  await page.screenshot({path:resolve(out,'desktop.png'),fullPage:true});await page.setViewportSize({width:390,height:844});await page.evaluate(async()=>{await document.fonts.ready;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))});await page.screenshot({path:resolve(out,'narrow.png')});await page.getByRole('heading',{name:'整批摘要',exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:resolve(out,'narrow-summary.png')});
   const layout=await page.evaluate(()=>({viewport:innerWidth,width:document.documentElement.scrollWidth}));await writeFile(resolve(out,'layout.json'),JSON.stringify(layout,null,2)+'\n');assert.ok(layout.width<=layout.viewport);
+  if(fixture.newModules===2)assert.match(await page.getByRole('region',{name:'Use Case Plan 與整批發佈'}).innerText(),/m12-confirm/);
   stage='confirm';await checkbox.check();const button=page.getByRole('button',{name:'確認整批發佈',exact:true});
   const response=page.waitForResponse(r=>r.url().endsWith(endpoint)&&r.request().method()==='POST');await button.click();const receipt=await response;assert.equal(receipt.status(),200);
   const publication=await receipt.json();await page.waitForFunction(()=>typeof window.publishedVersionId==='string');
-  assert.equal(publication.moduleVersions.length,1);assert.equal(posts,1);assert.deepEqual(pageErrors,[]);assert.deepEqual(httpErrors,[]);
+  assert.equal(publication.moduleVersions.length,fixture.newModules??1);assert.equal(posts,1);assert.deepEqual(pageErrors,[]);assert.deepEqual(httpErrors,[]);
   const plan=(await request(`/tests/${fixture.testId}/plan?editingSessionId=${fixture.sessionId}`)).plan;assert.equal(plan.status,'done');
   const result={status:'PASS',realAPI:true,realPlanPanel:true,scriptedUserConfirmation:true,publishedVersionId:publication.usecaseVersion.id,publishedModuleCount:publication.moduleVersions.length,posts,pageErrors:pageErrors.length,httpErrors:httpErrors.length,smallViewportFits:true,paidModelRequests:0};
   await writeFile(resolve(out,'result.json'),JSON.stringify(result,null,2)+'\n');process.stdout.write(JSON.stringify(result)+'\n');

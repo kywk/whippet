@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "readOnlyVisualSnapshot": true,
+  "realAPIFlow": false,
+  "layout": {
+    "width": 390,
+    "viewport": 390,
+    "regions": 1
+  },
+  "noNetworkMutations": true,
+  "paidModels": 0
+}

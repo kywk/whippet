@@ -1,0 +1,62 @@
+{
+  "registryVersion": "16.0",
+  "registrySha256": "24867b07f17f9f31af0946ec28495bd7b80dd17be7e2eff0d0d1ee12fc75f008",
+  "skills": {
+    "test-author": {
+      "version": "1",
+      "sha256": "226dfacf260932cf02cc91c4281e4c891cdb7b39d1f5230cdac42a51643dba51",
+      "manifestSha256": "9aa3a98238b0c28a64b56629dce4145c4bf26228a47cbf71879e7cb2eb0e40d5",
+      "referenceHashes": {
+        "external-mcp": "cc5725105c4c16b0684524ae0c2ab923aada806585e6a7f69e765a408fec6720"
+      }
+    },
+    "module-authoring": {
+      "version": "1",
+      "sha256": "7896c29a8581f5002a546b80380438d05b61394f1e19fb5e92543e7bbd539488",
+      "manifestSha256": "2b3fd1358d7467c83114a16c7821c780abd25227270411e3a3ccec7c96eddd84",
+      "referenceHashes": {
+        "harness": "ae533685a533addb5b11315c5d00cc8f1e90ef10f386c730422358e65f65e2f6",
+        "external-mcp": "d888bf97a6c2d34ac4abf3b4f48a3ded88eb4aebadd2e7f58976442d601d4717"
+      }
+    },
+    "usecase-planner": {
+      "version": "1",
+      "sha256": "c2ee5344f02710ee92558066f59b317730ed57c1350bdd14272781444a7e9592",
+      "manifestSha256": "acad2b9199b9711101a89d3c0d0f658c202a6aba16bb7ca01042282730ad71bd",
+      "referenceHashes": {
+        "stages": "89ea485132367c2e53048bbc9c235753d97ad365d24fc225a8a6b24db779ea23",
+        "external-mcp": "2747d8014a0741ce227baccc91cbce45112486fbea9f591872ae512ef2a9de43"
+      }
+    },
+    "acceptance-summary": {
+      "version": "1",
+      "sha256": "b2e6eb4370cbdfe98846c2c42d0aa2f40dc5f6a2caaa00b42937ede6b0364904",
+      "manifestSha256": "64f5ea2feedb8727a1fe0f2efaf2ceae0b99a30f1a757a85dc7348def5488194",
+      "referenceHashes": {
+        "external-mcp": "fb507001b592befe4ae503f41dde3f40df91ef720d895a30fe86dc68c28155f8"
+      }
+    },
+    "workspace-author": {
+      "version": "1",
+      "sha256": "c0392aa2a76bb930b5041a1bad74fb69fc09ce303fb87c884b9e13ab5709e1c0",
+      "manifestSha256": "7d6fcb8914a664d72cbb3b933f7937b0dbc7daf4cab5fee5e553ea4668a694f6",
+      "referenceHashes": {
+        "external-mcp": "ab57370dde1f77ef6082bb55fdfd5679766b0833d05b9d79e6a4208dc5422381"
+      }
+    },
+    "playwright-authoring": {
+      "version": "1",
+      "sha256": "645aef4c7cb675deb1e72d56ff0d0c1a6864f63ebd998c16c29dbe6b1813aca3",
+      "manifestSha256": "0dbb5a21f929e69fb9246276f112ee10cba94bb0e0e7a42f074fd19b2fe9bd59",
+      "referenceHashes": {
+        "recipe": "763d5b92c0b87bdc45e3f9ce066c8f7116834b1af30740242fb4bf1ae070420c"
+      }
+    }
+  },
+  "versions": {
+    "ai": "7.0.173",
+    "@ai-sdk/openai": "4.0.118",
+    "zod": "4.1.12"
+  },
+  "piProductionPresent": false
+}

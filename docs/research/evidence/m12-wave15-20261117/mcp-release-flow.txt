@@ -1,0 +1,5 @@
+=== RUN   TestM12FrozenSnapshotMCPAndSubmitRecovery
+    reference_worker_postgres_test.go:137: real HTTP MCP -> frozen snapshot reference -> pinned 8KiB page -> synthetic model x2 -> submit x2 same ID/body -> AI draft revision +1; paid provider calls=0
+--- PASS: TestM12FrozenSnapshotMCPAndSubmitRecovery (10.41s)
+PASS
+ok  	github.com/whippet/whippet/services/server/internal/server	10.864s

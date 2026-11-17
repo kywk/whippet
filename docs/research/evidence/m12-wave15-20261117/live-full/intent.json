@@ -1,0 +1,10 @@
+{
+  "mode": "live",
+  "image": "sha256:d9526cd4ee5e8535808f44270c44a492bce8997650a14fff9b652d8d677e7775",
+  "engine": "vercel",
+  "scope": "one owned Plan, no model retries/failover or baseline mutations",
+  "newModules": 2,
+  "postPublicationRun": true,
+  "budget": "original per-skill snapshots; no increase",
+  "provider2": "UNVERIFIED: no second authorized profile/key supplied"
+}

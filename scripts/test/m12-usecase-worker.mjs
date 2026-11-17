@@ -12,7 +12,8 @@ import {loadToolRegistry,validateToolArguments,validateToolResult,sha256} from '
 import {envelope,call,text} from '../../runtimes/worker/dist/author/spike/fixture.js';
 import {KnownSecrets} from '../../runtimes/worker/dist/login/client.js';
 
-const {input,image,harnessURL,harnessToken,synthetic=false,scriptedCalls=[]}=JSON.parse(readFileSync(0,'utf8'));
+const {input,image,harnessURL,harnessToken,synthetic=false,scriptedCalls=[],wave='14'}=JSON.parse(readFileSync(0,'utf8'));
+assert.ok(['14','15'].includes(wave));
 const safeEnv=Object.fromEntries(['PATH','HOME','TMPDIR','LANG'].filter(k=>process.env[k]).map(k=>[k,process.env[k]]));
 const metrics={modelRequests:0,toolCalls:0,inputTokens:0,outputTokens:0,tokenUsageObserved:false,selfTests:[]};
 const registry=loadToolRegistry(),calls=new Map(),secrets=new KnownSecrets();
@@ -21,8 +22,8 @@ assert.equal(config.engine,'vercel');assert.equal(config.model,AI_DEFAULTS.model
 secrets.add(config.apiKey);
 const selfTestCode=`import {explorationBrowser} from './dist/author/tools.js';let s='';for await(const b of process.stdin)s+=b;const p=JSON.parse(s),b=explorationBrowser(process.env,{scope:p.scope});try{const r=await b.verifyDraft(p.script,{moduleFile:p.moduleFile});process.stdout.write(JSON.stringify(r));}finally{await b.close()}`;
 async function verifyDraft(script,options={}) {
- const name='whippet-m12-w14-selftest-'+randomUUID();
- const p=spawn('docker',['run','--rm','-i','--name',name,'--label','whippet.test=m12-wave14','--network','none','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges','--pids-limit','256','--memory','1g','--cpus','1','--tmpfs','/tmp:rw,size=512m','--entrypoint','node',image,'--input-type=module','-e',selfTestCode],{env:safeEnv,stdio:['pipe','pipe','ignore']});
+ const name=`whippet-m12-w${wave}-selftest-`+randomUUID();
+ const p=spawn('docker',['run','--rm','-i','--name',name,'--label',`whippet.test=m12-wave${wave}`,'--network','none','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges','--pids-limit','256','--memory','1g','--cpus','1','--tmpfs','/tmp:rw,size=512m','--entrypoint','node',image,'--input-type=module','-e',selfTestCode],{env:safeEnv,stdio:['pipe','pipe','ignore']});
  let result='',overflow=false;
  p.stdout.on('data',b=>{if(Buffer.byteLength(result)+b.length>512*1024){overflow=true;p.kill('SIGTERM')}else result+=b});
  const stop=()=>p.kill('SIGTERM');options.signal?.addEventListener('abort',stop,{once:true});p.stdin.on('error',()=>{});p.stdin.end(JSON.stringify({script,moduleFile:options.moduleFile,scope:input.workspaceContext.config}));
