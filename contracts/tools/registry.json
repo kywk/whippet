@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "14.0",
+  "version": "15.0",
   "tools": [
     {
       "name": "read_conversation_history",
@@ -992,6 +992,187 @@
         "timeoutMs": 1000,
         "maxInputBytes": 65536,
         "maxOutputBytes": 2048
+      }
+    },
+    {
+      "name": "read_module_candidate_part",
+      "description": "Read one UTF-8 page of this Run-local Module candidate version. stagingRevision=null selects current; a returned numeric revision is an immutable exact read-back reference. offsetBytes=null returns a complete part only when <=8192 bytes. Data only, never validation proof; uses the original tool budget.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "part": {
+            "type": "string",
+            "enum": [
+              "script",
+              "harness"
+            ]
+          },
+          "stagingRevision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "offsetBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
+        },
+        "required": [
+          "part",
+          "stagingRevision",
+          "offsetBytes"
+        ],
+        "additionalProperties": false
+      },
+      "side": "worker",
+      "effect": "read",
+      "limits": {
+        "timeoutMs": 1000,
+        "maxInputBytes": 1024,
+        "maxOutputBytes": 65536
+      }
+    },
+    {
+      "name": "edit_module_candidate",
+      "description": "Apply at most 16 exact UTF-8 byte edits to the current frozen or staged Module parts, then self-test the complete candidate. Both current SHA256 values and stagingRevision must match. Offsets refer to the original version, edits cannot overlap; unchanged bytes/assertions are preserved. Never guess omitted source. Full parts remain <=2MiB; inserted text totals <=8192 bytes and entire tool input <=8192 bytes. Only a passing candidate can be delivered. Optional nextStep pauses a standalone Module only; Plan Stage calls omit it. No publishing or extra budget.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "stagingRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "scriptSha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "harnessSha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "edits": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 16,
+            "items": {
+              "type": "object",
+              "properties": {
+                "part": {
+                  "type": "string",
+                  "enum": [
+                    "script",
+                    "harness"
+                  ]
+                },
+                "offsetBytes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "deleteBytes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "insert": {
+                  "type": "string",
+                  "maxLength": 8192,
+                  "x-maxUtf8Bytes": 8192
+                }
+              },
+              "required": [
+                "part",
+                "offsetBytes",
+                "deleteBytes",
+                "insert"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "slug": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              },
+              "moduleKind": {
+                "type": "string",
+                "enum": [
+                  "setup",
+                  "step",
+                  "page"
+                ]
+              },
+              "exportName": {
+                "type": "string",
+                "maxLength": 128,
+                "x-maxUtf8Bytes": 128
+              },
+              "signature": {
+                "type": "string",
+                "maxLength": 8192,
+                "x-maxUtf8Bytes": 8192
+              },
+              "inputs": {
+                "type": "string",
+                "maxLength": 8192,
+                "x-maxUtf8Bytes": 8192
+              },
+              "returns": {
+                "type": "string",
+                "maxLength": 8192,
+                "x-maxUtf8Bytes": 8192
+              },
+              "preconditions": {
+                "type": "string",
+                "maxLength": 8192,
+                "x-maxUtf8Bytes": 8192
+              },
+              "postconditions": {
+                "type": "string",
+                "maxLength": 8192,
+                "x-maxUtf8Bytes": 8192
+              }
+            },
+            "required": [
+              "slug",
+              "moduleKind",
+              "exportName",
+              "signature",
+              "inputs",
+              "returns",
+              "preconditions",
+              "postconditions"
+            ],
+            "additionalProperties": false,
+            "x-maxJsonBytes": 4096
+          },
+          "nextStep": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048,
+            "x-maxUtf8Bytes": 2048
+          }
+        },
+        "required": [
+          "stagingRevision",
+          "scriptSha256",
+          "harnessSha256",
+          "edits",
+          "metadata"
+        ],
+        "additionalProperties": false
+      },
+      "side": "worker",
+      "effect": "candidate",
+      "limits": {
+        "timeoutMs": 120000,
+        "maxInputBytes": 8192,
+        "maxOutputBytes": 131072
       }
     },
     {

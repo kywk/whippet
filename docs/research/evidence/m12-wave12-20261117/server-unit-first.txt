@@ -1,0 +1,4 @@
+=== RUN   TestModuleEditorSnapshotAndRemainingBudget
+--- PASS: TestModuleEditorSnapshotAndRemainingBudget (0.02s)
+PASS
+ok  	github.com/whippet/whippet/services/server/internal/server	0.540s

@@ -19,6 +19,7 @@ import {BrowserScopeError} from "./scope.js";
 import {CredentialError,type KnownSecrets} from '../login/client.js';
 import { hasHistory, HistoryError, type HistoryClient } from "./history.js";
 import { ConversationMemory } from "./conversation-memory.js";
+import { ModuleCandidateStore } from "./module-candidate.js";
 
 export const AUTHOR_INSTRUCTIONS = [
   "You are Whippet's task agent. Follow the selected packaged skill; shared Playwright examples are reference, not permission to act.",
@@ -104,8 +105,8 @@ export async function runAuthor(
   }
   let script = input.script;
   let checkpoint: { script: string; scriptHash: string } | undefined;
-  let stagingRevision = 0;
-  const stagedParts: Partial<Record<"script" | "harness", string>> = {};
+  const moduleCandidates = module ? new ModuleCandidateStore(script,input.author.platform!.module!.harness,guardMemory) : undefined;
+  const moduleEditing = !!moduleCandidates && ["read_module_candidate_part","edit_module_candidate","commit_module_candidate"].every(name=>allowedTools.some(tool=>tool.name===name));
   let moduleCheckpoint: {script:string;module:ModuleMetadata} | undefined;
   let moduleNextStep: string | undefined;
   const canCheckpointModule = module && !!capability && input.author.platform!.planId === null && allowedTools.some(tool => tool.name === "commit_module_candidate");
@@ -125,6 +126,7 @@ export async function runAuthor(
   const callsSeen = new Set<string>();
   const savedSnapshot = {
       baseRevision: input.author.baseRevision, script, ...(input.author.platform ? {platform:input.author.platform} : {}),
+      ...(moduleEditing ? {moduleCandidateRef:moduleCandidates!.reference()} : {}),
       scriptOrigin:input.scriptOrigin??'legacy',
       ...(input.workspaceSettings ? { workspaceSettings: input.workspaceSettings } : {}),
       ...(input.workspaceId ? {workspaceId:input.workspaceId,testId:input.testId,workspaceContext:input.workspaceContext} : {}),
@@ -146,7 +148,7 @@ export async function runAuthor(
       budget: { modelRequests: capability?.budget.maxModelRequests ?? (summary || workspace && allowedTools.length === 0 ? 1 : 8), toolExecutions: capability?.budget.maxToolCalls ?? 12, maxOutputTokens: capability?.budget.maxOutputTokens ?? 8192 },
       model: config, signal,
       capacity: availableModelCapacity(config),
-      snapshot, memory,
+      snapshot, memory, moduleCandidates: moduleEditing ? moduleCandidates : undefined,
       ...(hasHistory(input) && options.history ? { history: input.author.history } : {}),
       ...(capability ? { maxRequestBytes: 64 * 1024 * 1024, maxToolOutputBytes: module || planner ? 25 * 1024 * 1024 : 13 * 1024 * 1024 } : {}),
       ...(options.moduleDiagnostics ? { onModelRequestFailure: recordModelFailure } : {}),
@@ -196,7 +198,7 @@ export async function runAuthor(
         options.progress?.(event);
       },
       ...(module ? { completeAfterTool: (call: Item, result: unknown) => {
-        if (call.name !== "commit_module_candidate" || !moduleCheckpoint || !result || typeof result !== "object") return undefined;
+        if (!["commit_module_candidate","edit_module_candidate"].includes(String(call.name)) || !moduleCheckpoint || !result || typeof result !== "object") return undefined;
         const verified = result as { candidate?: unknown; selfTestPassed?: unknown };
         return verified.candidate === true && verified.selfTestPassed === true
           ? JSON.stringify({ message: moduleNextStep ? "Module 候選稿已保存；仍有剩餘工作，尚未排正式驗證。" : "Module 候選稿已通過自我試跑；仍須正式驗證。" }) : undefined;
@@ -242,22 +244,29 @@ export async function runAuthor(
               noSecret(result, config); planRef = ref;
             }
           } else if(call.name === "stage_module_candidate_part") {
-            if (!module || args.stagingRevision !== stagingRevision || !Number.isSafeInteger(stagingRevision + 1)) throw new AuthorError("tool_failed");
-            noSecret(args.content, config);
-            if (options.secrets && options.secrets.clean(args.content) !== args.content) throw new AuthorError("sensitive_output");
+            if (!moduleCandidates) throw new AuthorError("tool_failed");
             if (toolSignal.aborted) throw new AuthorError("cancelled");
-            const part = args.part as "script" | "harness", content = args.content as string;
-            result = { staged: true, revision: stagingRevision + 1, part, contentHash: sha256(Buffer.from(content, "utf8")) };
+            result = moduleCandidates.stage(args);
             validateToolResult(definition, result);
-            stagedParts[part] = content;
-            stagingRevision++;
-          } else if(call.name === "update_module_candidate" || call.name === "commit_module_candidate") {
+          } else if(call.name === "read_module_candidate_part") {
+            if (!moduleEditing) throw new AuthorError("tool_failed");
+            result=moduleCandidates!.read(args);
+          } else if(call.name === "update_module_candidate" || call.name === "commit_module_candidate" || call.name === "edit_module_candidate") {
             if(!module || !browser?.verifyDraft)throw new AuthorError("tool_failed");
             let candidate = args;
-            if (call.name === "commit_module_candidate") {
+            if (call.name !== "update_module_candidate") {
               if (Object.hasOwn(args, "nextStep") && (!canCheckpointModule || !boundedText(args.nextStep,2048,true))) throw new AuthorError("tool_failed");
-              if (args.stagingRevision !== stagingRevision || stagedParts.script === undefined || stagedParts.harness === undefined) throw new AuthorError("tool_failed");
-              candidate = { script: stagedParts.script, module: { ...args.metadata as Record<string, unknown>, harness: stagedParts.harness } };
+              const build=(parts:{script:string;harness:string})=>({script:parts.script,module:{...args.metadata as Record<string,unknown>,harness:parts.harness}});
+              if(call.name==="edit_module_candidate") {
+                if(!moduleEditing)throw new AuthorError("tool_failed");
+                const {stagingRevision,scriptSha256,harnessSha256,edits}=args;
+                const parts=moduleCandidates!.edit({stagingRevision,scriptSha256,harnessSha256,edits},parts=>{
+                  const value=build(parts);validateModule(value.script,value.module);
+                  if(value.module.slug!==input.author.platform!.module!.slug)throw new AuthorError("tool_failed");
+                  guardMemory(value);
+                });
+                candidate=build(parts);
+              } else candidate=build(moduleCandidates!.complete(args.stagingRevision));
             }
             validateModule(candidate.script,candidate.module);
             const next = {script:candidate.script as string,module:structuredClone(candidate.module)};
@@ -276,11 +285,11 @@ export async function runAuthor(
             options.moduleDiagnostics?.selfTest(check.passed);
             if(check.passed){
               moduleCheckpoint=next;
-              moduleNextStep = call.name === "commit_module_candidate" ? args.nextStep as string | undefined : undefined;
-              if(call.name === "commit_module_candidate" && !moduleNextStep && allowedTools.some(tool => tool.name === "request_module_validation")) validation=true;
-              result={candidate:true,selfTestPassed:true};
+              moduleNextStep = call.name !== "update_module_candidate" ? args.nextStep as string | undefined : undefined;
+              if(call.name !== "update_module_candidate" && !moduleNextStep && allowedTools.some(tool => tool.name === "request_module_validation")) validation=true;
+              result={candidate:true,selfTestPassed:true,...(call.name==="edit_module_candidate"?{candidateRef:moduleCandidates!.reference()}: {})};
             }
-            else result={candidate:false,selfTestPassed:false,error:check.error??check.summary};
+            else result={candidate:false,selfTestPassed:false,error:check.error??check.summary,...(call.name==="edit_module_candidate"?{candidateRef:moduleCandidates!.reference()}: {})};
           } else if(call.name === "request_module_validation") {
             if(!module)throw new AuthorError("tool_failed");validation=true;result={requested:true};
           } else if (call.name === "read_skill_reference") {

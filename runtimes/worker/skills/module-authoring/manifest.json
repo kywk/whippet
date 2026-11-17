@@ -15,7 +15,9 @@
     "browser_click",
     "browser_fill",
     "browser_login",
-    "record_conversation_memory"
+    "record_conversation_memory",
+    "read_module_candidate_part",
+    "edit_module_candidate"
   ],
   "budget": {
     "maxModelRequests": 8,

@@ -112,7 +112,7 @@ func (p *Postgres) enqueuePlanModuleAuthor(ctx context.Context, tx *sql.Tx, plan
 		input.Validation = validationSnapshot(id, status, detail)
 	}
 
-	input.AllowedTools = []string{"read_module_draft", "read_validation_report", "stage_module_candidate_part", "commit_module_candidate", "request_module_validation"}
+	input.AllowedTools = []string{"read_module_draft", "read_validation_report", "stage_module_candidate_part", "commit_module_candidate", "read_module_candidate_part", "edit_module_candidate", "request_module_validation"}
 	auth, proposal, err := p.prepareAuthor(ctx, tx, d, &input)
 	if err != nil {
 		return Run{}, err

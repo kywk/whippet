@@ -5,12 +5,14 @@ import { AuthorError } from "../types.js";
 import { validateHistoryResult, type HistoryPin } from "../history.js";
 import type { FrozenAuthorSnapshot } from "../snapshot.js";
 import type { ConversationMemory } from "../conversation-memory.js";
+import type { ModuleCandidateStore } from "../module-candidate.js";
 
 export interface ContextRetrievalBudget {
   toolCalls: number;
   history?: { pin: HistoryPin; reads: number };
   snapshot?: FrozenAuthorSnapshot;
   memory?: ConversationMemory;
+  moduleCandidates?: ModuleCandidateStore;
 }
 
 export class ContextCapacityError extends Error {
@@ -45,6 +47,15 @@ function summary(call: EngineItem, item: EngineItem, retrieval: ContextRetrieval
       identity = metadata;
       args = { component: page.component, sha256: page.sha256, offsetBytes: args.offsetBytes };
     } catch { return; }
+  } else if (call.name === "read_module_candidate_part" && retrieval.moduleCandidates) {
+    try {
+      // Resolve a model's current-version spelling to the exact immutable
+      // revision returned then; later edits cannot change this read-back.
+      args={part:args.part,stagingRevision:value.stagingRevision,offsetBytes:args.offsetBytes};
+      const page=retrieval.moduleCandidates.read(args);
+      if (!value || Object.keys(value).length!==Object.keys(page).length || !Object.entries(page).every(([key,v])=>Object.hasOwn(value,key)&&value[key]===v))return;
+      const {content:_content,...metadata}=page;identity=metadata;
+    } catch(error) { if(error instanceof AuthorError&&error.code==='sensitive_output')throw error;return; }
   } else if (call.name === "read_conversation_history" && retrieval.history && args && Object.keys(args).length === 1 && Object.hasOwn(args, "cursor")) {
     // Only the model-facing first-page spelling is normalized. IPC stays strict.
     const cursor = args.cursor === "null" ? null : args.cursor;

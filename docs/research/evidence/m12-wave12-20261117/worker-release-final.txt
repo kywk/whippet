@@ -1,0 +1,146 @@
+TAP version 13
+# Subtest: unrecoverable, mutable or inaccessible data cannot be silently compacted
+ok 1 - unrecoverable, mutable or inaccessible data cannot be silently compacted
+  ---
+  duration_ms: 2.438041
+  type: 'test'
+  ...
+# Subtest: frozen skill references compact with exact read-back arguments and never become validation evidence
+ok 2 - frozen skill references compact with exact read-back arguments and never become validation evidence
+  ---
+  duration_ms: 1.059792
+  type: 'test'
+  ...
+# Subtest: unknown model capacity fails closed; an override cannot exceed known provider capacity
+ok 3 - unknown model capacity fails closed; an override cannot exceed known provider capacity
+  ---
+  duration_ms: 0.149416
+  type: 'test'
+  ...
+# Subtest: frozen history keeps exact UTF-8 fragment references and canonical read-back cursor
+ok 4 - frozen history keeps exact UTF-8 fragment references and canonical read-back cursor
+  ---
+  duration_ms: 1.933875
+  type: 'test'
+  ...
+# Subtest: all compacted references must fit remaining distinct read-back calls
+ok 5 - all compacted references must fit remaining distinct read-back calls
+  ---
+  duration_ms: 0.959292
+  type: 'test'
+  ...
+# Subtest: exact UTF-8 edits preserve every untouched byte and immutable versions remain readable
+ok 6 - exact UTF-8 edits preserve every untouched byte and immutable versions remain readable
+  ---
+  duration_ms: 2.398542
+  type: 'test'
+  ...
+# Subtest: stale hashes/CAS, overlapping edits, UTF-8 cuts, oversize and rejected metadata are atomic
+ok 7 - stale hashes/CAS, overlapping edits, UTF-8 cuts, oversize and rejected metadata are atomic
+  ---
+  duration_ms: 16.009709
+  type: 'test'
+  ...
+# Subtest: immutable candidate pages compact with exact revision read-back and the original tool reservation
+ok 8 - immutable candidate pages compact with exact revision read-back and the original tool reservation
+  ---
+  duration_ms: 0.883375
+  type: 'test'
+  ...
+# Subtest: newly classified secrets revoke source references/pages rather than returning misleading hashes
+ok 9 - newly classified secrets revoke source references/pages rather than returning misleading hashes
+  ---
+  duration_ms: 0.182333
+  type: 'test'
+  ...
+# Subtest: both engines pause a verified standalone Module and complete a second Run within the original allocation
+ok 10 - both engines pause a verified standalone Module and complete a second Run within the original allocation
+  ---
+  duration_ms: 48.166458
+  type: 'test'
+  ...
+# {"engine":"builtin","totalRequests":6,"totalTests":2,"firstUsage":{"modelRequests":3,"toolCalls":3,"durationMs":9},"maxRequests":8,"maxTools":12}
+# {"engine":"vercel","totalRequests":6,"totalTests":2,"firstUsage":{"modelRequests":3,"toolCalls":3,"durationMs":25},"maxRequests":8,"maxTools":12}
+# Subtest: Plan stages cannot request a standalone checkpoint and failed self-tests cannot mint one
+ok 11 - Plan stages cannot request a standalone checkpoint and failed self-tests cannot mint one
+  ---
+  duration_ms: 7.983083
+  type: 'test'
+  ...
+# Subtest: cancellation and newly discovered secrets discard a Module checkpoint before artifact output
+ok 12 - cancellation and newly discovered secrets discard a Module checkpoint before artifact output
+  ---
+  duration_ms: 5.445166
+  type: 'test'
+  ...
+# Subtest: truncated commit arguments never execute or promote staged parts to a Module checkpoint
+ok 13 - truncated commit arguments never execute or promote staged parts to a Module checkpoint
+  ---
+  duration_ms: 7.560917
+  type: 'test'
+  ...
+# Subtest: both engines edit >8KiB original parts through frozen references and preserve all untouched bytes inside capacity
+ok 14 - both engines edit >8KiB original parts through frozen references and preserve all untouched bytes inside capacity
+  ---
+  duration_ms: 51.37575
+  type: 'test'
+  ...
+# {"engine":"builtin","requests":3,"selfTests":1,"sourceBytes":52092,"peakEstimate":26059,"limit":32000}
+# {"engine":"vercel","requests":3,"selfTests":1,"sourceBytes":52092,"peakEstimate":26044,"limit":32000}
+# Subtest: a complete candidate can finish in the final single model/tool slot with no extra request or staging
+ok 15 - a complete candidate can finish in the final single model/tool slot with no extra request or staging
+  ---
+  duration_ms: 8.852334
+  type: 'test'
+  ...
+# Subtest: failed local edits expose a new unverified revision for repair while the verified guard stays authoritative
+ok 16 - failed local edits expose a new unverified revision for repair while the verified guard stays authoritative
+  ---
+  duration_ms: 4.228959
+  type: 'test'
+  ...
+# Subtest: eight successful exploration calls without a Module candidate stop at the pinned model budget
+ok 17 - eight successful exploration calls without a Module candidate stop at the pinned model budget
+  ---
+  duration_ms: 12.043041
+  type: 'test'
+  ...
+# Subtest: staged candidate uses real engine/fetch tool sequence and never IPC; commit alone creates final
+ok 18 - staged candidate uses real engine/fetch tool sequence and never IPC; commit alone creates final
+  ---
+  duration_ms: 4.888042
+  type: 'test'
+  ...
+# Subtest: staging CAS and schema rejection never advance accepted revision or bypass full candidate guards
+ok 19 - staging CAS and schema rejection never advance accepted revision or bypass full candidate guards
+  ---
+  duration_ms: 5.291916
+  type: 'test'
+  ...
+# Subtest: failed repair preserves prior verified candidate and staging never becomes a checkpoint
+ok 20 - failed repair preserves prior verified candidate and staging never becomes a checkpoint
+  ---
+  duration_ms: 8.973875
+  type: 'test'
+  ...
+# Subtest: secret parts and cancellation cannot create a verified checkpoint
+ok 21 - secret parts and cancellation cannot create a verified checkpoint
+  ---
+  duration_ms: 3.034875
+  type: 'test'
+  ...
+# Subtest: duplicate commit call ID never repeats self-test; late pass after abort never creates checkpoint
+ok 22 - duplicate commit call ID never repeats self-test; late pass after abort never creates checkpoint
+  ---
+  duration_ms: 5.432917
+  type: 'test'
+  ...
+1..22
+# tests 22
+# suites 0
+# pass 22
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 365.381333

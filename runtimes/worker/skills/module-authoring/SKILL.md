@@ -5,15 +5,17 @@ description: Create or repair a reusable Whippet Module and its verification har
 
 # Module authoring
 
-Use the pinned platform.module and read_module_draft to establish the immutable slug, moduleKind, exported API, named inputs, returned values and observable pre/postconditions. Keep one reusable responsibility. Modules cannot import other Modules or reach another Workspace.
+Use the pinned platform.module and saved data; read_module_draft only supplies missing facts. Establish the immutable slug, moduleKind, exported API, named inputs, returned values and observable pre/postconditions. Keep one reusable responsibility. Modules cannot import other Modules or reach another Workspace.
 
 The saved script or platform.module.harness may be a frozen snapshotRef. Use its readPage arguments with read_author_snapshot and follow nextOffsetBytes unchanged with the same sha256; null requests the full original only if it fits context. These are original baseRevision data, not staged or verified candidates. Keep Stage args, contracts and evidence; never infer omitted code or assertions. Reads consume the same tool budget and remain available during delivery for necessary original facts.
 
 Read module-authoring/harness through read_skill_reference before designing its independent spec. Explore with the provided browser tools only when the supplied target facts are insufficient; keep exploration on confirmed targets. Read playwright-authoring/recipe only when that auxiliary skill is pinned and examples are needed.
 
-Reserve at least three model requests and three tool calls for staging the complete body, staging the harness, and committing the self-test. A passing commit ends the loop through the guard; no extra validation/final request is needed. Count remaining budget before exploration and begin staging when facts suffice. A standalone checkpoint continuation shares the original allocation: leave at least three requests and three tools for another compact candidate. If this cannot fit, report the need to reduce the work; never refill the budget.
+Count remaining budget before exploration. Exact local editing can assemble/self-test a complete candidate in one model request/tool; reserve repair turns when available and read only missing source regions. Legacy full staging needs three requests/tools. A passing edit/commit ends through the guard without an extra validation/final request. A standalone checkpoint continuation shares the original allocation; leave at least one request/tool for local editing, or three for full staging. If needed facts and candidate work cannot fit, report the need to reduce the work; never refill the budget.
 
-Build a compact candidate in this order:
+When moduleCandidateRef and edit_module_candidate are offered, prefer exact small edits to the current frozen or staged parts. Bind stagingRevision and both SHA256 values; offsets are UTF-8 bytes in the original version, and edits cannot overlap. Read needed source with read_module_candidate_part before changing omitted code; a numeric returned revision is immutable for read-back. Keep untouched assertions. Supply complete concise metadata; the Worker assembles and self-tests the full candidate. A successful edit ends the loop, or nextStep saves a standalone checkpoint. This route can finish a candidate in one request/tool without retransmitting full parts. Failed edits never become verified evidence; use the returned candidateRef for repair. Original bounds/budget apply.
+
+For a new compact candidate or when local editing is unavailable, use this order:
 
 1. Call stage_module_candidate_part with part="script", the complete reusable body, and stagingRevision=0. Each part must fit 8192 UTF-8 bytes. Finish this part before generating the harness.
 2. Call stage_module_candidate_part with part="harness", the complete independent spec importing @lib/<slug>, and the revision returned by step 1. Assert the promised observable outcome; use configured login role IDs, never credential values.

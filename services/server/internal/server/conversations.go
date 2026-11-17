@@ -173,7 +173,7 @@ func (p *Postgres) createAuthorInTxForRuntime(ctx context.Context, tx *sql.Tx, d
 			module = &Module{Slug: stringValue(slug), ModuleKind: "step", ExportName: "run"}
 		}
 		input.Platform = &AuthorPlatform{Module: module}
-		input.AllowedTools = []string{"read_module_draft", "read_validation_report", "stage_module_candidate_part", "commit_module_candidate", "request_module_validation"}
+		input.AllowedTools = []string{"read_module_draft", "read_validation_report", "stage_module_candidate_part", "commit_module_candidate", "read_module_candidate_part", "edit_module_candidate", "request_module_validation"}
 	case "usecase":
 		input.SkillID = "usecase-planner"
 		input.Platform = &AuthorPlatform{}

@@ -277,10 +277,10 @@ func TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted(t *testing.T)
 					out.Partial.Usage = &AuthorUsage{1, 1, 1}
 				}
 				if mode == "insufficient-models" {
-					out.Partial.Usage = &AuthorUsage{6, 3, 1}
+					out.Partial.Usage = &AuthorUsage{8, 3, 1}
 				}
 				if mode == "insufficient-tools" {
-					out.Partial.Usage = &AuthorUsage{3, 10, 1}
+					out.Partial.Usage = &AuthorUsage{3, 12, 1}
 				}
 				raw = []byte(jsonText(out))
 			}

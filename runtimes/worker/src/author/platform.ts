@@ -1,7 +1,7 @@
 import { AuthorError, boundedText, type AuthorInput } from './types.js';
 import { exactObject, loadToolRegistry, validateToolArguments, sha256 } from './registry.js';
 export const PLATFORM_SERVER_TOOLS = ['catalog_search','catalog_next_page','catalog_get','read_module_draft','read_usecase_draft','read_plan','propose_plan'] as const;
-export const PLATFORM_TOOLS = [...PLATFORM_SERVER_TOOLS,'update_module_candidate','stage_module_candidate_part','commit_module_candidate','request_module_validation'] as const;
+export const PLATFORM_TOOLS = [...PLATFORM_SERVER_TOOLS,'update_module_candidate','stage_module_candidate_part','commit_module_candidate','read_module_candidate_part','edit_module_candidate','request_module_validation'] as const;
 export interface ModuleMetadata { slug:string; moduleKind:'setup'|'step'|'page'; exportName:string; signature:string; inputs:string; returns:string; preconditions:string; postconditions:string; harness:string }
 // Length-prefixed UTF-8 fields avoid JSON key order and escaping differences
 // between Worker, Manager and Server. Covers the complete metadata + harness.
@@ -26,7 +26,7 @@ export function validatePlatform(input:AuthorInput, capable:boolean):void {
   if(p.planId!==null&&(typeof p.planId!=='string'||!uuid.test(p.planId)))throw new AuthorError('invalid_input');
   if(module){validateModule(input.script,p.module);if((p.planId===null)!==(p.stageId===null)||p.stageId!==null&&!boundedText(p.stageId,64,true))throw new AuthorError('invalid_input');}
   else if(p.module!==null||p.stageId!==null)throw new AuthorError('invalid_input');
-  const allowed=module ? new Set(['read_module_draft','read_author_snapshot','update_module_candidate','stage_module_candidate_part','commit_module_candidate','request_module_validation','read_validation_report','read_skill_reference','read_conversation_history', 'record_conversation_memory', 'browser_navigate','browser_snapshot','browser_click','browser_fill','browser_login']) : new Set(['catalog_search','catalog_next_page','catalog_get','read_usecase_draft','read_plan','propose_plan','read_skill_reference','read_conversation_history','record_conversation_memory']);
+  const allowed=module ? new Set(['read_module_draft','read_author_snapshot','update_module_candidate','stage_module_candidate_part','commit_module_candidate','read_module_candidate_part','edit_module_candidate','request_module_validation','read_validation_report','read_skill_reference','read_conversation_history', 'record_conversation_memory', 'browser_navigate','browser_snapshot','browser_click','browser_fill','browser_login']) : new Set(['catalog_search','catalog_next_page','catalog_get','read_usecase_draft','read_plan','propose_plan','read_skill_reference','read_conversation_history','record_conversation_memory']);
   if(input.author.allowedTools?.some(t=>!allowed.has(t)))throw new AuthorError('invalid_input');
 }
 export function plannerCandidate(value:unknown):string {

@@ -1,0 +1,98 @@
+{
+  "date": "2026-11-17",
+  "timezone": "Asia/Taipei",
+  "recordedAt": "2026-11-17T09:06:19.743329+08:00",
+  "baseCommit": "6da3b14da363931b40d723be85980f541dc132f2",
+  "registryVersion": "15.0",
+  "scope": "bounded Module editing and immutable attempt-local version read-back",
+  "verification": {
+    "distinctTopLevelPassed": 31,
+    "worker": 22,
+    "workerPins": 1,
+    "server": 4,
+    "manager": 2,
+    "managerWorkerBridgeDistinct": 1,
+    "managerWorkerBridgeInvocations": 4,
+    "mcpReferenceWorker": 1,
+    "fullRegression": false,
+    "paidModelRequests": 0,
+    "actualPlaywrightPassed": 2,
+    "expectedPlaywrightAssertionFailures": 1,
+    "formalValidationScheduled": true,
+    "formalValidationExecuted": false,
+    "builds": {
+      "worker": "PASS",
+      "agentBridge": "PASS",
+      "serverGo1.23.12": "PASS",
+      "managerGo1.25.0": "PASS"
+    }
+  },
+  "capacity": {
+    "originalCombinedBytes": 52092,
+    "builtinPeakEstimate": 26059,
+    "vercelPeakEstimate": 26044,
+    "inputLimit": 32000
+  },
+  "continuation": {
+    "firstModels": 7,
+    "firstTools": 7,
+    "childModelAllocation": 1,
+    "childToolAllocation": 5,
+    "childUsedModels": 1,
+    "childUsedTools": 1,
+    "sharedModels": 8,
+    "sharedTools": 12,
+    "sharedDurationMs": 180000,
+    "maxOutputTokens": 16384,
+    "legacyMinimumCalls": 3,
+    "sourceUnchanged": true
+  },
+  "limits": {
+    "partsBytesEach": 2097152,
+    "editsPerCall": 16,
+    "insertedBytesPerCall": 8192,
+    "toolInputBytes": 8192,
+    "pageBytes": 8192,
+    "localVersionRange": [
+      0,
+      12
+    ]
+  },
+  "baseline": {
+    "main": "576816622d988049d36453c7b3dabed9feeadd28",
+    "healthy": true,
+    "candidateDeployed": false
+  },
+  "cleanup": {
+    "ownedTmpfsPostgresRemoved": true,
+    "retainedVolumesTouched": false
+  },
+  "secretScan": {
+    "files": 36,
+    "knownValueHits": 0,
+    "genericPatternHits": 0,
+    "valuesPrinted": false
+  },
+  "rawNotes": {
+    "worker-edit-first.txt": "6 PASS / 1 FAIL: final-slot delivery whitelist omitted editor; production fix verified",
+    "worker-edit-fixed.txt": "17 PASS after whitelist fix",
+    "worker-release-final.txt": "22 PASS, includes affected context tests and final skill bytes"
+  },
+  "remaining": [
+    "Plan Stage checkpoint",
+    "formal engine comparison and representative live flow",
+    "second-provider verification (credentials permitting)",
+    "M12.Z within user no-merge/no-tag scope"
+  ],
+  "sha256": {
+    "baseline-status-final.json": "edb3f16770e1b70d60d09bc32210b7d66c65cc86231ee58a6f7b9f7c9535a5ab",
+    "bridge-final.txt": "cf9b49b1d5304a3d63db627353625e59fbe4f8206e7160caae72996c48af98ac",
+    "manager-final.txt": "3dad1c59a275357f87820a75bfda626948124f12fa43869ad2e90901a742278c",
+    "server-editor-first.txt": "dea6a698080a87a82818eec0766fb6f949d59f98ccae623966a6e49aa60eee85",
+    "server-unit-first.txt": "c6bcaf21d13d265276390fd0c03f08d67b14872c937d99fcd606915259ec2447",
+    "worker-edit-first.txt": "9acb8a22638fd189aadd3d6299abe89519614387a03401583885bcab7e608563",
+    "worker-edit-fixed.txt": "5255c4d0d6e4690acca159b3b25c56dd57fdb5d8dc7e1813c9aa56aaca85b217",
+    "worker-pins-final.txt": "2e2f029b96231247721a2a7c10f045651e90e95e5ab489c30ab4ae3179deb877",
+    "worker-release-final.txt": "b38f38a1005005ac8a1c0fc02f3852a3a7f977d96fbd162d23d53fe1f2199462"
+  }
+}

@@ -1,0 +1,32 @@
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/revision
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/context
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/authorization
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/cancelled
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/budget
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/insufficient-models
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/insufficient-tools
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/attempt-cap
+=== RUN   TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/external-output
+--- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted (3.84s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/revision (0.52s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/context (0.41s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/authorization (0.42s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/cancelled (0.41s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/budget (0.40s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/insufficient-models (0.41s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/insufficient-tools (0.41s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/attempt-cap (0.47s)
+    --- PASS: TestModuleCheckpointPostgresRejectsStaleCancelledAndExhausted/external-output (0.39s)
+=== RUN   TestModuleEditorPostgresOneSlotContinuation
+=== RUN   TestModuleEditorPostgresOneSlotContinuation/builtin
+=== RUN   TestModuleEditorPostgresOneSlotContinuation/vercel
+--- PASS: TestModuleEditorPostgresOneSlotContinuation (4.45s)
+    --- PASS: TestModuleEditorPostgresOneSlotContinuation/builtin (3.65s)
+    --- PASS: TestModuleEditorPostgresOneSlotContinuation/vercel (0.80s)
+=== RUN   TestModuleEditorPostgresFailedRealSelfTest
+--- PASS: TestModuleEditorPostgresFailedRealSelfTest (1.37s)
+=== RUN   TestModuleEditorSnapshotAndRemainingBudget
+--- PASS: TestModuleEditorSnapshotAndRemainingBudget (0.01s)
+PASS
+ok  	github.com/whippet/whippet/services/server/internal/server	10.033s

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"slices"
 )
 
 var ErrContinuationBudget = errors.New("continuation_budget_exhausted")
@@ -112,9 +113,13 @@ func (c authorChainBudget) constrain(input *AuthorInput) error {
 	b.MaxModelRequests = min(b.MaxModelRequests, remaining.MaxModelRequests)
 	b.MaxToolCalls = min(b.MaxToolCalls, remaining.MaxToolCalls)
 	b.MaxDurationMS = min(b.MaxDurationMS, remaining.MaxDurationMS)
-	// The public Module author route stages body/harness and commits in three
-	// calls. Do not queue a child that cannot produce one complete candidate.
-	if standaloneModule(*input) && (b.MaxModelRequests < 3 || b.MaxToolCalls < 3) {
+	// Legacy staging needs three calls; the pinned local editor can assemble
+	// and self-test one complete candidate in one. Never refill either route.
+	minimum := 3
+	if slices.Contains(input.AllowedTools, "edit_module_candidate") && slices.Contains(input.AllowedTools, "read_module_candidate_part") && slices.Contains(input.AllowedTools, "commit_module_candidate") {
+		minimum = 1
+	}
+	if standaloneModule(*input) && (b.MaxModelRequests < minimum || b.MaxToolCalls < minimum) {
 		return ErrContinuationBudget
 	}
 	output := min(effectiveOutputTokens(&b), effectiveOutputTokens(&c.Limit))

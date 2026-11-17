@@ -1,0 +1,116 @@
+TAP version 13
+# Subtest: exact UTF-8 edits preserve every untouched byte and immutable versions remain readable
+ok 1 - exact UTF-8 edits preserve every untouched byte and immutable versions remain readable
+  ---
+  duration_ms: 2.243917
+  type: 'test'
+  ...
+# Subtest: stale hashes/CAS, overlapping edits, UTF-8 cuts, oversize and rejected metadata are atomic
+ok 2 - stale hashes/CAS, overlapping edits, UTF-8 cuts, oversize and rejected metadata are atomic
+  ---
+  duration_ms: 15.527333
+  type: 'test'
+  ...
+# Subtest: immutable candidate pages compact with exact revision read-back and the original tool reservation
+ok 3 - immutable candidate pages compact with exact revision read-back and the original tool reservation
+  ---
+  duration_ms: 0.876917
+  type: 'test'
+  ...
+# Subtest: newly classified secrets revoke source references/pages rather than returning misleading hashes
+ok 4 - newly classified secrets revoke source references/pages rather than returning misleading hashes
+  ---
+  duration_ms: 0.182084
+  type: 'test'
+  ...
+# Subtest: both engines pause a verified standalone Module and complete a second Run within the original allocation
+ok 5 - both engines pause a verified standalone Module and complete a second Run within the original allocation
+  ---
+  duration_ms: 47.632292
+  type: 'test'
+  ...
+# {"engine":"builtin","totalRequests":6,"totalTests":2,"firstUsage":{"modelRequests":3,"toolCalls":3,"durationMs":8},"maxRequests":8,"maxTools":12}
+# {"engine":"vercel","totalRequests":6,"totalTests":2,"firstUsage":{"modelRequests":3,"toolCalls":3,"durationMs":24},"maxRequests":8,"maxTools":12}
+# Subtest: Plan stages cannot request a standalone checkpoint and failed self-tests cannot mint one
+ok 6 - Plan stages cannot request a standalone checkpoint and failed self-tests cannot mint one
+  ---
+  duration_ms: 7.653833
+  type: 'test'
+  ...
+# Subtest: cancellation and newly discovered secrets discard a Module checkpoint before artifact output
+ok 7 - cancellation and newly discovered secrets discard a Module checkpoint before artifact output
+  ---
+  duration_ms: 5.652833
+  type: 'test'
+  ...
+# Subtest: truncated commit arguments never execute or promote staged parts to a Module checkpoint
+ok 8 - truncated commit arguments never execute or promote staged parts to a Module checkpoint
+  ---
+  duration_ms: 7.509166
+  type: 'test'
+  ...
+# Subtest: both engines edit >8KiB original parts through frozen references and preserve all untouched bytes inside capacity
+ok 9 - both engines edit >8KiB original parts through frozen references and preserve all untouched bytes inside capacity
+  ---
+  duration_ms: 49.730792
+  type: 'test'
+  ...
+# {"engine":"builtin","requests":3,"selfTests":1,"sourceBytes":52092,"peakEstimate":25965,"limit":32000}
+# {"engine":"vercel","requests":3,"selfTests":1,"sourceBytes":52092,"peakEstimate":25950,"limit":32000}
+# Subtest: a complete candidate can finish in the final single model/tool slot with no extra request or staging
+ok 10 - a complete candidate can finish in the final single model/tool slot with no extra request or staging
+  ---
+  duration_ms: 8.948208
+  type: 'test'
+  ...
+# Subtest: failed local edits expose a new unverified revision for repair while the verified guard stays authoritative
+ok 11 - failed local edits expose a new unverified revision for repair while the verified guard stays authoritative
+  ---
+  duration_ms: 4.373958
+  type: 'test'
+  ...
+# Subtest: eight successful exploration calls without a Module candidate stop at the pinned model budget
+ok 12 - eight successful exploration calls without a Module candidate stop at the pinned model budget
+  ---
+  duration_ms: 11.640416
+  type: 'test'
+  ...
+# Subtest: staged candidate uses real engine/fetch tool sequence and never IPC; commit alone creates final
+ok 13 - staged candidate uses real engine/fetch tool sequence and never IPC; commit alone creates final
+  ---
+  duration_ms: 5.116
+  type: 'test'
+  ...
+# Subtest: staging CAS and schema rejection never advance accepted revision or bypass full candidate guards
+ok 14 - staging CAS and schema rejection never advance accepted revision or bypass full candidate guards
+  ---
+  duration_ms: 5.271375
+  type: 'test'
+  ...
+# Subtest: failed repair preserves prior verified candidate and staging never becomes a checkpoint
+ok 15 - failed repair preserves prior verified candidate and staging never becomes a checkpoint
+  ---
+  duration_ms: 8.895458
+  type: 'test'
+  ...
+# Subtest: secret parts and cancellation cannot create a verified checkpoint
+ok 16 - secret parts and cancellation cannot create a verified checkpoint
+  ---
+  duration_ms: 3.167084
+  type: 'test'
+  ...
+# Subtest: duplicate commit call ID never repeats self-test; late pass after abort never creates checkpoint
+ok 17 - duplicate commit call ID never repeats self-test; late pass after abort never creates checkpoint
+  ---
+  duration_ms: 5.682542
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 366.937583

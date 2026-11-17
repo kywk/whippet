@@ -275,3 +275,16 @@ Server 原子寫入完整 Module 草稿的新 revision、清除舊正式驗證�
 雙引擎各以3模型／3工具保存，再於5／9的餘額內各3模型／3工具完成後排正式驗證；真 Node Worker artifact 經 Manager 接收端、Server與Postgres保存／續接。另有實際 Playwright 成功與刻意斷言失敗自試，以及真候選API／ConversationPanel人工續接。模型回應全部為合成，未跑付費provider或黃金全套；正式驗證的排程門檻已驗，這些自試不替代發佈所需的正式證據。
 
 本波不提供 Plan Stage partial／失敗 Stage 恢復、取消或程序崩潰時的隱式保存、跨 attempt 暫存、任意大候選分段編輯或放大配額。沒有通過完整 commit 的工作仍停止；需在原額度耗盡前明確保存可驗證候選。精確結果及後續見 [Wave11交接](../docs/tracking/handoff/m12-wave11-20261117.md)。
+
+## M12.1 Wave12：有界 Module 編輯與不可變候選引用（registry 15.0）
+
+`module-authoring` 預設加上兩個 Worker 本機工具，不經 Server IPC／MCP，也不新增檔案、網路或執行權限。新工具與 skill／registry 原樣固定 hash；模型、effort、8模型／12工具／180000ms／16384 output及原本每個script／harness 2MiB上限不變。
+
+- `read_module_candidate_part({part,stagingRevision,offsetBytes})`：part為script／harness，stagingRevision為整數或null（本次呼叫的當前版本），offsetBytes為UTF-8 byte位移或null。每頁最多8192 bytes，邊界對齊UTF-8；null位移只容許整份不超過8192 bytes。回傳精確版本、完整部分的SHA256／bytes、內容與下一位移，永遠dataOnly=true／validationEvidence=false。數字版本在本Run內不可變；compaction將null正規化成實際數字版本，精確讀回仍需預留原工具額度。
+- `edit_module_candidate({stagingRevision,scriptSha256,harnessSha256,edits,metadata,nextStep?})`：以初始凍結原稿或已接受候選為基底，雙hash與CAS相符才套用。至多16個不重疊、合法UTF-8邊界的編輯，每筆為part／offsetBytes／deleteBytes／insert；所有insert合計最多8192 bytes，完整工具JSON亦最多8192 bytes。metadata仍需完整八欄；不得刪除斷言規避失敗。Worker組裝完整候選並經原scope、Module ABI、自試、機密與完成守衛；不是把patch當正式證據。
+
+初始savedSnapshot新增moduleCandidateRef（版本0、雙hash與bytes），可減少重傳完整原稿。最多保留版本0–12，隨Run結束丟棄；沒有跨attempt暫存、Server任意讀取或自動合併。metadata／slug／機密／CAS等拒絕不推進版本；合法編輯即使自試失敗仍保留為**未驗**本機版本，回傳candidateRef供原額度內修復，最後通過候選仍由原guard閉包持有。機密新分類後，引用／讀回同樣拒絕，不回傳不相符的遮蔽內容與原文hash。
+
+成功編輯直接完成（或依Wave11的獨立Module nextStep明確保存partial），不需要額外模型收尾或legacy雙staging。Server只對同時固定edit／read／commit能力的獨立Module，允許餘額1模型／1工具的continue；沒有新能力的legacy路線仍至少3／3。這是實際呼叫數降低，不重設用量、不補額。真Server→Worker→Manager parser→保存／回收→continue以實際7模型／7工具的首Run測試，次Run只分配1模型／5工具，使用1／1完成；正式驗證仍僅於完成並回收後排程一次。
+
+本波不開放Plan Stage nextStep；任意大候選或任意大小patch亦不在此有界介面內。精確結果與保留的中間失敗見[Wave12交接](../docs/tracking/handoff/m12-wave12-20261117.md)。

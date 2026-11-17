@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: exact UTF-8 edits preserve every untouched byte and immutable versions remain readable
+ok 1 - exact UTF-8 edits preserve every untouched byte and immutable versions remain readable
+  ---
+  duration_ms: 3.052541
+  type: 'test'
+  ...
+# Subtest: stale hashes/CAS, overlapping edits, UTF-8 cuts, oversize and rejected metadata are atomic
+ok 2 - stale hashes/CAS, overlapping edits, UTF-8 cuts, oversize and rejected metadata are atomic
+  ---
+  duration_ms: 15.713875
+  type: 'test'
+  ...
+# Subtest: immutable candidate pages compact with exact revision read-back and the original tool reservation
+ok 3 - immutable candidate pages compact with exact revision read-back and the original tool reservation
+  ---
+  duration_ms: 1.221959
+  type: 'test'
+  ...
+# Subtest: newly classified secrets revoke source references/pages rather than returning misleading hashes
+ok 4 - newly classified secrets revoke source references/pages rather than returning misleading hashes
+  ---
+  duration_ms: 0.409375
+  type: 'test'
+  ...
+# Subtest: both engines edit >8KiB original parts through frozen references and preserve all untouched bytes inside capacity
+ok 5 - both engines edit >8KiB original parts through frozen references and preserve all untouched bytes inside capacity
+  ---
+  duration_ms: 44.844125
+  type: 'test'
+  ...
+# {"engine":"builtin","requests":3,"selfTests":1,"sourceBytes":52092,"peakEstimate":25965,"limit":32000}
+# {"engine":"vercel","requests":3,"selfTests":1,"sourceBytes":52092,"peakEstimate":25950,"limit":32000}
+# Subtest: a complete candidate can finish in the final single model/tool slot with no extra request or staging
+not ok 6 - a complete candidate can finish in the final single model/tool slot with no extra request or staging
+  ---
+  duration_ms: 6.589708
+  type: 'test'
+  location: '/Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/author/module-edit-runtime.test.js:69:1'
+  failureType: 'testCodeFailure'
+  error: 'Author task limit; provider and browser details are hidden'
+  code: 'limit'
+  name: 'AuthorError'
+  stack: |-
+    runAuthor (file:///Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/author/loop.js:574:23)
+    async TestContext.<anonymous> (file:///Users/kywk/kywk/project/whippet/.worktrees/m12-agent-adapter/runtimes/worker/dist/author/module-edit-runtime.test.js:75:21)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: failed local edits expose a new unverified revision for repair while the verified guard stays authoritative
+ok 7 - failed local edits expose a new unverified revision for repair while the verified guard stays authoritative
+  ---
+  duration_ms: 3.768083
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 6
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 359.061333
