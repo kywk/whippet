@@ -582,7 +582,8 @@ p { line-height: 1.7; }
 .latest-summary { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: .8rem; color: var(--muted); }
 .latest-summary .report-link { margin-left: auto; }
 .refresh-status { font-size: .74rem; color: var(--muted); }
-.table-scroll { overflow-x: auto; }
+/* Keep the visually hidden caption inside the table's scroll container. */
+.table-scroll { position: relative; overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; text-align: left; font-size: .8rem; }
 th { padding: 9px 10px; border-bottom: 1px solid var(--line); color: var(--muted); background: var(--ground); font-size: .74rem; font-weight: 600; white-space: nowrap; }
 td { padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
