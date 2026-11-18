@@ -13,13 +13,15 @@
 
 名稱保留原值，以延續 Vault、token、TLS、Manager ID與work目錄。MCP是已驗的本機HTTP接入基準，不代表已部署目前checkout的新程式，也不等於可信TLS credential登入全鏈。兩個環境的Server／Worker／registry pins分別保存，不混用候選或背景版本。
 
+M12 合併至 `main` 後，builtin 基準的 Web 從 `.worktrees/m12-builtin-baseline` 讀取。此 worktree 固定在 `5768166`，保留與原 Web pin 相符的來源及 Vite 依賴。
+
 重開機後：
 
 1. 開啟 OrbStack，等 `docker info` 成功；不用重裝或重新初始化。
 2. 在會持續保留的終端執行：
 
 ```sh
-cd /Users/kywk/kywk/project/whippet
+cd /Users/kywk/kywk/project/whippet/.worktrees/m12-builtin-baseline
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test/m12-dev-env.py start
 ```
 
@@ -28,6 +30,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/test/m12-dev-env.py start
 3. 在另一個終端核對：
 
 ```sh
+cd /Users/kywk/kywk/project/whippet/.worktrees/m12-builtin-baseline
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test/m12-dev-env.py status
 ```
 
@@ -164,7 +167,7 @@ browser_login沿原schema只傳roleId與三個selector；username/password只經
 
 ## M12 候選來源與升級對齊（2026-11-17）
 
-`feat/agent-adapter` 的M12來源與兩個持續保留的部署分開。builtin19987–19989及MCP19587仍使用各自已驗固定版本；恢復繼續執行本頁原start／status，不把候選image、Web、binary或registry digest填回舊state。
+`main` 已納入 M12 候選來源（`98e6bfa`）。builtin 19987–19989 與 MCP 19587 使用各自固定的版本。恢復請在上述基準 worktree 執行 `start`／`status`，實地驗測則從新 `main` 建置獨立候選環境。
 
 候選採registry16.0、migration029、Vercel ai7.0.173／openai4.0.118，預設仍builtin。需要升級時，Server／Manager／Worker／Web及MCP參考client須對齊同一份registry與skill raw pins；Worker候選image及六個打包skill的[來源比對](../research/evidence/m12-wave15-20261117/candidate-source-admission.json)可供檢視。這份比對不是自動部署動作。
 

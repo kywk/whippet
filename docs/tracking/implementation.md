@@ -431,7 +431,7 @@ M11.Z 清單：
 
 ### M12 階段三：Agent Adapter（`feat/agent-adapter`；M12.0 spike起點main `5768166`）
 
-狀態：完成可交付的MVP來源與限定驗收（M12.0–4及Wave15 M12.Z；未merge／tag／部署基準）。Wave1–13有界引擎／runtime／歷史／記憶／候選編輯／Module與Stage原額度checkpoint已完成；Wave14真代表UseCase通過，Wave15指定1複用＋2新Module與發佈後正式Run以ASSISTED Plan review／凍結真產物重播完成。原自主Plan契約FAIL保留，原14題無人工同批全過未證，第二provider缺受控profile／key為UNVERIFIED；維持builtin預設。任意長全量語意／任意大產物／隱式程序中斷checkpoint未提供，金額／全Plan配額仍後續里程碑。[集中紀錄](../research/m12-stage3-verification-20261117.md)。
+狀態：完成可交付的MVP來源與限定驗收（M12.0–4及Wave15 M12.Z）。2026-11-18 依使用者授權將 `98e6bfa` fast-forward 合併至 `main`。保留 builtin 基準從固定 `5768166` 的 worktree 啟動，合併後的實地驗測待在獨立候選環境執行。Wave1–13有界引擎／runtime／歷史／記憶／候選編輯／Module與Stage原額度checkpoint已完成；Wave14真代表UseCase通過，Wave15指定1複用＋2新Module與發佈後正式Run以ASSISTED Plan review／凍結真產物重播完成。原自主Plan契約FAIL保留，原14題無人工同批全過未證，第二provider缺受控profile／key為UNVERIFIED；維持builtin預設。任意長全量語意／任意大產物／隱式程序中斷checkpoint未提供，金額／全Plan配額仍後續里程碑。[集中紀錄](../research/m12-stage3-verification-20261117.md)。
 
 2026-11-16 接續準備完成（owner：主 Agent，不開subagent）：使用者已merge/push至main（60498a9）。依新授權退役62舊容器、17 volumes、11 networks、92映像標籤、157 tmp項目；15份DB及歷史資料先冷備份，其他專案16容器保留。M12僅保留builtin19987–19989與本機MCP19587兩基準（共3個Docker容器）。新增m12-dev-env.py start/status；受控停機→恢復PASS，11份身分SHA不變、builtin81 Run、兩庫名額0、MCP19工具、模型Run新增0。OS重開機由使用者稍後執行；[恢復指引](../guides/mcp-agent.md#m12-保留環境與重開機恢復2026-11-16)。M12.0尚未開工，不將環境整理當引擎spike完成。
 
