@@ -60,7 +60,7 @@ export function VoiceInputButton({ disabled, onTranscript }: { disabled: boolean
     const Constructor = browserSpeechRecognition();
     if (!Constructor) { wantsListening.current = false; setListening(false); setSupported(false); return; }
     const next = new Constructor();
-    next.lang = navigator.language || 'zh-TW';
+    next.lang = 'zh-TW';
     next.continuous = true;
     next.interimResults = false;
     next.onresult = (event) => {
@@ -76,9 +76,9 @@ export function VoiceInputButton({ disabled, onTranscript }: { disabled: boolean
       if (event.error === 'no-speech') return;
       wantsListening.current = false;
       setListening(false);
-      setError(event.error === 'not-allowed' || event.error === 'service-not-allowed'
-        ? '麥克風權限遭拒，請檢查瀏覽器權限。'
-        : '語音辨識失敗，請再試一次。');
+      if (event.error === 'language-not-supported') setError('目前的語音辨識服務不支援繁體中文，請用鍵盤輸入。');
+      else if (event.error === 'not-allowed' || event.error === 'service-not-allowed') setError('麥克風權限遭拒，請檢查瀏覽器權限。');
+      else setError('語音辨識失敗，請再試一次。');
       try { next.stop(); } catch { /* Browser may have already stopped recognition. */ }
     };
     next.onend = () => {

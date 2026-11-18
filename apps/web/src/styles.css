@@ -483,7 +483,7 @@ p { line-height: 1.7; }
 }
 .composer-box textarea::placeholder { color: #5b6888; }
 .composer-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; min-width: 0; }
-.composer-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
+.composer-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .composer-help { margin-left: auto; font-size: .74rem; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-help.warn { color: var(--bad); font-weight: 600; }
 .send-button {
