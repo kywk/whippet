@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
+import whippetAvatar from './assets/whippet-avatar.webp';
 import { formatDate } from './components';
-import { BrandMark, ChevronDownIcon, SendIcon } from './icons';
+import { ChevronDownIcon, SendIcon } from './icons';
 import { VoiceInputButton } from './VoiceInputButton';
 import type { Message } from './types';
 
@@ -54,7 +55,7 @@ export function UserTurn({ message }: { message: Message }) {
 
 export function AssistantTurn({ name = 'Whippet', time, children, pending = false }: { name?: string; time?: string; children: ReactNode; pending?: boolean }) {
   return <li className={`turn assistant${pending ? ' pending' : ''}`}>
-    <span className="avatar" aria-hidden="true"><BrandMark className="avatar-mark" /></span>
+    <img className="avatar" src={whippetAvatar} width={32} height={32} alt="" />
     <div className="turn-body">
       <div className="turn-name"><strong>{name}</strong>{time ? <time dateTime={time}>{formatDate(time)}</time> : null}</div>
       {children}

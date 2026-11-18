@@ -11,6 +11,7 @@ import { useAllTestTags } from './tags';
 import { MiniTrail } from './trail';
 import { useResource } from './hooks';
 import { ArrowRightIcon, BellIcon, BrandMark, ChevronDownIcon, CloseIcon, GearIcon, MenuIcon, PlusIcon, RefreshIcon, SearchIcon, SidebarIcon } from './icons';
+import whippetIllustration from './assets/whippet-illustration.webp';
 import type { DevUser, Test, WhippetApi, WorkspaceDetail } from './types';
 
 interface AppProps {
@@ -74,7 +75,7 @@ export function App({ api, apiBase, mock }: AppProps) {
       {!user ? (
         <main id="main" className="login-layout">
           <section className="login-brand" aria-hidden="true">
-            <BrandMark className="login-mark" />
+            <img className="login-illustration" src={whippetIllustration} width={640} height={640} alt="" />
             <ol className="login-trail">
               {['改稿', '驗證', '摘要', '發佈'].map((label, index) => <li key={label} style={{ ['--i' as string]: index }}><span className="node">{index + 1}</span><span>{label}</span></li>)}
             </ol>

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import whippetIcon from './assets/whippet-icon.png';
 
 // 單一線寬（1.6）、20px 格線的自繪圖示；全站共用。
 function Icon({ children }: { children: ReactNode }) {
@@ -34,12 +35,6 @@ export const ExpandIcon = () => <Icon><path d="M12.5 3.5h4v4M16.5 3.5l-4.8 4.8M7
 export const CollapseIcon = () => <Icon><path d="M16.5 8h-4.5V3.5M12 8l4.5-4.5M3.5 12H8v4.5M8 12l-4.5 4.5" /></Icon>;
 export const MenuIcon = () => <Icon><path d="M3.5 6h13M3.5 10h13M3.5 14h13" /></Icon>;
 
-/** Whippet 標記：三張複寫聯疊成的 W。 */
 export function BrandMark({ className = 'brand-mark' }: { className?: string }) {
-  return <svg className={className} viewBox="0 0 32 32" aria-hidden="true">
-    <rect x="3" y="7" width="20" height="20" rx="4" fill="#8fb4f0" />
-    <rect x="6" y="5" width="20" height="20" rx="4" fill="#f0a6b8" />
-    <rect x="9" y="3" width="20" height="20" rx="4" fill="#f4d35e" />
-    <path d="m13 9 2.4 9 2.6-6.5 2.6 6.5 2.4-9" fill="none" stroke="#101c52" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>;
+  return <img className={className} src={whippetIcon} width={30} height={30} alt="" />;
 }

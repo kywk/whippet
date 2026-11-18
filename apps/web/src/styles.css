@@ -114,7 +114,7 @@ p { line-height: 1.7; }
   background: var(--rail); color: var(--rail-ink); border-radius: var(--radius-lg); padding: 32px 28px;
   display: flex; flex-direction: column; justify-content: space-between; gap: 36px;
 }
-.login-mark { width: 44px; height: 44px; }
+.login-illustration { display: block; width: min(100%, 260px); height: auto; align-self: center; }
 .login-trail { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
 .login-trail li { display: flex; align-items: center; gap: 12px; font-size: .9rem; font-weight: 600; position: relative; }
 .login-trail li:not(:last-child)::before { content: ""; position: absolute; left: 11px; top: 24px; height: 16px; width: 2px; background: #364b9e; }
@@ -151,7 +151,7 @@ p { line-height: 1.7; }
   background: var(--surface); border-bottom: 1px solid var(--line); flex-shrink: 0;
 }
 .brand { display: inline-flex; align-items: center; gap: 9px; color: #fff; text-decoration: none; font-size: 1.15rem; font-weight: 700; letter-spacing: -.02em; }
-.brand-mark { width: 24px; height: 24px; }
+.brand-mark { width: 30px; height: 30px; flex-shrink: 0; }
 .rail-link {
   display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border: 0; border-radius: 6px;
   background: transparent; color: var(--rail-muted); font-size: .78rem; font-weight: 500;
@@ -354,10 +354,9 @@ p { line-height: 1.7; }
 .turn-time { font-size: .72rem; color: var(--muted); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .turn.assistant { flex-direction: row; align-items: flex-start; gap: 12px; }
 .avatar {
-  width: 28px; height: 28px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line);
-  display: grid; place-items: center; flex-shrink: 0; margin-top: 2px;
+  width: 32px; height: 32px; border-radius: 50%; background: var(--subtle); border: 1px solid var(--line);
+  object-fit: cover; flex-shrink: 0; margin-top: 2px;
 }
-.avatar-mark { width: 18px; height: 18px; }
 .turn-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 10px; }
 .turn-name { display: flex; align-items: baseline; gap: 10px; font-size: .8rem; }
 .turn-name time { font-size: .72rem; color: var(--muted); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
@@ -727,6 +726,7 @@ td time { white-space: nowrap; font-variant-numeric: tabular-nums; }
 @media (max-width: 680px) {
   .login-layout { grid-template-columns: minmax(0, 1fr); padding: 20px 16px; }
   .login-brand { padding: 24px 20px; gap: 20px; }
+  .login-illustration { width: min(100%, 144px); }
   .login-trail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .login-trail li:not(:last-child)::before { display: none; }
   .login-panel { padding: 26px 20px; }
