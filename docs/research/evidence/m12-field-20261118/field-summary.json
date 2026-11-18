@@ -1,0 +1,319 @@
+{
+  "status": "PASS",
+  "localHead": "de27313863bf0f885e1471e8f1acd137edeef922",
+  "remoteMain": "de27313863bf0f885e1471e8f1acd137edeef922",
+  "m12MergeSource": "98e6bfa",
+  "initialWorktreeClean": true,
+  "preservedBaseline": {
+    "head": "5768166",
+    "dockerVersion": "29.8.2",
+    "start": "RUNNING in retained foreground exec",
+    "requiredStatus": {
+      "builtin": {
+        "containers": {
+          "whippet-m10z-20261115-manager": {
+            "identityValid": true,
+            "present": true,
+            "running": true
+          },
+          "whippet-m10z-20261115-pg": {
+            "present": true,
+            "running": true
+          }
+        },
+        "created": true,
+        "ports": {
+          "api": true,
+          "target": true,
+          "web": true
+        },
+        "serverSha256": "f064bd02671c223b7f209bf982e32623d0dc88318ee4b5bcf6f4b1a9f275f35f",
+        "stateValid": true
+      },
+      "mcpPinsValid": true,
+      "mcpReady": true
+    },
+    "builtinDatabase": {
+      "runs": 81,
+      "occupied": 0
+    },
+    "builtinPorts": [
+      19987,
+      19988,
+      19989
+    ],
+    "mcpPorts": [
+      19587,
+      19589
+    ]
+  },
+  "candidate": {
+    "commit": "de27313863bf0f885e1471e8f1acd137edeef922",
+    "images": {
+      "server": "sha256:6aa1d9a8518d7b955864ebd3e412c69da1a388ab00d5add02fe398b4758f8f63",
+      "manager": "sha256:44fde4912fa925cf917a7b3716471b295a1d2aab74b9e97a713c9cc7446900c2",
+      "worker": "sha256:cbaf04724e5b04d48b359516a940f51a236c73882862ff4f0c4960fef9bd5dd1",
+      "web": "sha256:dc7537bc7afc22c9ccef9673327cb99bda4348ee796ebf9f3b3de7f9570b2564",
+      "postgres": "sha256:63e83b5a3dc36a917dccb76fe1bd2ac51f1ec9c1deb47ff20d4f04233bf6eae9"
+    },
+    "ports": {
+      "web": 19687,
+      "target": 19688,
+      "api": 19689,
+      "db": 19690
+    },
+    "initialTarget": "repository-owned synthetic checklist; no authorized external target was supplied",
+    "targetUrl": "http://host.docker.internal:19688/",
+    "migration": "29 029_plan_stage_continuations.sql",
+    "managerId": "whippet-m12-field-de273138",
+    "maxWorkers": 1
+  },
+  "registry": {
+    "registryVersion": "16.0",
+    "registrySha256": "24867b07f17f9f31af0946ec28495bd7b80dd17be7e2eff0d0d1ee12fc75f008",
+    "registryByteMatch": [
+      "server",
+      "manager",
+      "worker"
+    ],
+    "skillByteMatch": [
+      "server",
+      "worker"
+    ],
+    "versions": {
+      "ai": "7.0.173",
+      "@ai-sdk/openai": "4.0.118",
+      "zod": "4.1.12",
+      "@playwright/test": "1.64.1",
+      "piProductionPresent": false
+    }
+  },
+  "skillPinCount": 8,
+  "scope": {
+    "id": "70e0e143-b2bf-4ca4-b295-10fb9d6385ae",
+    "name": "M12 post-merge field",
+    "target": "http://host.docker.internal:19688",
+    "scopeStatus": "confirmed",
+    "seededOwnedFixture": true
+  },
+  "workspaceVercelSelection": {
+    "workspaceId": "70e0e143-b2bf-4ca4-b295-10fb9d6385ae",
+    "via": "candidate Web",
+    "patchHttp": 200,
+    "previous": {
+      "profileId": "builtin",
+      "skillProfiles": {}
+    },
+    "persisted": {
+      "profileId": "vercel",
+      "skillProfiles": {}
+    },
+    "previousRevision": 1,
+    "revision": 2,
+    "dispatchMode": "builtin (Manager queue)"
+  },
+  "vercelWorkerSnapshotMatchesServer": true,
+  "flows": {
+    "builtin": {
+      "status": "PASS",
+      "engine": "builtin",
+      "workspaceId": "70e0e143-b2bf-4ca4-b295-10fb9d6385ae",
+      "testId": "61367c22-0521-47ac-bb2b-349af499b852",
+      "authorRunId": "4fbeb74a-0cd5-4711-9769-8ab2745a46ce",
+      "validationRunId": "95e21456-c0e5-4f0a-ad83-79632fa59f03",
+      "runtime": {
+        "model": "muse-spark-1.3-contributor",
+        "engine": "builtin",
+        "sha256": "3947416904c4ed0cf37d3ee47597fd19cbb5dc77587479761a2dc52155d11df8",
+        "baseURL": "https://opencode.ai/inference/go/openai/v1",
+        "provider": "opencode",
+        "profileId": "builtin",
+        "schemaVersion": 1,
+        "reasoningEffort": "xhigh",
+        "contextInputTokens": 65536,
+        "contextWindowTokens": 1048576
+      },
+      "budget": {
+        "maxToolCalls": 12,
+        "maxDurationMs": 180000,
+        "maxModelRequests": 8
+      },
+      "modelRequestsObserved": 3,
+      "toolCallsObserved": 3,
+      "reportUrl": "/api/runs/95e21456-c0e5-4f0a-ad83-79632fa59f03/artifacts/report.html",
+      "stats": {
+        "startTime": "2026-11-18T02:20:39.437Z",
+        "duration": 739.778,
+        "expected": 1,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "workerDestroyBeforeNextStart": true,
+      "finalSlots": 0,
+      "leftoverWorkers": 0,
+      "archivedReport": {
+        "file": "builtin-report.html",
+        "sha256": "6220de3b650fef1ff76e9261dde6c3a52d459dd73528029bc39d368442c57def",
+        "resultsFile": "builtin-results.json",
+        "renderedScreenshot": "builtin-report.png",
+        "http": 200,
+        "title": "Playwright Test Report",
+        "renderedTestTitle": true,
+        "renderedPassIndicator": true,
+        "pageErrors": 0
+      }
+    },
+    "vercel": {
+      "status": "PASS",
+      "engine": "vercel",
+      "workspaceId": "70e0e143-b2bf-4ca4-b295-10fb9d6385ae",
+      "testId": "68c8cbe5-9eda-4af6-9143-490b17f60cc0",
+      "authorRunId": "c390b512-84c1-4188-b32a-94352f3fca34",
+      "validationRunId": "ada57e3e-0ea8-4ae7-8804-33dcd6b494e5",
+      "runtime": {
+        "model": "muse-spark-1.3-contributor",
+        "engine": "vercel",
+        "sha256": "3e5dfc973320ce32fd02ee086891ac32e9b35d80a9dcab014908058e4a8ec2d1",
+        "baseURL": "https://opencode.ai/inference/go/openai/v1",
+        "provider": "opencode",
+        "profileId": "vercel",
+        "schemaVersion": 1,
+        "reasoningEffort": "xhigh",
+        "contextInputTokens": 65536,
+        "contextWindowTokens": 1048576
+      },
+      "budget": {
+        "maxToolCalls": 12,
+        "maxDurationMs": 180000,
+        "maxModelRequests": 8
+      },
+      "modelRequestsObserved": 4,
+      "toolCallsObserved": 4,
+      "reportUrl": "/api/runs/ada57e3e-0ea8-4ae7-8804-33dcd6b494e5/artifacts/report.html",
+      "stats": {
+        "startTime": "2026-11-18T02:23:09.447Z",
+        "duration": 743.443,
+        "expected": 1,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "workerDestroyBeforeNextStart": true,
+      "finalSlots": 0,
+      "leftoverWorkers": 0,
+      "archivedReport": {
+        "file": "vercel-report.html",
+        "sha256": "88198a4e14c9751250c5279423da6730a7f2abfbdc3cca1821920b5afeaae31f",
+        "resultsFile": "vercel-results.json",
+        "renderedScreenshot": "vercel-report.png",
+        "http": 200,
+        "title": "Playwright Test Report",
+        "renderedTestTitle": true,
+        "renderedPassIndicator": true,
+        "pageErrors": 0
+      }
+    }
+  },
+  "automaticBuiltinAcceptanceSummary": {
+    "runId": "0eceffdc-3a44-470d-8c68-a687975d74d0",
+    "testId": "61367c22-0521-47ac-bb2b-349af499b852",
+    "runtime": {
+      "model": "muse-spark-1.3-contributor",
+      "engine": "builtin",
+      "sha256": "3947416904c4ed0cf37d3ee47597fd19cbb5dc77587479761a2dc52155d11df8",
+      "baseURL": "https://opencode.ai/inference/go/openai/v1",
+      "provider": "opencode",
+      "profileId": "builtin",
+      "schemaVersion": 1,
+      "reasoningEffort": "xhigh",
+      "contextInputTokens": 65536,
+      "contextWindowTokens": 1048576
+    },
+    "budget": {
+      "maxToolCalls": 0,
+      "maxDurationMs": 180000,
+      "maxModelRequests": 1
+    },
+    "modelRequests": 1,
+    "toolCalls": 0,
+    "status": "succeeded",
+    "slotReleased": true,
+    "dockerEvents": [
+      {
+        "action": "create",
+        "timeNano": 1794968512070596958,
+        "containerId": "0097f0143cd9e3a80ebfd117632ae08acf6cc38c6f4c5768a9c18d313e7d0b25",
+        "image": "sha256:cbaf04724e5b04d48b359516a940f51a236c73882862ff4f0c4960fef9bd5dd1",
+        "exitCode": null,
+        "attemptId": "6615425f-d5b3-4697-831e-f6b68a05e233"
+      },
+      {
+        "action": "start",
+        "timeNano": 1794968512138199213,
+        "containerId": "0097f0143cd9e3a80ebfd117632ae08acf6cc38c6f4c5768a9c18d313e7d0b25",
+        "image": "sha256:cbaf04724e5b04d48b359516a940f51a236c73882862ff4f0c4960fef9bd5dd1",
+        "exitCode": null,
+        "attemptId": "6615425f-d5b3-4697-831e-f6b68a05e233"
+      },
+      {
+        "action": "die",
+        "timeNano": 1794968523387091732,
+        "containerId": "0097f0143cd9e3a80ebfd117632ae08acf6cc38c6f4c5768a9c18d313e7d0b25",
+        "image": "sha256:cbaf04724e5b04d48b359516a940f51a236c73882862ff4f0c4960fef9bd5dd1",
+        "exitCode": "0",
+        "attemptId": "6615425f-d5b3-4697-831e-f6b68a05e233"
+      },
+      {
+        "action": "destroy",
+        "timeNano": 1794968523438102987,
+        "containerId": "0097f0143cd9e3a80ebfd117632ae08acf6cc38c6f4c5768a9c18d313e7d0b25",
+        "image": "sha256:cbaf04724e5b04d48b359516a940f51a236c73882862ff4f0c4960fef9bd5dd1",
+        "exitCode": null,
+        "attemptId": "6615425f-d5b3-4697-831e-f6b68a05e233"
+      }
+    ],
+    "cause": "normal automatic acceptance summary on opening the validated test in candidate Web"
+  },
+  "modelRequestsTotal": 8,
+  "teardown": {
+    "removedCandidateContainers": [
+      "whippet-m12-field-de273138-db",
+      "whippet-m12-field-de273138-manager",
+      "whippet-m12-field-de273138-server",
+      "whippet-m12-field-de273138-target",
+      "whippet-m12-field-de273138-web"
+    ],
+    "removedCandidateNetwork": "whippet-m12-field-de273138",
+    "candidateDatabase": "temporary tmpfs discarded on container stop",
+    "remainingCandidateServices": 0,
+    "remainingCandidateWorkers": 0,
+    "keptCandidateImages": true,
+    "baselineHealthyAfter": true,
+    "baselineBuiltinRunCountBeforeAfter": [
+      81,
+      81
+    ],
+    "baselineBuiltinOccupiedBeforeAfter": [
+      0,
+      0
+    ]
+  },
+  "limits": {
+    "wave14": "representative live Use Case PASS",
+    "wave15SpecifiedThreeStages": "ASSISTED / frozen artifact replay PASS",
+    "wave15OriginalAutonomousPlan": "FAIL retained",
+    "originalGolden14AutonomousSameBatch": "UNPROVEN",
+    "secondProvider": "UNVERIFIED; no controlled profile/key"
+  },
+  "setupNotes": [
+    "The first optional baseline count query used the wrong database name; retried read-only against postgres.",
+    "First UI selector observation timed out after switching the workspace; waited for workspace loading before retrying. No runtime PATCH was made by the first attempt. Opening the validated test in Web automatically enqueued the recorded builtin summary.",
+    "Owned synthetic Workspace scope was pre-seeded in the candidate DB. Runtime selection, dispatch, validation and reports used normal product endpoints."
+  ],
+  "rawEvidenceDirectory": "/Users/kywk/.local/share/whippet/evidence/m12-field-20261118",
+  "rawIndex": {
+    "file": "raw-index.json",
+    "sha256": "c28a8114acbd2e741c9495ab8693750c3b737d55d4621ad1b530b2b513bf8c9c"
+  }
+}

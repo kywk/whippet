@@ -1,0 +1,162 @@
+{
+  "automatic-builtin-summary.json": {
+    "sha256": "e86b76c8934c7c7d19edecd4ca1cb0954b9cca1765b11650692e80b8cd542d8a",
+    "bytes": 2176
+  },
+  "baseline-after.json": {
+    "sha256": "80d3e186ce97cf7702e31dc6a863ce9e25fba3691d445ce09e887e875ca796db",
+    "bytes": 693
+  },
+  "baseline-before.json": {
+    "sha256": "80d3e186ce97cf7702e31dc6a863ce9e25fba3691d445ce09e887e875ca796db",
+    "bytes": 693
+  },
+  "builtin-author-submission.json": {
+    "sha256": "ee7230847d5384e44bb4bbf85b773663c3d31c90b2d2e05be9591c8749c2c676",
+    "bytes": 54
+  },
+  "builtin-author.json": {
+    "sha256": "976e832cbdd4a4cf11a67e656e931c747d27ebe75e32a98bc16e0e72fab0df9c",
+    "bytes": 3052
+  },
+  "builtin-candidate.spec.ts": {
+    "sha256": "5881c36ae6a735dea7ec3d6c76f3dcf1ce2fd1a5d5855d22eea927cbda1895b3",
+    "bytes": 774
+  },
+  "builtin-intent.json": {
+    "sha256": "8b046e269cb9e81f48553994607137d2e929aa4109496602710f15f2bebf3311",
+    "bytes": 887
+  },
+  "builtin-report.html": {
+    "sha256": "6220de3b650fef1ff76e9261dde6c3a52d459dd73528029bc39d368442c57def",
+    "bytes": 520663
+  },
+  "builtin-report.png": {
+    "sha256": "9f59aab07de31bde202027ec0d09c5a02867670618c8b7212bab45f0f738e175",
+    "bytes": 30239
+  },
+  "builtin-results.json": {
+    "sha256": "5fea39bac06a442450b9a0fa7cc382b70de14c7d8842afc0fda6496c36fb9b66",
+    "bytes": 4484
+  },
+  "builtin-runtime.json": {
+    "sha256": "8dff636c1834dbf03faca7d9bd083c617506c7db2b0a502a3f97d0cdf043fd8d",
+    "bytes": 1836
+  },
+  "builtin-summary.json": {
+    "sha256": "036552b4ba7114d964eba9a22bf5b7cb528bd50befdeef860850fe350c16597e",
+    "bytes": 1169
+  },
+  "builtin-validation-submission.json": {
+    "sha256": "38ec63fa6ed999c93a5a0d512b7f2338eafcc6d3f492cc78c1d77137d8e0f6bc",
+    "bytes": 76
+  },
+  "builtin-validation.json": {
+    "sha256": "b654391a39cf23d31d6e3b80db6d499d9aa4cb94e46e04cc38009e37cc266f60",
+    "bytes": 2501
+  },
+  "candidate-before-shutdown.json": {
+    "sha256": "42a0ae5ab948a528449650b190a8073899e91c653da018cf3127425e97541372",
+    "bytes": 314
+  },
+  "candidate.json": {
+    "sha256": "eb798d276926a920e9423686fe468befd75c99c4d7e25349fc79b890d3c98c3d",
+    "bytes": 887
+  },
+  "manager-build.log": {
+    "sha256": "91fcd25394719ed3876a22afe512fe3b1583225f53265bdba2005fa23342a1f4",
+    "bytes": 2719
+  },
+  "reports-ui.json": {
+    "sha256": "f7cd8726fbe6647c6a16f3eb45c72c681bfabcded4e39fb97cea31563341cf3c",
+    "bytes": 326
+  },
+  "select-vercel-ui.json": {
+    "sha256": "2e12b1969492640dca230ea9117e36c5e6b560b90375655d5f3cf5a8764da5d4",
+    "bytes": 339
+  },
+  "server-build.log": {
+    "sha256": "8ab1f96406ab7e71ae4915d956d370689f96ddccb230d81e0d126a117b2361aa",
+    "bytes": 2850
+  },
+  "source-admission.json": {
+    "sha256": "f034e749f1eb5f1d1c00f40c8f1a66d3e41f61f50bed9d6f0c4d3f76824ca2de",
+    "bytes": 3244
+  },
+  "teardown.json": {
+    "sha256": "f13fb71d7802b022723fc4859d0d740f08740d925073cc3022390db83b915522",
+    "bytes": 623
+  },
+  "vercel-author-submission.json": {
+    "sha256": "4cecc39478c59877e9a94ed8c07a4081eb2fc6906fcb26c025fe6a063fafd96f",
+    "bytes": 54
+  },
+  "vercel-author.json": {
+    "sha256": "d6f9b7116c6e28d3a1e86c9812f3535c66e8cf39c2def748562bcc2d7f099e1e",
+    "bytes": 3059
+  },
+  "vercel-candidate.spec.ts": {
+    "sha256": "bd60540140611e8cadbd2ea26bb56c48fb63be9f6a89fc258dde47f7f2065aab",
+    "bytes": 782
+  },
+  "vercel-intent.json": {
+    "sha256": "3432c8adb19365d570eb025ad70c31dc9595faa50dc294dbc3fd84e0f911ef24",
+    "bytes": 886
+  },
+  "vercel-report.html": {
+    "sha256": "88198a4e14c9751250c5279423da6730a7f2abfbdc3cca1821920b5afeaae31f",
+    "bytes": 520663
+  },
+  "vercel-report.png": {
+    "sha256": "57d190eb63f370b5c568657db32bbb47ca186fd9c65aae82593600862aa32aab",
+    "bytes": 30505
+  },
+  "vercel-results.json": {
+    "sha256": "d8c89dca1eed4d2c9f446cbb7d3cb9db1853cb108aca3c594baeba5966c63bc2",
+    "bytes": 4498
+  },
+  "vercel-runtime.json": {
+    "sha256": "20b77b7a9b4fb8391d206c629fd5e59cc0a144a2734119498dfb4e66dae1d202",
+    "bytes": 1834
+  },
+  "vercel-summary.json": {
+    "sha256": "bcb4b21f4824e696e15e5597ce415e447422bcfb3d5831989a3bfdc564793657",
+    "bytes": 1166
+  },
+  "vercel-ui-recon.json": {
+    "sha256": "79aebea56d6d7d78418a6b6dd897b63e365116808b9acfae772b674fca83a1f5",
+    "bytes": 636
+  },
+  "vercel-ui-recon.png": {
+    "sha256": "3386e57542f62d31ae3813c761e405a4a5266e5c23105903e37d39c0af7b8dde",
+    "bytes": 136281
+  },
+  "vercel-validation-submission.json": {
+    "sha256": "fd08e2a6526556041cc6b80397f82787b6b29801926ed1e66aae28a6c88524cf",
+    "bytes": 76
+  },
+  "vercel-validation.json": {
+    "sha256": "9f41867d7f4fa74afb0f1f15de654287b0dc833639f5b5094c56ccb25e9ae048",
+    "bytes": 2502
+  },
+  "vercel-worker-input.json": {
+    "sha256": "9886e9e05c09525907560a5c30622a90527b0b3ad474589e8dac40d94008f258",
+    "bytes": 1490
+  },
+  "vercel-workspace-setting.png": {
+    "sha256": "8496bcc4a86240387113b1ff52c26885bbd1da534d92cd8f2143faacca6379ee",
+    "bytes": 211196
+  },
+  "web-build.log": {
+    "sha256": "972344568ad2715b83b21ff1418eeba2cd9c4e60bce35d0bb8abe2d97fff993c",
+    "bytes": 2829
+  },
+  "worker-build.log": {
+    "sha256": "32e3e4ea0e6812401923ba4c26cd0862109c4a76b0bea269ef49b8cea30bdc99",
+    "bytes": 2796
+  },
+  "workspace.json": {
+    "sha256": "1eb247f506150fddbedf9cd743ab6c7fd0510572abb5fa0300bd2c8b8fe4717f",
+    "bytes": 194
+  }
+}

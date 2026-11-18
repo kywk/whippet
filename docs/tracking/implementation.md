@@ -431,7 +431,9 @@ M11.Z 清單：
 
 ### M12 階段三：Agent Adapter（`feat/agent-adapter`；M12.0 spike起點main `5768166`）
 
-狀態：完成可交付的MVP來源與限定驗收（M12.0–4及Wave15 M12.Z）。2026-11-18 依使用者授權將 `98e6bfa` fast-forward 合併至 `main`。保留 builtin 基準從固定 `5768166` 的 worktree 啟動，合併後的實地驗測待在獨立候選環境執行。Wave1–13有界引擎／runtime／歷史／記憶／候選編輯／Module與Stage原額度checkpoint已完成；Wave14真代表UseCase通過，Wave15指定1複用＋2新Module與發佈後正式Run以ASSISTED Plan review／凍結真產物重播完成。原自主Plan契約FAIL保留，原14題無人工同批全過未證，第二provider缺受控profile／key為UNVERIFIED；維持builtin預設。任意長全量語意／任意大產物／隱式程序中斷checkpoint未提供，金額／全Plan配額仍後續里程碑。[集中紀錄](../research/m12-stage3-verification-20261117.md)。
+狀態：完成可交付的MVP來源與限定驗收（M12.0–4及Wave15 M12.Z）。2026-11-18 依使用者授權將 `98e6bfa` fast-forward 合併至 `main`。Wave1–13有界引擎／runtime／歷史／記憶／候選編輯／Module與Stage原額度checkpoint已完成；Wave14真代表UseCase通過，Wave15指定1複用＋2新Module與發佈後正式Run以ASSISTED Plan review／凍結真產物重播完成。原自主Plan契約FAIL保留，原14題無人工同批全過未證，第二provider缺受控profile／key為UNVERIFIED；維持builtin預設。任意長全量語意／任意大產物／隱式程序中斷checkpoint未提供，金額／全Plan配額仍後續里程碑。[集中紀錄](../research/m12-stage3-verification-20261117.md)。
+
+2026-11-18 合併後實地驗測完成（M12 獨立 Leader）。固定 `5768166` 的 builtin 基準與保留 MCP 恢復後健康。從與遠端一致的 `de273138` 建置獨立候選，核對 migration `029`、registry `16.0` 與打包 skill pins。以自建待辦清單各跑一筆 builtin 與 Web 明確選用的 Vercel，兩筆正式 Playwright 驗證各通過 1 項，報告均可開啟，Worker 回收後名額歸零。Vercel Run 的 Server 與實際 Worker runtime 快照一致。Web 開啟 builtin 測試時自動追加一筆驗收摘要，另計 1 次 Muse 請求，該 Worker 已回收。候選服務已回收，基準再次核對健康且 builtin DB 維持 81 筆 Run。[實地驗測證據](../research/evidence/m12-field-20261118/field-summary.json)。
 
 2026-11-16 接續準備完成（owner：主 Agent，不開subagent）：使用者已merge/push至main（60498a9）。依新授權退役62舊容器、17 volumes、11 networks、92映像標籤、157 tmp項目；15份DB及歷史資料先冷備份，其他專案16容器保留。M12僅保留builtin19987–19989與本機MCP19587兩基準（共3個Docker容器）。新增m12-dev-env.py start/status；受控停機→恢復PASS，11份身分SHA不變、builtin81 Run、兩庫名額0、MCP19工具、模型Run新增0。OS重開機由使用者稍後執行；[恢復指引](../guides/mcp-agent.md#m12-保留環境與重開機恢復2026-11-16)。M12.0尚未開工，不將環境整理當引擎spike完成。
 
