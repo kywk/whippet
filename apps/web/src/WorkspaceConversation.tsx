@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { ApiError, errorMessage } from './api';
-import { Loading, Notice, RunStatusBadge } from './components';
+import { Loading, Notice, RunProblem, RunStatusBadge } from './components';
 import { AssistantTurn, ChatScroll, Composer, UserTurn, useStoredText } from './chat';
 import { CancelRunButton } from './TestActions';
-import { AuthorLiveStatus } from './trail';
+import { AuthorLiveStatus, isBadStatus } from './trail';
 import { LiveView } from './LiveView';
 import { WorkspaceAvailability, WorkspaceSettings } from './WorkspaceSettings';
 import { WorkspaceProposalCard } from './WorkspaceProposal';
@@ -270,9 +270,7 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
               {run?.id === trackedId ? <><RunStatusBadge run={run} /><AuthorEngineStatus engine={run.authorEngine ?? 'builtin'} status={run.status} /></> : <span className="muted">讀取中…</span>}
             </header>
             <div className="artifact-body">
-              <p className="run-id">Run <span className="identifier">{trackedId}</span></p>
-              {run?.error ? <pre className="run-error">{run.error}</pre> : null}
-              {run?.status === 'failed' ? <p className="blocked-hint">請依任務錯誤修正需求或設定提案；origin 集合衝突不會由前端自動移除、合併或放寬。</p> : null}
+              {run && isBadStatus(run.status) ? <RunProblem run={run} /> : <p className="run-id">Run <span className="identifier">{trackedId}</span></p>}
               <p className="inline-hint">訪談完成不代表已探索網站或執行測試；具瀏覽器工具的 Workspace 任務才提供唯讀監看。</p>
             </div>
             <footer className="artifact-foot">

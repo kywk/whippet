@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, errorMessage } from './api';
-import { Loading, Notice, ReportLink, RunStatusBadge } from './components';
+import { Loading, Notice, ReportLink, RunProblem, RunStatusBadge } from './components';
 import { AssistantTurn, ChatScroll, Composer, UserTurn, useStoredText } from './chat';
 import { collapseDiff, diffLines, diffStat } from './diff';
 import { CancelRunButton } from './TestActions';
-import { AuthorLiveStatus, isBadStatus, trailFromRuns, TrailCard } from './trail';
+import { AuthorLiveStatus, trailFromRuns, TrailCard } from './trail';
 import { capabilityReason } from './capabilities';
 import { AuthorEngineStatus } from './AuthorEngineStatus';
 import { isActiveRun } from './types';
@@ -252,21 +252,24 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
   );
   // 僅在任務失敗、本輪有腳本/驗證進展、或尚未有對話但已有執行紀錄時顯示四站進度卡；AI 執行中已由對話氣泡即時顯示步驟，純對話與環境問題回報保持自然對話呈現。
   const showTrail = !planMode && ((trail.running && !pendingTurn) || (!authorActive && (trail.failed || lastTurnTouchedPipeline)) || (messages.length === 0 && runs.length > 0 && !pendingTurn));
+  const failedStage = trail.failed ? trail.stages[trail.step - 1] : undefined;
+  const failedRun = runs.find((run) => run.id === failedStage?.runId);
+  const canRepairValidation = failedStage?.key === 'validate' && failedRun?.status === 'failed';
   const activeRun = runs.find(isActiveRun);
-  const scrollWatch = `${messages.length}:${pendingTurn}:${trackedRun?.progressEvents?.length ?? 0}:${trail.step}:${trail.running}:${loading}`;
+  const scrollWatch = `${messages.length}:${pendingTurn}:${trackedRun?.progressEvents?.length ?? 0}:${trail.step}:${trail.running}:${failedRun?.id ?? ''}:${loading}`;
   const repairPrompt = nextEngine === 'external'
     ? planMode ? '請根據目前 Plan 與失敗原因提出修訂建議；新的 Plan 仍須由我確認。'
       : '請根據最新正式驗證失敗原因排查，提出修正候選並要求獨立正式驗證；若是目標環境連線問題請直接回報。'
     : '請根據最新驗證失敗原因排查問題，先在瀏覽器試跑確認修正後再更新草稿；若是目標環境連線問題請直接回報。';
 
   const trailFooter = <>
-    <span className="foot-note">{trail.running ? '可以離開，任務在背景繼續；完成後左欄會亮燈。' : trail.failed ? '此輪未成功。可點選「請 AI 排查並修正」或送出新訊息重試。' : trail.awaitingPublish ? '摘要已完成；請在右側檢視發佈資格。' : '驗證與發佈在右側「驗證與發佈」進行。'}</span>
+    <span className="foot-note">{trail.running ? '可以離開，任務在背景繼續；完成後左欄會亮燈。' : trail.awaitingPublish ? '摘要已完成，請檢視發佈資格。' : null}</span>
     <span className="foot-actions">
       {activeRun ? <CancelRunButton api={api} run={activeRun} onUpdated={onRun} /> : null}
-      {trail.failed && !trail.running ? <button className="button primary compact" disabled={blocked} onClick={() => { void send(repairPrompt); }}>請 AI 排查並修正</button> : null}
+      {canRepairValidation && !trail.running ? <button className="button primary compact" disabled={blocked} onClick={() => { void send(repairPrompt); }}>請 AI 排查並修正</button> : null}
       {trail.running ? <button className="button secondary compact" onClick={() => onShowTab('runs')}>監看與紀錄</button>
         : trail.awaitingPublish ? <button className="button primary compact" onClick={() => onShowTab('publish')}>前往確認發佈</button>
-          : <button className="button secondary compact" onClick={() => onShowTab('publish')}>前往驗證與發佈</button>}
+          : <button className="button secondary compact" onClick={() => onShowTab('publish')}>{failedStage?.key === 'summary' ? '前往重試摘要' : '前往驗證與發佈'}</button>}
     </span>
   </>;
 
@@ -317,10 +320,11 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
         </div> : null}
       </section> : null}
       {showTrail && !partialRun ? <div className="trail-slot" aria-live="polite">
-        <TrailCard trail={trail} title="目前進度" footer={trailFooter} />
-        {trackedRun?.error ? <pre className="run-error">{trackedRun.error}</pre> : null}
+        <TrailCard trail={trail} title="目前進度" footer={failedStage?.key === 'author' && !trail.running && !activeRun ? undefined : trailFooter} />
+        {failedRun ? <RunProblem run={failedRun} /> : null}
         {synchronizing ? <p className="inline-hint" role="status">正在同步對話、草稿與驗證紀錄…</p> : null}
       </div> : null}
+      {planMode && !authorActive && trackedRun ? <RunProblem run={trackedRun} /> : null}
     </ChatScroll>
     <div className="composer-dock">
       {submitError ? <Notice message={submitError} /> : null}
@@ -365,13 +369,13 @@ function ConversationMessage({ message, latest, scripts, draft, runs, apiBase, o
   const run = runs.find((item) => item.id === message.runId);
   const validation = runs.find((item) => item.id === message.validationRunId);
   const hasScript = message.proposedScript !== undefined || message.appliedRevision !== undefined;
-  const validationFailed = Boolean(validation && isBadStatus(validation.status));
+  const validationFailed = validation?.status === 'failed';
   return <AssistantTurn time={message.createdAt}>
     {message.content ? <p className="message-content">{message.content}</p> : null}
     {hasScript ? <ScriptChange message={message} scripts={scripts} draft={draft} candidateDisabled={candidateDisabled} run={run} onUseCandidate={onUseCandidate} /> : null}
     {message.validationRunId ? <section className="artifact validation" aria-label="續接驗證">
       <header className="artifact-head"><strong>續接驗證</strong>{validation ? <RunStatusBadge run={validation} /> : null}</header>
-      <div className="artifact-body">{validation ? <><ReportLink reportUrl={validation.reportUrl} apiBase={apiBase} label="查看續接驗證報告" />{validation.error ? <pre className="run-error">{validation.error}</pre> : null}</> : <button className="button quiet compact" onClick={onRefreshRuns}>重新整理驗證紀錄</button>}</div>
+      <div className="artifact-body">{validation ? <><ReportLink reportUrl={validation.reportUrl} apiBase={apiBase} label="查看續接驗證報告" /><RunProblem run={validation} />{validation.error ? <details className="error-details"><summary>查看技術細節</summary><pre className="run-error">{validation.error}</pre></details> : null}</> : <button className="button quiet compact" onClick={onRefreshRuns}>重新整理驗證紀錄</button>}</div>
       {validationFailed && latest ? <footer className="artifact-foot">
         <span className="foot-note">驗證未通過，可請 AI 依據錯誤訊息試跑排查或回報環境問題。</span>
         <span className="foot-actions"><button className="button secondary compact" disabled={candidateDisabled} onClick={onRequestRepair}>請 AI 排查並修正</button></span>

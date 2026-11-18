@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { errorMessage, resolveReportUrl } from './api';
-import { Notice, RunStatusBadge, StatusBadge } from './components';
+import { Notice, RunProblem, RunStatusBadge, StatusBadge } from './components';
 import { CancelRunButton } from './TestActions';
 import { isActiveRun } from './types';
 import type { AuthorEngine, Draft, EditingSession, Run, WhippetApi } from './types';
@@ -56,9 +56,9 @@ export function AcceptanceSummaryCard({ api, apiBase, testId, session, draft, ru
   return <section className="acceptance-summary" aria-labelledby="acceptance-summary-title">
     <div className="section-heading"><h4 id="acceptance-summary-title">驗收摘要</h4>{run ? <RunStatusBadge run={run} /> : summary ? <StatusBadge status={summary.status} /> : <span className="muted">尚未產生</span>}</div>
     <p className="inline-hint">新摘要任務：{authorEngine === 'external' ? '外部 Agent 接單' : '內建引擎'}。{run ? `此摘要 Run 來源：${run.authorEngine === 'external' ? '外部 Agent' : '內建引擎'}。` : '實際來源以新建 Run 快照為準。'}摘要完成仍須符合目前驗證與報告資格，並由你確認發佈。</p>
-    {!valid ? <p className="inline-hint">目前 revision 驗證成功且報告就緒後，建立一次摘要任務。摘要失敗可獨立重試，不重跑成功驗證。</p> : null}
+    {!valid && !failed ? <p className="inline-hint">目前 revision 驗證成功且報告就緒後，建立一次摘要任務。</p> : null}
     {error ? <Notice message={error} /> : null}
-    {run?.error ? <pre className="run-error">{run.error}</pre> : null}
+    {run ? <RunProblem run={run} /> : failed ? <RunProblem run={{ id: summary.runId, status: summary.status, kind: 'author', authorMode: 'summary' }} /> : null}
     {summary?.status === 'succeeded' ? <>
       {!valid ? <p className="blocked-hint">此摘要已過期或內容不完整，不能用於目前草稿的發佈。</p> : <p className="action-message">驗收摘要已就緒，請檢視說明、背景與驗證報告後確認發佈。</p>}
       {summary.name ? <p className="summary-name">候選名稱：{summary.name}</p> : null}

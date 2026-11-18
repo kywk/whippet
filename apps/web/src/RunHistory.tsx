@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
-import { formatDate, Loading, Notice, ReportLink, RunStatusBadge, runKindLabel } from './components';
+import { formatDate, Loading, Notice, ReportLink, RunProblem, RunStatusBadge, runKindLabel } from './components';
 import { RunArtifacts } from './RunArtifacts';
 import { CancelRunButton } from './TestActions';
 import { scriptOriginLabel } from './capabilities';
 import { AuthorEngineStatus } from './AuthorEngineStatus';
+import { isBadStatus } from './trail';
 import { isActiveRun } from './types';
 import type { Run, WhippetApi } from './types';
 
@@ -34,7 +35,8 @@ export function RunHistory({ api, apiBase, runs, group, loading, error, polling,
         <div className="latest-summary"><RunStatusBadge run={latest} /><span>{runKindLabel(latest)}</span>{latest.kind === 'author' ? <AuthorEngineStatus engine={latest.authorEngine ?? 'builtin'} status={latest.status} /> : null}<time dateTime={latest.createdAt}>{formatDate(latest.createdAt)}</time>{latest.kind === 'author' ? <span className="muted">{latest.authorMode === 'summary' ? '結果見驗收摘要' : '撰寫結果見對話'}</span> : <ReportLink reportUrl={latest.reportUrl} apiBase={apiBase} />}</div>
         <p className="run-id">Run <span className="identifier">{latest.id}</span></p>
         <p className="inline-hint">任務快照來源：{scriptOriginLabel(latest.scriptOrigin)}</p>
-        {latest.error ? <details className="error-details"><summary>查看錯誤</summary><pre className="run-error">{latest.error}</pre></details> : null}
+        <RunProblem run={latest} />
+        {latest.kind !== 'author' && latest.error ? <details className="error-details"><summary>查看技術細節</summary><pre className="run-error">{latest.error}</pre></details> : null}
         {isActiveRun(latest) ? <div className="action-row">{latest.authorMode !== 'summary' && latest.authorEngine !== 'external' ? <button className="button secondary compact" onClick={() => onWatch(latest)}>開始監看</button> : null}<CancelRunButton api={api} run={latest} onUpdated={onRun} /></div> : null}
         {latest.kind !== 'author' ? <RunArtifacts key={latest.id} api={api} apiBase={apiBase} runId={latest.id} /> : null}
       </article> : !loading && !error ? <p className="mode-empty">{formal ? '尚無正式執行紀錄。發佈後可執行目前正式版本。' : '尚無 AI 撰寫或草稿驗證紀錄，先在對話中說明需求。'}</p> : null}
@@ -46,7 +48,16 @@ export function RunHistory({ api, apiBase, runs, group, loading, error, polling,
       {runs.length ? <div className="table-scroll"><table><caption className="sr-only">{historyTitle}，最新紀錄在前</caption>
         <thead><tr><th scope="col">狀態／Run</th>{formal ? null : <th scope="col">種類</th>}<th scope="col">建立時間</th><th scope="col">耗時</th><th scope="col">報告／操作</th></tr></thead>
         <tbody>{runs.map((run) => <tr key={run.id} data-run-id={run.id}>
-          <td><RunStatusBadge run={run} /><span className="table-run-id identifier mono" title={run.id}>{shortRunId(run.id)}</span><span className="run-origin">{scriptOriginLabel(run.scriptOrigin)}</span>{run.kind === 'author' ? <AuthorEngineStatus engine={run.authorEngine ?? 'builtin'} status={run.status} /> : null}{run.error ? <details className="error-details"><summary>查看錯誤</summary><pre className="run-error">{run.error}</pre></details> : null}</td>
+          <td>
+            <RunStatusBadge run={run} /><span className="table-run-id identifier mono" title={run.id}>{shortRunId(run.id)}</span>
+            <span className="run-origin">{scriptOriginLabel(run.scriptOrigin)}</span>
+            {run.kind === 'author' ? <AuthorEngineStatus engine={run.authorEngine ?? 'builtin'} status={run.status} /> : null}
+            {isBadStatus(run.status) ? <details className="error-details">
+              <summary>查看處理建議</summary>
+              <RunProblem run={run} />
+              {run.kind !== 'author' && run.error ? <pre className="run-error">{run.error}</pre> : null}
+            </details> : null}
+          </td>
           {formal ? null : <td className="col-nowrap">{runKindLabel(run)}</td>}<td><time dateTime={run.createdAt}>{formatDate(run.createdAt)}</time></td><td className="col-nowrap">{duration(run)}</td>
           <td><div className="run-actions">{run.kind === 'author' ? <span className="muted col-nowrap">{run.authorMode === 'summary' ? '結果見驗收摘要' : '撰寫結果見對話'}</span> : <><ReportLink reportUrl={run.reportUrl} apiBase={apiBase} /><RunArtifacts api={api} apiBase={apiBase} runId={run.id} /></>}{isActiveRun(run) ? <>{run.authorMode !== 'summary' && run.authorEngine !== 'external' ? <button className="button secondary compact" aria-label={`開始監看 Run ${run.id}`} onClick={() => onWatch(run)}>開始監看</button> : null}<CancelRunButton api={api} run={run} onUpdated={onRun} /></> : null}</div></td>
         </tr>)}</tbody>

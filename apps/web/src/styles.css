@@ -566,6 +566,10 @@ p { line-height: 1.7; }
 .confirmation-panel { margin-top: 12px; padding: 12px 14px; background: var(--run-bg); color: var(--run); border-radius: var(--radius); font-size: .82rem; }
 .notice { margin: 10px 0; padding: 12px 14px; color: var(--bad); background: var(--bad-bg); border: 1px solid #f2c4c0; border-radius: var(--radius); font-size: .8rem; overflow-wrap: anywhere; }
 .notice .button { margin-top: 8px; }
+.run-problem { margin: 0; line-height: 1.55; color: var(--ink); }
+.run-problem > strong { color: var(--bad); }
+.run-problem p { margin: 4px 0 0; }
+.run-problem .identifier { user-select: all; }
 .loading-state { padding: 14px 0; color: var(--muted); font-size: .8rem; }
 .loading-line { height: 10px; margin-top: 10px; width: 88%; background: #e3e8f4; border-radius: 3px; }
 .loading-line.short { width: 56%; }
