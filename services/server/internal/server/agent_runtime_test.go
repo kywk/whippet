@@ -37,14 +37,31 @@ func TestM12RuntimeProfilesAndDigest(t *testing.T) {
 	t.Setenv("WHIPPET_AI_ENGINE", "vercel") // Workspace default stays builtin.
 	selection := RuntimeSelection{ProfileID: "builtin", SkillProfiles: map[string]string{}}
 	got, err := resolveAuthorRuntime(input, selection)
-	if err != nil || got.Engine != "builtin" || got.Model != r.Model || got.ReasoningEffort != r.ReasoningEffort {
+	if err != nil || got.Engine != "builtin" || got.Model != r.Model || got.ReasoningEffort != r.ReasoningEffort || got.ContextInputTokens != 262144 {
 		t.Fatal("default policy", err)
 	}
 	selection.SkillProfiles["test-author"] = "vercel"
 	got, err = resolveAuthorRuntime(input, selection)
-	if err != nil || *got != r {
-		t.Fatal("golden per-skill selection", err)
+	expected := r
+	expected.ContextInputTokens = 262144
+	expected.SHA256 = runtimeDigest(expected.AuthorRuntimeData)
+	if err != nil || *got != expected {
+		t.Fatal("default per-skill selection", err)
 	}
+	t.Run("explicit input cap reproduces legacy digest", func(t *testing.T) {
+		t.Setenv("WHIPPET_AI_CONTEXT_INPUT_TOKENS", "65536")
+		got, err := resolveAuthorRuntime(input, selection)
+		if err != nil || *got != r {
+			t.Fatal("legacy override", err)
+		}
+	})
+	t.Run("default input cap respects smaller window", func(t *testing.T) {
+		t.Setenv("WHIPPET_AI_CONTEXT_WINDOW_TOKENS", "131072")
+		got, err := resolveAuthorRuntime(input, selection)
+		if err != nil || got.ContextInputTokens != 131072 {
+			t.Fatal("smaller window", err)
+		}
+	})
 	p := runtimeProfile{"alternate", "vercel", "openai-responses", "https://provider.example/v1", "configured-model", "high", 131072, 32768}
 	raw, _ := json.Marshal([]runtimeProfile{p})
 	t.Setenv("WHIPPET_AI_RUNTIME_PROFILES_JSON", string(raw))

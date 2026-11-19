@@ -20,8 +20,9 @@ export function availableModelCapacity(config: AIConfig): ModelCapacity | undefi
 export function modelCapacity(config: AIConfig): ModelCapacity {
   const known = knownWindow(config);
   const window = config.contextWindowTokens ?? known;
-  const input = config.contextInputTokens ?? 65536;
-  if (!Number.isSafeInteger(window) || window! < 1024 || window! > 2097152 || known !== undefined && window! > known ||
-      !Number.isSafeInteger(input) || input < 1024 || input > window!) throw new AuthorError("invalid_input");
-  return { contextWindowTokens: window!, maxInputTokens: input, safetyTokens: 1024 };
+  if (window === undefined || !Number.isSafeInteger(window) || window < 1024 || window > 2097152 ||
+      known !== undefined && window > known) throw new AuthorError("invalid_input");
+  const input = config.contextInputTokens ?? Math.min(256 * 1024, window);
+  if (!Number.isSafeInteger(input) || input < 1024 || input > window) throw new AuthorError("invalid_input");
+  return { contextWindowTokens: window, maxInputTokens: input, safetyTokens: 1024 };
 }

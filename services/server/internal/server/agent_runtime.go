@@ -149,7 +149,7 @@ func resolveAuthorRuntime(input AuthorInput, selection RuntimeSelection) (*Autho
 				return nil, ErrSkillUnavailable
 			}
 		}
-		p.ContextInputTokens = 65536
+		p.ContextInputTokens = 256 * 1024
 		if p.ContextWindowTokens > 0 && p.ContextWindowTokens < p.ContextInputTokens {
 			p.ContextInputTokens = p.ContextWindowTokens
 		}

@@ -41,10 +41,22 @@ test("unknown model capacity fails closed; an override cannot exceed known provi
   assert.throws(() => modelCapacity({ ...config, baseURL: "https://different.invalid/v1" }));
   assert.throws(() => modelCapacity({ ...config, contextWindowTokens: 2097152 }));
   assert.equal(availableModelCapacity({ ...config, model: "unknown" }), undefined);
-  assert.equal(availableModelCapacity(config)?.maxInputTokens, 65536);
+  assert.equal(availableModelCapacity(config)?.maxInputTokens, 262144);
   assert.throws(() => availableModelCapacity({ ...config, contextWindowTokens: 2097152 }));
-  assert.equal(modelCapacity({ ...config, model: "unknown", contextWindowTokens: 131072 }).contextWindowTokens, 131072);
+  assert.equal(modelCapacity({ ...config, model: "unknown", contextWindowTokens: 131072 }).maxInputTokens, 131072);
+  assert.throws(() => modelCapacity({ ...config, contextWindowTokens: 131072, contextInputTokens: 262144 }));
   assert.throws(() => fitContext({ instructions: "fixed", tools: [], input: [] }, { contextWindowTokens: 8192, maxInputTokens: 8192, safetyTokens: 1024 }, 8192), ContextCapacityError);
+});
+
+test("the default input cap admits a request above 64 KiB and still rejects inputs above 256 KiB", () => {
+  const body = { instructions: "Fixed instructions", tools: [], input: [{ role: "user", content: "原始需求".repeat(10000) }] };
+  const fit = fitContext(body, modelCapacity(config), 8192);
+  assert.equal(fit.limit, 262144);
+  assert.ok(fit.after > 65536);
+  assert.deepEqual(fit.body, body);
+  assert.throws(() => fitContext(body, modelCapacity({ ...config, contextInputTokens: 65536 }), 8192), ContextCapacityError);
+  const tooLarge = { ...body, input: [{ role: "user", content: "原始需求".repeat(23000) }] };
+  assert.throws(() => fitContext(tooLarge, modelCapacity(config), 8192), ContextCapacityError);
 });
 
 test("frozen history keeps exact UTF-8 fragment references and canonical read-back cursor", () => {
