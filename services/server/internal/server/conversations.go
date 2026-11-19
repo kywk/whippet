@@ -138,9 +138,9 @@ func (p *Postgres) createAuthorInTxForRuntime(ctx context.Context, tx *sql.Tx, d
 	if active {
 		return AuthorSubmission{}, fmt.Errorf("%w: an author run is already active", ErrConflict)
 	}
-	var testKind string
+	var testKind, testName string
 	var slug *string
-	if err := tx.QueryRowContext(ctx, `SELECT kind,slug FROM tests WHERE id=$1`, testID).Scan(&testKind, &slug); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT kind,slug,name FROM tests WHERE id=$1`, testID).Scan(&testKind, &slug, &testName); err != nil {
 		return AuthorSubmission{}, err
 	}
 	conversationID := session.ConversationID
@@ -166,6 +166,8 @@ func (p *Postgres) createAuthorInTxForRuntime(ctx context.Context, tx *sql.Tx, d
 	input := editingAuthorInput(session, d, "test-author", authorContext(newest))
 	input.Runtime = runtime
 	switch testKind {
+	case "test":
+		input.TestName = testName
 	case "module":
 		input.SkillID = "module-authoring"
 		module := d.Module

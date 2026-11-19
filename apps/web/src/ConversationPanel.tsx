@@ -170,7 +170,7 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
         ? testKind === 'usecase'
           ? `訊息已送出，使用已儲存 revision ${revision}。等待外部 Agent 接單提出 Plan；仍須由你確認 Plan，完成驗證與摘要後才能人工發佈。`
           : `訊息已送出，使用已儲存 revision ${revision}。等待外部 Agent 接單；候選${testKind === 'module' ? ' Module' : '腳本'}仍需獨立正式驗證與人工確認發佈。`
-        : `訊息已送出，使用已儲存 revision ${revision}。AI 會先試跑驗證草稿，不會自動發佈。`);
+        : `訊息已送出，使用已儲存 revision ${revision}。`);
       setRefreshRevision((value) => value + 1);
     } catch (cause) {
       if (controller.signal.aborted) return;

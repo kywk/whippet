@@ -116,6 +116,7 @@ type AuthorTask struct {
 	AllowedTools        *[]string                 `json:"allowedTools,omitempty"`
 	EditingSessionID    *string                   `json:"editingSessionId,omitempty"`
 	ContextRevision     *int64                    `json:"contextRevision,omitempty"`
+	TestName            *string                   `json:"testName,omitempty"`
 	SourceVersion       json.RawMessage           `json:"sourceVersion,omitempty"`
 	ConversationSummary json.RawMessage           `json:"conversationSummary,omitempty"`
 	ValidationEvidence  *AuthorValidationEvidence `json:"validationEvidence,omitempty"`
@@ -150,6 +151,9 @@ func (a *AuthorTask) UnmarshalJSON(data []byte) error {
 	}
 	if value, exists := keys["runtime"]; exists && (count != 5 || !validRuntimeSnapshot(value)) {
 		return fmt.Errorf("invalid runtime snapshot")
+	}
+	if _, exists := keys["testName"]; exists && (a.TestName == nil || a.SkillID == nil || *a.SkillID != "test-author" || !boundedAuthorText(*a.TestName, 200, true)) {
+		return fmt.Errorf("invalid test name")
 	}
 	for _, name := range []string{"skillId", "skillVersion", "allowedTools", "editingSessionId", "contextRevision", "sourceVersion", "conversationSummary", "validationEvidence", "history"} {
 		if _, exists := keys[name]; exists && (a.SkillID == nil || a.SkillVersion == nil) {

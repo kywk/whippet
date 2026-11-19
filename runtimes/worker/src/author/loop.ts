@@ -65,6 +65,8 @@ export async function runAuthor(
   const summary = isSummary(input);
   const workspace = isWorkspaceAuthor(input);
   const registry = loadToolRegistry();
+  const revisingTest = input.author.skillId === "test-author" &&
+    (input.script.trim() !== "" || input.author.sourceVersion != null);
   const capability = capabilitySnapshot(input.author);
   const bundle = capability ? loadSkillBundle(capability, registry) : undefined;
   if (capability) {
@@ -133,6 +135,7 @@ export async function runAuthor(
       ...(input.author.skillId ? {
         editingSessionId: input.author.editingSessionId, contextRevision: input.author.contextRevision,
         sourceVersion: input.author.sourceVersion, conversationSummary: input.author.conversationSummary,
+        ...(input.author.skillId === "test-author" ? { testName: input.author.testName, validation: input.author.validation } : {}),
         ...(summary ? { validationEvidence: input.author.validationEvidence, ...(input.author.batch ? {batch:input.author.batch} : {}), ...(input.author.moduleSummary ? {moduleSummary:input.author.moduleSummary} : {}) } : {}),
       } : {}),
   };
@@ -499,10 +502,20 @@ export async function runAuthor(
       if (input.author.skillId) {
         let parsedFinal:unknown;
         try{parsedFinal=JSON.parse(message);}catch(error){options.moduleDiagnostics?.failure('FINAL_JSON_PARSE');throw error;}
-        const final = parsedFinal as { message: string; conversationSummary?: string };
-        if (!final || typeof final !== "object" || Array.isArray(final) || Object.keys(final).some((k) => !["message","conversationSummary"].includes(k)) ||
+        const final = parsedFinal as { message: string; conversationSummary?: string; newTestNeeded?: true };
+        if (!final || typeof final !== "object" || Array.isArray(final) ||
+          Object.keys(final).some((k) => !["message","conversationSummary"].includes(k) && !(k === "newTestNeeded" && revisingTest && final.newTestNeeded === true)) ||
           !boundedText(final.message,128000,true) || final.message.length>32000 || final.conversationSummary !== undefined && !boundedText(final.conversationSummary,8192)) {options.moduleDiagnostics?.failure('FINAL_SHAPE');throw new AuthorError("invalid_response");}
         message = final.message; conversationSummary = final.conversationSummary;
+        if (final.newTestNeeded) {
+          // Redirects are conversation replies. Discard any staged edit or validation request.
+          const guidance = "\n\n請使用「新增測試」，把這個流程建立成獨立的測試案例。";
+          message = [...message].slice(0, 16000 - [...guidance].length).join("").trimEnd() + guidance;
+          const reply: AuthorOutput = { message, requestValidation: false };
+          if (options.secrets) reply.message = options.secrets.redact(reply.message);
+          noSecret(reply, config);
+          return reply;
+        }
       } else message = message.slice(0,32000);
       if (!message) throw new AuthorError("invalid_response");
       if(module){

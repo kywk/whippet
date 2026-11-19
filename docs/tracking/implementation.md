@@ -332,6 +332,14 @@ M9歷史失敗已定位（81352430診斷回合）：模型將首次cursor輸出�
 
 Web build/typecheck 通過。Chrome 桌面與 375 px 窄版核對素材、既有 AI 失敗紀錄及瀏覽器內重現的摘要失敗。摘要重試請求指向既有驗證，未送給 Server。19787 展示站已更新 Web，正式 Run `628c1180-a4dd-44b1-a41f-4a2a7fea8800` 的 Playwright 報告仍可開啟。
 
+## 既有測試改稿脈絡（2026-11-19）
+
+完成／主 Agent。測試改稿帶入固定 revision 腳本、測試名稱、來源版本說明、Workspace 範圍、對話與已有的草稿驗證結果。目標明顯偏離時以繁中說明並引導「新增測試」，只保存對話。
+
+Server、Manager、Worker、MCP 參考客戶端建置與定向測試通過。真 PostgreSQL 確認已發佈版本可續編，建議新增時無候選、revision 或驗證任務。Muse／xhigh 合成案例實測兩筆，內建引擎更換目標以一個模型請求回覆且沒有工具呼叫，Vercel 同目標增補檢查使用兩個請求並保留原斷言。候選腳本未執行，19787 展示站尚未更新。
+
+19687 獨立展示站使用 migration 029。Chrome 實際執行原購物車測試，正式 Run `98a7138c-ec4a-40c8-86c5-67fd7e525bb3` 的 Playwright 報告通過 1 項。對話 Run `d1fd986a-d5d1-4953-ae03-769015cb2515` 引導另建忘記密碼測試，資料庫核對原腳本、草稿 revision 1 與發佈版本，兩筆 Worker 皆已回收。修正側欄將純對話誤標為改稿完成的問題，重新整理 Chrome 後顯示「AI 已回覆，草稿維持原樣」。Web build 與 Server 回歸通過。
+
 ## M10–M12：Use Case 與 Agent 平台化（2026-11-13 使用者同意）
 
 規格見 [Use Case 與 Agent 平台化規格](../requirements/usecase-agent-platform.md)，架構見 [design.md M10–M12](../architecture/design.md)，分工見 [delegation.md](delegation.md)。開發期間每項只做「最小驗證」，通過就推進；每個階段收尾時執行一次 Z 項完整驗證。Z 項通過才能標記 tag 或 merge。

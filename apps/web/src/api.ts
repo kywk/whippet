@@ -297,6 +297,7 @@ function parseRun(value: unknown): Run {
     workspaceSettings: data.workspaceSettings == null ? undefined : parseWorkspaceSnapshot(data.workspaceSettings),
     editingSessionId: optionalString(data.editingSessionId) ?? null,
     authorMode: data.authorMode as Run['authorMode'],
+    authorRepliedOnly: data.authorRepliedOnly === true,
     authorEngine: parseAuthorEngine(data.authorEngine),
     scriptOrigin: data.scriptOrigin == null ? undefined : choice(data.scriptOrigin, ['ai', 'manual', 'legacy'] as const),
     authorPartial: data.authorPartial == null ? undefined : parseAuthorPartial(data.authorPartial),

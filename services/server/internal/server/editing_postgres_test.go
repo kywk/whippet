@@ -213,13 +213,38 @@ func TestM7EditingLifecycle(t *testing.T) {
 	if _, err := p.Draft(ctx, testID); !errors.Is(err, ErrNotFound) {
 		t.Fatal("publication left/recreated draft")
 	}
-	formal, err := p.CreateRun(ctx, testID)
-	if err != nil || formal.VersionID == nil || *formal.VersionID != published.ID || formal.EditingSessionID != nil {
-		t.Fatalf("formal snapshot: %+v %v", formal, err)
-	}
 	next, created, err := p.StartEditingSession(ctx, testID)
 	if err != nil || !created || next.ID == session.ID || next.Draft.Revision <= draft.Revision || next.SourceVersion == nil || next.SourceVersion.Description == nil || *next.SourceVersion.Description != *published.Description {
 		t.Fatalf("new session source: %+v %v", next, err)
+	}
+	edit, err = p.CreateAuthor(ctx, testID, next.ID, "換成忘記密碼流程", next.Draft.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a = h.claim(edit.Run.ID)
+	if a.Script != next.Draft.Script || a.Script != published.Script || a.Author.TestName != "M7 published name" ||
+		a.Author.SourceVersion == nil || a.Author.SourceVersion.ID != published.ID || stringValue(a.Author.SourceVersion.Description) != *published.Description ||
+		stringValue(a.Author.SourceVersion.BackgroundSummary) != *published.BackgroundSummary {
+		t.Fatalf("missing revision baseline: %+v", a.Author)
+	}
+	h.upload(a, "author.json", `{"message":"兩者驗證的功能不同，請按「新增測試」。","requestValidation":false}`)
+	h.complete(a, "succeeded")
+	h.release()
+	replyRun, err := p.Run(ctx, edit.Run.ID)
+	if err != nil || !replyRun.AuthorRepliedOnly {
+		t.Fatalf("run should indicate a conversation-only reply: %+v %v", replyRun, err)
+	}
+	afterRedirect, err := p.EditingSession(ctx, testID, next.ID)
+	if err != nil || afterRedirect.Draft.Revision != next.Draft.Revision || afterRedirect.Draft.Script != next.Draft.Script || afterRedirect.Draft.ValidationRunID != nil {
+		t.Fatalf("a conversation reply changed the case: %+v %v", afterRedirect, err)
+	}
+	convo, err = p.Conversation(ctx, testID, next.ID)
+	if err != nil || len(convo.Messages) != 2 || !strings.Contains(convo.Messages[1].Content, "新增測試") || convo.Messages[1].ProposedScript != nil {
+		t.Fatalf("missing conversation reply: %+v %v", convo, err)
+	}
+	formal, err := p.CreateRun(ctx, testID)
+	if err != nil || formal.VersionID == nil || *formal.VersionID != published.ID || formal.EditingSessionID != nil {
+		t.Fatalf("formal snapshot: %+v %v", formal, err)
 	}
 	edit, err = p.CreateAuthor(ctx, testID, next.ID, "候選稿稍後放棄", next.Draft.Revision)
 	if err != nil {

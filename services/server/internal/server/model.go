@@ -70,6 +70,7 @@ type Run struct {
 	WorkspaceSettings     *WorkspaceSettings `json:"workspaceSettings,omitempty"`
 	EditingSessionID      *string            `json:"editingSessionId"`
 	AuthorMode            string             `json:"authorMode,omitempty"`
+	AuthorRepliedOnly     bool               `json:"authorRepliedOnly,omitempty"`
 	ProgressEvents        []string           `json:"progressEvents,omitempty"`
 }
 
@@ -148,6 +149,7 @@ type AuthorInput struct {
 	AllowedTools        []string               `json:"allowedTools"`
 	EditingSessionID    string                 `json:"editingSessionId,omitempty"`
 	ContextRevision     int64                  `json:"contextRevision"`
+	TestName            string                 `json:"testName,omitempty"`
 	SourceVersion       *SourceVersion         `json:"sourceVersion"`
 	ConversationSummary *string                `json:"conversationSummary"`
 	ValidationEvidence  *ValidationEvidence    `json:"validationEvidence,omitempty"`

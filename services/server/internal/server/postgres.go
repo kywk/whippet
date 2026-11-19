@@ -144,12 +144,17 @@ const runColumns = `r.id,r.test_id,r.status,r.created_at,r.started_at,r.finished
     THEN '/api/runs/' || r.id::text || '/artifacts/report.html' ELSE '' END,
     r.kind,r.draft_revision,r.version_id,r.workspace_settings,r.editing_session_id,r.workspace_id,r.workspace_context,
     CASE WHEN r.kind='author' THEN CASE WHEN r.author_payload->>'skillId'='acceptance-summary' THEN 'summary' WHEN r.author_payload->>'skillId'='workspace-author' THEN 'workspace' ELSE 'edit' END ELSE '' END,r.script_origin,r.authorization_revision,r.scope_proposal_id,
-    CASE WHEN r.kind='author' AND r.attempt_id IS NOT NULL THEN COALESCE((SELECT jsonb_agg(e.message ORDER BY e.created_at) FROM run_events e WHERE e.run_id=r.id AND e.attempt_id=r.attempt_id AND e.kind='log'),'[]'::jsonb) ELSE '[]'::jsonb END,COALESCE(r.author_partial,'null'::jsonb),r.author_engine`
+    CASE WHEN r.kind='author' AND r.attempt_id IS NOT NULL THEN COALESCE((SELECT jsonb_agg(e.message ORDER BY e.created_at) FROM run_events e WHERE e.run_id=r.id AND e.attempt_id=r.attempt_id AND e.kind='log'),'[]'::jsonb) ELSE '[]'::jsonb END,COALESCE(r.author_partial,'null'::jsonb),r.author_engine,
+    CASE WHEN r.kind='author' AND r.status='succeeded' AND r.author_partial IS NULL AND COALESCE(r.author_payload->>'skillId','test-author')='test-author'
+    THEN EXISTS(SELECT 1 FROM editing_sessions s JOIN messages m ON m.conversation_id=s.conversation_id
+        WHERE s.id=r.editing_session_id AND m.run_id=r.id AND m.role='assistant'
+          AND m.applied_revision IS NULL AND m.proposed_script IS NULL AND m.validation_run_id IS NULL)
+    ELSE false END`
 
 func scanRun(row scanner) (Run, error) {
 	var r Run
 	var settings, workspaceContext, progressEvents, partial []byte
-	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL, &r.Kind, &r.DraftRevision, &r.VersionID, &settings, &r.EditingSessionID, &r.WorkspaceID, &workspaceContext, &r.AuthorMode, &r.ScriptOrigin, &r.authorizationRevision, &r.scopeProposalID, &progressEvents, &partial, &r.AuthorEngine)
+	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL, &r.Kind, &r.DraftRevision, &r.VersionID, &settings, &r.EditingSessionID, &r.WorkspaceID, &workspaceContext, &r.AuthorMode, &r.ScriptOrigin, &r.authorizationRevision, &r.scopeProposalID, &progressEvents, &partial, &r.AuthorEngine, &r.AuthorRepliedOnly)
 	if err == nil {
 		r.WorkspaceSettings, err = decodeSettings(settings)
 		if err == nil {

@@ -190,7 +190,7 @@ export function trailFromRuns(runs: Run[], session: { id?: string; draftRevision
   const vState = validation ? stateOf(validation) : 'todo';
   const sState = validation?.status === 'succeeded' ? stateOf(summary) : 'todo';
   const publishReady = sState === 'done';
-  const conversationalReply = session.latestTurnChangedDraft === false && aState === 'done';
+  const conversationalReply = aState === 'done' && (author?.authorRepliedOnly || session.latestTurnChangedDraft === false);
   const activeAuthorProgress = aState === 'active' && author?.authorEngine !== 'external' ? parseAuthorProgress(author?.progressEvents, 'edit').headline : undefined;
   const externalAuthorDetail = author?.status === 'queued' || author?.status === 'dispatched' ? '等待外部 Agent 接單'
     : author?.status === 'running' || author?.status === 'collecting' ? '外部 Agent 正在處理需求'
@@ -208,7 +208,7 @@ export function trailFromRuns(runs: Run[], session: { id?: string; draftRevision
   const nextIndex = stages.findIndex((stage) => stage.state === 'todo');
   const step = failedStage ? stages.indexOf(failedStage) + 1 : activeIndex >= 0 ? activeIndex + 1 : nextIndex >= 0 ? nextIndex + 1 : 4;
   const running = stages.some((stage) => stage.state === 'active' && stage.key !== 'publish');
-  const headline = failedStage ? `${failedStage.label}未成功` : running ? `${stages[activeIndex].label}進行中` : publishReady ? '摘要完成，請檢視發佈資格' : validation?.status === 'succeeded' ? '驗證通過，產生摘要中' : conversationalReply ? 'AI 已回覆' : author ? '改稿完成，待驗證' : '草稿進行中';
+  const headline = failedStage ? `${failedStage.label}未成功` : running ? `${stages[activeIndex].label}進行中` : publishReady ? '摘要完成，請檢視發佈資格' : validation?.status === 'succeeded' ? '驗證通過，產生摘要中' : conversationalReply ? 'AI 已回覆，草稿維持原樣' : author ? '改稿完成，待驗證' : '草稿進行中';
   return { stages, headline, step, running, failed: Boolean(failedStage), awaitingPublish: publishReady && !failedStage };
 }
 

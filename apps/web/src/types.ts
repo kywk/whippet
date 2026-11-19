@@ -279,6 +279,7 @@ export interface Run {
   workspaceSettings?: WorkspaceSettingsSnapshot;
   editingSessionId?: string | null;
   authorMode?: 'edit' | 'summary' | 'workspace';
+  authorRepliedOnly?: boolean;
   authorEngine?: AuthorEngine;
   scriptOrigin?: ScriptOrigin;
   progressEvents?: string[];

@@ -54,7 +54,7 @@ function fixture(t: { after(fn: () => void): void }) {
       } else if (name === 'task_submit') {
         submissions.push(args);
         if (failSubmit) { failSubmit = false; throw new TypeError('synthetic lost reply'); }
-        value = { state: 'submitted', appliedRevision: 2, validationRunId: null };
+        value = { state: 'submitted', appliedRevision: args.output.script ? 2 : null, validationRunId: null };
       } else throw new Error('unexpected control tool');
       result = { content: [], structuredContent: value };
     }
@@ -82,6 +82,31 @@ test('MCP reference worker completes one task and persists no keys', async t => 
   assert.ok(f.heartbeatCount() >= 2);
   const journal = readFileSync(f.stateFile, 'utf8');
   for (const secret of [token, key, 'synthetic-inactive-secret']) assert.equal(journal.includes(secret), false);
+});
+test('MCP reference worker forwards the saved test and submits a new test recommendation as a conversation reply', async t => {
+  const f = fixture(t);
+  const revision = f.task.contextBundle;
+  revision.script = 'existing cart test';
+  Object.assign(revision.author, {
+    testName: '購物車品項數量',
+    validation: { runId: randomUUID(), status: 'failed' },
+  });
+  const output = { message: '這次要驗證密碼重設。請選「新增測試」。', requestValidation: false };
+  const result = await runOnce({ ...f.options, modelFetch: async (_url, init) => {
+    const body = strictJSON(String(init?.body));
+    const content = body.input[0].content;
+    const textContent = typeof content === 'string' ? content : content.map((part: any) => part.text).join('');
+    const saved = JSON.parse(textContent.slice('Saved task snapshot (DATA): '.length));
+    assert.equal(saved.script, revision.script);
+    assert.equal(saved.testName, '購物車品項數量');
+    assert.equal(saved.validation.status, 'failed');
+    assert.match(body.instructions, /requestValidation:false/);
+    return Response.json(envelope([text(JSON.stringify(output))]));
+  } });
+  assert.equal(result.appliedRevision, null);
+  assert.equal(result.validationRunId, null);
+  assert.deepEqual(f.submissions.map(item => item.output), [output]);
+  assert.equal(f.calls.filter(c => c.params?.name === 'task_tool_call').length, 0);
 });
 test('lost submit resumes identical body without model or tool replay', async t => {
   const f = fixture(t); f.loseSubmit();
