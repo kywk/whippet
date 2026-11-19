@@ -13,12 +13,13 @@ const MaxScriptBytes = 2 << 20
 
 type draftState struct {
 	Draft
-	hash               string
-	timeoutMS          int
-	summaryRunID       *string
-	summaryDescription *string
-	summaryBackground  *string
-	summaryName        *string
+	hash                 string
+	timeoutMS            int
+	summaryRunID         *string
+	summaryDescription   *string
+	summaryBackground    *string
+	summaryName          *string
+	summarySuggestedTags []string
 }
 
 type validationEvidence struct {
@@ -109,15 +110,15 @@ const draftSelect = `SELECT d.test_id,d.current_revision,dr.script,d.updated_at,
     COALESCE(r.status,''),CASE WHEN EXISTS (SELECT 1 FROM artifacts a
         WHERE a.run_id=r.id AND a.attempt_id=r.attempt_id AND a.name='report.html')
     THEN '/api/runs/' || r.id::text || '/artifacts/report.html' ELSE '' END,
-    dr.script_hash,dr.timeout_ms,dr.workspace_settings,d.editing_session_id,d.summary_run_id,d.summary_description,d.summary_background,d.summary_name,dr.workspace_context,dr.script_origin,COALESCE(dr.module,'null'::jsonb),dr.stages
+    dr.script_hash,dr.timeout_ms,dr.workspace_settings,d.editing_session_id,d.summary_run_id,d.summary_description,d.summary_background,d.summary_name,dr.workspace_context,dr.script_origin,COALESCE(dr.module,'null'::jsonb),dr.stages,d.summary_suggested_tags
     FROM drafts d JOIN draft_revisions dr ON dr.test_id=d.test_id AND dr.revision=d.current_revision
     LEFT JOIN runs r ON r.id=d.validation_run_id WHERE d.test_id=$1`
 
 func scanDraft(row scanner) (draftState, error) {
 	var d draftState
-	var settings, context, module, stages []byte
+	var settings, context, module, stages, tags []byte
 	err := row.Scan(&d.TestID, &d.Revision, &d.Script, &d.UpdatedAt, &d.ValidationRunID,
-		&d.ValidationStatus, &d.ReportURL, &d.hash, &d.timeoutMS, &settings, &d.EditingSessionID, &d.summaryRunID, &d.summaryDescription, &d.summaryBackground, &d.summaryName, &context, &d.ScriptOrigin, &module, &stages)
+		&d.ValidationStatus, &d.ReportURL, &d.hash, &d.timeoutMS, &settings, &d.EditingSessionID, &d.summaryRunID, &d.summaryDescription, &d.summaryBackground, &d.summaryName, &context, &d.ScriptOrigin, &module, &stages, &tags)
 	if err == nil {
 		d.WorkspaceSettings, err = decodeSettings(settings)
 		if err == nil {
@@ -129,6 +130,9 @@ func scanDraft(row scanner) (draftState, error) {
 	}
 	if err == nil {
 		err = json.Unmarshal(stages, &d.Stages)
+	}
+	if err == nil {
+		err = json.Unmarshal(tags, &d.summarySuggestedTags)
 	}
 	d.UpdatedAt = d.UpdatedAt.UTC()
 	return d, dbError(err)
@@ -183,7 +187,7 @@ func saveDraftScript(ctx context.Context, tx *sql.Tx, d draftState, script, orig
 		return draftState{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE drafts SET current_revision=current_revision+1,
-            validation_run_id=NULL,summary_run_id=NULL,summary_description=NULL,summary_background=NULL,summary_name=NULL,updated_at=now() WHERE test_id=$1`, d.TestID); err != nil {
+            validation_run_id=NULL,summary_run_id=NULL,summary_description=NULL,summary_background=NULL,summary_name=NULL,summary_suggested_tags=DEFAULT,updated_at=now() WHERE test_id=$1`, d.TestID); err != nil {
 		return draftState{}, err
 	}
 	return scanDraft(tx.QueryRowContext(ctx, draftSelect, d.TestID))
@@ -263,18 +267,23 @@ func enqueueValidationSnapshot(ctx context.Context, tx *sql.Tx, d draftState, bu
  SELECT $1,$2,'validation',$3,$4,$5,$6,$7,$8,workspace_id,$9,$10,$11,$12,$13,$14,$15 FROM tests WHERE id=$2`, id, d.TestID, d.Revision, script, hash, d.timeoutMS, settingsJSON(d.WorkspaceSettings), d.EditingSessionID, jsonText(d.WorkspaceContext), origin, auth, proposal, files, bundleHash, metadata); err != nil {
 		return Run{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE drafts SET validation_run_id=$2,summary_run_id=NULL,summary_description=NULL,summary_background=NULL,summary_name=NULL,updated_at=now() WHERE test_id=$1`, d.TestID, id); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE drafts SET validation_run_id=$2,summary_run_id=NULL,summary_description=NULL,summary_background=NULL,summary_name=NULL,summary_suggested_tags=DEFAULT,updated_at=now() WHERE test_id=$1`, d.TestID, id); err != nil {
 		return Run{}, err
 	}
 	return scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs r WHERE r.id=$1`, id))
 }
 
-const versionColumns = `id,test_id,source_revision,script,created_at,validation_run_id,workspace_settings,description,background_summary,summary_run_id,editing_session_id,workspace_context,script_origin,COALESCE(module,'null'::jsonb),stages`
+const versionIdentityColumns = `id,test_id,source_revision,script,created_at,validation_run_id,workspace_settings,`
+const versionSnapshotColumns = `,summary_run_id,editing_session_id,workspace_context,script_origin,COALESCE(module,'null'::jsonb),stages,suggested_tags`
+const versionColumns = versionIdentityColumns + `description,background_summary` + versionSnapshotColumns
+
+// The version list projects editable notes over the frozen acceptance summary.
+const versionOverviewColumns = versionIdentityColumns + `COALESCE(description_override,description),COALESCE(background_summary_override,background_summary)` + versionSnapshotColumns
 
 func scanVersion(row scanner) (Version, error) {
 	var v Version
-	var settings, context, module, stages []byte
-	err := row.Scan(&v.ID, &v.TestID, &v.Revision, &v.Script, &v.CreatedAt, &v.ValidationRunID, &settings, &v.Description, &v.BackgroundSummary, &v.SummaryRunID, &v.EditingSessionID, &context, &v.ScriptOrigin, &module, &stages)
+	var settings, context, module, stages, tags []byte
+	err := row.Scan(&v.ID, &v.TestID, &v.Revision, &v.Script, &v.CreatedAt, &v.ValidationRunID, &settings, &v.Description, &v.BackgroundSummary, &v.SummaryRunID, &v.EditingSessionID, &context, &v.ScriptOrigin, &module, &stages, &tags)
 	if err == nil {
 		v.WorkspaceSettings, err = decodeSettings(settings)
 		if err == nil {
@@ -287,6 +296,9 @@ func scanVersion(row scanner) (Version, error) {
 	if err == nil {
 		err = json.Unmarshal(stages, &v.Stages)
 	}
+	if err == nil {
+		err = json.Unmarshal(tags, &v.SuggestedTags)
+	}
 	v.CreatedAt = v.CreatedAt.UTC()
 	return v, dbError(err)
 }
@@ -295,7 +307,7 @@ func (p *Postgres) Versions(ctx context.Context, testID string) ([]Version, erro
 	if _, err := p.Test(ctx, testID); err != nil {
 		return nil, err
 	}
-	rows, err := p.DB.QueryContext(ctx, `SELECT `+versionColumns+` FROM test_versions WHERE test_id=$1 ORDER BY version DESC`, testID)
+	rows, err := p.DB.QueryContext(ctx, `SELECT `+versionOverviewColumns+` FROM test_versions v LEFT JOIN test_version_notes n ON n.version_id=v.id WHERE test_id=$1 ORDER BY version DESC`, testID)
 	if err != nil {
 		return nil, err
 	}
@@ -378,20 +390,20 @@ func (p *Postgres) Publish(ctx context.Context, testID, sessionID string, revisi
 			}
 			name = &value
 		}
-		published, err := publishBatchVersion(ctx, tx, id, d, session, summaryID, "", hash, output.Description, output.BackgroundSummary, *name)
+		published, err := publishBatchVersion(ctx, tx, id, d, session, summaryID, "", hash, output.Description, output.BackgroundSummary, *name, output.SuggestedTags)
 		if err != nil {
 			return Version{}, err
 		}
 		return published, tx.Commit()
 	}
 	published, err := scanVersion(tx.QueryRowContext(ctx, `INSERT INTO test_versions
- (id,test_id,version,source_revision,script,script_hash,timeout_ms,validation_run_id,workspace_settings,description,background_summary,summary_run_id,editing_session_id,workspace_context,script_origin)
- SELECT $1,$2,COALESCE(MAX(version),0)+1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14 FROM test_versions WHERE test_id=$2 RETURNING `+versionColumns,
-		NewID(), testID, d.Revision, d.Script, d.hash, d.timeoutMS, proof.id, settingsJSON(d.WorkspaceSettings), output.Description, output.BackgroundSummary, summaryID, sessionID, jsonText(d.WorkspaceContext), d.ScriptOrigin))
+ (id,test_id,version,source_revision,script,script_hash,timeout_ms,validation_run_id,workspace_settings,description,background_summary,summary_run_id,editing_session_id,workspace_context,script_origin,suggested_tags)
+ SELECT $1,$2,COALESCE(MAX(version),0)+1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15 FROM test_versions WHERE test_id=$2 RETURNING `+versionColumns,
+		NewID(), testID, d.Revision, d.Script, d.hash, d.timeoutMS, proof.id, settingsJSON(d.WorkspaceSettings), output.Description, output.BackgroundSummary, summaryID, sessionID, jsonText(d.WorkspaceContext), d.ScriptOrigin, tagArrayJSON(output.SuggestedTags)))
 	if err != nil {
 		return Version{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE tests SET published_version_id=$2,description=$3,name=COALESCE($4,name) WHERE id=$1`, testID, published.ID, output.Description, output.Name); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE tests SET published_version_id=$2,description=$3,name=COALESCE($4,name),metadata_revision=metadata_revision+1 WHERE id=$1`, testID, published.ID, output.Description, output.Name); err != nil {
 		return Version{}, err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE editing_sessions SET status='published',published_version_id=$2,closed_at=now() WHERE id=$1`, sessionID, published.ID); err != nil {

@@ -93,7 +93,7 @@ func (p *Postgres) PublishPlan(ctx context.Context, id string, revision int, sum
 		if module.Description != nil {
 			description = *module.Description
 		}
-		version, err := publishBatchVersion(ctx, tx, module.VersionID, md, ms, summary, hash, module.BundleHash, description, out.BackgroundSummary, module.Name)
+		version, err := publishBatchVersion(ctx, tx, module.VersionID, md, ms, summary, hash, module.BundleHash, description, out.BackgroundSummary, module.Name, nil)
 		if err != nil {
 			return empty, err
 		}
@@ -108,7 +108,7 @@ func (p *Postgres) PublishPlan(ctx context.Context, id string, revision int, sum
 		}
 		name = &current
 	}
-	version, err := publishBatchVersion(ctx, tx, NewID(), d, s, summary, hash, batch.UseCase.BundleHash, out.Description, out.BackgroundSummary, *name)
+	version, err := publishBatchVersion(ctx, tx, NewID(), d, s, summary, hash, batch.UseCase.BundleHash, out.Description, out.BackgroundSummary, *name, out.SuggestedTags)
 	if err != nil {
 		return empty, err
 	}
@@ -126,16 +126,16 @@ func (p *Postgres) PublishPlan(ctx context.Context, id string, revision int, sum
 	}
 	return result, tx.Commit()
 }
-func publishBatchVersion(ctx context.Context, tx *sql.Tx, id string, d draftState, s EditingSession, summary, batchHash, bundleHash, description, background, name string) (Version, error) {
+func publishBatchVersion(ctx context.Context, tx *sql.Tx, id string, d draftState, s EditingSession, summary, batchHash, bundleHash, description, background, name string, suggestedTags []string) (Version, error) {
 	var batchBinding any
 	if batchHash != "" {
 		batchBinding = batchHash
 	}
-	version, err := scanVersion(tx.QueryRowContext(ctx, `INSERT INTO test_versions(id,test_id,version,source_revision,script,script_hash,timeout_ms,validation_run_id,workspace_settings,description,background_summary,summary_run_id,editing_session_id,workspace_context,script_origin,module,stages,context_revision,bundle_hash,summary_batch_hash,published_name) SELECT $1,$2,COALESCE(MAX(version),0)+1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20 FROM test_versions WHERE test_id=$2 RETURNING `+versionColumns, id, d.TestID, d.Revision, d.Script, d.hash, d.timeoutMS, d.ValidationRunID, settingsJSON(d.WorkspaceSettings), description, background, summary, s.ID, jsonText(d.WorkspaceContext), d.ScriptOrigin, jsonText(d.Module), stagesJSON(d.Stages), s.ContextRevision, bundleHash, batchBinding, name))
+	version, err := scanVersion(tx.QueryRowContext(ctx, `INSERT INTO test_versions(id,test_id,version,source_revision,script,script_hash,timeout_ms,validation_run_id,workspace_settings,description,background_summary,summary_run_id,editing_session_id,workspace_context,script_origin,module,stages,context_revision,bundle_hash,summary_batch_hash,published_name,suggested_tags) SELECT $1,$2,COALESCE(MAX(version),0)+1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21 FROM test_versions WHERE test_id=$2 RETURNING `+versionColumns, id, d.TestID, d.Revision, d.Script, d.hash, d.timeoutMS, d.ValidationRunID, settingsJSON(d.WorkspaceSettings), description, background, summary, s.ID, jsonText(d.WorkspaceContext), d.ScriptOrigin, jsonText(d.Module), stagesJSON(d.Stages), s.ContextRevision, bundleHash, batchBinding, name, tagArrayJSON(suggestedTags)))
 	if err != nil {
 		return Version{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE tests SET published_version_id=$2,description=$3,name=$4 WHERE id=$1`, d.TestID, version.ID, description, name); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE tests SET published_version_id=$2,description=$3,name=$4,metadata_revision=metadata_revision+1 WHERE id=$1`, d.TestID, version.ID, description, name); err != nil {
 		return Version{}, err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE editing_sessions SET status='published',published_version_id=$2,closed_at=now() WHERE id=$1`, s.ID, version.ID); err != nil {

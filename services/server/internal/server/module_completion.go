@@ -52,7 +52,7 @@ func (p *Postgres) completeModule(ctx context.Context, tx *sql.Tx, run, attempt 
 	if _, err = tx.ExecContext(ctx, `INSERT INTO draft_revisions(test_id,revision,script,script_hash,timeout_ms,workspace_settings,workspace_context,script_origin,module,stages) VALUES($1,$2,$3,$4,$5,$6,$7,'ai',$8,$9)`, d.TestID, next, *out.Script, scriptHash(*out.Script), d.timeoutMS, settingsJSON(d.WorkspaceSettings), jsonText(d.WorkspaceContext), module, stages); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE drafts SET current_revision=$2,validation_run_id=NULL,summary_run_id=NULL,summary_description=NULL,summary_background=NULL,summary_name=NULL,updated_at=now() WHERE test_id=$1`, d.TestID, next); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE drafts SET current_revision=$2,validation_run_id=NULL,summary_run_id=NULL,summary_description=NULL,summary_background=NULL,summary_name=NULL,summary_suggested_tags=DEFAULT,updated_at=now() WHERE test_id=$1`, d.TestID, next); err != nil {
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO messages(id,conversation_id,role,content,run_id,base_revision,applied_revision) VALUES($1,$2,'assistant',$3,$4,$5,$6)`, NewID(), session.ConversationID, *out.Message, run, input.BaseRevision, next); err != nil {

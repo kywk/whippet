@@ -22,14 +22,15 @@ type SourceVersion struct {
 }
 
 type EditingSummary struct {
-	RunID                string  `json:"runId"`
-	Status               string  `json:"status"`
-	Revision             int     `json:"revision"`
-	ValidationRunID      string  `json:"validationRunId"`
-	Description          *string `json:"description,omitempty"`
-	BackgroundSummary    *string `json:"backgroundSummary,omitempty"`
-	Name                 *string `json:"name,omitempty"`
-	ValidForCurrentDraft bool    `json:"validForCurrentDraft"`
+	RunID                string   `json:"runId"`
+	Status               string   `json:"status"`
+	Revision             int      `json:"revision"`
+	ValidationRunID      string   `json:"validationRunId"`
+	Description          *string  `json:"description,omitempty"`
+	BackgroundSummary    *string  `json:"backgroundSummary,omitempty"`
+	Name                 *string  `json:"name,omitempty"`
+	SuggestedTags        []string `json:"suggestedTags,omitempty"`
+	ValidForCurrentDraft bool     `json:"validForCurrentDraft"`
 }
 
 type EditingSession struct {
@@ -71,8 +72,10 @@ func lockEditingTest(ctx context.Context, tx *sql.Tx, testID string) (*Workspace
 }
 
 const editingSelect = `SELECT e.id,e.test_id,t.workspace_id,e.status,e.source_version_id,e.conversation_id,
- e.conversation_summary,e.context_revision,e.published_version_id,e.created_at,e.closed_at,v.description,v.background_summary,t.deleted_at IS NOT NULL
- FROM editing_sessions e JOIN tests t ON t.id=e.test_id LEFT JOIN test_versions v ON v.id=e.source_version_id`
+ e.conversation_summary,e.context_revision,e.published_version_id,e.created_at,e.closed_at,
+ COALESCE(n.description_override,v.description),COALESCE(n.background_summary_override,v.background_summary),t.deleted_at IS NOT NULL
+ FROM editing_sessions e JOIN tests t ON t.id=e.test_id LEFT JOIN test_versions v ON v.id=e.source_version_id
+ LEFT JOIN test_version_notes n ON n.version_id=v.id`
 
 func scanEditing(row scanner) (EditingSession, error) {
 	var s EditingSession

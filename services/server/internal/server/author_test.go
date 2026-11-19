@@ -138,8 +138,8 @@ func TestExternalAuthorOutputCannotAssertSelfTestOrValidation(t *testing.T) {
 }
 
 func TestExternalSummaryOutputUsesSummaryParser(t *testing.T) {
-	out, err := decodeExternalSummaryOutput([]byte(`{"message":"已摘要","description":"已驗證步驟","backgroundSummary":"非秘密背景","name":"  名稱  "}`))
-	if err != nil || out.Name == nil || *out.Name != "名稱" {
+	out, err := decodeExternalSummaryOutput([]byte(`{"message":"已摘要","description":"已驗證步驟","backgroundSummary":"非秘密背景","name":"  名稱  ","suggestedTags":["登入","登入","表單"]}`))
+	if err != nil || out.Name == nil || *out.Name != "名稱" || strings.Join(out.SuggestedTags, ",") != "登入,表單" {
 		t.Fatalf("valid external summary rejected: %+v %v", out, err)
 	}
 	for _, raw := range []string{
@@ -150,6 +150,10 @@ func TestExternalSummaryOutputUsesSummaryParser(t *testing.T) {
 		`{"message":"x","description":"d","backgroundSummary":"b","proof":{}}`,
 		`{"message":"x","message":"y","description":"d","backgroundSummary":"b"}`,
 		`{"message":"x","description":"","backgroundSummary":"b"}`,
+		`{"message":"x","description":"d","backgroundSummary":"b","suggestedTags":"登入"}`,
+		`{"message":"x","description":"d","backgroundSummary":"b","suggestedTags":[null]}`,
+		`{"message":"x","description":"d","backgroundSummary":"b","suggestedTags":["有 空格"]}`,
+		`{"message":"x","description":"d","backgroundSummary":"b","suggestedTags":[],"suggestedTags":["登入"]}`,
 	} {
 		if _, err := decodeExternalSummaryOutput([]byte(raw)); err == nil {
 			t.Fatalf("untrusted or invalid summary accepted: %s", raw)

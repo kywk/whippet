@@ -426,7 +426,7 @@ func refreshWorkspaceDrafts(ctx context.Context, tx *sql.Tx, id string, secrets 
  WHERE t.workspace_id=$1 AND e.status='active'`, id, w.TimeoutMS, settingsJSON(&w.WorkspaceSettings), jsonText(workspaceContext(w))); err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE drafts d SET current_revision=current_revision+1,validation_run_id=NULL,summary_run_id=NULL,summary_description=NULL,summary_background=NULL,summary_name=NULL,updated_at=now()
+	_, err = tx.ExecContext(ctx, `UPDATE drafts d SET current_revision=current_revision+1,validation_run_id=NULL,summary_run_id=NULL,summary_description=NULL,summary_background=NULL,summary_name=NULL,summary_suggested_tags=DEFAULT,updated_at=now()
  FROM tests t,editing_sessions e WHERE d.test_id=t.id AND t.workspace_id=$1 AND e.id=d.editing_session_id AND e.status='active'`, id)
 	return err
 }

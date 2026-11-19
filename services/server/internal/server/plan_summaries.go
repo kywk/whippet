@@ -28,6 +28,7 @@ type PlanSummary struct {
 	Description       *string                `json:"description"`
 	BackgroundSummary *string                `json:"backgroundSummary"`
 	Name              *string                `json:"name"`
+	SuggestedTags     []string               `json:"suggestedTags,omitempty"`
 	Candidates        []PlanSummaryCandidate `json:"candidates"`
 }
 
@@ -158,6 +159,7 @@ func (p *Postgres) PlanSummary(ctx context.Context, id string) (*PlanSummary, er
 		result.Description = &out.Description
 		result.BackgroundSummary = &out.BackgroundSummary
 		result.Name = out.Name
+		result.SuggestedTags = out.SuggestedTags
 	}
 	d, s, err := requireEditingDraft(ctx, tx, plan.TestID, plan.EditingSessionID)
 	if err == nil {

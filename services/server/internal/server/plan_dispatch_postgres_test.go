@@ -354,7 +354,7 @@ func runM10PlanModuleFlow(t *testing.T, mode string, bridge func(*testing.T, *Po
 	if bridge != nil {
 		bridge(t, p, summaryAssignment, files)
 	} else {
-		summaryBody := jsonText(summaryOutput{Message: "batch", Description: "synthetic flow and candidate", BackgroundSummary: "synthetic verification only"})
+		summaryBody := jsonText(summaryOutput{Message: "batch", Description: "synthetic flow and candidate", BackgroundSummary: "synthetic verification only", SuggestedTags: []string{"流程", "整合"}})
 		artifact, err = files.Save(summaryAssignment.ID, summaryAssignment.AttemptID, "author.json", strings.NewReader(summaryBody))
 		if err != nil {
 			t.Fatal(err)
@@ -376,6 +376,9 @@ func runM10PlanModuleFlow(t *testing.T, mode string, bridge func(*testing.T, *Po
 	view, err = p.PlanSummary(ctx, composed.ID)
 	if err != nil || !view.PublishReady {
 		t.Fatal("batch view unavailable", err)
+	}
+	if bridge == nil && strings.Join(view.SuggestedTags, ",") != "流程,整合" {
+		t.Fatal("batch summary omitted tag suggestions")
 	}
 	if mode == "create_stale" {
 		target := summaryAssignment.Author.Batch.Modules[0]
@@ -409,6 +412,9 @@ func runM10PlanModuleFlow(t *testing.T, mode string, bridge func(*testing.T, *Po
 	published, err := p.PublishPlan(ctx, composed.ID, composed.Revision, summary.ID)
 	if err != nil || len(published.ModuleVersions) != 1 || published.ModuleVersions[0].ID != candidate {
 		t.Fatal("atomic publish", err)
+	}
+	if bridge == nil && (strings.Join(published.UseCaseVersion.SuggestedTags, ",") != "流程,整合" || len(published.ModuleVersions[0].SuggestedTags) != 0) {
+		t.Fatal("batch tag suggestions were not scoped to the Use Case")
 	}
 	retry, err := p.PublishPlan(ctx, composed.ID, composed.Revision, summary.ID)
 	if err != nil || retry.UseCaseVersion.ID != published.UseCaseVersion.ID {

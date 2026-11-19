@@ -43,6 +43,8 @@ type Test struct {
 	WorkspaceID          string                `json:"workspaceId"`
 	Name                 string                `json:"name"`
 	Description          string                `json:"description"`
+	Tags                 []string              `json:"tags"`
+	MetadataRevision     int                   `json:"metadataRevision"`
 	PublishedVersionID   *string               `json:"publishedVersionId"`
 	ActiveEditingSession *ActiveEditingSession `json:"activeEditingSession"`
 	Deleted              bool                  `json:"deleted,omitempty"`
@@ -98,6 +100,7 @@ type Version struct {
 	WorkspaceContext  *WorkspaceContext  `json:"workspaceContext,omitempty"`
 	Description       *string            `json:"description"`
 	BackgroundSummary *string            `json:"backgroundSummary"`
+	SuggestedTags     []string           `json:"suggestedTags,omitempty"`
 	SummaryRunID      *string            `json:"summaryRunId"`
 	EditingSessionID  *string            `json:"editingSessionId"`
 	ID                string             `json:"id"`
@@ -299,6 +302,7 @@ type Store interface {
 	ConversationHistory(context.Context, string, string, string, *string) (HistoryPage, error)
 	Tests(context.Context, string) ([]Test, error)
 	Test(context.Context, string) (Test, error)
+	PatchTestMetadata(context.Context, string, TestMetadataPatch) (Test, error)
 	CreateTest(context.Context, string, string, string) (Test, error)
 	Draft(context.Context, string) (Draft, error)
 	SaveDraft(context.Context, string, string, int, string) (Draft, error)

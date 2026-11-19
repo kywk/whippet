@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, errorMessage } from './api';
-import { Notice, RunStatusBadge, StatusBadge } from './components';
+import { Notice, RunStatusBadge, StatusBadge, SuggestedTags } from './components';
 import { batchPublishReady, editableStage, parseStageEditor } from './plan';
 import type { AuthorEngine, Draft, EditingSession, Plan, PlanSummary, StageRetryInput, Run, Version, WhippetApi } from './types';
 import './platform-preview.css';
@@ -233,6 +233,7 @@ export function PlanPanel({ api, testId, session, draft, runs, authorEngine, blo
         <h4>本批次候選 Module（{summary.candidates.length}）</h4>
         {summary.candidates.length ? <ul>{summary.candidates.map((item) => <li className="identifier" key={item.versionId}>{item.name} · @lib/{item.slug} · {item.moduleKind} · r{item.revision}<br />候選 {item.versionId}<details><summary>批次綁定</summary>Test {item.testId}<br />Bundle {item.bundleHash}</details></li>)}</ul> : <p>此批次沒有新建／修改候選；複用版本不重新發佈。</p>}
         <h4>整批摘要</h4><VersionMarkdown text={summary.description ?? '摘要尚未完成。'} /><p className="summary-content">{summary.backgroundSummary ?? '尚無背景摘要。'}</p>{summary.message ? <p className="summary-content">{summary.message}</p> : null}
+        {!summary.stale && summary.status === 'succeeded' ? <SuggestedTags tags={summary.suggestedTags} /> : null}
         <details><summary>批次識別</summary><code className="identifier">{summary.batchHash}</code></details>
       </> : <p>尚無可讀取的整批摘要；不使用單一 Test 摘要替代。</p>}
       {!publishReady ? <p className="blocked-hint">整批候選／摘要／發佈資格尚未確認，不可發佈。</p> : null}

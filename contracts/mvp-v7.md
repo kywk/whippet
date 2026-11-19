@@ -11,12 +11,18 @@
 - acceptance-summary 的 messages 可為空陣列（人工草稿已驗證且沒有對話時）；仍必須具有完整腳本與合格 validationEvidence。test-author／legacy 維持至少一則 user 訊息，不補造對話。摘要不能因缺對話省略description/backgroundSummary或驗證綁定。
 - Manager journal 可保存本契約的固定非機密 author 輸入，供恢復與schema選擇；沿用既有輸入大小上限與回收政策，不保存模型key或登入機密。恢復沿用原attempt／結果，不因讀取journal重跑任務。M8機密僅可保存參照，實際傳遞另定。
 - summary author.validationEvidence 固定為 {runId,attemptId,draftRevision,scriptHash,timeoutMs,status:"succeeded",reportsReady:true,stats:{expected,unexpected,flaky,skipped,duration}}；scriptHash 為 SHA256，timeoutMs 是驗證逾時。Server 從已驗證附件抽取統計，不讓 Worker抓報告 URL。Worker 校驗 revision/hash；Server 保留權威交易核對。
-- test-author 的 author.json 沿用 {message,script?,requestValidation}，可附 conversationSummary（UTF-8 最多8192 bytes）。摘要輸出固定 {message,description,backgroundSummary,name?}，上限分別沿既有 message、16384 bytes、8192 bytes、200 bytes；不接受 script/requestValidation 或其他欄位。綁定只取 Server 已保存輸入，不要求 artifact 冗餘回填可信欄位。
+- test-author 的 author.json 沿用 {message,script?,requestValidation}，可附 conversationSummary（UTF-8 最多8192 bytes）。摘要輸出固定 {message,description,backgroundSummary,name?,suggestedTags?}，文字上限分別沿既有 message、16384 bytes、8192 bytes、200 bytes；不接受 script/requestValidation 或其他欄位。綁定只取 Server 已保存輸入，不要求 artifact 冗餘回填可信欄位。
 - 摘要由 Web 在成功驗證且報告就緒後呼叫冪等 summary endpoint，重開編輯也補檢查；不新增第二套 Server 自動排程。失敗須顯示明確重試，禁止輪詢時無限自動重試。
 - Version 的 description/backgroundSummary 舊資料為 null，新發布必填；可選 name 在QA確認發布時才更新Test名稱。
 - 遷移修正：不可把所有現存 drafts 一律當未發佈修改。無正式版、腳本／設定異於正式版，或有無法安全封存的活躍編輯任務者建立 legacy active session；與正式版一致且無活躍任務者封存既有對話／revision，移除活躍指標。無可靠歸屬者保留資料，不捏造摘要。
 - M7 使用有界週期摘要＋近期訊息；完整歷史在Server可讀。Worker按需遠端歷史工具延至M9補齊，M7不得宣稱已完成；不給Worker Manager token、不臨時建立通用RPC。新編輯回覆需維護conversationSummary以延續已知背景；首次legacy缺摘要列明限制，不假造。
 - 下文所有舊 skillVersion 字串（test-edit-v1／acceptance-summary-v1）由上述 skillId＋skillVersion取代；validationEvidence形狀以上述為準。不新增context物件或另一套mode。
+
+## 腳本說明、背景與標籤（2026-11-19）
+
+- 驗收摘要的 `suggestedTags` 可省略，最多五個非空標籤。每個標籤最多 32 個字元，排除空白、控制字元、逗號與前置 `#`。有效摘要和該次發佈版本提供此欄位。批次摘要的標籤屬於 Use Case。
+- `PATCH /api/tests/:id/metadata` 需要讀取 Test 資源取得的 `metadataRevision`，及至少一個 `description`、`backgroundSummary` 或 `tags` 欄位。自訂說明及背景獨立保存並連結目前正式版本，UTF-8 上限各為 16384 和 8192 bytes，可用空字串清除。標籤最多 20 個，可用空陣列清除。舊案例的 `tags: null` 允許 Web 沿用瀏覽器舊標籤，直到第一次儲存測試標籤。
+- 此請求成功回傳更新後的 Test。其他使用者更新資訊或發佈新版本後，舊 `metadataRevision` 回 409。此端點使用測試的既有 Workspace 授權，沿用原腳本、編輯週期與驗證。
 
 ## 1. 現況與可重用處
 

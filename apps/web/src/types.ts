@@ -159,9 +159,18 @@ export interface Test {
   workspaceId: string;
   name: string;
   description: string;
+  tags?: string[] | null;
+  metadataRevision?: number;
   publishedVersionId: string | null;
   activeEditingSession?: ActiveEditingSession | null;
   deleted?: boolean;
+}
+
+export interface TestMetadataPatch {
+  metadataRevision: number;
+  description?: string;
+  backgroundSummary?: string;
+  tags?: string[];
 }
 
 export interface ActiveEditingSession {
@@ -260,6 +269,7 @@ export interface PlanSummary {
   message: string | null;
   description: string | null;
   backgroundSummary: string | null;
+  suggestedTags?: string[];
   name: string | null;
   candidates: { testId: string; versionId: string; name: string; slug: string; moduleKind: 'setup' | 'step' | 'page'; revision: number; bundleHash: string }[];
 }
@@ -311,6 +321,7 @@ export interface Version {
   workspaceSettings?: WorkspaceSettingsSnapshot;
   description: string | null;
   backgroundSummary: string | null;
+  suggestedTags?: string[];
   summaryRunId: string | null;
   editingSessionId: string | null;
   scriptOrigin?: ScriptOrigin;
@@ -323,6 +334,7 @@ export interface AcceptanceSummary {
   validationRunId: string;
   description?: string;
   backgroundSummary?: string;
+  suggestedTags?: string[];
   name?: string;
   validForCurrentDraft: boolean;
 }
@@ -431,6 +443,7 @@ export interface WhippetApi {
   listWorkspaces(signal?: AbortSignal): Promise<WorkspaceDetail[]>;
   listTests(workspaceId: string, signal?: AbortSignal): Promise<Test[]>;
   getTest(testId: string, signal?: AbortSignal): Promise<Test>;
+  updateTestMetadata(testId: string, patch: TestMetadataPatch, signal?: AbortSignal): Promise<Test>;
   createRun(testId: string, signal?: AbortSignal): Promise<Run>;
   listRuns(testId: string, signal?: AbortSignal): Promise<Run[]>;
   getRun(runId: string, signal?: AbortSignal): Promise<Run>;

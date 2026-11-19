@@ -10,12 +10,12 @@ const results=[];const now='2026-11-13T00:00:00Z',tid='synthetic-usecase',sid='s
 const workspace={id:wid,name:'合成 API：發佈收斂測試',revision:1,authorizationRevision:1,lifecycle:'active',scopeStatus:'confirmed',settings:null,conversationId:'workspace-chat',activeRunId:null,currentProposal:null,sites:[],defaultTestUrl:'',timeoutMs:60000,roles:[],secretsAvailable:false,executionAvailable:true,unavailableReason:null,capabilities:Object.fromEntries(['aiExploration','aiExecution','manualExecution','credentialLogin'].map(k=>[k,{available:true,reason:null}]))};
 const draft={testId:tid,editingSessionId:sid,revision:2,script:'// 合成：未執行測試',updatedAt:now,scriptOrigin:'manual',validationRunId:'validation',validationStatus:'succeeded',reportUrl:'/synthetic-report'};
 const run={id:'validation',workspaceId:wid,testId:tid,editingSessionId:sid,kind:'validation',status:'succeeded',draftRevision:2,createdAt:now,finishedAt:now,reportUrl:'/synthetic-report'};
-const version={id:'published-usecase',testId:tid,editingSessionId:sid,revision:2,script:draft.script,createdAt:now,validationRunId:run.id,summaryRunId:'summary',description:'合成已發佈版本',backgroundSummary:'僅回歸測試，沒有真後端寫入。',scriptOrigin:'ai'};
+const version={id:'published-usecase',testId:tid,editingSessionId:sid,revision:2,script:draft.script,createdAt:now,validationRunId:run.id,summaryRunId:'summary',description:'合成已發佈版本',backgroundSummary:'僅回歸測試，沒有真後端寫入。',scriptOrigin:'ai',suggestedTags:['回歸']};
 const conversationPath=`/tests/${tid}/versions/${version.id}/conversation`;
 const candidate={testId:'candidate-module',versionId:'candidate-version',name:'合成候選',slug:'synthetic-candidate',moduleKind:'step',revision:2,bundleHash:'c'.repeat(64)};
 try{for(const [size,width]of [['desktop',1440],['narrow',390]])for(const status of process.env.SUCCESS_ONLY? [200]:[200,409,503]){
  const context=await browser.newContext({viewport:{width,height:width===390?844:1000},reducedMotion:'reduce'});const page=await context.newPage();page.setDefaultTimeout(10000);const calls=[],errors=[];let published=false,publishAt;
- const test=()=>({id:tid,workspaceId:wid,kind:'usecase',name:'合成發布收斂',description:'合成 fixture',publishedVersionId:published?version.id:null,activeEditingSession:published?null:{id:sid,status:'active',draftRevision:2,updatedAt:now}});
+ const test=()=>({id:tid,workspaceId:wid,kind:'usecase',name:'合成發布收斂',description:'合成 fixture',tags:[],metadataRevision:published?2:1,publishedVersionId:published?version.id:null,activeEditingSession:published?null:{id:sid,status:'active',draftRevision:2,updatedAt:now}});
  const session=()=>({id:sid,testId:tid,workspaceId:wid,status:published?'published':'active',sourceVersionId:null,sourceVersion:null,conversationId:'chat',conversationSummary:null,contextRevision:1,draft:published?null:draft,summary:null,pendingRunIds:[],reclaimPending:false,publishedVersionId:published?version.id:null,createdAt:now,closedAt:published?now:null});
  const plan=()=>({id:pid,testId:tid,editingSessionId:sid,revision:3,baseRevision:2,contextRevision:1,status:published?'done':'composed',validationRunId:run.id,stages:[{id:'candidate',title:'合成新建',action:'create',status:'ready',module:{slug:candidate.slug,moduleKind:'step',description:'合成'},moduleTestId:candidate.testId,candidateVersionId:candidate.versionId,draftRevision:2,args:{}}]});
  const summary=()=>({runId:'summary',planId:pid,planRevision:3,batchHash:'b'.repeat(64),status:'succeeded',stale:false,publishReady:!published,message:'合成摘要',name:'合成批次',description:'合成完整摘要，無真實驗證。',backgroundSummary:'合成背景。',candidates:[candidate]});
@@ -61,7 +61,8 @@ try{for(const [size,width]of [['desktop',1440],['narrow',390]])for(const status 
   await page.getByRole('tab',{name:'概覽',exact:true}).click();
   await page.waitForTimeout(300);
   assert.equal(targetCalls().length,total,'stable general mode must not trigger another fetch');
-  assert.deepEqual(await page.locator('.overview-side > section').evaluateAll(sections=>sections.map(section=>section.getAttribute('aria-labelledby'))),['published-script-title','versions-title']);
+  assert.deepEqual(await page.locator('.overview-side > section').evaluateAll(sections=>sections.map(section=>section.getAttribute('aria-labelledby'))),['test-tags-title','published-script-title','versions-title']);
+  await page.getByRole('button',{name:'採用 AI 建議標籤 回歸',exact:true}).waitFor();
   const viewVersion=page.getByRole('button',{name:'檢視版本 revision 2'});
   await viewVersion.click();
   const details=page.getByRole('dialog',{name:'版本詳情 · revision 2'});

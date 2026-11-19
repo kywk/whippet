@@ -6,6 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -158,7 +162,7 @@ func TestM7EditingLifecycle(t *testing.T) {
 	h.complete(a, "succeeded")
 	h.release()
 	ready, err := p.EditingSession(ctx, testID, session.ID)
-	if err != nil || ready.Summary == nil || !ready.Summary.ValidForCurrentDraft || ready.ContextRevision != 0 {
+	if err != nil || ready.Summary == nil || !ready.Summary.ValidForCurrentDraft || len(ready.Summary.SuggestedTags) != 0 || ready.ContextRevision != 0 {
 		t.Fatalf("ready summary: %+v %v", ready, err)
 	}
 	convo, err := p.Conversation(ctx, testID, session.ID)
@@ -192,9 +196,18 @@ func TestM7EditingLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	a = h.claim(summary.ID)
-	h.upload(a, "author.json", output)
+	h.upload(a, "author.json", strings.TrimSuffix(output, "}")+`,"suggestedTags":["購物車","回歸","購物車"]}`)
 	h.complete(a, "succeeded")
 	h.release()
+	ready, err = p.EditingSession(ctx, testID, session.ID)
+	if err != nil || ready == nil || ready.Summary == nil || !ready.Summary.ValidForCurrentDraft || strings.Join(ready.Summary.SuggestedTags, ",") != "購物車,回歸" {
+		t.Fatalf("tag suggestions missing from qualified draft summary: %+v %v", ready, err)
+	}
+	manualTags := []string{"人工標籤"}
+	tagged, err := p.PatchTestMetadata(ctx, testID, TestMetadataPatch{MetadataRevision: before.MetadataRevision, Tags: &manualTags})
+	if err != nil || tagged.ActiveEditingSession == nil || tagged.ActiveEditingSession.DraftRevision != draft.Revision {
+		t.Fatalf("independent tag update changed the editing session: %+v %v", tagged, err)
+	}
 	if err := p.DB.QueryRowContext(ctx, `SELECT count(*) FROM runs WHERE editing_session_id=$1 AND kind='validation'`, session.ID).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("summary retry reran validation: %d %v", count, err)
 	}
@@ -202,7 +215,8 @@ func TestM7EditingLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if published.Description == nil || published.BackgroundSummary == nil || published.SummaryRunID == nil || *published.SummaryRunID != summary.ID {
+	if published.Description == nil || published.BackgroundSummary == nil || published.SummaryRunID == nil || *published.SummaryRunID != summary.ID ||
+		strings.Join(published.SuggestedTags, ",") != "購物車,回歸" {
 		t.Fatal("published summary missing")
 	}
 	repeated, err := p.Publish(ctx, testID, session.ID, draft.Revision, summary.ID, true)
@@ -213,6 +227,7 @@ func TestM7EditingLifecycle(t *testing.T) {
 	if _, err := p.Draft(ctx, testID); !errors.Is(err, ErrNotFound) {
 		t.Fatal("publication left/recreated draft")
 	}
+	published = assertPublishedTestMetadataPatch(h, published, tagged.MetadataRevision)
 	next, created, err := p.StartEditingSession(ctx, testID)
 	if err != nil || !created || next.ID == session.ID || next.Draft.Revision <= draft.Revision || next.SourceVersion == nil || next.SourceVersion.Description == nil || *next.SourceVersion.Description != *published.Description {
 		t.Fatalf("new session source: %+v %v", next, err)
@@ -317,6 +332,78 @@ func TestM7EditingLifecycle(t *testing.T) {
 	if _, err = p.DB.ExecContext(ctx, `UPDATE test_versions SET description='overwritten' WHERE id=$1`, published.ID); err == nil {
 		t.Fatal("version description mutable")
 	}
+}
+
+func assertPublishedTestMetadataPatch(h m7DBHarness, published Version, beforePublish int) Version {
+	h.t.Helper()
+	before, err := h.p.Test(h.ctx, published.TestID)
+	if err != nil || strings.Join(before.Tags, ",") != "人工標籤" {
+		h.t.Fatalf("AI suggestions overwrote the user's tags: %+v %v", before, err)
+	}
+	runs, err := h.p.Runs(h.ctx, before.ID)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	history, err := h.p.Versions(h.ctx, before.ID)
+	if err != nil || len(history) < 2 {
+		h.t.Fatalf("published history fixture missing: %v", err)
+	}
+	token := NewID()
+	handler := NewAPI(h.p, h.files, nil, NewID(), slog.New(slog.NewTextHandler(io.Discard, nil))).
+		WithAdminAccess(token, "https://whippet.test").Handler(nil)
+	patch := func(query string, headers map[string]string, body any, status int) *httptest.ResponseRecorder {
+		h.t.Helper()
+		req := httptest.NewRequest(http.MethodPatch, "/api/tests/"+before.ID+"/metadata"+query, strings.NewReader(jsonText(body)))
+		for key, value := range headers {
+			req.Header.Set(key, value)
+		}
+		out := httptest.NewRecorder()
+		handler.ServeHTTP(out, req)
+		if out.Code != status {
+			h.t.Fatalf("metadata PATCH returned %d, want %d: %s", out.Code, status, out.Body)
+		}
+		return out
+	}
+	headers := map[string]string{"X-Whippet-Admin-Token": token}
+	body := map[string]any{"metadataRevision": before.MetadataRevision, "description": "## 自訂測試說明", "backgroundSummary": "QA 維護的背景", "tags": []string{"人工標籤", "購物車"}}
+	patch("", nil, body, http.StatusUnauthorized)
+	patch("", map[string]string{"Authorization": "Bearer agent"}, body, http.StatusForbidden)
+	patch("?workspaceId="+NewID(), headers, body, http.StatusNotFound)
+	patch("", headers, map[string]any{"metadataRevision": before.MetadataRevision, "script": "different script"}, http.StatusBadRequest)
+	patch("", headers, TestMetadataPatch{MetadataRevision: beforePublish, Tags: &[]string{"過期修改"}}, http.StatusConflict)
+	out := patch("", headers, body, http.StatusOK)
+	var test Test
+	if json.Unmarshal(out.Body.Bytes(), &test) != nil || test.MetadataRevision != before.MetadataRevision+1 || stringValue(test.PublishedVersionID) != published.ID ||
+		test.ActiveEditingSession != nil || test.Description != body["description"] || strings.Join(test.Tags, ",") != "人工標籤,購物車" {
+		h.t.Fatalf("incorrect metadata update: %+v", test)
+	}
+	patch("", headers, body, http.StatusConflict)
+	out = patch("", headers, TestMetadataPatch{MetadataRevision: test.MetadataRevision, Tags: &[]string{}}, http.StatusOK)
+	if !strings.Contains(out.Body.String(), `"tags":[]`) {
+		h.t.Fatal("clearing tags did not save an explicit empty list")
+	}
+	versions, err := h.p.Versions(h.ctx, test.ID)
+	if err != nil || len(versions) != len(history) {
+		h.t.Fatalf("metadata edits created a version: %v", err)
+	}
+	updated := versions[0]
+	if updated.ID != published.ID || updated.Revision != published.Revision || updated.Script != published.Script ||
+		stringValue(updated.ValidationRunID) != stringValue(published.ValidationRunID) || stringValue(updated.SummaryRunID) != stringValue(published.SummaryRunID) ||
+		stringValue(updated.Description) != body["description"] || stringValue(updated.BackgroundSummary) != body["backgroundSummary"] || versions[1].Description != nil {
+		h.t.Fatalf("metadata edit changed the version or its proof: %+v", updated)
+	}
+	var sourceDescription, sourceBackground string
+	err = h.p.DB.QueryRowContext(h.ctx, `SELECT description,background_summary FROM test_versions WHERE id=$1`, published.ID).Scan(&sourceDescription, &sourceBackground)
+	if err != nil || sourceDescription != stringValue(published.Description) || sourceBackground != stringValue(published.BackgroundSummary) {
+		h.t.Fatalf("metadata edit altered the original acceptance summary: %v", err)
+	}
+	if _, err := h.p.Draft(h.ctx, test.ID); !errors.Is(err, ErrNotFound) {
+		h.t.Fatal("metadata edit opened an editing session")
+	}
+	if after, err := h.p.Runs(h.ctx, test.ID); err != nil || len(after) != len(runs) {
+		h.t.Fatalf("metadata edit enqueued a Run: %v", err)
+	}
+	return updated
 }
 
 func TestDiscardUnpublishedTest(t *testing.T) {

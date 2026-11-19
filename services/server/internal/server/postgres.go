@@ -95,7 +95,9 @@ func (p *Postgres) Workspaces(ctx context.Context) ([]Workspace, error) {
 	return items, nil
 }
 
-const testColumns = `id,workspace_id,name,description,published_version_id,kind,slug,deleted_at IS NOT NULL,
+const testColumns = `id,workspace_id,name,
+ COALESCE((SELECT n.description_override FROM test_version_notes n WHERE n.version_id=tests.published_version_id),description),
+ published_version_id,kind,slug,deleted_at IS NOT NULL,COALESCE(tags,'null'::jsonb),metadata_revision,
  (SELECT json_build_object('id',e.id,'status',e.status,'draftRevision',d.current_revision,'updatedAt',d.updated_at)
   FROM editing_sessions e JOIN drafts d ON d.editing_session_id=e.id
   WHERE e.test_id=tests.id AND e.status IN ('active','discarding'))`
@@ -104,8 +106,11 @@ type scanner interface{ Scan(...any) error }
 
 func scanTest(row scanner) (Test, error) {
 	var t Test
-	var active []byte
-	err := row.Scan(&t.ID, &t.WorkspaceID, &t.Name, &t.Description, &t.PublishedVersionID, &t.Kind, &t.Slug, &t.Deleted, &active)
+	var active, tags []byte
+	err := row.Scan(&t.ID, &t.WorkspaceID, &t.Name, &t.Description, &t.PublishedVersionID, &t.Kind, &t.Slug, &t.Deleted, &tags, &t.MetadataRevision, &active)
+	if err == nil {
+		err = json.Unmarshal(tags, &t.Tags)
+	}
 	if err == nil && len(active) > 0 {
 		err = json.Unmarshal(active, &t.ActiveEditingSession)
 	}

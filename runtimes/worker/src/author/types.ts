@@ -72,7 +72,7 @@ export interface AuthorOutput {
 }
 
 export interface SummaryOutput {
-  message: string; description: string; backgroundSummary: string; name?: string;
+  message: string; description: string; backgroundSummary: string; name?: string; suggestedTags?: string[] | null;
   script?: never; requestValidation?: never;
 }
 
@@ -97,9 +97,11 @@ export function parseWorkspaceAuthorOutput(value:unknown,context:WorkspaceContex
 
 export function parseSummaryOutput(value: unknown): SummaryOutput {
   const v = value as SummaryOutput | null;
-  if (!v || typeof v !== "object" || Array.isArray(v) || Object.keys(v).some((k) => !["message", "description", "backgroundSummary", "name"].includes(k)) ||
+  if (!v || typeof v !== "object" || Array.isArray(v) || Object.keys(v).some((k) => !["message", "description", "backgroundSummary", "name", "suggestedTags"].includes(k)) ||
     !boundedText(v.message, 128000, true) || v.message.length > 32000 || !boundedText(v.description, 16384, true) ||
-    !boundedText(v.backgroundSummary, 8192, true) || v.name !== undefined && !boundedText(v.name, 200, true)) throw new AuthorError("invalid_response");
+    !boundedText(v.backgroundSummary, 8192, true) || v.name !== undefined && !boundedText(v.name, 200, true) ||
+    v.suggestedTags != null && (!Array.isArray(v.suggestedTags) || v.suggestedTags.length > 5 || !v.suggestedTags.every((tag) =>
+      typeof tag === "string" && tag.length > 0 && [...tag].length <= 32 && !tag.startsWith("#") && !/[,，\p{White_Space}\p{Cc}\uFEFF]/u.test(tag)))) throw new AuthorError("invalid_response");
   return v;
 }
 

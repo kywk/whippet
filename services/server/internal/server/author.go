@@ -232,7 +232,7 @@ func (p *Postgres) completeAuthorWith(ctx context.Context, testID, runID, attemp
 						if effectiveScriptOrigin(origin) != effectiveScriptOrigin(d.ScriptOrigin) || proofErr != nil || checkPublication(d.Revision, true, d, proof) != nil || !summaryBindingMatches(session, d, input, script, settings, runContext) ||
 							(input.ModuleSummary != nil && !runReclaimed(ctx, tx, proof.id)) || input.ValidationEvidence.AttemptID != proof.attemptID || d.summaryRunID == nil || *d.summaryRunID != runID {
 							result = Result{Status: "failed", Error: "Acceptance summary no longer matches the current editing session."}
-						} else if _, err = tx.ExecContext(ctx, `UPDATE drafts SET summary_description=$2,summary_background=$3,summary_name=$4 WHERE test_id=$1 AND summary_run_id=$5`, testID, out.Description, out.BackgroundSummary, out.Name, runID); err != nil {
+						} else if _, err = tx.ExecContext(ctx, `UPDATE drafts SET summary_description=$2,summary_background=$3,summary_name=$4,summary_suggested_tags=$5 WHERE test_id=$1 AND summary_run_id=$6`, testID, out.Description, out.BackgroundSummary, out.Name, tagArrayJSON(out.SuggestedTags), runID); err != nil {
 							return err
 						}
 					}

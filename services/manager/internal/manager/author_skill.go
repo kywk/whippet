@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -219,14 +220,15 @@ func validAuthorArtifact(taskDir string, a *AuthorTask, context json.RawMessage)
 	}
 	if summaryAuthor(a) {
 		var out struct {
-			Message           *string `json:"message"`
-			Description       *string `json:"description"`
-			BackgroundSummary *string `json:"backgroundSummary"`
-			Name              *string `json:"name,omitempty"`
+			Message           *string  `json:"message"`
+			Description       *string  `json:"description"`
+			BackgroundSummary *string  `json:"backgroundSummary"`
+			Name              *string  `json:"name,omitempty"`
+			SuggestedTags     []string `json:"suggestedTags,omitempty"`
 		}
 		return decoder.Decode(&out) == nil && out.Message != nil && boundedAuthorText(*out.Message, 128000, true) && utf8.RuneCountInString(*out.Message) <= 32000 &&
 			out.Description != nil && boundedAuthorText(*out.Description, 16384, true) && out.BackgroundSummary != nil && boundedAuthorText(*out.BackgroundSummary, 8192, true) &&
-			(out.Name == nil || boundedAuthorText(*out.Name, 200, true))
+			(out.Name == nil || boundedAuthorText(*out.Name, 200, true)) && validSuggestedTags(out.SuggestedTags)
 	}
 	var out struct {
 		Partial             json.RawMessage `json:"partial,omitempty"`
@@ -250,6 +252,19 @@ func validAuthorArtifact(taskDir string, a *AuthorTask, context json.RawMessage)
 	}
 	if len(context) > 0 && a != nil && a.SkillID != nil && *a.SkillID == "test-author" && out.Script != nil && !validPlaywrightSpec(*out.Script) {
 		return false
+	}
+	return true
+}
+
+func validSuggestedTags(tags []string) bool {
+	if len(tags) > 5 {
+		return false
+	}
+	for _, tag := range tags {
+		if tag == "" || utf8.RuneCountInString(tag) > 32 || strings.HasPrefix(tag, "#") || strings.ContainsAny(tag, ",，") ||
+			strings.ContainsFunc(tag, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) || r == '\uFEFF' }) {
+			return false
+		}
 	}
 	return true
 }

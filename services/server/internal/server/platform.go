@@ -207,7 +207,7 @@ func (p *Postgres) SavePlatformDraft(ctx context.Context, test, session string, 
 	if err != nil {
 		return Draft{}, err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE drafts SET current_revision=current_revision+1,validation_run_id=NULL,summary_run_id=NULL,summary_description=NULL,summary_background=NULL,summary_name=NULL,updated_at=now() WHERE test_id=$1`, test)
+	_, err = tx.ExecContext(ctx, `UPDATE drafts SET current_revision=current_revision+1,validation_run_id=NULL,summary_run_id=NULL,summary_description=NULL,summary_background=NULL,summary_name=NULL,summary_suggested_tags=DEFAULT,updated_at=now() WHERE test_id=$1`, test)
 	if err != nil {
 		return Draft{}, err
 	}

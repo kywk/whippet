@@ -10,11 +10,13 @@ export function createMockApi(): WhippetApi {
       id: '00000000-0000-4000-8000-000000000011', workspaceId: workspace.id,
       name: '本機頁面基本流程', description: '示範成功的執行狀態與報告入口。資料只保留在目前分頁。',
       publishedVersionId: '00000000-0000-4000-8000-000000000021',
+      metadataRevision: 1,
     },
     {
       id: '00000000-0000-4000-8000-000000000012', workspaceId: workspace.id,
       name: '斷言失敗範例', description: '示範斷言失敗的狀態、錯誤訊息與報告入口。',
       publishedVersionId: '00000000-0000-4000-8000-000000000022',
+      metadataRevision: 1,
     },
   ];
   const runs = new Map<string, Run>();
@@ -92,6 +94,21 @@ test('本機頁面', async ({ page }) => {
     async listWorkspaces() { return [workspace]; },
     async listTests() { return tests.map((test) => ({ ...test })); },
     async getTest(testId) { return { ...getTest(testId) }; },
+    async updateTestMetadata(testId, patch) {
+      const test = getTest(testId);
+      const version = test.publishedVersionId ? versions.get(test.publishedVersionId) : undefined;
+      if (test.metadataRevision !== patch.metadataRevision || (!version && (patch.description !== undefined || patch.backgroundSummary !== undefined))) {
+        throw new ApiError('測試資訊已變更。', 'CONFLICT', 409);
+      }
+      if (patch.description !== undefined) test.description = patch.description;
+      if (patch.tags !== undefined) test.tags = patch.tags;
+      if (version) {
+        if (patch.description !== undefined) version.description = patch.description;
+        if (patch.backgroundSummary !== undefined) version.backgroundSummary = patch.backgroundSummary;
+      }
+      test.metadataRevision++;
+      return { ...test };
+    },
     async createRun(testId) {
       const test = getTest(testId);
       if (!test.publishedVersionId) throw new ApiError('請先發佈測試。', 'UNPUBLISHED', 409);
@@ -106,7 +123,7 @@ test('本機頁面', async ({ page }) => {
       return progress(run);
     },
     async createTest(workspaceId, input) {
-      const test: Test = { id: crypto.randomUUID(), workspaceId, name: input.name?.trim() || '未命名測試', description: input.description ?? '', publishedVersionId: null };
+      const test: Test = { id: crypto.randomUUID(), workspaceId, name: input.name?.trim() || '未命名測試', description: input.description ?? '', publishedVersionId: null, metadataRevision: 1 };
       tests.push(test);
       drafts.set(test.id, { testId: test.id, revision: 1, script: '', updatedAt: new Date().toISOString() });
       return { ...test };
@@ -129,7 +146,10 @@ test('本機頁面', async ({ page }) => {
       const draft = checkRevision(testId, revision);
       if (draft.validationStatus !== 'succeeded' || !draft.reportUrl || !draft.validationRunId) throw new ApiError('目前 revision 尚未成功驗證或缺少報告。', 'VALIDATION_REQUIRED', 409);
       const version: Version = { id: crypto.randomUUID(), testId, revision, script: draft.script, createdAt: new Date().toISOString(), validationRunId: draft.validationRunId, description: null, backgroundSummary: null, summaryRunId: null, editingSessionId: null };
-      versions.set(version.id, version); getTest(testId).publishedVersionId = version.id;
+      versions.set(version.id, version);
+      const test = getTest(testId);
+      test.publishedVersionId = version.id;
+      test.metadataRevision = (test.metadataRevision ?? 0) + 1;
       return { ...version };
     },
     async listVersions(testId) { return [...versions.values()].filter((version) => version.testId === testId).reverse().map((version) => ({ ...version })); },

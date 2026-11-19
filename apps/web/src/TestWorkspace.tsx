@@ -11,7 +11,7 @@ import { PlayIcon, ScriptIcon, SidebarIcon } from './icons';
 import { TestOverview } from './TestOverview';
 import { VersionHistory } from './VersionHistory';
 import { useResource, useRuns } from './hooks';
-import type { ActiveEditingSession, AuthorEngine, Draft, EditingSession, Run, Test, Version, WhippetApi, WorkspaceCapabilities } from './types';
+import type { ActiveEditingSession, AuthorEngine, Draft, EditingSession, Run, Test, TestMetadataPatch, Version, WhippetApi, WorkspaceCapabilities } from './types';
 
 interface Props {
   testId: string;
@@ -25,8 +25,6 @@ interface Props {
   unreadCount?: number;
   tags: string[];
   workspaceTags: string[];
-  onAddTag: (raw: string) => void;
-  onRemoveTag: (tag: string) => void;
   capabilities: WorkspaceCapabilities | undefined;
   authorEngine: AuthorEngine;
   settingsRefresh: number;
@@ -36,7 +34,7 @@ interface Props {
   onTestCreated: (test: Test) => void;
 }
 
-export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredMode, onModeChange, railCollapsed, onExpandRail, unreadCount, tags, workspaceTags, onAddTag, onRemoveTag, capabilities, authorEngine, settingsRefresh, onDirtyChange, onTestUpdated, onTestRemoved, onTestCreated }: Props) {
+export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredMode, onModeChange, railCollapsed, onExpandRail, unreadCount, tags, workspaceTags, capabilities, authorEngine, settingsRefresh, onDirtyChange, onTestUpdated, onTestRemoved, onTestCreated }: Props) {
   const loadTest = useCallback((signal: AbortSignal) => api.getTest(testId, signal), [api, testId]);
   const loadVersions = useCallback((signal: AbortSignal) => api.listVersions(testId, signal), [api, testId]);
   const test = useResource(loadTest);
@@ -280,6 +278,22 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
     setSession((current) => current ? { ...current, status: 'published', draft: null, publishedVersionId: version.id } : current);
     setEditorMounted(false); setKnownDraft(undefined); test.retry(); versions.retry(); changeMode('general');
   }
+
+  async function saveMetadata(patch: TestMetadataPatch, signal: AbortSignal) {
+    try {
+      const saved = await api.updateTestMetadata(testId, patch, signal);
+      if (signal.aborted) return;
+      onTestUpdated(saved);
+      test.retry();
+      if (patch.description !== undefined || patch.backgroundSummary !== undefined) versions.retry();
+    } catch (cause) {
+      if (!signal.aborted && cause instanceof ApiError && cause.status === 409) {
+        test.retry();
+        versions.retry();
+      }
+      throw cause;
+    }
+  }
   const runHistoryProps = { api, apiBase, loading: history.loading, error: history.error, polling: history.polling, onRefresh: history.refresh, onRun: history.addRun, onWatch: startLive };
 
   const statusChips = <>
@@ -313,7 +327,7 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
       <div className="test-actions"><button className="button primary" disabled={submitting || !publishedId || !executionAvailable} aria-describedby={publishedVersion && !executionAvailable ? 'formal-execution-reason' : undefined} onClick={runTest}><PlayIcon />{submitting ? '送出中…' : '執行正式版本'}</button></div>
     </header>
     <div className="test-mode general-mode overview" hidden={mode !== 'general'} role="tabpanel" aria-label="測試概覽" data-mode="general">
-      <TestOverview test={test.data} version={publishedVersion} loading={test.loading || versions.loading} executionCapability={formalCapability} onRefreshVersions={versions.retry} tags={tags} workspaceTags={workspaceTags} onAddTag={onAddTag} onRemoveTag={onRemoveTag}
+      <TestOverview test={test.data} version={publishedVersion} loading={test.loading || versions.loading} executionCapability={formalCapability} onRefreshVersions={versions.retry} tags={tags} workspaceTags={workspaceTags} onSaveMetadata={saveMetadata}
         runHistory={<>
           {submitError ? <Notice message={submitError} retry={history.refresh} retryLabel="重新整理正式執行紀錄" /> : null}
           <RunHistory {...runHistoryProps} runs={formalRuns} group="formal" liveView={mode === 'general' ? liveView : null} />

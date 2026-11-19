@@ -10,6 +10,14 @@ export function Loading({ text }: { text: string }) {
   return <div className="loading-state" role="status"><p>{text}</p><div className="loading-line" /><div className="loading-line short" /></div>;
 }
 
+export function SuggestedTags({ tags }: { tags?: string[] }) {
+  if (!tags?.length) return null;
+  return <div className="summary-tags">
+    <h5>AI 建議標籤</h5>
+    <ul className="tag-list" aria-label="AI 建議標籤">{tags.map((tag) => <li key={tag} className="tag-pill">#{tag}</li>)}</ul>
+  </div>;
+}
+
 export function StatusBadge({ status }: { status: RunStatus }) {
   const tone = status === 'succeeded' ? 'success'
     : ['failed', 'timed_out', 'interrupted'].includes(status) ? 'danger'

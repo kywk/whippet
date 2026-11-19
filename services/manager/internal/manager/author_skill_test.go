@@ -129,7 +129,7 @@ func TestM7AuthorArtifactSchemaComesFromSavedInputNotArtifactMetadata(t *testing
 		t.Fatal(err)
 	}
 	atomicJSON(filepath.Join(m.taskDir(r), "output/result.json"), Result{Status: "succeeded"})
-	good := map[string]any{"message": "摘要完成", "description": "目的／前置條件／步驟／檢查／限制", "backgroundSummary": "非機密背景", "name": "候選名稱"}
+	good := map[string]any{"message": "摘要完成", "description": "目的／前置條件／步驟／檢查／限制", "backgroundSummary": "非機密背景", "name": "候選名稱", "suggestedTags": []string{"購物車", "結帳"}}
 	file := filepath.Join(m.taskDir(r), "output/author.json")
 	atomicJSON(file, good)
 	loaded, err := loadRecords(m.cfg.WorkDir)
@@ -153,6 +153,14 @@ func TestM7AuthorArtifactSchemaComesFromSavedInputNotArtifactMetadata(t *testing
 			t.Fatal("summary accepted extra fields")
 		}
 	}
+	for _, invalid := range []any{"登入", []any{nil}, []string{"a b"}, []string{strings.Repeat("測", 33)}, []string{"a", "b", "c", "d", "e", "f"}} {
+		good["suggestedTags"] = invalid
+		atomicJSON(file, good)
+		if result, _ := collectAttemptResult(r, m.taskDir(r), execution{ExitCode: 0}); result.Status != "failed" {
+			t.Fatalf("invalid tag suggestions accepted: %v", invalid)
+		}
+	}
+	delete(good, "suggestedTags")
 	good["description"] = strings.Repeat("測", 6000)
 	atomicJSON(file, good)
 	result, _ = collectAttemptResult(r, m.taskDir(r), execution{ExitCode: 0})

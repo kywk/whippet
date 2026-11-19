@@ -14,6 +14,99 @@ import (
 	"testing"
 )
 
+func TestM11ExternalSummaryTagSuggestions(t *testing.T) {
+	p, ctx := workspaceTestDB(t)
+	if err := p.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	manualSeedVersions(t, p, ctx)
+	files, err := NewLocalArtifacts(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Artifacts = files
+	h := m7DBHarness{t, p, ctx, files}
+	const testID = "10000000-0000-4000-8000-000000000001"
+	item, err := p.Test(ctx, testID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := p.Workspace(ctx, item.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = p.SetAuthorEngine(ctx, w.ID, w.Revision, "external"); err != nil {
+		t.Fatal(err)
+	}
+	s, _, err := p.StartEditingSession(ctx, item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = p.RegisterManager(ctx, "m7-test", 1); err != nil {
+		t.Fatal(err)
+	}
+	v, err := p.ValidateDraft(ctx, item.ID, s.ID, s.Draft.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validation := h.claim(v.ID)
+	h.upload(validation, "report.html", "<!doctype html><h1>passed</h1>")
+	h.upload(validation, "results.json", `{"stats":{"expected":1,"unexpected":0,"flaky":0,"skipped":0,"duration":12},"errors":[]}`)
+	h.complete(validation, "succeeded")
+	h.release()
+	run, err := p.CreateSummary(ctx, item.ID, s.ID, s.Draft.Revision, v.ID)
+	if err != nil || run.AuthorEngine != "external" {
+		t.Fatalf("external summary not queued: %+v %v", run, err)
+	}
+	_, secret, err := p.CreateAgentToken(ctx, w.ID, "summary agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	handler := NewAPI(p, files, nil, NewID(), log).WithAdminAccess(NewID(), "https://whippet.test").Handler(nil)
+	call := func(name string, args any, rejected bool) json.RawMessage {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "https://whippet.test/mcp",
+			strings.NewReader(jsonText(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": name, "arguments": args}})))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		req.Header.Set("Authorization", "Bearer "+secret)
+		out := httptest.NewRecorder()
+		handler.ServeHTTP(out, req)
+		var response struct {
+			Result struct {
+				IsError bool            `json:"isError"`
+				Data    json.RawMessage `json:"structuredContent"`
+			} `json:"result"`
+		}
+		if out.Code != http.StatusOK || json.Unmarshal(out.Body.Bytes(), &response) != nil || response.Result.IsError != rejected {
+			t.Fatalf("unexpected MCP %s response: HTTP %d %s", name, out.Code, out.Body)
+		}
+		return response.Result.Data
+	}
+	var claim struct{ Task ExternalTask }
+	if err = json.Unmarshal(call("task_claim", map[string]string{"requestId": NewID()}, false), &claim); err != nil ||
+		claim.Task.RunID != run.ID || len(claim.Task.ContextBundle.Author.AllowedTools) != 0 ||
+		!strings.Contains(claim.Task.ContextBundle.Instructions, "suggestedTags") {
+		t.Fatalf("wrong summary claim context: %v", err)
+	}
+	task := claim.Task
+	output := map[string]any{"message": "完成", "description": "驗證頁面", "backgroundSummary": "本機頁面", "suggestedTags": []string{"兩 個"}}
+	args := map[string]any{"runId": task.RunID, "attemptId": task.AttemptID, "leaseId": task.LeaseID, "submitId": NewID(), "output": output}
+	call("task_submit", args, true)
+	output["suggestedTags"] = []string{"介面", "回歸"}
+	args["submitId"] = NewID()
+	result := call("task_submit", args, false)
+	if !bytes.Contains(result, []byte(`"state":"submitted"`)) {
+		t.Fatalf("summary not submitted: %s", result)
+	}
+	view, err := p.EditingSession(ctx, item.ID, s.ID)
+	if err != nil || view == nil || view.Summary == nil || !view.Summary.ValidForCurrentDraft ||
+		strings.Join(view.Summary.SuggestedTags, ",") != "介面,回歸" {
+		t.Fatalf("external tag suggestions not saved: %+v %v", view, err)
+	}
+}
+
 func TestM11ExternalAuthorClaimAndImmutableSnapshot(t *testing.T) {
 	p, ctx := workspaceTestDB(t)
 	if err := p.Migrate(ctx); err != nil {

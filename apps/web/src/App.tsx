@@ -7,7 +7,7 @@ import { WorkspaceConversation } from './WorkspaceConversation';
 import { WorkspaceAvailability } from './WorkspaceSettings';
 import { TestWorkspace } from './TestWorkspace';
 import { useActivity } from './activity';
-import { useAllTestTags } from './tags';
+import { useLegacyTestTags } from './tags';
 import { MiniTrail } from './trail';
 import { useResource } from './hooks';
 import { ArrowRightIcon, BellIcon, BrandMark, ChevronDownIcon, CloseIcon, GearIcon, MenuIcon, PlusIcon, RefreshIcon, SearchIcon, SidebarIcon } from './icons';
@@ -194,7 +194,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
   const [createError, setCreateError] = useState<string>();
   const [autoEditId, setAutoEditId] = useState<string>();
   const [testModes, setTestModes] = useState<Record<string, 'general' | 'editing'>>({});
-  const { tagsByTest, addTagForTest, removeTagForTest } = useAllTestTags();
+  const legacyTagsByTest = useLegacyTestTags();
   const editorDirty = useRef(false);
   const creationPending = useRef(false);
   const reportEditorGuard = useCallback((guarded: boolean) => { editorDirty.current = guarded; onDirtyChange(guarded || creationPending.current); }, [onDirtyChange]);
@@ -221,16 +221,16 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
   const workspaceTags = useMemo(() => {
     const set = new Set<string>();
     for (const item of allTests) {
-      for (const tag of tagsByTest[item.id] ?? []) set.add(tag);
+      for (const tag of item.tags ?? legacyTagsByTest[item.id] ?? []) set.add(tag);
     }
     return [...set];
-  }, [allTests, tagsByTest]);
+  }, [allTests, legacyTagsByTest]);
   useEffect(() => {
     if (selectedTag && !workspaceTags.includes(selectedTag)) setSelectedTag(undefined);
   }, [selectedTag, workspaceTags]);
   const query = search.trim().toLocaleLowerCase();
   const filtered = allTests.filter((test) => {
-    const testTags = tagsByTest[test.id] ?? [];
+    const testTags = test.tags ?? legacyTagsByTest[test.id] ?? [];
     if (selectedTag && !testTags.includes(selectedTag)) return false;
     if (!query) return true;
     const tagSearchText = testTags.map((tag) => `#${tag} ${tag}`).join(' ');
@@ -350,7 +350,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
           <ul className="test-list">
             {filtered.map((test) => {
               const info = activity[test.id];
-              const testTags = tagsByTest[test.id] ?? [];
+              const testTags = test.tags ?? legacyTagsByTest[test.id] ?? [];
               const isSelected = surface === 'tests' && selected?.id === test.id;
               return <li key={test.id}>
                 <button className={`test-item${isSelected ? ' selected' : ''}${info?.running ? ' running' : ''}${info?.unread ? ' unread' : ''}`} disabled={creating} aria-current={isSelected ? 'true' : undefined} onClick={() => pick(test)}>
@@ -405,10 +405,8 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
               railCollapsed={railCollapsed}
               onExpandRail={() => toggleRailCollapsed(false)}
               unreadCount={unread}
-              tags={tagsByTest[selected.id] ?? []}
+              tags={selected.tags ?? legacyTagsByTest[selected.id] ?? []}
               workspaceTags={workspaceTags}
-              onAddTag={(raw) => addTagForTest(selected.id, raw)}
-              onRemoveTag={(tag) => removeTagForTest(selected.id, tag)}
               capabilities={workspace.capabilities}
               authorEngine={workspace.authorEngine}
             />

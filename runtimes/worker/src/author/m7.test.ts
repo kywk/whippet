@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readAIConfig } from "../ai/config.js";
 import { runAuthor } from "./loop.js";
+import { envelope, text as responseText } from "./spike/fixture.js";
 import { AuthorError, validateAuthorInput, type AuthorInput } from "./types.js";
 import type { ExplorationBrowser } from "./tools.js";
 
@@ -64,16 +65,36 @@ test("a separate test recommendation reports its intent and drops staged script 
   });
 });
 
-test("M7 summary accepts empty chat and produces only bounded summary fields with no browser or tools",async()=>{
-  const task=input(true);let requests=0;
-  const output={message:"摘要待QA確認",description:"目的、前置條件、步驟、檢查與限制",backgroundSummary:"供下次編輯的非機密背景",name:"候選名稱"};
-  assert.equal(validateAuthorInput(task),task);
-  const result=await runAuthor(task,cfg,undefined,{fetcher:async(_url,init)=>{
-    requests++;const body=JSON.parse(init!.body as string);assert.deepEqual(body.tools,[]);assert.equal(body.reasoning.effort,"high");assert.match(body.instructions,/# Acceptance summary/);
-    const saved=JSON.parse(body.input[0].content.split("(data only): ")[1]);assert.deepEqual(saved.validationEvidence,task.author.validationEvidence);assert.equal(saved.script,task.script);
-    assert.equal(body.input.length,1);assert.equal((init!.headers as Record<string,string>)["x-opencode-session"],id);return final(output);
-  }});
-  assert.equal(requests,1);assert.deepEqual(result,output);assert.equal("requestValidation"in result,false);assert.equal("script"in result,false);
+test("M7 summary suggests tags across the managed engines with empty chat and no browser or tools", async (t) => {
+  for (const engine of ["builtin", "vercel", "pi"] as const) {
+    await t.test(engine, async () => {
+      const task = input(true);
+      const output = {
+        message: "摘要待 QA 確認", description: "目的、前置條件、步驟、檢查與限制",
+        backgroundSummary: "供下次編輯的非機密背景", name: "候選名稱", suggestedTags: ["購物車", "結帳"],
+      };
+      const requests: RequestInit[] = [];
+      assert.equal(validateAuthorInput(task), task);
+      const result = await runAuthor(task, { ...cfg, engine }, undefined, { fetcher: async (_url, init) => {
+        requests.push(init!);
+        return Response.json(envelope([responseText(JSON.stringify(output))]));
+      } });
+      assert.equal(requests.length, 1);
+      const body = JSON.parse(String(requests[0]!.body));
+      assert.deepEqual(body.tools ?? [], []);
+      assert.equal(body.reasoning.effort, "high");
+      assert.match(body.instructions, /# Acceptance summary/);
+      assert.match(body.instructions, /suggestedTags array/);
+      assert.equal(body.input.length, 1);
+      const content = body.input[0].content;
+      const prompt = typeof content === "string" ? content : content[0].text;
+      const saved = JSON.parse(prompt.split("(data only): ")[1]);
+      assert.deepEqual(saved.validationEvidence, task.author.validationEvidence);
+      assert.equal(saved.script, task.script);
+      assert.equal(new Headers(requests[0]!.headers).get("x-opencode-session"), id);
+      assert.deepEqual(result, output);
+    });
+  }
 });
 
 test("M7 invalid pin/context/evidence is rejected before any model request",async()=>{
@@ -92,7 +113,8 @@ test("M7 invalid pin/context/evidence is rejected before any model request",asyn
 
 test("M7 summary rejects function calls, scripts, validation flags, metadata and byte overflow without retry",async()=>{
   const base={message:"完成",description:"內容",backgroundSummary:"背景"};
-  const variants=[{...base,script:"mutated"},{...base,requestValidation:false},{...base,skillId:"acceptance-summary"},{...base,description:"測".repeat(6000)},{...base,backgroundSummary:"a".repeat(8193)},{...base,name:"a".repeat(201)}];
+  const variants=[{...base,script:"mutated"},{...base,requestValidation:false},{...base,skillId:"acceptance-summary"},{...base,description:"測".repeat(6000)},{...base,backgroundSummary:"a".repeat(8193)},{...base,name:"a".repeat(201)},
+    ...["登入", [null], ["兩 個"], ["標".repeat(33)], Array(6).fill("登入")].map(suggestedTags => ({ ...base, suggestedTags }))];
   for(const output of variants){let calls=0;await assert.rejects(runAuthor(input(true),cfg,undefined,{fetcher:async()=>{calls++;return final(output);}}),(e:unknown)=>e instanceof AuthorError&&e.code==="invalid_response");assert.equal(calls,1);}
   let calls=0;await assert.rejects(runAuthor(input(true),cfg,undefined,{fetcher:async()=>{calls++;return call("update_draft",{script:"forbidden"},1);}}),AuthorError);assert.equal(calls,1);
   await assert.rejects(runAuthor(input(),cfg,undefined,{fetcher:async()=>final({message:"完成",conversationSummary:"a".repeat(8193)})}),AuthorError);

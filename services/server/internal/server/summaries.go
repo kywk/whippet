@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"unicode/utf8"
 )
 
 type ValidationStats struct {
@@ -30,14 +29,15 @@ type ValidationEvidence struct {
 }
 
 type summaryOutput struct {
-	Message           string  `json:"message"`
-	Description       string  `json:"description"`
-	BackgroundSummary string  `json:"backgroundSummary"`
-	Name              *string `json:"name,omitempty"`
+	Message           string   `json:"message"`
+	Description       string   `json:"description"`
+	BackgroundSummary string   `json:"backgroundSummary"`
+	Name              *string  `json:"name,omitempty"`
+	SuggestedTags     []string `json:"suggestedTags,omitempty"`
 }
 
 func validOutputText(s string, limit int) bool {
-	return strings.TrimSpace(s) != "" && len(s) <= limit && utf8.ValidString(s) && !strings.ContainsRune(s, '\x00')
+	return strings.TrimSpace(s) != "" && validMetadataText(s, limit)
 }
 func decodeSummaryOutput(data []byte) (summaryOutput, error) {
 	var out summaryOutput
@@ -51,6 +51,11 @@ func decodeSummaryOutput(data []byte) (summaryOutput, error) {
 		trimmed := strings.TrimSpace(*out.Name)
 		out.Name = &trimmed
 	}
+	tags, err := cleanTestTags(out.SuggestedTags, 5)
+	if err != nil {
+		return out, err
+	}
+	out.SuggestedTags = tags
 	return out, nil
 }
 
@@ -106,7 +111,7 @@ func enqueueAuthorSnapshot(ctx context.Context, tx *sql.Tx, d draftState, input 
 }
 
 func clearDraftSummary(ctx context.Context, tx *sql.Tx, testID string) error {
-	_, err := tx.ExecContext(ctx, `UPDATE drafts SET summary_run_id=NULL,summary_description=NULL,summary_background=NULL,summary_name=NULL WHERE test_id=$1`, testID)
+	_, err := tx.ExecContext(ctx, `UPDATE drafts SET summary_run_id=NULL,summary_description=NULL,summary_background=NULL,summary_name=NULL,summary_suggested_tags=DEFAULT WHERE test_id=$1`, testID)
 	return err
 }
 
@@ -225,7 +230,7 @@ func readEditingSummary(ctx context.Context, q queryDB, s EditingSession, d draf
 	if err != nil {
 		return nil, err
 	}
-	info := &EditingSummary{RunID: run.ID, Status: run.Status, Revision: input.BaseRevision, Description: d.summaryDescription, BackgroundSummary: d.summaryBackground, Name: d.summaryName}
+	info := &EditingSummary{RunID: run.ID, Status: run.Status, Revision: input.BaseRevision, Description: d.summaryDescription, BackgroundSummary: d.summaryBackground, Name: d.summaryName, SuggestedTags: d.summarySuggestedTags}
 	if input.ValidationEvidence != nil {
 		info.ValidationRunID = input.ValidationEvidence.RunID
 	}
@@ -245,7 +250,7 @@ func acceptedSummary(ctx context.Context, tx *sql.Tx, s EditingSession, d draftS
 	if effectiveScriptOrigin(run.ScriptOrigin) != effectiveScriptOrigin(d.ScriptOrigin) || stringValue(run.TestID) != s.TestID || run.Status != "succeeded" || !summaryBindingMatches(s, d, input, script, settings, run.WorkspaceContext) || input.ValidationEvidence.AttemptID != proof.attemptID {
 		return out, fmt.Errorf("%w: acceptance summary is stale", ErrConflict)
 	}
-	return summaryOutput{Description: *d.summaryDescription, BackgroundSummary: *d.summaryBackground, Name: d.summaryName}, nil
+	return summaryOutput{Description: *d.summaryDescription, BackgroundSummary: *d.summaryBackground, Name: d.summaryName, SuggestedTags: d.summarySuggestedTags}, nil
 }
 
 func (p *Postgres) CreateSummary(ctx context.Context, testID, sessionID string, revision int, validationID string) (Run, error) {
@@ -340,7 +345,7 @@ func (p *Postgres) CreateSummary(ctx context.Context, testID, sessionID string, 
 	if err != nil {
 		return Run{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE drafts SET summary_run_id=$2,summary_description=NULL,summary_background=NULL,summary_name=NULL WHERE test_id=$1`, testID, run.ID); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE drafts SET summary_run_id=$2,summary_description=NULL,summary_background=NULL,summary_name=NULL,summary_suggested_tags=DEFAULT WHERE test_id=$1`, testID, run.ID); err != nil {
 		return Run{}, err
 	}
 	if err = tx.Commit(); err != nil {

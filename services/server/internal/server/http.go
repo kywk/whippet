@@ -90,6 +90,7 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	mux.HandleFunc("GET /api/workspaces/{id}/tests", a.tests)
 	mux.HandleFunc("POST /api/workspaces/{id}/tests", a.createTest)
 	mux.HandleFunc("GET /api/tests/{id}", a.test)
+	mux.HandleFunc("PATCH /api/tests/{id}/metadata", a.patchTestMetadata)
 	mux.HandleFunc("POST /api/tests/{id}/editing-session", a.startEditing)
 	mux.HandleFunc("GET /api/tests/{id}/editing-session", a.editingSession)
 	mux.HandleFunc("GET /api/tests/{id}/editing-sessions/{sessionId}", a.editingSession)

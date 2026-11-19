@@ -119,7 +119,7 @@ claim/context指令必說明external adapter採直接提交完整候選而非Wor
 
 claim沿原AuthorInput/ValidationEvidence/ModuleSummary/Batch、Workspace與budget政策快照；allowedTools=[]，不允許browser或其他nested工具。skillUri=`whippet://skill/acceptance-summary/main`，externalReferenceUri=`whippet://skill/acceptance-summary/references/external-mcp`，僅提供已打包且SHA pin的內容，不暴露憑證或模型key。原非秘密policy/model快照不因adapter任意改寫，不用它啟動外部模型。
 
-task_submit.output按權威Run skillId判別；摘要精確`{message,description,backgroundSummary,name?}`，使用decodeSummaryOutput與duplicate/未知欄位守衛，拒script/requestValidation/partial/自報proof。完成共用原交易與summaryBindingMatches/validationProof、Module harness與回收、Plan buildPlanBatch/batchHash CAS，不能因從MCP提交而跳過任一守衛。成功仍回`{state:"submitted",appliedRevision:null,validationRunId:null}`；摘要不能產造驗證或發佈資格。原submit冪等/取消/撤銷/期限守衛沿用。
+task_submit.output 依 Run 的 skillId 判別。驗收摘要可附 `suggestedTags`，格式依 [驗收摘要契約](mvp-v7.md#腳本說明背景與標籤2026-11-19)。`decodeSummaryOutput` 拒絕重複或未知欄位，以及 script、requestValidation、partial 和自行聲稱的驗證證據。完成共用原交易與 summaryBindingMatches、validationProof、Module harness 與回收、Plan buildPlanBatch／batchHash CAS。成功回 `{state:"submitted",appliedRevision:null,validationRunId:null}`。原 submit 冪等、取消、撤銷與期限守衛沿用。
 
 Web沿既有摘要API與Run.authorEngine/EditingSession.summary狀態，設定文案明列普通Test編修與三種驗收摘要支援external，Module/UseCase/Workspace訪談本體尚未支援。必要驗證：各摘要分支有可信驗證fixture時成功、失效證據/CAS/重複提交不越權；本wave不重跑完整UI/真模型，最後集中完整驗收。
 

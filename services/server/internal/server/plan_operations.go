@@ -204,7 +204,7 @@ func composePlan(ctx context.Context, tx *sql.Tx, plan *Plan, d draftState, s Ed
 	if _, err = tx.ExecContext(ctx, `INSERT INTO draft_revisions(test_id,revision,script,script_hash,timeout_ms,workspace_settings,workspace_context,script_origin,stages) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, d.TestID, d.Revision+1, script, scriptHash(script), d.timeoutMS, settingsJSON(d.WorkspaceSettings), jsonText(d.WorkspaceContext), origin, stagesJSON(stages)); err != nil {
 		return nil, err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE drafts SET current_revision=current_revision+1,validation_run_id=NULL,summary_run_id=NULL,summary_description=NULL,summary_background=NULL,summary_name=NULL,updated_at=now() WHERE test_id=$1`, d.TestID); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE drafts SET current_revision=current_revision+1,validation_run_id=NULL,summary_run_id=NULL,summary_description=NULL,summary_background=NULL,summary_name=NULL,summary_suggested_tags=DEFAULT,updated_at=now() WHERE test_id=$1`, d.TestID); err != nil {
 		return nil, err
 	}
 	d, err = scanDraft(tx.QueryRowContext(ctx, draftSelect, d.TestID))

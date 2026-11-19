@@ -18,7 +18,7 @@ Worker 內部包含 Agent runtime、Playwright 及瀏覽器；畫面傳輸與任
 | 實體 | 主要欄位／約束 |
 | --- | --- |
 | Workspace | id、name、網站設定、非機密預設執行設定 |
-| Test | id、workspace_id、name、description、published_version_id |
+| Test | id、workspace_id、name、description、published_version_id、tags、metadata_revision |
 | Draft | test_id 唯一、current_revision、對話 session_id |
 | DraftRevision | test_id、revision 唯一、檔案快照／雜湊、設定快照 |
 | TestVersion | test_id、version、不可變檔案與設定、來源 revision、validation_run_id |
@@ -38,7 +38,7 @@ MVP 身分可由後端固定 provider 提供；資源存取走共同授權函式
 ## 最小 API 範圍
 
 - POST /api/dev-login；GET /api/workspaces；GET/PATCH /api/workspaces/:id。
-- GET/POST /api/workspaces/:id/tests；GET/PATCH /api/tests/:id。
+- GET/POST /api/workspaces/:id/tests；GET /api/tests/:id；PATCH /api/tests/:id/metadata。
 - GET/PUT /api/tests/:id/draft；GET/POST /api/tests/:id/messages。
 - POST /api/tests/:id/validate；POST /api/tests/:id/publish。
 - POST /api/tests/:id/runs；GET /api/tests/:id/runs；GET /api/runs/:id；POST /api/runs/:id/cancel。
@@ -112,6 +112,7 @@ Manager 使用部署 token；模型金鑰僅在後端執行環境；測試腳本
 - EditingSession：testId、sourceVersionId、conversationId、狀態 active／discarding／discarded／published；唯一約束保證每 Test 最多一個活躍週期。DraftRevision／author／validation 綁定週期與 revision。
 - 放棄先封鎖新任務，取消既有任務；回收／終態確認後封存。結果交易必須同時核對 session 狀態、revision 與 attempt，不能僅比較 revision。
 - 版本保存 description、backgroundSummary、來源編輯週期、驗證 Run 與摘要來源 revision。摘要任務唯讀腳本；發佈交易核對摘要及驗證指向相同腳本／設定快照。
+- 摘要可附建議標籤，隨同通過驗證的版本保存。使用者從測試概覽直接修改正式版本說明與背景，或更新測試標籤。更新與發佈共用 Test 鎖及 metadataRevision，版本與驗證的識別及腳本快照沿用。
 - 正式 AI 版本的對話由已發佈且封存的來源週期保存。版本對話 API 核對 Test、Workspace 與版本的雙向發佈關聯，依訊息 sequence 分頁讀取角色、文字與時間。新編輯週期有自己的對話。
 - Conversation 可屬 Workspace 設定或 Test 編輯週期，採明確 owner 關聯；歷史查詢依 workspace_id 範圍授權。
 - Workspace 設定對話產生 proposal，使用 expectedRevision 提交；建立中 Workspace 尚未啟用，僅允許訪談及經確認的範圍內探索。

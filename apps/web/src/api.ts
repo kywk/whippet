@@ -184,6 +184,8 @@ function parseTest(value: unknown): Test {
     slug: data.kind === 'module' ? string(data.slug) : optionalString(data.slug),
     kind: data.kind == null ? 'test' : choice(data.kind, ['test', 'module', 'usecase'] as const),
     description: optionalString(data.description) ?? '',
+    tags: data.tags == null ? null : array(data.tags, string),
+    metadataRevision: data.metadataRevision == null ? undefined : revision(data.metadataRevision),
     publishedVersionId: optionalString(data.publishedVersionId) || null,
     activeEditingSession: data.activeEditingSession === undefined ? undefined : data.activeEditingSession === null ? null : parseActiveSession(data.activeEditingSession),
     deleted: data.deleted === true,
@@ -248,7 +250,8 @@ function parsePlanSummary(value: unknown): PlanSummary {
   if (candidates.length > 32) throw new ApiError('批次候選清單超過上限。', 'INVALID_RESPONSE');
   return { runId: string(data.runId), planId: string(data.planId), planRevision: revision(data.planRevision), batchHash: hash(data.batchHash),
     status: parseStatus(data.status), stale: bool(data.stale), publishReady: bool(data.publishReady),
-    message: nullableString(data.message), description: nullableString(data.description), backgroundSummary: nullableString(data.backgroundSummary), name: nullableString(data.name), candidates };
+    message: nullableString(data.message), description: nullableString(data.description), backgroundSummary: nullableString(data.backgroundSummary), name: nullableString(data.name),
+    suggestedTags: data.suggestedTags == null ? undefined : array(data.suggestedTags, string), candidates };
 }
 
 function parseAuthorPartial(value: unknown): AuthorPartial {
@@ -336,6 +339,7 @@ function parseVersion(value: unknown, historical = false): Version {
     validationRunId: historical ? nullableString(data.validationRunId) : string(data.validationRunId),
     workspaceSettings: data.workspaceSettings == null ? undefined : parseWorkspaceSnapshot(data.workspaceSettings),
     description: optionalString(data.description) ?? null, backgroundSummary: optionalString(data.backgroundSummary) ?? null,
+    suggestedTags: data.suggestedTags == null ? undefined : array(data.suggestedTags, string),
     summaryRunId: optionalString(data.summaryRunId) ?? null, editingSessionId: optionalString(data.editingSessionId) ?? null,
     scriptOrigin: data.scriptOrigin == null ? undefined : choice(data.scriptOrigin, ['ai', 'manual', 'legacy'] as const),
   };
@@ -380,6 +384,7 @@ function parseSummary(value: unknown): AcceptanceSummary {
   return {
     runId: string(data.runId), status: parseStatus(data.status), revision: revision(data.revision), validationRunId: string(data.validationRunId),
     description: optionalString(data.description), backgroundSummary: optionalString(data.backgroundSummary), name: optionalString(data.name), validForCurrentDraft: data.validForCurrentDraft,
+    suggestedTags: data.suggestedTags == null ? undefined : array(data.suggestedTags, string),
   };
 }
 
@@ -610,6 +615,11 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     },
     async getTest(testId, signal) {
       return parseTest(await request(`/tests/${id(testId)}`, 'GET', signal));
+    },
+    async updateTestMetadata(testId, patch, signal) {
+      const test = parseTest(await request(`/tests/${id(testId)}/metadata`, 'PATCH', signal, patch));
+      if (test.id !== testId || test.metadataRevision !== patch.metadataRevision + 1) throw new ApiError('測試資訊儲存回應不符。', 'INVALID_RESPONSE');
+      return test;
     },
     async createRun(testId, signal) {
       return parseRun(await request(`/tests/${id(testId)}/runs`, 'POST', signal));
