@@ -1,11 +1,11 @@
-import { useCallback, useState } from 'react';
+import { type ReactNode, useCallback, useState } from 'react';
 import { ApiError } from './api';
 import { Loading, Notice, StatusBadge } from './components';
 import { useResource } from './hooks';
 import type { WhippetApi } from './types';
 import './platform-preview.css';
 
-export function ModuleCatalog({ api, workspaceId }: { api: WhippetApi; workspaceId: string }) {
+export function ModuleCatalog({ api, workspaceId, children }: { api: WhippetApi; workspaceId: string; children?: ReactNode }) {
   const load = useCallback((signal: AbortSignal) => {
     if (!api.listCatalog) return Promise.reject(new ApiError('此連線尚未提供真實 Catalog，沒有使用合成資料替代。', 'UNAVAILABLE'));
     return api.listCatalog(workspaceId, signal);
@@ -17,6 +17,7 @@ export function ModuleCatalog({ api, workspaceId }: { api: WhippetApi; workspace
   const selected = filtered.find((item) => item.versionId === selectedId) ?? filtered[0];
   return <div className="platform-preview" aria-label="Workspace Module Catalog">
     <header className="platform-heading"><div><h1>Module 模組庫</h1><p className="muted">目前 Workspace 的真實已發佈版本 · 唯讀</p></div><button className="button secondary" disabled={catalog.loading} onClick={catalog.retry}>重新載入</button></header>
+    {children}
     {catalog.loading ? <Loading text="正在查詢 Catalog…" /> : null}
     {catalog.error ? <Notice message={`Catalog 尚未取得，無法確認模組是否可用。${catalog.error}`} retry={catalog.retry} /> : null}
     {catalog.data ? <><label className="platform-field">搜尋模組<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="名稱、slug 或類型" /></label>

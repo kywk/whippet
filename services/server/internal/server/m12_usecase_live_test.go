@@ -324,7 +324,7 @@ func TestM12RepresentativeUseCaseFlow(t *testing.T) {
 		if a.ID != sub.Run.ID {
 			t.Fatal("planner binding")
 		}
-		worker("planner", []any{map[string]any{"name": "propose_plan", "arguments": map[string]any{"stages": proposed}}, map[string]any{"final": map[string]any{"message": "Plan已保存，等待人工確認"}}})
+		worker("planner", []any{map[string]any{"name": "catalog_search", "arguments": map[string]any{"query": "setup", "limit": 10}}, map[string]any{"name": "catalog_get", "arguments": map[string]any{"moduleVersionId": seedVersion.ID}}, map[string]any{"name": "propose_plan", "arguments": map[string]any{"stages": proposed}}, map[string]any{"final": map[string]any{"message": "Plan已保存，等待人工確認"}}})
 	}
 
 	plan, err := p.Plan(ctx, item.ID, editing.ID)

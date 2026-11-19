@@ -242,13 +242,14 @@ func (p *Postgres) createAuthorInTxForRuntime(ctx context.Context, tx *sql.Tx, d
 		} else if !errors.Is(planErr, ErrNotFound) {
 			return AuthorSubmission{}, planErr
 		}
-		input.AllowedTools = []string{"catalog_search", "catalog_get", "read_usecase_draft", "read_plan", "propose_plan"}
+		input.AllowedTools = []string{"catalog_search", "catalog_next_page", "catalog_get", "read_usecase_draft", "read_plan", "propose_plan"}
 	}
 	if err = validateAuthorPlatform(input, testKind); err != nil {
 		return AuthorSubmission{}, err
 	}
-	if testKind == "test" && !published && session.SourceVersionID == nil {
-		suggestion, err := p.checkNewTestRequest(ctx, tx, session, input.Messages, chain != nil)
+	// Interactive MCP requests claim a Run immediately. Similar-case decisions belong to the Web conversation.
+	if (testKind == "test" || testKind == "usecase" && engine == "") && !published && session.SourceVersionID == nil {
+		suggestion, err := p.checkNewTestRequest(ctx, tx, session, input.SkillID, input.Messages, chain != nil)
 		if err != nil {
 			return AuthorSubmission{}, err
 		}

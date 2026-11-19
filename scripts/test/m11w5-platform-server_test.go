@@ -273,6 +273,9 @@ func TestM11W5PlatformPlanner(t *testing.T) {
 			if _, bad := c.call("task_tool_call", wrong); !bad {
 				t.Fatal("wrong lease issued candidate")
 			}
+			if _, bad := c.call("task_tool_call", m11w5Tool(task, "catalog_search", map[string]any{"query": "", "limit": 10})); bad {
+				t.Fatal("planner Catalog search failed")
+			}
 			proposed, bad := c.call("task_tool_call", m11w5Tool(task, "propose_plan", map[string]any{"stages": []PlanStageInput{stage}}))
 			ref, ok := proposed["candidateRef"].(string)
 			if bad || !ok || !ValidID(ref) {
@@ -327,6 +330,9 @@ func TestM11W5PlatformPlannerForeignAttempt(t *testing.T) {
 	}
 	c := m11w5ClientFor(t, p, item.WorkspaceID)
 	task := c.claim(first.Run.ID, "usecase-planner")
+	if _, bad := c.call("task_tool_call", m11w5Tool(task, "catalog_search", map[string]any{"query": "", "limit": 10})); bad {
+		t.Fatal("planner Catalog search failed")
+	}
 	proposed, bad := c.call("task_tool_call", m11w5Tool(task, "propose_plan", map[string]any{"stages": []PlanStageInput{stage}}))
 	ref, ok := proposed["candidateRef"].(string)
 	if bad || !ok || !ValidID(ref) {

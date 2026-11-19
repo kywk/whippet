@@ -192,10 +192,10 @@ export function PlanPanel({ api, testId, session, draft, runs, authorEngine, blo
   }
 
   return <section className="plan-panel" aria-label="Use Case Plan 與整批發佈">
-    <header className="platform-heading"><div><h3>Use Case Plan</h3><p className="muted">真實 Server 資料 · 非合成預覽</p></div><button className="button secondary compact" disabled={pending} onClick={() => { void reload(new AbortController().signal, true); }}>重新載入</button></header>
+    <header className="platform-heading"><div><h3>測試計畫</h3></div><button className="button secondary compact" disabled={pending} onClick={() => { void reload(new AbortController().signal, true); }}>重新載入</button></header>
     {error ? <Notice message={error} /> : null}{note ? <p role="status">{note}</p> : null}
     {loading && plan === undefined ? <p role="status">正在讀取 Plan…</p> : null}
-    {plan === null && fresh ? <p>此編輯週期尚無 Plan。可由對話提出計畫，或手動編輯 Stage。</p> : null}
+    {plan === null && fresh ? <p>在對話中描述測試流程，AI 擬定的步驟會顯示在這裡。</p> : null}
     {plan ? <><p className="identifier">{checkpointPaused ? '已暫停，等待候選續接' : planLabels[plan.status]} · Plan r{plan.revision} · 草稿基底 r{plan.baseRevision}</p>
       <p>{plan.stages.filter((stage) => stage.status === 'ready').length} / {plan.stages.length} 階段就緒</p>
       {plan.error ? checkpointPaused ? <p role="status">{plan.error}</p> : <Notice message={plan.error} /> : null}

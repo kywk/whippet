@@ -104,7 +104,7 @@ func checkDraftReplacement(t *testing.T, published bool) {
 		t.Fatalf("unexpected source after replacement: %+v", first.SourceTest)
 	}
 	newTest := first.Test
-	if newTest.WorkspaceID != source.WorkspaceID || newTest.PublishedVersionID != nil || newTest.ActiveEditingSession == nil {
+	if newTest.Kind != "usecase" || newTest.WorkspaceID != source.WorkspaceID || newTest.PublishedVersionID != nil || newTest.ActiveEditingSession == nil {
 		t.Fatalf("unexpected new test: %+v", newTest)
 	}
 	newConversation, err := p.Conversation(ctx, newTest.ID, newTest.ActiveEditingSession.ID)
@@ -127,7 +127,7 @@ func checkDraftReplacement(t *testing.T, published bool) {
 		t.Fatalf("replacement replay after Worker reclamation: %+v %v", replay, err)
 	}
 	queued := h.claim(stringValue(newConversation.ActiveRunID))
-	if queued.Script != "" || queued.Author.SourceVersion != nil || len(queued.Author.Messages) != 1 || queued.Author.Messages[0].Content != prompt {
+	if queued.Author.SkillID != "usecase-planner" || queued.Script != "" || queued.Author.SourceVersion != nil || len(queued.Author.Messages) != 1 || queued.Author.Messages[0].Content != prompt {
 		t.Fatalf("new author run inherited source context: %+v", queued.Author)
 	}
 }

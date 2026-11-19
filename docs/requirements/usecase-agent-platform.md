@@ -56,7 +56,7 @@
 
 ### Plan → Stage → Compose
 
-1. **Plan**：AI 拆解任務並搜尋 Catalog，產出 Plan 卡片；使用者可以修改、確認或取消。
+1. **Plan**：QA 從「新增測試」描述流程與預期結果。AI 判斷模組邊界，搜尋目前 Workspace 的 Catalog，核對候選模組的用途、輸入、回傳與前後狀態。符合需求就引用固定的已發佈版本，有缺口才規劃修改或新建。Plan 卡片以測試步驟呈現，QA 可以修改、確認或取消。
 2. **Stage**：Server 依序為每個需要修改或新建的 Module 排入 author Run，Run 結束前 Module Harness 要自我試跑。某個 Stage 失敗時停在該階段，由使用者決定要修復、修改 Plan 或放棄。
 3. **Compose**：組成 Use Case，排入真實驗證；失敗時用 healer skill 判斷是 Module 問題還是組合問題，不得為了通過而弱化斷言。
 4. **發佈**：摘要完成後，Use Case 與本次新增的 Module 版本在同一個交易中人工確認發佈；任一驗證不成立就整批不發佈。

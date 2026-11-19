@@ -268,12 +268,12 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
     setSimilarEdit({ testId: test.id, sessionId: session.id, content });
   }
 
-  async function createTest(kind: 'test' | 'module' | 'usecase' = 'test') {
+  async function createTest(kind: 'module' | 'usecase' = 'usecase') {
     if (createLock.current || !confirmNavigation()) return;
     createLock.current = true; setCreating(true); setCreateError(undefined);
     const controller = new AbortController(); createController.current = controller;
     try {
-      const test = await api.createTest(workspace.id, kind === 'module' ? { kind, ...moduleInput } : kind === 'usecase' ? { kind } : {}, controller.signal);
+      const test = await api.createTest(workspace.id, kind === 'module' ? { kind, ...moduleInput } : { kind }, controller.signal);
       if (controller.signal.aborted) return;
       openCreatedTest(test);
     } catch (cause) { if (!controller.signal.aborted) setCreateError(`${errorMessage(cause)} 若結果不明，請先重新載入列表確認是否已建立，避免重複新增。`); }
@@ -322,21 +322,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
           <button className="rail-icon-button" aria-label="Workspace 設定" title="Workspace 設定" aria-pressed={surface === 'settings' && setupTarget !== 'create'} onClick={() => { openSetup(); setRailOpen(false); }}><GearIcon /></button>
         </div>
         <button className="button rail-primary" disabled={creating} onClick={() => { void createTest(); }}><PlusIcon />{creating ? '正在建立測試…' : '新增測試'}</button>
-        <button className="button rail-primary" disabled={creating} onClick={() => { void createTest('usecase'); }}>新增 Use Case</button>
-        <button className="button rail-primary" disabled={creating} onClick={() => setModuleForm(value => !value)}>新增 Module</button>
-        {moduleForm ? <form className="module-create" onSubmit={event => { event.preventDefault(); void createTest('module'); }}>
-          <p>建立真實 Module 草稿，尚未驗證或發佈。</p>
-          <label htmlFor="new-module-slug">slug（不可修改）</label>
-          <input id="new-module-slug" required pattern="[a-z][a-z0-9-]{0,63}" maxLength={64} value={moduleInput.slug} disabled={creating} onChange={event => setModuleInput({ ...moduleInput, slug: event.target.value })} />
-          <label htmlFor="new-module-name">名稱</label>
-          <input id="new-module-name" required value={moduleInput.name} disabled={creating} onChange={event => setModuleInput({ ...moduleInput, name: event.target.value })} />
-          <label htmlFor="new-module-description">說明</label>
-          <textarea id="new-module-description" value={moduleInput.description} disabled={creating} onChange={event => setModuleInput({ ...moduleInput, description: event.target.value })} />
-          <p>slug 使用小寫英文字母開頭，可含數字與連字號，Workspace 內不可重複。</p>
-          <button className="button secondary" disabled={creating || !moduleInput.name.trim()} type="submit">{creating ? '建立中…' : '建立 Module 草稿'}</button>
-          <button className="button secondary" disabled={creating} type="button" onClick={() => setModuleForm(false)}>取消</button>
-        </form> : null}
-        {createError ? <Notice message={createError} /> : null}
+        {createError && surface !== 'catalog' ? <Notice message={createError} /> : null}
         <label className="search-label"><span className="sr-only">搜尋測試</span>
           <SearchIcon /><input type="search" value={search} placeholder="搜尋測試名稱或 #標籤" onChange={(event) => setSearch(event.target.value)} />
         </label>
@@ -397,7 +383,22 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
         ) : null}
         {mock ? <div className="mock-banner" role="status">示範模式：使用本機 mock 資料，不會啟動 Playwright；重新整理後資料會清除。</div> : null}
         {setupView}
-        {surface === 'catalog' ? <ModuleCatalog key={workspace.id} api={api} workspaceId={workspace.id} /> : null}
+        {surface === 'catalog' ? <ModuleCatalog key={workspace.id} api={api} workspaceId={workspace.id}>
+          <button className="button secondary" disabled={creating} aria-expanded={moduleForm} onClick={() => setModuleForm(value => !value)}>手動建立模組</button>
+          {moduleForm ? <form className="module-create" onSubmit={event => { event.preventDefault(); void createTest('module'); }}>
+            <p>建立真實 Module 草稿，尚未驗證或發佈。</p>
+            <label htmlFor="new-module-slug">slug（不可修改）</label>
+            <input id="new-module-slug" required pattern="[a-z][a-z0-9\-]{0,63}" maxLength={64} value={moduleInput.slug} disabled={creating} onChange={event => setModuleInput({ ...moduleInput, slug: event.target.value })} />
+            <label htmlFor="new-module-name">名稱</label>
+            <input id="new-module-name" required value={moduleInput.name} disabled={creating} onChange={event => setModuleInput({ ...moduleInput, name: event.target.value })} />
+            <label htmlFor="new-module-description">說明</label>
+            <textarea id="new-module-description" value={moduleInput.description} disabled={creating} onChange={event => setModuleInput({ ...moduleInput, description: event.target.value })} />
+            <p>slug 使用小寫英文字母開頭，可含數字與連字號，Workspace 內不可重複。</p>
+            <button className="button secondary" disabled={creating || !moduleInput.name.trim()} type="submit">{creating ? '建立中…' : '建立 Module 草稿'}</button>
+            <button className="button secondary" disabled={creating} type="button" onClick={() => setModuleForm(false)}>取消</button>
+          </form> : null}
+          {createError ? <Notice message={createError} /> : null}
+        </ModuleCatalog> : null}
         {surface === 'tests' ? (selected
           ? <TestWorkspace
               key={selected.id}

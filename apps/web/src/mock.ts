@@ -123,7 +123,7 @@ test('本機頁面', async ({ page }) => {
       return progress(run);
     },
     async createTest(workspaceId, input) {
-      const test: Test = { id: crypto.randomUUID(), workspaceId, name: input.name?.trim() || '未命名測試', description: input.description ?? '', publishedVersionId: null, metadataRevision: 1 };
+      const test: Test = { id: crypto.randomUUID(), workspaceId, kind: input.kind, name: input.name?.trim() || '未命名測試', description: input.description ?? '', publishedVersionId: null, metadataRevision: 1 };
       tests.push(test);
       drafts.set(test.id, { testId: test.id, revision: 1, script: '', updatedAt: new Date().toISOString() });
       return { ...test };

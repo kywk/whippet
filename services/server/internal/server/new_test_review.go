@@ -109,7 +109,7 @@ func shortlistSimilarTests(ctx context.Context, tx *sql.Tx, s EditingSession, me
 	rows, err := tx.QueryContext(ctx, `SELECT t.id,t.name,LEFT(COALESCE(n.description_override,v.description,t.description),480),COALESCE(t.tags,'[]'::jsonb)
  FROM tests t JOIN test_versions v ON v.id=t.published_version_id AND v.test_id=t.id
  LEFT JOIN test_version_notes n ON n.version_id=v.id
- WHERE t.workspace_id=$1 AND t.id<>$2 AND t.kind='test' AND t.deleted_at IS NULL
+ WHERE t.workspace_id=$1 AND t.id<>$2 AND t.kind IN ('test','usecase') AND t.deleted_at IS NULL
  ORDER BY v.created_at DESC,t.id`, s.WorkspaceID, s.TestID)
 	if err != nil {
 		return nil, err
@@ -142,7 +142,7 @@ func shortlistSimilarTests(ctx context.Context, tx *sql.Tx, s EditingSession, me
 	return candidates, rows.Err()
 }
 
-func (p *Postgres) checkNewTestRequest(ctx context.Context, tx *sql.Tx, s EditingSession, messages []ChatMessage, continuation bool) (*SimilarTestSuggestion, error) {
+func (p *Postgres) checkNewTestRequest(ctx context.Context, tx *sql.Tx, s EditingSession, skill string, messages []ChatMessage, continuation bool) (*SimilarTestSuggestion, error) {
 	review, err := readNewTestReview(ctx, tx, s)
 	if err != nil {
 		return nil, err
@@ -188,7 +188,7 @@ func (p *Postgres) checkNewTestRequest(ctx context.Context, tx *sql.Tx, s Editin
 			}
 		}
 	}
-	return nil, p.checkAuthorIntent(ctx, "test-author", messages)
+	return nil, p.checkAuthorIntent(ctx, skill, messages)
 }
 
 func (p *Postgres) DecideSimilarTest(ctx context.Context, testID, sessionID, reviewID string, revision int, choice string) (SimilarTestDecision, error) {
@@ -230,7 +230,7 @@ func (p *Postgres) DecideSimilarTest(ctx context.Context, testID, sessionID, rev
 	}
 	if choice == "edit" {
 		var targetID string
-		if err = tx.QueryRowContext(ctx, `SELECT id FROM tests WHERE id=$1 AND workspace_id=$2 AND kind='test'
+		if err = tx.QueryRowContext(ctx, `SELECT id FROM tests WHERE id=$1 AND workspace_id=$2 AND kind IN ('test','usecase')
  AND published_version_id IS NOT NULL AND deleted_at IS NULL FOR UPDATE`, review.TestID, session.WorkspaceID).Scan(&targetID); err != nil {
 			return result, dbError(err)
 		}

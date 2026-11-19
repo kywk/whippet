@@ -194,6 +194,14 @@ func (p *Postgres) harnessPlatform(ctx context.Context, run, attempt string, req
 			if json.Unmarshal(canonical, &args) != nil {
 				return nil, ErrInvalid
 			}
+			// Only Catalog pages carry both keys, including successful empty searches.
+			var searched bool
+			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM platform_tool_calls WHERE run_id=$1 AND attempt_id=$2 AND result ? 'items' AND result ? 'nextCursor')`, run, attempt).Scan(&searched); err != nil {
+				return nil, err
+			}
+			if !searched {
+				return nil, ErrInvalid
+			}
 			prepared, e := preparePlanStages(ctx, tx, workspace, args.Stages)
 			if e != nil {
 				return nil, e

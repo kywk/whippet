@@ -136,11 +136,15 @@ func validateStages(stages []Stage) error {
 
 // API keeps the original CreateTest path for older Store implementations.
 func (p *Postgres) CreatePlatformTest(ctx context.Context, workspace, name, description, kind string, slug *string) (Test, error) {
+	return insertPlatformTest(ctx, p.DB, workspace, name, description, kind, slug)
+}
+
+func insertPlatformTest(ctx context.Context, q queryDB, workspace, name, description, kind string, slug *string) (Test, error) {
 	if kind == "" {
 		kind = "test"
 	}
 	if kind == "test" && slug == nil {
-		return p.CreateTest(ctx, workspace, name, description)
+		return insertTest(ctx, q, workspace, name, description)
 	}
 	if (kind != "module" && kind != "usecase") || (kind == "module" && (slug == nil || !moduleSlug.MatchString(*slug))) || (kind == "usecase" && slug != nil) {
 		return Test{}, ErrInvalid
@@ -152,7 +156,7 @@ func (p *Postgres) CreatePlatformTest(ctx context.Context, workspace, name, desc
 	if len(name) > 200 || len(description) > 16384 {
 		return Test{}, ErrInvalid
 	}
-	return scanTest(p.DB.QueryRowContext(ctx, `INSERT INTO tests(id,workspace_id,name,description,kind,slug) SELECT $1,id,$3,$4,$5,$6 FROM workspaces WHERE id=$2 RETURNING `+testColumns, NewID(), workspace, name, description, kind, slug))
+	return scanTest(q.QueryRowContext(ctx, `INSERT INTO tests(id,workspace_id,name,description,kind,slug) SELECT $1,id,$3,$4,$5,$6 FROM workspaces WHERE id=$2 RETURNING `+testColumns, NewID(), workspace, name, description, kind, slug))
 }
 
 func platformJSON(module *Module, stages []Stage) (string, string) {

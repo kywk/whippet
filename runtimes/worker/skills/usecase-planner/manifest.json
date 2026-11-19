@@ -26,12 +26,12 @@
     {
       "id": "stages",
       "path": "references/stages.md",
-      "sha256": "89ea485132367c2e53048bbc9c235753d97ad365d24fc225a8a6b24db779ea23"
+      "sha256": "fdb4b85e4e65854d05e52d7238048964ba6d093fb8296acdbbe48ea67770eb1b"
     },
     {
       "id": "external-mcp",
       "path": "references/external-mcp.md",
-      "sha256": "2747d8014a0741ce227baccc91cbce45112486fbea9f591872ae512ef2a9de43"
+      "sha256": "f3fe7895c9bb5886fdcc678b1311c30d0ef264cd481afb01d47bbbc34c657e32"
     }
   ]
 }

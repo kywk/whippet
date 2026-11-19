@@ -91,6 +91,12 @@ func m10PlatformCandidateFlow(t *testing.T, mode string) {
 	call := func(request HarnessToolRequest, allowed bool) (any, error) {
 		return p.HarnessPlatform(ctx, "m10-platform", run.ID, attempt, request, registry, func() bool { return allowed })
 	}
+	if _, err := call(req, true); err == nil {
+		t.Fatal("proposal accepted before Catalog search")
+	}
+	if _, err := call(HarnessToolRequest{CallID: NewID(), Name: "catalog_search", Arguments: json.RawMessage(`{"query":"","limit":10}`)}, true); err != nil {
+		t.Fatal(err)
+	}
 	result, err := call(req, true)
 	if err != nil {
 		t.Fatal(err)

@@ -352,7 +352,7 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
       <span className="chip neutral" title="依目前 Workspace 設定顯示；實際來源以新建 Run 快照為準">新對話任務：{nextEngine === 'external' ? '外部 Agent' : '內建引擎'}</span>
       {lastAuthor ? <AuthorEngineStatus engine={lastAuthor.authorEngine ?? 'builtin'} status={lastAuthor.status} /> : null}
       <span className="chat-bar-spacer" />
-      <button className="button quiet compact" disabled={draftBusy || submitting || synchronizing} onClick={onOpenManual}><ScriptIcon />工程師手動修改</button>
+      {!planMode ? <button className="button quiet compact" disabled={draftBusy || submitting || synchronizing} onClick={onOpenManual}><ScriptIcon />工程師手動修改</button> : null}
       <button className="rail-icon-button light small" aria-label="重新整理對話" title="重新整理對話" disabled={refreshing || submitting || synchronizing} onClick={() => { setRefreshRevision((value) => value + 1); onRefreshRuns(); }}><RefreshIcon /></button>
       {onToggleSide ? <button className={`button ${sideOpen ? 'quiet' : 'secondary'} compact side-toggle${!sideOpen ? ' is-closed' : ''}`} aria-expanded={Boolean(sideOpen)} title={sideOpen ? '收合右側面板' : '展開右側面板'} onClick={onToggleSide}><PanelIcon />{sideOpen ? '收合面板' : '展開右側欄'}{publishReady ? <span className="tab-dot ok" aria-hidden="true" /> : null}</button> : null}
     </div>
@@ -362,7 +362,7 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
       {syncError ? <Notice message={syncError} /> : null}
       {conversation && messages.length === 0 && !pendingTurn && !similarTest ? <div className="chat-empty">
         <h2>要驗證什麼流程？</h2>
-        <p>{planMode ? nextEngine === 'external' ? '描述 Use Case 的步驟與預期結果。外部 Agent 可提出 Plan；由你確認後才逐階段產稿並正式驗證，檢視整批摘要後才能人工發佈。' : '描述 Use Case 的步驟與預期結果。AI 提出 Plan 後，由你在「驗證與發佈」確認，再逐階段產稿、驗證與檢視整批摘要。' : nextEngine === 'external' ? `用一般的話描述${testKind === 'module' ? ' Module' : '測試'}步驟與預期結果。外部 Agent 接單後可提出完整候選；是否通過以獨立正式驗證為準，你看過報告後才會發佈。` : '用一般的話描述步驟與預期結果。AI 會先與你確認需求、在瀏覽器自我試跑並排除問題後才更新草稿；你看過報告後才會發佈。'}</p>
+        <p>{planMode ? `描述想驗證的流程與預期結果。${nextEngine === 'external' ? '外部 Agent 接單後' : 'AI'}會拆解步驟，先查找可沿用的模組，再規劃需要新寫的部分。請到「驗證與發佈」確認測試計畫。` : nextEngine === 'external' ? `用一般的話描述${testKind === 'module' ? ' Module' : '測試'}步驟與預期結果。外部 Agent 接單後可提出完整候選；是否通過以獨立正式驗證為準，你看過報告後才會發佈。` : '用一般的話描述步驟與預期結果。AI 會先與你確認需求、在瀏覽器自我試跑並排除問題後才更新草稿；你看過報告後才會發佈。'}</p>
         {aiExploration?.available !== true ? <p className="inline-hint">AI 探索尚未確認可用，仍可送出離線訪談與改稿需求；不代表已造訪網站。</p> : null}
         <ul className="starters" aria-label="可用的開場">{STARTERS.map((text) => <li key={text}><button className="starter" onClick={() => setContent(text)}>{text}</button></li>)}</ul>
       </div> : null}

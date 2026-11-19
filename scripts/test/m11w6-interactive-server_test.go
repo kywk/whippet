@@ -290,6 +290,12 @@ func TestM11W6InteractivePlanAndBoundaries(t *testing.T) {
 	d, _ := w6Create(t, c, "usecase")
 	task, _ := w6Start(t, c, d)
 	stage := PlanStageInput{ID: "prepare", Title: "Prepare", Action: "reuse", ModuleVersionID: version, Args: map[string]StageArgument{}}
+	if _, bad := c.call("task_tool_call", w6Tool(task, "propose_plan", map[string]any{"stages": []PlanStageInput{stage}})); !bad {
+		t.Fatal("interactive proposal accepted before Catalog search")
+	}
+	if _, bad := c.call("task_tool_call", w6Tool(task, "catalog_search", map[string]any{"query": "", "limit": 10})); bad {
+		t.Fatal("planner Catalog search failed")
+	}
 	proposal, b := c.call("task_tool_call", w6Tool(task, "propose_plan", map[string]any{"stages": []PlanStageInput{stage}}))
 	ref := asString(proposal["candidateRef"])
 	if b || !ValidID(ref) {

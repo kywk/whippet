@@ -175,3 +175,5 @@ ExternalTask.contextBundle.toolDefinitions 必包含該claim allowedTools的原r
 集中驗收 Module ABI 修補：正式 Module validation 的 dispatch/WorkerInput 增加可信 moduleAbi={slug,exportName}，只由 Server 已核 hash 的 immutable RunBundle.module 推導，Agent/MCP不得指定；新部署須同步Server/Manager/Worker。Manager驗合法slug/exportName與對應bundle檔，再轉交。Worker保留原module body/harness與Server bundle hash，在私有執行目錄以 façade 對該export加平台呼叫守衛：恰一個非陣列object且含page，再將該單一object傳原export；其他exports沿原檔重匯出。原harness與assertions不可修改，錯參數固定ABI錯誤。Module作者自試共用相同守衛，避免獨立harness驗了兩參數API卻無法Compose。安全module-authoring/harness reference納入MCP SHA pin allowlist；external指引明示exportName({page,...namedInputs})。
 
 2026-11-16 相容補充：usecase-planner 允許 `{message,conversationSummary?}` 的純訊息阻礙／澄清回覆。僅在同 Run/attempt 沒有成功 plan_candidates 時接受，保存對話但不建立或改寫 Plan，不排入驗證。若已有成功候選，仍須帶最後權威 candidateRef；省略、null、偽造或舊 ref 都拒絕。Worker 從 guard 閉包選 ref，模型 final 仍不得自填 candidateRef／stages／script。Server、Manager、Worker 同批支援；主 skill、工具權限與原候選 CAS 不變。
+
+規劃測試案例時，內建與外部 Agent 都必須在同一 Run 與 attempt 成功呼叫 `catalog_search`，才能以 `propose_plan` 建立候選計畫。空搜尋結果可繼續規劃新模組；查詢失敗可以重試，或以純訊息回報阻礙。

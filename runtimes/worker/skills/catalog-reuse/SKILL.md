@@ -11,4 +11,4 @@ Read catalog-reuse/selection when several candidates match or an existing pin ne
 
 Choose reuse only when the existing version fulfills the intended assertion without adaptation that changes its contract. Otherwise propose modify or new and explain the mismatch. Keep the exact supplied version pin; do not replace it with latest. Source review or historical verification alone does not prove the current Use Case passes.
 
-If Catalog access is absent or fails, state that reuse is unverified and ask for the relevant module metadata or return a proposal for later checking. Do not invent search results, versions or tool names. Follow the primary skill’s final format and leave writing, verification and publication to explicitly provided capabilities.
+If Catalog access is absent or fails, retry within budget or report that reuse could not be checked. An unavailable Catalog does not establish that a new Module is needed. Do not invent search results, versions or tool names. Follow the primary skill’s final format and leave writing, verification and publication to explicitly provided capabilities.

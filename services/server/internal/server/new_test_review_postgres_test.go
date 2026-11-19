@@ -222,3 +222,36 @@ func TestNewTestSimilarityOnlyReviewsInitialRequests(t *testing.T) {
 		t.Fatalf("got %d initial reviews, want %d", reviews, initialTestRequests)
 	}
 }
+
+func TestNewUseCaseReviewContinuesWithPlanner(t *testing.T) {
+	h, _, _, target := newTestReviewFixture(t, "external")
+	p, ctx := h.p, h.ctx
+	item, err := p.CreatePlatformTest(ctx, target.WorkspaceID, "", "", "usecase", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, _, err := p.StartEditingSession(ctx, item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.NewTestReview = func(context.Context, []ChatMessage, []similarTestCandidate) (string, error) {
+		return target.ID, nil
+	}
+	rev := session.Draft.Revision
+	sub, err := p.CreateAuthor(ctx, item.ID, session.ID, "確認結帳金額", rev)
+	if err != nil || sub.SimilarTest == nil || sub.SimilarTest.TestID != target.ID {
+		t.Fatalf("planner skipped similar-case review: %+v %v", sub, err)
+	}
+	decision, err := p.DecideSimilarTest(ctx, item.ID, session.ID, sub.SimilarTest.ID, rev, "continue")
+	if err != nil || decision.Run == nil {
+		t.Fatalf("continue did not queue a planner: %+v %v", decision, err)
+	}
+	token, _, err := p.CreateAgentToken(ctx, target.WorkspaceID, "planner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := p.ClaimExternalAuthor(ctx, token, NewID())
+	if err != nil || task == nil || task.RunID != decision.Run.ID || task.ContextBundle.Author.SkillID != "usecase-planner" || !strings.Contains(task.ContextBundle.Instructions, "task_tool_call(catalog_search)") {
+		t.Fatalf("external claim missing planner instructions: %v", err)
+	}
+}

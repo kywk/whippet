@@ -68,7 +68,7 @@ func (p *Postgres) ReplaceDraftWithNewTest(ctx context.Context, testID, sessionI
 		if err := discardEditingInTx(ctx, tx, source, revision); err != nil {
 			return result, err
 		}
-		newTest, err := insertTest(ctx, tx, source.WorkspaceID, "", "")
+		newTest, err := insertPlatformTest(ctx, tx, source.WorkspaceID, "", "", "usecase", nil)
 		if err != nil {
 			return result, err
 		}
