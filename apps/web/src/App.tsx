@@ -274,8 +274,8 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
     if (surface === 'tests' && selected?.id === test.id) { setRailOpen(false); return; }
     if (!confirmNavigation()) return;
     const info = activity[test.id];
-    const hasActiveConversation = Boolean(test.activeEditingSession) || Boolean(info?.running && !test.publishedVersionId);
-    if (info?.running && test.activeEditingSession) {
+    const hasActiveConversation = !test.publishedVersionId && Boolean(test.activeEditingSession || info?.running);
+    if (hasActiveConversation && info?.running && test.activeEditingSession) {
       setTestModes((current) => ({ ...current, [test.id]: 'editing' }));
     }
     setSelectedId(test.id); onSelected(test.id);
@@ -284,13 +284,13 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
   }
 
   const selectedInfo = selected ? activity[selected.id] : undefined;
-  const selectedPreferredMode = selected
+  const selectedPreferredMode = selected?.publishedVersionId ? 'general' : selected
     ? (selectedInfo?.running && selected.activeEditingSession
       ? 'editing'
       : testModes[selected.id] ?? (selected.activeEditingSession ? 'editing' : undefined))
     : undefined;
   const shouldInitialEdit = Boolean(
-    selected && (
+    selected && !selected.publishedVersionId && (
       autoEditId === selected.id ||
       selectedPreferredMode === 'editing' ||
       (selected.activeEditingSession && selectedPreferredMode !== 'general')
