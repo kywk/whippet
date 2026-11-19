@@ -23,7 +23,7 @@ Self-hosted Playwright 平台。使用繁體中文與台灣用語；優先交付
 | [project-structure.md](.agent-rules/project-structure.md) | 新增檔案或調整目錄時讀取 |
 | [tracking.md](.agent-rules/tracking.md) | 接續任務與交接時讀取 |
 | [verification.md](.agent-rules/verification.md) | 選擇測試範圍與回報完成時讀取 |
-| [commit-message.md](.agent-rules/commit-message.md) | 撰寫或檢查 Git 提交訊息時，依此規範核對 |
+| [commit-message.md](.agent-rules/commit-message.md) | 每次 Git 提交前，依此規範撰寫並核對標題與內文 |
 
 ## 需求與任務入口
 
