@@ -115,14 +115,12 @@ func run(log *slog.Logger) error {
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(30 * time.Minute)
-	store := &server.Postgres{
-		DB: db, CredentialTLS: certFile != "",
-		AuthorIntent: server.NewAuthorIntentGate(
-			env("WHIPPET_AUTHOR_INTENT_BASE_URL", env("WHIPPET_AI_BASE_URL", "https://opencode.ai/inference/go/openai/v1")),
-			env("WHIPPET_AUTHOR_INTENT_MODEL", env("WHIPPET_AI_MODEL", "muse-spark-1.3-contributor")),
-			env("WHIPPET_AUTHOR_INTENT_API_KEY", os.Getenv("OPENCODE_API_KEY")),
-		),
-	}
+	intent, review := server.NewAuthorIntentGates(
+		env("WHIPPET_AUTHOR_INTENT_BASE_URL", env("WHIPPET_AI_BASE_URL", "https://opencode.ai/inference/go/openai/v1")),
+		env("WHIPPET_AUTHOR_INTENT_MODEL", env("WHIPPET_AI_MODEL", "muse-spark-1.3-contributor")),
+		env("WHIPPET_AUTHOR_INTENT_API_KEY", os.Getenv("OPENCODE_API_KEY")),
+	)
+	store := &server.Postgres{DB: db, CredentialTLS: certFile != "", AuthorIntent: intent, NewTestReview: review}
 	store.Secrets, err = server.NewSecretVault(os.Getenv("WHIPPET_SECRET_MASTER_KEY"))
 	if err != nil {
 		log.Warn("Workspace credential storage unavailable")

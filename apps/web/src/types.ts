@@ -386,7 +386,22 @@ export interface Conversation {
   messages: Message[];
   activeRunId?: string;
   editingSessionId?: string;
+  similarTest?: SimilarTestSuggestion;
 }
+
+export interface SimilarTestSuggestion {
+  id: string;
+  testId: string;
+  name: string;
+  content: string;
+  createdAt: string;
+}
+
+export type TestMessageSubmission = { conversationId: string } & (
+  { run: Run; similarTest?: never } | { run?: never; similarTest: SimilarTestSuggestion }
+);
+
+export type SimilarTestDecision = { run: Run; test?: never } | { run?: never; test: Test };
 
 export interface RunArtifact {
   name: string;
@@ -456,7 +471,8 @@ export interface WhippetApi {
   getVersionConversation(testId: string, versionId: string, after: string | null, signal?: AbortSignal): Promise<VersionConversationPage>;
   cancelRun(runId: string, signal?: AbortSignal): Promise<Run>;
   getConversation(testId: string, editingSessionId: string, signal?: AbortSignal): Promise<Conversation>;
-  sendMessage(testId: string, editingSessionId: string, content: string, revision: number, signal?: AbortSignal): Promise<{ run: Run; conversationId: string }>;
+  sendMessage(testId: string, editingSessionId: string, content: string, revision: number, signal?: AbortSignal): Promise<TestMessageSubmission>;
+  decideSimilarTest(testId: string, editingSessionId: string, reviewId: string, revision: number, choice: 'continue' | 'edit', signal?: AbortSignal): Promise<SimilarTestDecision>;
   getWorkspaceSettings(workspaceId: string, signal?: AbortSignal): Promise<WorkspaceSettingsResponse>;
   updateWorkspaceSettings(workspaceId: string, input: WorkspaceSettingsPatch, signal?: AbortSignal): Promise<WorkspaceSettingsResponse>;
   getRunArtifacts(runId: string, signal?: AbortSignal): Promise<RunArtifact[]>;

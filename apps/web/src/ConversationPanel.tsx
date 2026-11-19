@@ -10,7 +10,7 @@ import { capabilityReason } from './capabilities';
 import { AuthorEngineStatus } from './AuthorEngineStatus';
 import { canWatchRun, isActiveRun } from './types';
 import { PanelIcon, RefreshIcon, ScriptIcon } from './icons';
-import type { AuthorEngine, Conversation, Draft, EditingSession, Message, Run, WhippetApi, WorkspaceCapability } from './types';
+import type { AuthorEngine, Conversation, Draft, EditingSession, Message, Run, Test, WhippetApi, WorkspaceCapability } from './types';
 
 type SideTab = 'script' | 'publish' | 'runs' | 'background';
 
@@ -28,6 +28,8 @@ interface Props {
   onUseCandidate: (script: string) => boolean;
   onOpenManual: () => void;
   onReplaceDraft?: (replyId: string, revision: number) => void;
+  onEditSimilarTest: (test: Test, content: string) => void;
+  handoffContent?: string;
   replacementBusy: boolean;
   aiExploration: WorkspaceCapability | undefined;
   authorEngine: AuthorEngine;
@@ -52,10 +54,18 @@ const STARTERS = [
   '搜尋關鍵字，確認結果清單依相關度排序',
 ];
 
-export function ConversationPanel({ api, apiBase, testId, editingSessionId, draft, draftDirty, draftBusy, runs, onRun, onRefreshRuns, onSynchronized, onUseCandidate, onOpenManual, onReplaceDraft, replacementBusy, onGuardChange, onConversationChanged, onRefreshSession, onShowTab, onWatch, liveView, sideOpen, onToggleSide, aiExploration, authorEngine = 'builtin', testKind, publishReady, planMode = false }: Props) {
+export function ConversationPanel({ api, apiBase, testId, editingSessionId, draft, draftDirty, draftBusy, runs, onRun, onRefreshRuns, onSynchronized, onUseCandidate, onOpenManual, onReplaceDraft, onEditSimilarTest, handoffContent, replacementBusy, onGuardChange, onConversationChanged, onRefreshSession, onShowTab, onWatch, liveView, sideOpen, onToggleSide, aiExploration, authorEngine = 'builtin', testKind, publishReady, planMode = false }: Props) {
   const nextEngine = authorEngine;
   const [conversation, setConversation] = useState<Conversation>();
   const [content, setContent] = useStoredText(editingSessionId);
+  const loadedHandoff = useRef(false);
+  useEffect(() => {
+    if (!handoffContent || loadedHandoff.current) return;
+    loadedHandoff.current = true;
+    if (content !== handoffContent && !content.endsWith(`\n\n${handoffContent}`)) {
+      setContent(content.trim() ? `${content}\n\n${handoffContent}` : handoffContent);
+    }
+  }, [handoffContent, content, setContent]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -152,38 +162,82 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
     return () => controller.abort();
   }, [api, testId, editingSessionId, completedKey, refreshRevision, fetchConversation, onSynchronized, onRefreshRuns, onRefreshSession]);
 
+  const similarTest = conversation?.similarTest;
   const blocked = loading || refreshing || synchronizing || submitting || authorActive || draftDirty || draftBusy || !conversation || Boolean(loadError || syncError);
   const reason = authorActive ? 'AI 正在處理這一輪。可以先輸入下一則，完成後再送出；離開此頁也不會中斷。'
     : draftDirty ? '有未儲存的腳本修改，請先到「腳本」儲存，再送出訊息。'
       : draftBusy ? '正在處理草稿操作、同步或 revision 衝突，完成後即可送出。'
-        : loadError || syncError ? '對話尚未同步，請先重新整理。' : undefined;
+        : loadError || syncError ? '對話尚未同步，請先重新整理。'
+          : similarTest ? '請先選擇調整既有腳本或繼續新增。' : undefined;
+
+  function trackSentRun(run: Run, revision: number) {
+    setScripts((current) => ({ ...current, [revision]: draft.script }));
+    onRun(run);
+    setSentRunId(run.id);
+    onConversationChanged();
+    setNote(run.authorEngine === 'external'
+      ? testKind === 'usecase'
+        ? `訊息已送出，使用已儲存 revision ${revision}。等待外部 Agent 接單提出 Plan；仍須由你確認 Plan，完成驗證與摘要後才能人工發佈。`
+        : `訊息已送出，使用已儲存 revision ${revision}。等待外部 Agent 接單；候選${testKind === 'module' ? ' Module' : '腳本'}仍需獨立正式驗證與人工確認發佈。`
+      : `訊息已送出，使用已儲存 revision ${revision}。`);
+    setRefreshRevision((value) => value + 1);
+  }
 
   async function send(overrideText?: string) {
     const outgoing = (overrideText ?? content).trim();
     const outgoingCount = Array.from(outgoing).length;
-    if (submitLock.current || blocked || !outgoing || outgoingCount > 16_000) return;
+    if (submitLock.current || blocked || similarTest || !outgoing || outgoingCount > 16_000) return;
     submitLock.current = true; setSubmitting(true); setSubmitError(undefined); setNote(undefined);
     const controller = new AbortController(); submitController.current = controller;
     const revision = draft.revision;
     try {
       const result = await api.sendMessage(testId, editingSessionId, outgoing, revision, controller.signal);
       if (controller.signal.aborted) return;
-      setScripts((current) => ({ ...current, [revision]: draft.script }));
-      onRun(result.run); setSentRunId(result.run.id);
       if (overrideText === undefined) setContent('');
-      onConversationChanged();
-      setNote(result.run.authorEngine === 'external'
-        ? testKind === 'usecase'
-          ? `訊息已送出，使用已儲存 revision ${revision}。等待外部 Agent 接單提出 Plan；仍須由你確認 Plan，完成驗證與摘要後才能人工發佈。`
-          : `訊息已送出，使用已儲存 revision ${revision}。等待外部 Agent 接單；候選${testKind === 'module' ? ' Module' : '腳本'}仍需獨立正式驗證與人工確認發佈。`
-        : `訊息已送出，使用已儲存 revision ${revision}。`);
-      setRefreshRevision((value) => value + 1);
+      if (result.similarTest) {
+        ++querySequence.current;
+        setConversation((current) => current?.id === result.conversationId ? { ...current, similarTest: result.similarTest } : current);
+        return;
+      }
+      trackSentRun(result.run, revision);
     } catch (cause) {
       if (controller.signal.aborted) return;
       const conflict = cause instanceof ApiError && cause.status === 409;
       setSubmitError(`${errorMessage(cause)} ${conflict ? '請確認目前已儲存 revision，或等待既有 AI 任務結束；輸入內容已保留。' : '若請求結果不明，請先重新整理對話與執行紀錄，確認是否已保存或排隊，再決定是否重送；輸入內容已保留。'}`);
       setRefreshRevision((value) => value + 1); onRefreshRuns();
     } finally { if (!controller.signal.aborted) setSubmitting(false); submitLock.current = false; }
+  }
+
+  async function decideSimilarity(selection: 'continue' | 'edit') {
+    if (submitLock.current || blocked || !similarTest) return;
+    submitLock.current = true;
+    setSubmitting(true);
+    setSubmitError(undefined);
+    const controller = new AbortController();
+    submitController.current = controller;
+    const revision = draft.revision;
+    try {
+      const result = await api.decideSimilarTest(testId, editingSessionId, similarTest.id, revision, selection, controller.signal);
+      if (controller.signal.aborted) return;
+      if (result.test) {
+        if (result.test.id !== similarTest.testId) throw new ApiError('開啟的測試與選擇的案例不符。', 'INVALID_RESPONSE');
+        onEditSimilarTest(result.test, similarTest.content);
+        return;
+      }
+      ++querySequence.current;
+      setConversation((current) => current && { ...current, similarTest: undefined });
+      if (content.trim() === similarTest.content) setContent('');
+      trackSentRun(result.run, revision);
+    } catch (cause) {
+      if (!controller.signal.aborted) {
+        setSubmitError(errorMessage(cause));
+        setRefreshRevision((value) => value + 1);
+        onRefreshRuns();
+      }
+    } finally {
+      if (!controller.signal.aborted) setSubmitting(false);
+      submitLock.current = false;
+    }
   }
 
   const partialRun = lastAuthor?.authorPartial ? lastAuthor : undefined;
@@ -193,7 +247,7 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
     (partialRun.authorMode === 'edit' || partialRun.authorMode === undefined) &&
     partialRun.testId === testId && partialRun.editingSessionId === editingSessionId &&
     expectedRevision !== undefined && expectedRevision === draft.revision);
-  const canContinue = partialMatches && Boolean(api.continueAuthor) && !blocked &&
+  const canContinue = partialMatches && Boolean(api.continueAuthor) && !blocked && !similarTest &&
     !runs.some(isActiveRun) && !continuedSources.includes(partialRun!.id) && continueConflict !== partialRun!.id;
 
   async function continuePartial() {
@@ -275,7 +329,7 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
   const watchRun = runs.find((run) => run.kind === 'validation' && canWatchRun(run))
     ?? (aiExploration?.available && trackedRun && canWatchRun(trackedRun) ? trackedRun : undefined);
   const watchAction = watchRun ? <button className="button secondary compact" onClick={() => onWatch(watchRun)}>開始監看</button> : null;
-  const scrollWatch = `${messages.length}:${pendingTurn}:${trackedRun?.progressEvents?.length ?? 0}:${trail.step}:${trail.running}:${failedRun?.id ?? ''}:${loading}`;
+  const scrollWatch = `${messages.length}:${similarTest?.id ?? ''}:${pendingTurn}:${trackedRun?.progressEvents?.length ?? 0}:${trail.step}:${trail.running}:${failedRun?.id ?? ''}:${loading}`;
   const repairPrompt = nextEngine === 'external'
     ? planMode ? '請根據目前 Plan 與失敗原因提出修訂建議；新的 Plan 仍須由我確認。'
       : '請根據最新正式驗證失敗原因排查，提出修正候選並要求獨立正式驗證；若是目標環境連線問題請直接回報。'
@@ -306,7 +360,7 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
       {loading ? <Loading text="正在載入對話…" /> : null}
       {loadError ? <Notice message={loadError} /> : null}
       {syncError ? <Notice message={syncError} /> : null}
-      {conversation && messages.length === 0 && !pendingTurn ? <div className="chat-empty">
+      {conversation && messages.length === 0 && !pendingTurn && !similarTest ? <div className="chat-empty">
         <h2>要驗證什麼流程？</h2>
         <p>{planMode ? nextEngine === 'external' ? '描述 Use Case 的步驟與預期結果。外部 Agent 可提出 Plan；由你確認後才逐階段產稿並正式驗證，檢視整批摘要後才能人工發佈。' : '描述 Use Case 的步驟與預期結果。AI 提出 Plan 後，由你在「驗證與發佈」確認，再逐階段產稿、驗證與檢視整批摘要。' : nextEngine === 'external' ? `用一般的話描述${testKind === 'module' ? ' Module' : '測試'}步驟與預期結果。外部 Agent 接單後可提出完整候選；是否通過以獨立正式驗證為準，你看過報告後才會發佈。` : '用一般的話描述步驟與預期結果。AI 會先與你確認需求、在瀏覽器自我試跑並排除問題後才更新草稿；你看過報告後才會發佈。'}</p>
         {aiExploration?.available !== true ? <p className="inline-hint">AI 探索尚未確認可用，仍可送出離線訪談與改稿需求；不代表已造訪網站。</p> : null}
@@ -316,6 +370,18 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
         {messages.map((message, index) => message.role === 'user'
           ? <UserTurn key={message.id} message={message} />
           : <ConversationMessage key={message.id} message={message} latest={index === lastAssistantIndex} scripts={scripts} draft={draft} runs={runs} apiBase={apiBase} onRefreshRuns={onRefreshRuns} onUseCandidate={onUseCandidate} onRequestRepair={() => { void send(repairPrompt); }} candidateDisabled={draftBusy || authorActive || synchronizing} actions={message === lastMessage ? recommendationActions : null} />)}
+        {similarTest ? <UserTurn message={{ id: similarTest.id, role: 'user', content: similarTest.content, createdAt: similarTest.createdAt }} /> : null}
+        {similarTest ? <AssistantTurn>
+          <section className="artifact" aria-label="相似測試確認">
+            <div className="artifact-body">
+              <p role="status">找到目的相近的測試「{similarTest.name}」。要調整既有腳本，還是繼續新增？</p>
+              <div className="action-row">
+                <button type="button" className="button primary" disabled={blocked} onClick={() => { void decideSimilarity('edit'); }}>調整既有腳本</button>
+                <button type="button" className="button secondary" disabled={blocked} onClick={() => { void decideSimilarity('continue'); }}>繼續新增</button>
+              </div>
+            </div>
+          </section>
+        </AssistantTurn> : null}
         {pendingTurn ? <AssistantTurn pending>
           <AuthorLiveStatus run={trackedRun ?? activeRun} mode="edit" />
           <div className="pending-actions">
@@ -350,7 +416,7 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
     </ChatScroll>
     <div className="composer-dock">
       {submitError ? <Notice message={submitError} /> : null}
-      <Composer id="author-message" label="測試需求或修改訊息" value={content} onChange={setContent} onSubmit={() => { void send(); }} placeholder={messages.length ? '與 AI 討論驗證步驟、確認選擇器，或請 AI 排查修正草稿…' : '描述要驗證的 Playwright 測試流程與預期結果…'} sending={submitting} canSend={!blocked} reason={reason ?? (note && !content ? note : undefined)} helper={`僅處理 Playwright 驗測腳本討論 · 使用已儲存 revision ${draft.revision} · Enter 送出`} />
+      <Composer id="author-message" label="測試需求或修改訊息" value={content} onChange={setContent} onSubmit={() => { void send(); }} placeholder={messages.length ? '與 AI 討論驗證步驟、確認選擇器，或請 AI 排查修正草稿…' : '描述要驗證的 Playwright 測試流程與預期結果…'} sending={submitting} canSend={!blocked && !similarTest} reason={reason ?? (note && !content ? note : undefined)} helper={`僅處理 Playwright 驗測腳本討論 · 使用已儲存 revision ${draft.revision} · Enter 送出`} />
       {publishReady ? <p className="dock-hint">驗證與摘要已就緒；繼續送出訊息若修改草稿，將使目前的驗證與摘要失效。</p> : null}
     </div>
   </div>;

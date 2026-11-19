@@ -18,6 +18,7 @@ interface Props {
   api: WhippetApi;
   apiBase: string;
   initialEditing: boolean;
+  editHandoff?: { sessionId: string; content: string };
   preferredMode?: 'general' | 'editing';
   onModeChange?: (mode: 'general' | 'editing') => void;
   railCollapsed?: boolean;
@@ -32,9 +33,10 @@ interface Props {
   onTestUpdated: (test: Test) => void;
   onTestRemoved: (testId: string) => void;
   onTestCreated: (test: Test) => void;
+  onEditSimilarTest: (test: Test, content: string) => void;
 }
 
-export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredMode, onModeChange, railCollapsed, onExpandRail, unreadCount, tags, workspaceTags, capabilities, authorEngine, settingsRefresh, onDirtyChange, onTestUpdated, onTestRemoved, onTestCreated }: Props) {
+export function TestWorkspace({ testId, api, apiBase, initialEditing, editHandoff, preferredMode, onModeChange, railCollapsed, onExpandRail, unreadCount, tags, workspaceTags, capabilities, authorEngine, settingsRefresh, onDirtyChange, onTestUpdated, onTestRemoved, onTestCreated, onEditSimilarTest }: Props) {
   const loadTest = useCallback((signal: AbortSignal) => api.getTest(testId, signal), [api, testId]);
   const loadVersions = useCallback((signal: AbortSignal) => api.listVersions(testId, signal), [api, testId]);
   const test = useResource(loadTest);
@@ -123,7 +125,8 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
     finally { sessionControllers.current.delete(controller); sessionLock.current = false; if (!controller.signal.aborted) setSessionBusy(false); }
   }, [api, testId, test.retry]);
   useEffect(() => {
-    if (!initialEditing || initialStart.current || !test.data || test.data.publishedVersionId) return;
+    const confirmedHandoff = editHandoff && pointer?.id === editHandoff.sessionId && pointer.status === 'active';
+    if (initialStart.current || !test.data || (!confirmedHandoff && (!initialEditing || test.data.publishedVersionId))) return;
     const timer = setTimeout(() => {
       initialStart.current = true;
       onModeChange?.('editing');
@@ -136,7 +139,7 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
       }
     }, 0);
     return () => clearTimeout(timer);
-  }, [initialEditing, test.data, pointer?.id, readSession, openEditor, onModeChange]);
+  }, [initialEditing, editHandoff, test.data, pointer?.id, pointer?.status, readSession, openEditor, onModeChange]);
 
   // 未發佈的測試可自動接續草稿。已發佈的測試由使用者確認後進入編輯。
   useEffect(() => {
@@ -342,6 +345,7 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
         : sessionBusy ? <Loading text="正在開始或接續編輯週期…" /> : <div className="mode-empty"><p>尚未載入編輯週期。請重試開始或接續修改。</p><button className="button secondary" onClick={requestEdit}>開始或接續修改</button></div>}
       {session && session.draft && (session.status === 'active' || session.status === 'discarding') ? <DraftEditor key={session.id} api={api} apiBase={apiBase} testId={testId} capabilities={capabilities} authorEngine={authorEngine} session={session} sessionRefreshing={sessionRefreshing} onRefreshSession={refreshSession} runs={editingRuns} onRun={history.addRun} onPublished={published} onDirtyChange={handleEditorGuard} onRefreshRuns={history.refresh} settingsRefresh={settingsRefresh} onDraftChange={setKnownDraft} onDiscard={session.status === 'active' ? () => { void askDiscard(); } : undefined} discardBusy={sessionBusy} onReloadSession={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }} testName={loadedTest.current?.name} testKind={loadedTest.current?.kind} testSlug={loadedTest.current?.slug}
         onReplaceDraft={session.status === 'active' ? (id, revision) => { void askDiscard({ id, revision }); } : undefined} deletesTest={deletesUnpublishedTest}
+        onEditSimilarTest={onEditSimilarTest} handoffContent={editHandoff?.sessionId === session.id ? editHandoff.content : undefined}
         onWatch={startLive} liveView={mode === 'editing' && liveRun?.editingSessionId === session.id ? liveView : null}
         renderRunHistory={(onWatch) => <RunHistory {...runHistoryProps} runs={editingRuns} group="editing" onWatch={onWatch} />}
       /> : null}

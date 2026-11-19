@@ -113,11 +113,12 @@ type Version struct {
 }
 
 type Conversation struct {
-	EditingSessionID string    `json:"editingSessionId"`
-	ID               string    `json:"id"`
-	TestID           string    `json:"testId"`
-	Messages         []Message `json:"messages"`
-	ActiveRunID      *string   `json:"activeRunId,omitempty"`
+	EditingSessionID string                 `json:"editingSessionId"`
+	ID               string                 `json:"id"`
+	TestID           string                 `json:"testId"`
+	Messages         []Message              `json:"messages"`
+	ActiveRunID      *string                `json:"activeRunId,omitempty"`
+	SimilarTest      *SimilarTestSuggestion `json:"similarTest,omitempty"`
 }
 
 type VersionConversationPage struct {
@@ -186,8 +187,9 @@ type AuthorValidation struct {
 }
 
 type AuthorSubmission struct {
-	Run            Run    `json:"run"`
-	ConversationID string `json:"conversationId"`
+	Run            Run                    `json:"run"`
+	ConversationID string                 `json:"conversationId"`
+	SimilarTest    *SimilarTestSuggestion `json:"-"`
 }
 
 func Terminal(status string) bool {
@@ -312,6 +314,7 @@ type Store interface {
 	VersionConversation(context.Context, string, string, int64) (VersionConversationPage, error)
 	Conversation(context.Context, string, string) (Conversation, error)
 	CreateAuthor(context.Context, string, string, string, int) (AuthorSubmission, error)
+	DecideSimilarTest(context.Context, string, string, string, int, string) (SimilarTestDecision, error)
 	StartEditingSession(context.Context, string) (EditingSession, bool, error)
 	EditingSession(context.Context, string, string) (*EditingSession, error)
 	DiscardEditingSession(context.Context, string, string, int) (EditingSession, error)

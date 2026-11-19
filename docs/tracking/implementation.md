@@ -360,6 +360,12 @@ Web build 通過，19687 已原地更新 Web。Chrome 用原購物車案例核�
 
 Web 建置、Manager 測試、Worker 定向 45 項與 MCP 參考 Worker 10 項通過。隔離 PostgreSQL 核對 metadataRevision 衝突、舊版相容、MCP 互動與摘要接單、普通測試及 Module／Use Case 發佈。Chrome 桌機與 390 px 以合成驗證及摘要結果核對自動請求摘要、採用標籤、跨瀏覽器讀取和手動編輯，另通過六項發佈畫面回歸。完整 Server 測試有一項 `TestM109OutputBudgetRetrySnapshot` 失敗，在原始 HEAD 重現相同結果。其餘 Server 與 PostgreSQL 測試通過。
 
+## 新測試相似案例確認（2026-11-19）
+
+完成／主 Agent。新建一般測試的前三則需求比對同 Workspace 內已發佈案例的名稱、說明與標籤。相似案例顯示兩個選項。調整既有腳本會開啟編輯週期並預填當輪需求，繼續新增會以原需求排入撰稿。Migration 035 保存待確認選擇與續送憑據，比對資料只用於確認。
+
+Web 建置與 Chrome 桌機／390 px 主流程通過，涵蓋重開草稿恢復確認、兩個選項和輸入區預填。隔離 PostgreSQL 確認前三則上限、跨 Workspace 排除、過期選擇拒絕、重送去重和繼續後的上下文隔離。內建派送、MCP 互動／接單與 Vercel／Pi 參考 Worker 回歸通過，模型回應使用合成資料。Server 完整回歸排除已在原版重現的 `TestM109OutputBudgetRetrySnapshot`。
+
 ## 長對話展示與 256k 輸入上限（2026-11-19）
 
 完成／主 Agent。Server 與 Worker 將缺省的單次請求輸入上限調至 262,144 估算 tokens。較小的模型視窗與明確指定的上限依既有政策生效。Server 單元測試與 Worker 定向 27 項通過，涵蓋越過舊門檻、超出新門檻、較小視窗與舊快照。展示環境從 `0a6057d` 加本機變更建置並套用至 19687，Worker 映像為 `sha256:68cff230c3459396d27330319f9c1ca83c4b781ff4192a3a9dde46acaf4a957f`。

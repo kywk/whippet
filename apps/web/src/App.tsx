@@ -193,6 +193,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
   const [moduleInput, setModuleInput] = useState({ slug: '', name: '', description: '' });
   const [createError, setCreateError] = useState<string>();
   const [autoEditId, setAutoEditId] = useState<string>();
+  const [similarEdit, setSimilarEdit] = useState<{ testId: string; sessionId: string; content: string }>();
   const [testModes, setTestModes] = useState<Record<string, 'general' | 'editing'>>({});
   const legacyTagsByTest = useLegacyTestTags();
   const editorDirty = useRef(false);
@@ -253,10 +254,18 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
   }, [selectedTestId]);
 
   function openCreatedTest(test: Test, edit = true) {
+    setSimilarEdit(undefined);
     setModuleForm(false); setModuleInput({ slug: '', name: '', description: '' });
     updateTest(test); setSelectedId(test.id); onSelected(test.id); setAutoEditId(edit ? test.id : undefined);
     setTestModes((current) => ({ ...current, [test.id]: edit ? 'editing' : 'general' }));
     setSearch(''); setSelectedTag(undefined); setSurface('tests'); setRailOpen(false);
+  }
+
+  function openSimilarTest(test: Test, content: string) {
+    const session = test.activeEditingSession;
+    if (!session || test.workspaceId !== workspace.id) throw new ApiError('相似測試不在目前的 Workspace 或編輯週期。', 'INVALID_RESPONSE');
+    openCreatedTest(test);
+    setSimilarEdit({ testId: test.id, sessionId: session.id, content });
   }
 
   async function createTest(kind: 'test' | 'module' | 'usecase' = 'test') {
@@ -273,6 +282,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
   function pick(test: Test) {
     if (surface === 'tests' && selected?.id === test.id) { setRailOpen(false); return; }
     if (!confirmNavigation()) return;
+    setSimilarEdit(undefined);
     const info = activity[test.id];
     const hasActiveConversation = !test.publishedVersionId && Boolean(test.activeEditingSession || info?.running);
     if (hasActiveConversation && info?.running && test.activeEditingSession) {
@@ -398,8 +408,10 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
               onTestUpdated={updateTest}
               onTestRemoved={removeTest}
               onTestCreated={(test) => openCreatedTest(test, Boolean(test.activeEditingSession))}
+              onEditSimilarTest={openSimilarTest}
               settingsRefresh={0}
               initialEditing={shouldInitialEdit}
+              editHandoff={similarEdit?.testId === selected.id ? similarEdit : undefined}
               preferredMode={selectedPreferredMode}
               onModeChange={handleModeChange}
               railCollapsed={railCollapsed}

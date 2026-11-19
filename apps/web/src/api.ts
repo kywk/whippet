@@ -1,6 +1,6 @@
 import { validRepairContent, editableStage } from './plan';
 import { AGENT_RUNTIME_SKILLS, RUN_STATUSES } from './types';
-import type { VersionConversationMessage, WorkspaceAgentRuntime } from './types';
+import type { SimilarTestSuggestion, VersionConversationMessage, WorkspaceAgentRuntime } from './types';
 import type { AgentToken, AgentToolAudit, AuthorEngine, BrowserSession, StageRetry, ModuleMetadata, Plan, PlanStage, PlanSummary, StageArgument, JsonValue, AuthorPartial, CatalogItem, AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
 
 export class ApiError extends Error {
@@ -362,13 +362,22 @@ function parseMessage(value: unknown): Message {
   };
 }
 
+function parseSimilarTest(value: unknown, testId: string): SimilarTestSuggestion {
+  const data = record(value);
+  const matchedTestId = string(data.testId);
+  if (matchedTestId === testId) throw new ApiError('相似案例與目前測試相同。', 'INVALID_RESPONSE');
+  return { id: string(data.id), testId: matchedTestId, name: string(data.name), content: string(data.content), createdAt: string(data.createdAt) };
+}
+
 function parseConversation(value: unknown): Conversation {
   const data = record(value);
   if (!Array.isArray(data.messages)) throw new ApiError('對話訊息格式不符。', 'INVALID_RESPONSE');
+  const testId = string(data.testId);
   return {
-    id: string(data.id), testId: string(data.testId), messages: data.messages.map(parseMessage),
+    id: string(data.id), testId, messages: data.messages.map(parseMessage),
     activeRunId: optionalString(data.activeRunId),
     editingSessionId: optionalString(data.editingSessionId),
+    similarTest: data.similarTest == null ? undefined : parseSimilarTest(data.similarTest, testId),
   };
 }
 
@@ -674,7 +683,25 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     },
     async sendMessage(testId, editingSessionId, content, revision, signal) {
       const data = record(await request(`/tests/${id(testId)}/messages`, 'POST', signal, { editingSessionId, content, revision }));
-      return { run: parseRun(data.run), conversationId: string(data.conversationId) };
+      const conversationId = string(data.conversationId);
+      return data.similarTest == null ? { conversationId, run: parseRun(data.run) }
+        : { conversationId, similarTest: parseSimilarTest(data.similarTest, testId) };
+    },
+    async decideSimilarTest(testId, editingSessionId, reviewId, revision, selection, signal) {
+      const data = record(await request(`/tests/${id(testId)}/editing-sessions/${id(editingSessionId)}/similar-test`, 'POST', signal,
+        { id: reviewId, revision, choice: selection }, false, selection === 'continue' ? 202 : 200));
+      if (selection === 'continue') {
+        const run = parseRun(data.run);
+        if (run.testId !== testId || run.editingSessionId !== editingSessionId || run.draftRevision !== revision || run.kind !== 'author') {
+          throw new ApiError('新測試任務與目前草稿不符。', 'INVALID_RESPONSE');
+        }
+        return { run };
+      }
+      const test = parseTest(data.test);
+      if (test.id === testId || !test.publishedVersionId || test.activeEditingSession?.status !== 'active') {
+        throw new ApiError('相似案例的編輯週期不符。', 'INVALID_RESPONSE');
+      }
+      return { test };
     },
     async startEditingSession(testId, signal) {
       return parseSession(record(await request(`/tests/${id(testId)}/editing-session`, 'POST', signal, {})).session);

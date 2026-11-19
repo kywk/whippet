@@ -75,6 +75,10 @@ func (a *API) createAuthor(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, err)
 		return
 	}
+	if submission.SimilarTest != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"conversationId": submission.ConversationID, "similarTest": submission.SimilarTest})
+		return
+	}
 	a.engine.Wake()
 	writeJSON(w, http.StatusAccepted, submission)
 }

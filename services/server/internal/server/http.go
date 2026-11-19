@@ -96,6 +96,7 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	mux.HandleFunc("GET /api/tests/{id}/editing-sessions/{sessionId}", a.editingSession)
 	mux.HandleFunc("POST /api/tests/{id}/editing-sessions/{sessionId}/discard", a.discardEditing)
 	mux.HandleFunc("POST /api/tests/{id}/editing-sessions/{sessionId}/replace-with-new-test", a.replaceDraftWithNewTest)
+	mux.HandleFunc("POST /api/tests/{id}/editing-sessions/{sessionId}/similar-test", a.decideSimilarTest)
 	mux.HandleFunc("POST /api/tests/{id}/draft/summary", a.createSummary)
 	mux.HandleFunc("GET /api/tests/{id}/draft", a.draft)
 	mux.HandleFunc("PUT /api/tests/{id}/draft", a.saveDraft)
@@ -514,6 +515,8 @@ func (a *API) fail(w http.ResponseWriter, err error) {
 		writeError(w, 422, "author_clarification_required", "請補充要測試的頁面、操作或預期結果，或說明你想釐清的測試問題。")
 	case errors.Is(err, ErrAuthorPolicy):
 		writeError(w, 503, "author_policy_unavailable", "測試對話的意圖檢查暫時無法使用，請稍後再試。")
+	case errors.Is(err, ErrSimilarTestDecision):
+		writeError(w, 409, "similar_test_decision_required", "請先確認要調整既有腳本，或繼續新增。")
 	case errors.Is(err, ErrCredentialUnavailable):
 		writeError(w, 409, "credential_unavailable", "The current attempt or confirmed role is no longer available")
 	case errors.Is(err, ErrSecretsUnavailable):

@@ -14,6 +14,7 @@ import (
 
 type Postgres struct {
 	AuthorIntent  AuthorIntentGate
+	NewTestReview NewTestReviewGate
 	DB            *sql.DB
 	Artifacts     ArtifactStorage
 	Secrets       *SecretVault

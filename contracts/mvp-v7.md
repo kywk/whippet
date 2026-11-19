@@ -24,6 +24,12 @@
 - `PATCH /api/tests/:id/metadata` 需要讀取 Test 資源取得的 `metadataRevision`，及至少一個 `description`、`backgroundSummary` 或 `tags` 欄位。自訂說明及背景獨立保存並連結目前正式版本，UTF-8 上限各為 16384 和 8192 bytes，可用空字串清除。標籤最多 20 個，可用空陣列清除。舊案例的 `tags: null` 允許 Web 沿用瀏覽器舊標籤，直到第一次儲存測試標籤。
 - 此請求成功回傳更新後的 Test。其他使用者更新資訊或發佈新版本後，舊 `metadataRevision` 回 409。此端點使用測試的既有 Workspace 授權，沿用原腳本、編輯週期與驗證。
 
+## 新測試相似案例確認（2026-11-19）
+
+- `POST /api/tests/:id/messages` 發現相似案例時回 200 與 `{conversationId,similarTest}`，一般送出沿用 202 與 `run`。`similarTest` 含選擇識別碼、案例 testId、名稱、待處理的使用者原文和時間。查詢當前對話同樣可取得待確認卡片。
+- `POST /api/tests/:id/editing-sessions/:sessionId/similar-test` 接收 `{id,revision,choice}`。選 `edit` 回 200 與目標 `test` 的編輯週期，供 Web 開啟並預填原需求。選 `continue` 回 202 與新測試的 `run`，相同選擇重送沿用該 Run。Server 依來源編輯週期驗證選項，在同 Workspace 開啟儲存的相似案例。
+- 相似案例確認屬於 Web 新建一般測試的發文流程。MCP 互動式建立入口支援 Module 與 Use Case。一般測試選擇繼續後，無論由內建或 MCP 外部接單，撰稿都使用同一份只含本次測試資料的快照。
+
 ## 1. 現況與可重用處
 
 | 實際檔案 | 目前行為／缺口 |

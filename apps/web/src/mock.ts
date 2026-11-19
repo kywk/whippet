@@ -174,6 +174,7 @@ test('本機頁面', async ({ page }) => {
     async sendMessage() {
       throw new ApiError('示範模式未連接 AI。請使用真實 API 進行持久對話；本機不會呼叫模型。', 'MOCK_AUTHOR_UNAVAILABLE', 400);
     },
+    async decideSimilarTest() { throw new ApiError('示範模式未提供相似測試確認。', 'MOCK_AUTHOR_UNAVAILABLE', 400); },
     async getWorkspaceSettings() {
       throw new ApiError('示範模式未提供 Workspace 設定，請使用真實 Server API。', 'MOCK_SETTINGS_UNAVAILABLE', 400);
     },

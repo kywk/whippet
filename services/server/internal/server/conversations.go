@@ -59,6 +59,15 @@ func (p *Postgres) Conversation(ctx context.Context, testID, sessionID string) (
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Conversation{}, err
 	}
+	if session.Status == "active" && session.SourceVersionID == nil {
+		review, err := readNewTestReview(ctx, tx, session)
+		if err != nil {
+			return Conversation{}, err
+		}
+		if review != nil && review.TestID != "" {
+			c.SimilarTest = &review.SimilarTestSuggestion
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return Conversation{}, err
 	}
@@ -184,7 +193,8 @@ func (p *Postgres) createAuthorInTxForRuntime(ctx context.Context, tx *sql.Tx, d
 	}
 	var testKind, testName string
 	var slug *string
-	if err := tx.QueryRowContext(ctx, `SELECT kind,slug,name FROM tests WHERE id=$1`, testID).Scan(&testKind, &slug, &testName); err != nil {
+	var published bool
+	if err := tx.QueryRowContext(ctx, `SELECT kind,slug,name,published_version_id IS NOT NULL FROM tests WHERE id=$1`, testID).Scan(&testKind, &slug, &testName, &published); err != nil {
 		return AuthorSubmission{}, err
 	}
 	conversationID := session.ConversationID
@@ -237,7 +247,15 @@ func (p *Postgres) createAuthorInTxForRuntime(ctx context.Context, tx *sql.Tx, d
 	if err = validateAuthorPlatform(input, testKind); err != nil {
 		return AuthorSubmission{}, err
 	}
-	if chain == nil {
+	if testKind == "test" && !published && session.SourceVersionID == nil {
+		suggestion, err := p.checkNewTestRequest(ctx, tx, session, input.Messages, chain != nil)
+		if err != nil {
+			return AuthorSubmission{}, err
+		}
+		if suggestion != nil {
+			return AuthorSubmission{SimilarTest: suggestion, ConversationID: conversationID}, nil
+		}
+	} else if chain == nil {
 		if err = p.checkAuthorIntent(ctx, input.SkillID, input.Messages); err != nil {
 			return AuthorSubmission{}, err
 		}
