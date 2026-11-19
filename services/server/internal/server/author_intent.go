@@ -134,7 +134,7 @@ func (c authorIntentClient) request(ctx context.Context, instructions string, da
 	}
 	body, err := json.Marshal(map[string]any{
 		"model": c.model, "instructions": instructions, "input": string(encoded),
-		"tools": []any{}, "tool_choice": "none", "store": false,
+		"tools": []any{}, "store": false,
 		"reasoning": map[string]string{"effort": "low"}, "max_output_tokens": 1024,
 	})
 	if err != nil {

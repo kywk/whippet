@@ -22,10 +22,10 @@ func TestAuthorIntentGate(t *testing.T) {
 			Input        string
 			Instructions string
 			Tools        []any
-			ToolChoice   string `json:"tool_choice"`
+			ToolChoice   json.RawMessage `json:"tool_choice"`
 			Store        *bool
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Tools == nil || len(body.Tools) != 0 || body.ToolChoice != "none" || body.Store == nil || *body.Store ||
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Tools == nil || len(body.Tools) != 0 || len(body.ToolChoice) != 0 || body.Store == nil || *body.Store ||
 			!strings.Contains(body.Input, marker) || !strings.Contains(body.Input, latest) || strings.Contains(body.Instructions, marker) {
 			t.Error("intent provider received tools or trusted transcript text")
 		}
