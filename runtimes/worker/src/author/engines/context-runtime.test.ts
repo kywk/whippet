@@ -7,7 +7,7 @@ import { HistoryClient, type HistoryPage } from "../history.js";
 import { loadToolRegistry, sha256 } from "../registry.js";
 import { runtimeDigest, type AuthorRuntime } from "../runtime.js";
 import type { AuthorInput, AuthorOutput } from "../types.js";
-import { readAIConfig } from "../../ai/config.js";
+import { readAIConfig, type EngineId } from "../../ai/config.js";
 import { KnownSecrets } from "../../login/client.js";
 import { envelope, call, text, runInput, type Wire } from "../spike/fixture.js";
 import { builtinEngine } from "../engine.js";
@@ -19,7 +19,7 @@ const pin = "9007199254740993";
 const config = readAIConfig({ WHIPPET_AI_ENABLED: "true", OPENCODE_API_KEY: "synthetic-context-runtime-key" });
 const facts = { goal: "驗測付款失敗", constraints: ["保留斷言", "不可跨站"], decisions: ["沿用失敗提示"], revision: 7, stage: "verify", evidence: ["run/fixed"] };
 const script = "import {test,expect} from '@playwright/test';test('payment',async({page})=>{await expect(page.getByRole('alert')).toHaveText('付款失敗');});";
-function task(engine: "builtin" | "vercel", cap = 32000): AuthorInput {
+function task(engine: EngineId, cap = 32000): AuthorInput {
   const registry = loadToolRegistry(), root = new URL("../../../skills/test-author/", import.meta.url);
   const raw = readFileSync(new URL("manifest.json", root)), manifest = JSON.parse(raw.toString());
   const runtime: AuthorRuntime = JSON.parse(readFileSync(new URL("../../../../../contracts/testdata/agent-runtime.json", import.meta.url), "utf8"));
@@ -52,8 +52,8 @@ function history(input: AuthorInput) {
 }
 function messageText(item: Wire): string { return typeof item.content === "string" ? item.content : item.content.map((p: Wire) => p.text).join(""); }
 
-test("both production engines compact frozen history, read it back through IPC and deliver inside fixed budgets", async t => {
-  for (const engine of ["builtin", "vercel"] as const) {
+test("all production engines compact frozen history, read it back through IPC and deliver inside fixed budgets", async t => {
+  for (const engine of ["builtin", "vercel", "pi"] as const) {
     const input = task(engine), original = JSON.stringify(input), source = history(input), bodies: Wire[] = [], events: string[] = [];
     const secrets = new KnownSecrets(); secrets.add("synthetic-history-secret");
     let selfTests = 0, retrieved: Wire | undefined;
@@ -99,7 +99,7 @@ test("both production engines compact frozen history, read it back through IPC a
 });
 
 test("history quota exhaustion stops without an unrecoverable summary or hidden fifth read", async () => {
-  for (const engine of ["builtin", "vercel"] as const) {
+  for (const engine of ["builtin", "vercel", "pi"] as const) {
     const input = task(engine), source = history(input);
     // Four distinct pages need future reads after the quota is exhausted.
     // Repeated reads of one page are already fully present in the latest result
@@ -125,7 +125,7 @@ test("history quota exhaustion stops without an unrecoverable summary or hidden 
 });
 
 test("protected oversized context is rejected before HTTP in both engines and records zero model/tool use", async () => {
-  for (const engine of ["builtin", "vercel"] as const) {
+  for (const engine of ["builtin", "vercel", "pi"] as const) {
     const input = task(engine, 16000); input.script = "protected Stage with original assertions ".repeat(1000);
     let requests = 0;
     const out = await runAuthor(input, config, undefined, { fetcher: async () => { requests++; return Response.json(envelope([text()])); } }) as AuthorOutput;

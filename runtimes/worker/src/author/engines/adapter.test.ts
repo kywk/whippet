@@ -71,12 +71,24 @@ test("production route applies one final body guard to instructions and every to
   } finally { await f.close(); }
 });
 
-test("runAuthor selects Vercel without injection; an unfinished checkpoint survives text-only completion and resumes within budget", async () => {
+for (const engine of ["vercel", "pi"] as const) test(`runAuthor selects ${engine}; an unfinished checkpoint resumes within budget`, async () => {
   const f = await fixture((_body, i) => envelope(i === 1 ? [call("update_draft", "partial", { script, nextStep: "尚須加入第二項斷言" })] : i === 2 ? [text('{"message":"已完成"}')] : [call("update_draft", "finish", { script: script + "// final", message: "完成剩餘斷言" })]));
   try {
-    const out = await runAuthor(task(), { ...f.config, engine: "vercel" }, browser, { fetcher: async (_url, init) => fetch(f.config.baseURL + "/responses", init) }) as AuthorOutput;
+    const out = await runAuthor(task(), { ...f.config, engine }, browser, { fetcher: async (_url, init) => fetch(f.config.baseURL + "/responses", init) }) as AuthorOutput;
     assert.equal(f.bodies.length, 3); assert.equal(out.partial, undefined); assert.equal(out.script, script + "// final");
     assert.ok(JSON.stringify(f.bodies[2]!.input).includes("explicitly unfinished"));
+  } finally { await f.close(); }
+});
+
+for (const engine of ["builtin", "vercel", "pi"] as const) test(`${engine} rejects duplicate call IDs before dispatch`, async () => {
+  const f = await fixture(() => envelope([call("update_draft", "same", { script }), call("update_draft", "same", { script })]));
+  let selfTests = 0;
+  try {
+    await assert.rejects(runAuthor(task(), { ...f.config, engine }, {
+      ...browser, verifyDraft: async () => { selfTests++; return { passed: true, summary: "verified" }; },
+    }, { fetcher: async (_url, init) => fetch(f.config.baseURL + "/responses", init) }), { code: "invalid_response" });
+    assert.equal(f.bodies.length, 1);
+    assert.equal(selfTests, 0);
   } finally { await f.close(); }
 });
 
@@ -139,13 +151,13 @@ test("truncated output never executes partial arguments; only a guard-owned chec
   }
 });
 
-test("production provider abort settles and closes the socket within 1 second", async t => {
+for (const engine of ["vercel", "pi"] as const) test(`${engine} provider abort settles and closes the socket within 1 second`, async t => {
   let arrived!: () => void, closed!: () => void;
   const arrival = new Promise<void>(r => { arrived = r; }), closure = new Promise<void>(r => { closed = r; });
   const f = await fixture((_body, _i, res) => { res.on("close", closed); arrived(); return undefined; });
   const abort = new AbortController();
   try {
-    const running = vercelEngine(f.config).run(engineInput(f.config, { signal: abort.signal }));
+    const running = selectAgentEngine({ ...f.config, engine }).run(engineInput(f.config, { signal: abort.signal }));
     await arrival; const started = performance.now(); abort.abort();
     await assert.rejects(running, (e: unknown) => e instanceof AuthorError && e.code === "cancelled");
     await Promise.race([closure, delay(950).then(() => { throw new Error("socket still open"); })]);
@@ -154,7 +166,7 @@ test("production provider abort settles and closes the socket within 1 second", 
   } finally { await f.close(); }
 });
 
-test("unknown tools, duplicate IDs, HTTP failures and output limits stop without retries or extra effects", async () => {
+for (const engine of ["vercel", "pi"] as const) test(`${engine} stops after unknown tools, duplicate IDs, HTTP failures and output limits`, async () => {
   for (const mode of ["unknown", "duplicate", "http", "bytes"]) {
     let executions = 0;
     const f = await fixture((_b, _i, res) => {
@@ -162,8 +174,8 @@ test("unknown tools, duplicate IDs, HTTP failures and output limits stop without
       return envelope(mode === "duplicate" ? [call("read_draft", "same"), call("read_draft", "same")] : [call(mode === "unknown" ? "shell" : "read_draft", "id")]);
     });
     try {
-      await assert.rejects(vercelEngine(f.config).run(engineInput(f.config, { ...(mode === "bytes" ? { maxToolOutputBytes: 1 } : {}), execute: async () => { executions++; return { content: "tool output" }; } })), AuthorError);
-      assert.equal(f.bodies.length, 1, mode); assert.equal(executions, mode === "unknown" || mode === "http" ? 0 : 1, mode);
+      await assert.rejects(selectAgentEngine({ ...f.config, engine }).run(engineInput(f.config, { ...(mode === "bytes" ? { maxToolOutputBytes: 1 } : {}), execute: async () => { executions++; return { content: "tool output" }; } })), AuthorError);
+      assert.equal(f.bodies.length, 1, mode); assert.equal(executions, mode === "bytes" ? 1 : 0, mode);
     } finally { await f.close(); }
   }
 });

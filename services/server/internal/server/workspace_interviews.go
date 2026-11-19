@@ -108,6 +108,9 @@ func (p *Postgres) CreateWorkspaceAuthor(ctx context.Context, id, content string
 	}
 	input := AuthorInput{SkillID: "workspace-author", SkillVersion: "1", AllowedTools: []string{}, ConversationID: c.ID, BaseRevision: w.Revision, ContextRevision: contextRevision + 1,
 		SourceVersion: nil, ConversationSummary: c.ConversationSummary, Messages: authorContext(newest)}
+	if err = p.checkAuthorIntent(ctx, input.SkillID, input.Messages); err != nil {
+		return AuthorSubmission{}, err
+	}
 	input.History, err = conversationHistorySnapshot(ctx, tx, c.ID)
 	if err != nil {
 		return AuthorSubmission{}, err
@@ -130,8 +133,8 @@ func (p *Postgres) CreateWorkspaceAuthor(ctx context.Context, id, content string
 		return AuthorSubmission{}, err
 	}
 	runID := NewID()
-	if _, err = tx.ExecContext(ctx, `INSERT INTO runs(id,workspace_id,test_id,kind,script_snapshot,script_hash,timeout_ms,author_payload,workspace_settings,workspace_context,script_origin,authorization_revision,scope_proposal_id,author_engine)
- VALUES($1,$2,NULL,'author','',$3,$4,$5,$6,$7,'legacy',$8,$9,$10)`, runID, id, scriptHash(""), input.Budget.MaxDurationMS, jsonText(input), settingsJSON(&w.WorkspaceSettings), jsonText(snapshot), authorization, scopeProposal, w.AuthorEngine); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO runs(id,workspace_id,test_id,kind,script_snapshot,script_hash,timeout_ms,author_payload,workspace_settings,workspace_context,script_origin,authorization_revision,scope_proposal_id,author_engine,author_intent_checked)
+ VALUES($1,$2,NULL,'author','',$3,$4,$5,$6,$7,'legacy',$8,$9,$10,true)`, runID, id, scriptHash(""), input.Budget.MaxDurationMS, jsonText(input), settingsJSON(&w.WorkspaceSettings), jsonText(snapshot), authorization, scopeProposal, w.AuthorEngine); err != nil {
 		return AuthorSubmission{}, err
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO messages(id,conversation_id,role,content,run_id) VALUES($1,$2,'user',$3,$4)`, NewID(), c.ID, content, runID); err != nil {
@@ -254,7 +257,7 @@ func (p *Postgres) completeWorkspaceAuthorWith(ctx context.Context, workspaceID,
 						if _, err = tx.ExecContext(ctx, `UPDATE workspaces SET authorization_revision=authorization_revision+1 WHERE id=$1`, workspaceID); err != nil {
 							return err
 						}
-						if err = cancelAIRuns(ctx, tx, workspaceID, runID); err != nil {
+						if err = cancelScopedRuns(ctx, tx, workspaceID, runID); err != nil {
 							return err
 						}
 					}
@@ -335,7 +338,7 @@ func (p *Postgres) ActWorkspaceProposal(ctx context.Context, id, proposalID, act
 			}
 		}
 	case "cancel":
-		if err = cancelAIRuns(ctx, tx, id, ""); err != nil {
+		if err = cancelScopedRuns(ctx, tx, id, ""); err != nil {
 			return w, proposal, err
 		}
 		if _, err = tx.ExecContext(ctx, `UPDATE workspace_proposals SET status='cancelled',scope_confirmed=false,invalidation_reason='cancelled' WHERE id=$1`, proposal.ID); err != nil {
@@ -352,7 +355,7 @@ func (p *Postgres) ActWorkspaceProposal(ctx context.Context, id, proposalID, act
 		changed := w.Settings == nil || jsonText(w.Settings) != jsonText(config) || w.Lifecycle != "active"
 		if changed {
 			if w.Settings != nil && workspaceScopeHash(*w.Settings) != workspaceScopeHash(config) {
-				if err = cancelAIRuns(ctx, tx, id, ""); err != nil {
+				if err = cancelScopedRuns(ctx, tx, id, ""); err != nil {
 					return w, proposal, err
 				}
 			}

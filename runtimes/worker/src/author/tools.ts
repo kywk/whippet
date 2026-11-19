@@ -1,7 +1,6 @@
 import {failedStepCategories, type FailedStepCategory, type MainFrameNavigation, type SelfTestFailureClass, type SelfTestObservation} from './module-diagnostics.js';
-import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +8,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from "@playwri
 import { AuthorError } from "./types.js";
 import { LiveObserver } from "../live/observer.js";
 import { fixtureBridge } from "../live/fixture-bridge.js";
-import {AIOriginGate,installAIOriginGate} from "./scope.js";
+import {AIOriginGate,installAIOriginGate,unconfirmedBrowserScope} from "./scope.js";
 import type {WorkspaceConfig} from "../workspace-context.js";
 import {CredentialClient,KnownSecrets,type CredentialResolver} from '../login/client.js';
 import {loginBroker} from '../login/broker.js';
@@ -17,6 +16,9 @@ import {submitLogin} from '../login/helper.js';
 import {installLoginPrivacy} from '../login/privacy.js';
 import type { RuntimeSummary } from "../result.js";
 import { installModuleABI, type ModuleABI } from "../module-abi.js";
+import { startTestHarness, TestHarnessError, type TestHarness } from "../test-harness.js";
+import { boundedRead } from "../live/files.js";
+import { startScopeProxy } from "../scope-proxy.js";
 
 const require = createRequire(import.meta.url);
 
@@ -60,6 +62,8 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
   const gate=options.scope?new AIOriginGate(options.scope):undefined;
   const secrets=options.credentials?.secrets??options.knownSecrets??new KnownSecrets();
   let privacy:ReturnType<typeof installLoginPrivacy>|undefined;
+  let testHarness: Promise<TestHarness> | undefined;
+  let browserProxy: Awaited<ReturnType<typeof startScopeProxy>> | undefined;
   // Browser subprocesses do not inherit the AI key or Manager credentials.
   const browserEnv: Record<string, string> = {};
   for (const name of ["PATH", "HOME", "TMPDIR", "LANG", "DISPLAY", "PLAYWRIGHT_BROWSERS_PATH"]) {
@@ -69,7 +73,15 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
     if (closed) throw new AuthorError("cancelled");
     if(page?.isClosed())page=context?.pages().filter((p)=>!p.isClosed()).at(-1);
     if (!browser) {
-      browser = await chromium.launch({ headless: true, env: browserEnv, timeout: 15000,...(options.executablePath?{executablePath:options.executablePath}:{}) });
+      if (options.scope) browserProxy ??= await startScopeProxy(options.scope);
+      browser = await chromium.launch({
+        headless: true, env: browserEnv, timeout: 15000,
+        ...(options.executablePath ? { executablePath: options.executablePath } : {}),
+        ...(browserProxy ? {
+          proxy: { server: browserProxy.url },
+          args: ["--disable-quic", "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"],
+        } : {}),
+      });
       live.observeBrowser(browser);
       privacy=installLoginPrivacy(browser,live);
       if (closed) { await browser.close(); throw new AuthorError("cancelled"); }
@@ -184,10 +196,15 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
         };
       }
       const redact = (text: string) => (options.credentials ? options.credentials.secrets.redact(text) : text);
-      let taskDir: string | undefined;
+      let taskRoot: string | undefined;
       let broker: Awaited<ReturnType<typeof loginBroker>> | undefined;
       try {
-        taskDir = await mkdtemp(join(tmpdir(), "whippet-self-test-"));
+        const harness = await (testHarness ??= startTestHarness(options.scope ?? unconfirmedBrowserScope()));
+        if (runOptions.signal?.aborted) throw new AuthorError("cancelled");
+        taskRoot = await mkdtemp(join(tmpdir(), "whippet-self-test-"));
+        const taskDir = join(taskRoot, "test");
+        await mkdir(taskDir, { mode: 0o700 });
+        await harness.configureTask(taskRoot, taskDir);
         const packageDir = dirname(require.resolve("@playwright/test/package.json"));
         await symlink(resolve(packageDir, "../.."), join(taskDir, "node_modules"), "dir");
         await writeFile(join(taskDir, "package.json"), '{"type":"commonjs"}\n', "utf8");
@@ -197,6 +214,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
           await mkdir(join(taskDir,"lib"));
           await writeFile(join(taskDir,"lib",runOptions.moduleFile.slug+".ts"),runOptions.moduleFile.content,{flag:"wx"});
           await installModuleABI(taskDir,{slug:runOptions.moduleFile.slug,exportName:runOptions.moduleFile.exportName});
+          for (const file of await readdir(join(taskDir, "lib"))) await harness.grantAccess(join(taskDir, "lib", file));
         }
         const navigationObservationPath=runOptions.onSelfTestObservation?join(taskDir,"navigation-observation.json"):undefined;
         const bridgePath = join(taskDir, "live-fixture.cjs");
@@ -204,7 +222,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
           bridgePath,
           fixtureBridge(new URL("../live/observer.js", import.meta.url).href, {
             scopeURL: new URL("./scope.js", import.meta.url).href,
-            scope: options.scope ?? null,
+            scope: options.scope ?? unconfirmedBrowserScope(),
             privacyURL: new URL("../login/privacy.js", import.meta.url).href,
             navigationObservationPath,
           }),
@@ -247,6 +265,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
             use: {
               browserName: "chromium",
               headless: true,
+              proxy: harness.proxy,
               trace: "off",
               screenshot: "off",
               video: "off",
@@ -258,20 +277,17 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
         const configPath = join(taskDir, "playwright.config.cjs");
         await writeFile(configPath, `module.exports = ${JSON.stringify(config, null, 2)};\n`, "utf8");
         if (options.credentials instanceof CredentialClient) {
-          broker = await loginBroker(options.credentials);
+          broker = await loginBroker(options.credentials, harness.credentialUID);
         }
         const stderrLines: string[] = [];
-        const child = spawn(process.execPath, [join(packageDir, "cli.js"), "test", "--config", configPath], {
+        const child = harness.spawn([join(packageDir, "cli.js"), "test", "--config", configPath], {
           cwd: taskDir,
           detached: true,
           stdio: ["ignore", "pipe", "pipe"],
-          env: {
-            ...browserEnv,
-            ...(broker ? { WHIPPET_LOGIN_SOCKET: broker.path } : {}),
-            CI: "1",
-            FORCE_COLOR: "0",
-            NODE_ENV: "production",
-          },
+        }, {
+          ...browserEnv, WHIPPET_WORK_DIR: taskDir,
+          ...(broker ? { WHIPPET_LOGIN_SOCKET: broker.path } : {}),
+          CI: "1", FORCE_COLOR: "0", NODE_ENV: "production",
         });
         child.stderr?.on("data", (chunk: Buffer) => {
           if (stderrLines.length < 20) stderrLines.push(chunk.toString("utf8"));
@@ -283,6 +299,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
         };
         const onAbort = () => stopChild();
         runOptions.signal?.addEventListener("abort", onAbort, { once: true });
+        if (runOptions.signal?.aborted) onAbort();
         let watchdogExpired=false;
         const watchdog = setTimeout(()=>{watchdogExpired=true;stopChild();}, selfTestTimeout + 3000);
         let exitCode: number | null = null;
@@ -294,12 +311,14 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
         } finally {
           clearTimeout(watchdog);
           runOptions.signal?.removeEventListener("abort", onAbort);
+          // A test can leave descendants after the Playwright CLI exits.
+          await harness.stopScripts();
         }
         if (closed || runOptions.signal?.aborted) {failure('CANCELLED');throw new AuthorError("cancelled");}
         let summary: RuntimeSummary | undefined;
         let json: { stats?: { expected?: number; unexpected?: number }; errors?: { message?: string }[] } | undefined;
-        try { summary = JSON.parse(await readFile(summaryPath, "utf8")) as RuntimeSummary; } catch { /* ignore */ }
-        try { json = JSON.parse(await readFile(resultsPath, "utf8")) as typeof json; } catch { /* ignore */ }
+        try { summary = JSON.parse((await boundedRead(summaryPath, 1024 * 1024)).toString()) as RuntimeSummary; } catch { /* ignore */ }
+        try { json = JSON.parse((await boundedRead(resultsPath, 8 * 1024 * 1024)).toString()) as typeof json; } catch { /* ignore */ }
         const passed =
           exitCode === 0 &&
           summary?.status === "passed" &&
@@ -326,7 +345,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
         let mainFrameNavigation:MainFrameNavigation='UNOBSERVED';
         if(navigationObservationPath && !watchdogExpired && !runOptions.signal?.aborted){
           try{
-            const raw=await readFile(navigationObservationPath,'utf8');
+            const raw=(await boundedRead(navigationObservationPath,128)).toString();
             if(raw==='{"mainFrameNavigation":"OBSERVED"}')mainFrameNavigation='OBSERVED';
             else if(raw==='{"mainFrameNavigation":"NOT_OBSERVED"}')mainFrameNavigation='NOT_OBSERVED';
           }catch{/* Missing or malformed producer evidence remains UNOBSERVED. */}
@@ -347,11 +366,23 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
               : "自我試跑未通過：請根據下方錯誤訊息檢查定位器、斷言或頁面狀態並修正後再試；若為待測網站異常請據實回報使用者。",
           error: rawErr,
         };
+      } catch (error) {
+        if (!(error instanceof TestHarnessError)) throw error;
+        failure("GUARD");
+        observe(unobserved);
+        return { passed: false, category: "environment", summary: error.message, error: "test_harness_unavailable" };
       } finally {
         if (broker) await broker.close().catch(() => undefined);
-        if (taskDir) await rm(taskDir, { recursive: true, force: true }).catch(() => undefined);
+        if (taskRoot) await rm(taskRoot, { recursive: true, force: true }).catch(() => undefined);
       }
     },
-    async close() { closed = true;options.credentials?.close();privacy?.close();await live.close().catch(() => undefined); await browser?.close(); },
+    async close() {
+      closed = true;
+      options.credentials?.close();
+      privacy?.close();
+      await testHarness?.then(harness => harness.close()).catch(() => undefined);
+      await live.close().catch(() => undefined);
+      try { await browser?.close(); } finally { await browserProxy?.close(); }
+    },
   };
 }

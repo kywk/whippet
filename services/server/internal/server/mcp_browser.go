@@ -138,10 +138,10 @@ func (a *API) callMCPBrowserAction(ctx context.Context, p *Postgres, tool ToolDe
 	if !ok {
 		return mcpToolError()
 	}
-	return a.callMCPBrowserActionOwned(ctx, p, tool, token, sessionID, leaseID, callID, canonical)
+	return a.callMCPBrowserActionOwned(ctx, p, tool, token, sessionID, leaseID, callID, canonical, nil)
 }
 
-func (a *API) callMCPBrowserActionOwned(ctx context.Context, p *Postgres, tool ToolDefinition, token AgentToken, sessionID, leaseID, callID string, canonical []byte) *mcp.CallToolResult {
+func (a *API) callMCPBrowserActionOwned(ctx context.Context, p *Postgres, tool ToolDefinition, token AgentToken, sessionID, leaseID, callID string, canonical []byte, authorRunID *string) *mcp.CallToolResult {
 	if a.engine == nil {
 		return mcpToolError()
 	}
@@ -149,7 +149,7 @@ func (a *API) callMCPBrowserActionOwned(ctx context.Context, p *Postgres, tool T
 	if err != nil || lease.State != "ready" || lease.Reclaimed {
 		return mcpToolError()
 	}
-	existed, err := p.ReserveBrowserCall(ctx, token, lease, callID, tool.Name, canonical)
+	existed, err := p.ReserveBrowserCall(ctx, token, lease, callID, tool.Name, canonical, authorRunID)
 	if err != nil {
 		if errors.Is(err, errBrowserScopeInvalid) {
 			_, _ = p.CloseBrowserLease(ctx, token, sessionID, leaseID)

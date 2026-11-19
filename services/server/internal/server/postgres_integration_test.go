@@ -77,7 +77,7 @@ func TestPostgresQueueAndAttemptInvariants(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	p := &Postgres{DB: db}
+	p := &Postgres{DB: db, AuthorIntent: allowFixtureAuthorIntent}
 	if err := p.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}

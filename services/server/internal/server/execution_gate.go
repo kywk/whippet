@@ -140,8 +140,8 @@ func proposalConfig(w Workspace) *WorkspaceConfig {
 	return nil
 }
 
-// A browser workflow policy, not an arbitrary Node network sandbox. Required
-// origins/purposes cannot grow by silently substituting a broader current config.
+// The Worker enforces this snapshot at runtime. A later settings revision can
+// revoke it, but cannot silently grant an existing script additional origins.
 func scopeWithin(required, approved *WorkspaceConfig) bool {
 	if required == nil || approved == nil || len(required.Targets) == 0 {
 		return false
@@ -192,13 +192,17 @@ func scopeBinding(w Workspace, snapshot *WorkspaceContext, proposal *string) (*i
 	return nil, nil, ErrScopeConfirmation
 }
 func executionBinding(w Workspace, origin string, snapshot *WorkspaceContext) (*int64, *string, error) {
-	if origin == "manual" {
+	if offlineManualExecution(origin, snapshot) {
 		return nil, nil, nil
 	}
-	if effectiveScriptOrigin(origin) != "ai" && effectiveScriptOrigin(origin) != "legacy" {
+	if origin != "manual" && effectiveScriptOrigin(origin) != "ai" && effectiveScriptOrigin(origin) != "legacy" {
 		return nil, nil, ErrInvalid
 	}
 	return scopeBinding(w, snapshot, nil)
+}
+
+func offlineManualExecution(origin string, snapshot *WorkspaceContext) bool {
+	return origin == "manual" && (snapshot == nil || snapshot.Config == nil)
 }
 func workspaceForTest(ctx context.Context, q queryDB, testID string) (Workspace, error) {
 	var id string
@@ -266,7 +270,7 @@ func (p *Postgres) assignmentAllowed(ctx context.Context, q queryDB, a Assignmen
 	if a.Kind == "author" && !hasBrowserTools(a.Author) {
 		return nil
 	}
-	if a.Kind != "author" && a.ScriptOrigin == "manual" {
+	if a.Kind != "author" && offlineManualExecution(a.ScriptOrigin, a.WorkspaceContext) {
 		return nil
 	}
 	w, pid, err := readWorkspaceCore(ctx, q, a.WorkspaceID, false)
@@ -288,7 +292,7 @@ func (p *Postgres) assignmentAllowed(ctx context.Context, q queryDB, a Assignmen
 // Unacknowledged network/AI work already being cancelled must not be started
 // solely to explain cancellation; Manager can persist an unknown cancel result.
 func (p *Postgres) CanDispatch(a Assignment) bool {
-	return (a.Kind != "author" && a.ScriptOrigin == "manual") || (a.Kind == "author" && !hasBrowserTools(a.Author))
+	return (a.Kind != "author" && offlineManualExecution(a.ScriptOrigin, a.WorkspaceContext)) || (a.Kind == "author" && !hasBrowserTools(a.Author))
 }
 func offlineAuthorAllowed(a Assignment) bool {
 	if a.Kind != "author" || a.Author == nil || hasBrowserTools(a.Author) {
@@ -384,11 +388,11 @@ func workspaceRunScopeValid(ctx context.Context, q queryDB, w Workspace, id stri
 	_, _, err = scopeBinding(w, snapshot, proposal)
 	return err == nil
 }
-func cancelAIRuns(ctx context.Context, tx *sql.Tx, workspace, except string) error {
+func cancelScopedRuns(ctx context.Context, tx *sql.Tx, workspace, except string) error {
 	_, err := tx.ExecContext(ctx, `UPDATE runs SET status=CASE WHEN status='queued' THEN 'cancelled' ELSE 'cancelling' END,
  finished_at=CASE WHEN status='queued' THEN now() ELSE finished_at END,error='scope_confirmation_required'
  WHERE workspace_id=$1 AND id::text<>$2 AND status IN ('queued','dispatched','running','collecting') AND
- ((kind IN ('run','validation') AND script_origin<>'manual') OR (kind='author' AND
- author_payload->'allowedTools' ?| ARRAY['browser_navigate','browser_snapshot','browser_click','browser_fill','browser_login']))`, workspace, except)
+ ((kind IN ('run','validation') AND (script_origin<>'manual' OR jsonb_typeof(workspace_context->'config')='object')) OR (kind='author' AND
+ author_payload->'allowedTools' ?| ARRAY['browser_navigate','browser_snapshot','browser_click','browser_fill','browser_login','update_module_candidate','commit_module_candidate','edit_module_candidate']))`, workspace, except)
 	return err
 }

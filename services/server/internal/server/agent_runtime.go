@@ -68,7 +68,7 @@ func validRuntimeURL(value string) bool {
 }
 func validRuntimeData(r AuthorRuntimeData) bool {
 	return r.SchemaVersion == 1 && moduleSlug.MatchString(r.ProfileID) && len(r.ProfileID) <= 63 &&
-		(r.Engine == "builtin" || r.Engine == "vercel") && (r.Provider == "opencode" || r.Provider == "openai-responses") && validRuntimeURL(r.BaseURL) &&
+		(r.Engine == "builtin" || r.Engine == "vercel" || r.Engine == "pi") && (r.Provider == "opencode" || r.Provider == "openai-responses") && validRuntimeURL(r.BaseURL) &&
 		modelName.MatchString(r.Model) && !strings.HasPrefix(r.Model, "opencode-go/") &&
 		(r.ReasoningEffort == "low" || r.ReasoningEffort == "medium" || r.ReasoningEffort == "high" || r.ReasoningEffort == "xhigh") &&
 		(r.ContextWindowTokens >= 1024 && r.ContextWindowTokens <= 2097152 || r.ContextWindowTokens == 0 && r.Engine == "builtin") &&
@@ -81,17 +81,16 @@ func validAuthorRuntime(r *AuthorRuntime) bool {
 func runtimeProfiles() (map[string]runtimeProfile, error) {
 	out := map[string]runtimeProfile{"builtin": {ID: "builtin", Engine: "builtin"}, "vercel": {ID: "vercel", Engine: "vercel"}}
 	raw := os.Getenv("WHIPPET_AI_RUNTIME_PROFILES_JSON")
-	if raw == "" {
-		return out, nil
-	}
-	if len(raw) > 65536 || strictJSONNoDuplicates([]byte(raw)) != nil {
-		return nil, ErrInvalid
-	}
 	var profiles []runtimeProfile
-	d := json.NewDecoder(strings.NewReader(raw))
-	d.DisallowUnknownFields()
-	if d.Decode(&profiles) != nil || d.Decode(new(any)) != io.EOF || profiles == nil || len(profiles) > 16 {
-		return nil, ErrInvalid
+	if raw != "" {
+		if len(raw) > 65536 || strictJSONNoDuplicates([]byte(raw)) != nil {
+			return nil, ErrInvalid
+		}
+		d := json.NewDecoder(strings.NewReader(raw))
+		d.DisallowUnknownFields()
+		if d.Decode(&profiles) != nil || d.Decode(new(any)) != io.EOF || profiles == nil || len(profiles) > 16 {
+			return nil, ErrInvalid
+		}
 	}
 	for _, p := range profiles {
 		r := AuthorRuntimeData{1, p.ID, p.Engine, p.Provider, p.BaseURL, p.Model, p.ReasoningEffort, p.ContextWindowTokens, p.ContextInputTokens}
@@ -99,6 +98,9 @@ func runtimeProfiles() (map[string]runtimeProfile, error) {
 			return nil, ErrInvalid
 		}
 		out[p.ID] = p
+	}
+	if _, exists := out["pi"]; !exists {
+		out["pi"] = runtimeProfile{ID: "pi", Engine: "pi"}
 	}
 	return out, nil
 }
@@ -134,7 +136,7 @@ func resolveAuthorRuntime(input AuthorInput, selection RuntimeSelection) (*Autho
 		id = override
 	}
 	p := profiles[id]
-	if id == "builtin" || id == "vercel" {
+	if p.Provider == "" {
 		p.Provider, p.Model, p.ReasoningEffort = input.Model.Provider, input.Model.Model, input.Model.ReasoningEffort
 		p.BaseURL = strings.TrimRight(os.Getenv("WHIPPET_AI_BASE_URL"), "/")
 		if p.BaseURL == "" {

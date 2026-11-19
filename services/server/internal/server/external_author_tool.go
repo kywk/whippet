@@ -113,28 +113,6 @@ func (p *Postgres) CompleteExternalToolCall(ctx context.Context, runID, callID s
 	return err
 }
 
-func (p *Postgres) BindExternalBrowser(ctx context.Context, token AgentToken, c externalClaim, sessionID string) error {
-	tx, err := p.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	current, err := p.lockExternalClaim(ctx, tx, token, c.RunID, c.AttemptID, c.LeaseID)
-	if err != nil {
-		return err
-	}
-	if err = p.externalLive(ctx, tx, current); err != nil {
-		return err
-	}
-	if current.BrowserSessionID != nil && *current.BrowserSessionID != sessionID {
-		return ErrConflict
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE external_author_claims SET browser_session_id=$2 WHERE run_id=$1 AND browser_session_id IS NULL`, c.RunID, sessionID); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
 func (p *Postgres) ExternalBrowser(ctx context.Context, token AgentToken, runID, attemptID, leaseID string) (*string, error) {
 	tx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {

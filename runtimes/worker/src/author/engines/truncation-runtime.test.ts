@@ -5,14 +5,14 @@ import { runAuthor } from "../loop.js";
 import { AuthorError, serializeAuthorArtifact, type AuthorInput, type AuthorOutput } from "../types.js";
 import { loadToolRegistry, sha256 } from "../registry.js";
 import { runtimeDigest, type AuthorRuntime } from "../runtime.js";
-import { readAIConfig } from "../../ai/config.js";
+import { readAIConfig, type EngineId } from "../../ai/config.js";
 import { KnownSecrets } from "../../login/client.js";
 import { envelope, call, type Wire } from "../spike/fixture.js";
 
 const config = readAIConfig({ WHIPPET_AI_ENABLED: "true", OPENCODE_API_KEY: "synthetic-truncation-runtime" });
 const script = "import {test,expect} from '@playwright/test';test('guard',async({page})=>{await expect(page.getByRole('alert')).toHaveText('付款失敗');});";
 const repair = script + "// rejected repair";
-function task(engine: "builtin" | "vercel"): AuthorInput {
+function task(engine: EngineId): AuthorInput {
   const id = "11111111-1111-4111-8111-111111111111", registry = loadToolRegistry();
   const root = new URL("../../../skills/test-author/", import.meta.url), raw = readFileSync(new URL("manifest.json", root)), manifest = JSON.parse(raw.toString());
   const runtime: AuthorRuntime = JSON.parse(readFileSync(new URL("../../../../../contracts/testdata/agent-runtime.json", import.meta.url), "utf8"));
@@ -28,8 +28,8 @@ function task(engine: "builtin" | "vercel"): AuthorInput {
 const truncated = (output: Wire[]) => envelope(output, { status: "incomplete", incomplete_details: { reason: "max_output_tokens" } });
 const browser = { navigate: async () => ({}), snapshot: async () => ({}), click: async () => ({}), fill: async () => ({}), close: async () => {} };
 
-test("both production engines keep the last passing guard checkpoint after failed repair and truncated output", async t => {
-  for (const engine of ["builtin", "vercel"] as const) for (const halfJSON of [true, false]) {
+test("all production engines keep the last passing guard checkpoint after failed repair and truncated output", async t => {
+  for (const engine of ["builtin", "vercel", "pi"] as const) for (const halfJSON of [true, false]) {
     const input = task(engine), original = JSON.stringify(input); let requests = 0, selfTests = 0, reason: string | undefined;
     const out = await runAuthor(input, config, { ...browser, verifyDraft: async candidate => { selfTests++; return { passed: candidate === script, summary: "synthetic self-test" }; } }, {
       onPartial: partial => { reason = partial.reason; assert.deepEqual(partial.checkpoint, { script }); },
@@ -58,7 +58,7 @@ test("both production engines keep the last passing guard checkpoint after faile
 });
 
 test("an unsuccessful self-test and model-provided checkpoint cannot manufacture recovery", async () => {
-  for (const engine of ["builtin", "vercel"] as const) {
+  for (const engine of ["builtin", "vercel", "pi"] as const) {
     let requests = 0, selfTests = 0, partials = 0;
     await assert.rejects(runAuthor(task(engine), config, { ...browser, verifyDraft: async () => { selfTests++; return { passed: false, summary: "synthetic rejected self-test" }; } }, {
       onPartial: () => { partials++; }, fetcher: async () => {
@@ -71,7 +71,7 @@ test("an unsuccessful self-test and model-provided checkpoint cannot manufacture
 });
 
 test("secret guard invalidation discards a saved checkpoint before truncated partial serialization", async () => {
-  for (const engine of ["builtin", "vercel"] as const) {
+  for (const engine of ["builtin", "vercel", "pi"] as const) {
     const secrets = new KnownSecrets(), candidate = script + "// redact-after-checkpoint";
     let requests = 0, selfTests = 0;
     const out = await runAuthor(task(engine), config, { ...browser, verifyDraft: async () => { selfTests++; return { passed: true, summary: "synthetic self-test" }; } }, {

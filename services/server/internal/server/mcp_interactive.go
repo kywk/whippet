@@ -459,6 +459,12 @@ func (a *API) callMCPInteractive(ctx context.Context, p *Postgres, tool ToolDefi
 		return mcpToolError()
 	}
 	if err != nil {
+		if code := authorIntentErrorCode(err); code != "" {
+			if state, ok := ctx.Value(mcpAuditStateKey{}).(*mcpAuditState); ok {
+				state.failed = true
+			}
+			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: code}}}
+		}
 		return mcpToolError()
 	}
 	if (tool.Name == "author_start" || tool.Name == "validation_request") && a.engine != nil {

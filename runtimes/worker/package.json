@@ -23,14 +23,14 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "4.0.118",
+    "@mariozechner/pi-agent-core": "0.73.1",
+    "@mariozechner/pi-ai": "0.73.1",
     "@playwright/test": "1.64.1",
     "ai": "7.0.173",
     "zod": "4.1.12"
   },
   "devDependencies": {
     "@types/node": "22.10.2",
-    "typescript": "5.7.3",
-    "@mariozechner/pi-agent-core": "0.73.1",
-    "@mariozechner/pi-ai": "0.73.1"
+    "typescript": "5.7.3"
   }
 }

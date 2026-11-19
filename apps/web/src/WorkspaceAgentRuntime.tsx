@@ -8,6 +8,9 @@ const skillLabels: Record<AgentRuntimeSkill, string> = {
   'test-author': '測試產稿', 'workspace-author': 'Workspace 訪談', 'acceptance-summary': '驗收摘要',
   'module-authoring': 'Module 產稿', 'usecase-planner': 'Use Case 規劃',
 };
+const engineLabels: Record<AgentRuntimeProfile['engine'], string> = {
+  builtin: 'builtin（內建）', vercel: 'vercel（Vercel AI SDK）', pi: 'pi（Pi Agent Core）',
+};
 const conflictMessage = 'Workspace 設定版本已變更，本次未儲存。已保留你的選擇；請檢視目前設定，再決定採用目前設定或保留選擇繼續編輯。';
 
 function sameSelection(a: AgentRuntimeSelection, b: AgentRuntimeSelection) {
@@ -19,7 +22,7 @@ function ProfileDetails({ id, profiles }: { id: string; profiles: AgentRuntimePr
   if (!profile) return <p className="blocked-hint">Profile「{id}」目前不可用，請明確選擇後端提供的 profile；不會自動替換。</p>;
   return <dl className="workspace-snapshot-meta runtime-profile-details">
     <div><dt>有效 profile</dt><dd>{id}</dd></div>
-    <div><dt>模型迴圈</dt><dd>{profile.engine === 'builtin' ? 'builtin（內建）' : 'vercel（Vercel AI SDK）'}</dd></div>
+    <div><dt>模型迴圈</dt><dd>{engineLabels[profile.engine]}</dd></div>
     <div><dt>Provider</dt><dd>{profile.provider || '沿用主 skill'}</dd></div>
     <div><dt>Model</dt><dd>{profile.model || '沿用主 skill'}</dd></div>
     <div><dt>推理強度</dt><dd>{profile.reasoningEffort || '沿用主 skill'}</dd></div>

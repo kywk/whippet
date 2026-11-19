@@ -279,7 +279,7 @@ func TestM11BrowserLeaseRevocationAndReconnectConverge(t *testing.T) {
 	if err != nil || current.State != "closing" || current.Reclaimed {
 		t.Fatal("revocation did not atomically close the lease")
 	}
-	if _, err := p.ReserveBrowserCall(ctx, token, lease, NewID(), "browser_snapshot", []byte(`{}`)); err == nil {
+	if _, err := p.ReserveBrowserCall(ctx, token, lease, NewID(), "browser_snapshot", []byte(`{}`), nil); err == nil {
 		t.Fatal("revoked token reserved a new browser side effect")
 	}
 	if err := engine.Tick(ctx); err != nil {

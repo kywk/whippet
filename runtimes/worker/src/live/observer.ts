@@ -6,7 +6,7 @@ import {MAX_JPEG,readControl,replaceFile,within,type LiveControl} from "./files.
 import {VideoHelper} from "./helper.js";
 
 type MediaHelper=Pick<VideoHelper,"start"|"answer"|"draw"|"close">;
-type ObserverOptions={helperFactory?:()=>MediaHelper;autoTick?:boolean;writeFrame?:(path:string,data:Buffer)=>Promise<void>};
+type ObserverOptions={helperFactory?:()=>MediaHelper;autoTick?:boolean;writeFrame?:(path:string,data:Buffer)=>Promise<void>;jpegOnly?:boolean};
 
 export class LiveObserver {
   private readonly dir:string;
@@ -136,6 +136,7 @@ export class LiveObserver {
         if(!this.current(epoch))return;
       }
       if(control.mode==="jpeg"){await this.mediaState(this.lastFrame?"streaming":"waiting");return;}
+      if(this.options.jpegOnly){await this.state("waiting","scope_jpeg_required");return;}
       if(!this.helper){
         this.helper=this.options.helperFactory?.()??new VideoHelper();this.offerId=randomUUID();
         await this.mediaState("connecting");if(!this.current(epoch))return;

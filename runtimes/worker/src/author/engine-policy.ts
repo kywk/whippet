@@ -11,6 +11,23 @@ export function modelResponseFailureStage(raw: unknown): ModelRequestFailureStag
   return reason === "max_output_tokens" ? "INCOMPLETE_MAX_OUTPUT_TOKENS" : reason === "content_filter" ? "INCOMPLETE_CONTENT_FILTER" : "INCOMPLETE_UNKNOWN";
 }
 
+type ResponseToolCall = EngineItem & { name: string; call_id: string; arguments: string };
+
+// Check identities across the entire response before dispatching any calls.
+export function responseToolCalls(output: EngineItem[], seen: ReadonlySet<string>): ResponseToolCall[] {
+  const batch = new Set<string>();
+  const calls: ResponseToolCall[] = [];
+  for (const item of output) {
+    if (item.type !== "function_call") continue;
+    const { call_id, name, arguments: args } = item;
+    if (typeof call_id !== "string" || !call_id || seen.has(call_id) || batch.has(call_id) ||
+        typeof name !== "string" || typeof args !== "string") throw new AuthorError("invalid_response");
+    batch.add(call_id);
+    calls.push(item as ResponseToolCall);
+  }
+  return calls;
+}
+
 export function outputTokenLimit(input: EngineRun): number {
   const budget = input.budget, limit = budget.maxOutputTokens === undefined ? 8192 : budget.maxOutputTokens;
   if (!Number.isSafeInteger(budget.modelRequests) || budget.modelRequests < 1 || !Number.isSafeInteger(budget.toolExecutions) || budget.toolExecutions < 0 ||
@@ -18,7 +35,7 @@ export function outputTokenLimit(input: EngineRun): number {
   return limit;
 }
 
-// Both engines use the same delivery reserve, without increasing total budgets.
+// All engines use the same delivery reserve, without increasing total budgets.
 export function requestSettings(input: EngineRun, request: number, count: number) {
   const { budget } = input;
   const finish = request === budget.modelRequests - 1 || budget.toolExecutions - count <= 2;

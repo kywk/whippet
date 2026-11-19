@@ -1,10 +1,10 @@
 import {createServer} from 'node:net';
-import {chmod,mkdtemp,rm} from 'node:fs/promises';
+import {chmod,chown,mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {CredentialClient,MAX_CREDENTIAL_FRAME} from './client.js';
 
-export async function loginBroker(client:CredentialClient):Promise<{path:string;close():Promise<void>}> {
+export async function loginBroker(client:CredentialClient,uid?:number):Promise<{path:string;close():Promise<void>}> {
   const dir=await mkdtemp(join(tmpdir(),'whippet-login-'));await chmod(dir,0o700);const path=join(dir,'login.sock');
   const sockets=new Set<import('node:net').Socket>();
   const server=createServer((socket)=>{
@@ -17,7 +17,11 @@ export async function loginBroker(client:CredentialClient):Promise<{path:string;
         if(typeof req.roleId!=='string')throw new Error();const credentials=await client.resolve(req.roleId);if(!socket.destroyed)socket.end(JSON.stringify({credentials})+'\n');}catch{if(!socket.destroyed)socket.end('{"error":"credential_operation_failed"}\n');}finally{buffer=Buffer.alloc(0);}})();
     });
   });
-  try{await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(path,()=>{server.off('error',reject);resolve();});});await chmod(path,0o600);}
+  try{
+    await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(path,()=>{server.off('error',reject);resolve();});});
+    await chmod(path,0o600);
+    if(uid!==undefined){await chown(path,uid,uid);await chmod(dir,0o711);}
+  }
   catch{server.close();await rm(dir,{recursive:true,force:true});throw new Error('credential_broker_unavailable');}
   return {path,async close(){for(const socket of sockets)socket.destroy();await new Promise<void>((resolve)=>server.close(()=>resolve()));await rm(dir,{recursive:true,force:true});}};
 }

@@ -216,7 +216,8 @@ func writeLiveControl(root *os.Root, control liveControl) error {
 		return err
 	}
 	name := ".control-" + newID()
-	f, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	// The live directory is private to the attempt and its sandboxed test UID.
+	f, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}

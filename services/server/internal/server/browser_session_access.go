@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"time"
 )
@@ -23,9 +22,13 @@ type BrowserSessionTarget struct {
 // Only current, authorized leases can be discovered or watched. The caller
 // also checks the current in-memory Manager connection and its epoch.
 const browserSessionAuthority = `l.reclaimed=false AND l.deadline_at>now()
- AND t.revoked_at IS NULL AND w.lifecycle='active' AND w.scope_status='confirmed'
- AND w.authorization_revision=l.authorization_revision
- AND l.workspace_context->'config'=w.canonical_config`
+ AND t.revoked_at IS NULL AND w.authorization_revision=l.authorization_revision
+ AND ((l.author_run_id IS NULL AND w.lifecycle='active' AND w.scope_status='confirmed' AND l.workspace_context->'config'=w.canonical_config)
+ OR (l.author_run_id IS NOT NULL AND w.scope_status<>'revoking' AND EXISTS(
+ SELECT 1 FROM external_author_claims c JOIN runs r ON r.id=c.run_id AND r.attempt_id=c.attempt_id AND r.workspace_id=c.workspace_id
+ WHERE c.run_id=l.author_run_id AND c.browser_session_id=l.session_id AND c.token_id=l.token_id AND c.workspace_id=l.workspace_id
+ AND c.state='active' AND c.expires_at>now() AND c.deadline_at>now() AND r.author_intent_checked AND r.status='running' AND r.author_engine='external'
+ AND r.workspace_context=l.workspace_context)))`
 
 func (p *Postgres) BrowserSessions(ctx context.Context, workspace, managerID, epoch string) ([]BrowserSessionItem, error) {
 	if !ValidID(workspace) || !ValidID(epoch) || managerID == "" {
@@ -113,22 +116,16 @@ func (p *Postgres) ResolveBrowserSessionCredentials(ctx context.Context, manager
 	if err != nil {
 		return result, err
 	}
-	var state, assignedManager, assignedEpoch string
-	var reclaimed bool
-	var deadline time.Time
-	var revision int64
-	var raw json.RawMessage
-	if err := tx.QueryRowContext(ctx, `SELECT state,reclaimed,deadline_at,manager_id,manager_epoch,authorization_revision,workspace_context
- FROM agent_browser_leases WHERE session_id=$1 AND lease_id=$2 AND token_id=$3 AND workspace_id=$4 FOR UPDATE`, sessionID, leaseID, tokenID, workspaceID).
-		Scan(&state, &reclaimed, &deadline, &assignedManager, &assignedEpoch, &revision, &raw); err != nil {
-		return result, dbError(err)
+	lease, err := scanBrowserLease(tx.QueryRowContext(ctx, `SELECT `+browserLeaseColumns+`
+ FROM agent_browser_leases WHERE session_id=$1 AND lease_id=$2 AND token_id=$3 AND workspace_id=$4 FOR UPDATE`, sessionID, leaseID, tokenID, workspaceID))
+	if err != nil {
+		return result, err
 	}
-	if state != "ready" || reclaimed || !deadline.After(time.Now()) || assignedManager != managerID || assignedEpoch != epoch ||
-		w.Lifecycle != "active" || w.ScopeStatus != "confirmed" || w.AuthorizationRevision != revision || w.Settings == nil {
+	if lease.State != "ready" || lease.Reclaimed || !lease.DeadlineAt.After(time.Now()) || lease.ManagerID != managerID || lease.ManagerEpoch != epoch {
 		return result, ErrCredentialUnavailable
 	}
-	snapshot, err := decodeWorkspaceContext(raw)
-	if err != nil || snapshot == nil || snapshot.WorkspaceID != workspaceID || !jsonEqual([]byte(jsonText(w.Settings)), jsonText(snapshot.Config)) {
+	snapshot, err := browserLeaseScope(ctx, tx, w, lease)
+	if err != nil {
 		return result, ErrCredentialUnavailable
 	}
 	var request CredentialRequest

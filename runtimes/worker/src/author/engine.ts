@@ -6,7 +6,7 @@ import type { FrozenAuthorSnapshot } from "./snapshot.js";
 import type { ConversationMemory } from "./conversation-memory.js";
 import type { ModuleCandidateStore } from "./module-candidate.js";
 import { AuthorError } from "./types.js";
-import { guardRequest, modelResponseFailureStage, outputTokenLimit, partialResult, requestSettings } from "./engine-policy.js";
+import { guardRequest, modelResponseFailureStage, outputTokenLimit, partialResult, requestSettings, responseToolCalls } from "./engine-policy.js";
 import { ContextCapacityError, estimateInputTokens, fitContext } from "./engines/context.js";
 
 export type EngineItem = Record<string, unknown>;
@@ -77,6 +77,7 @@ export const builtinEngine: AgentEngine = {
     const maxOutputTokens = outputTokenLimit(input);
     const context = structuredClone(input.context);
     const execute = toolDispatcher(input.tools, input.execute);
+    const seen = new Set<string>();
     const invalidEnvelope = (raw: unknown): EngineResult => {
       const stage = modelResponseFailureStage(raw);
       try { input.onModelRequestFailure?.(stage); } catch { /* Evidence never changes engine semantics. */ }
@@ -117,8 +118,8 @@ export const builtinEngine: AgentEngine = {
       if (data.status !== "completed" || data.error || !Array.isArray(data.output)) return invalidEnvelope(raw);
       const output = data.output as EngineItem[];
       if (output.some(item => !item || typeof item !== "object" || typeof item.type !== "string")) return invalidEnvelope(raw);
+      const calls = responseToolCalls(output, seen);
       input.onEvent?.(`author:model:${request + 1}:succeeded`);
-      const calls = output.filter(item => item.type === "function_call");
       if (!calls.length) {
         const pending = input.pendingWork?.();
         if (pending) {
@@ -137,6 +138,7 @@ export const builtinEngine: AgentEngine = {
       for (const call of calls) {
         if (signal.aborted) throw new AuthorError("cancelled");
         if (count >= budget.toolExecutions) return partial("tool_budget");
+        seen.add(call.call_id);
         if (call.name === "read_conversation_history") historyCalls++;
         const result = await execute(call, ++count);
         const serialized = JSON.stringify(result);

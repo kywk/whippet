@@ -13,6 +13,7 @@ import (
 )
 
 type Postgres struct {
+	AuthorIntent  AuthorIntentGate
 	DB            *sql.DB
 	Artifacts     ArtifactStorage
 	Secrets       *SecretVault
@@ -415,6 +416,11 @@ func (p *Postgres) Claim(ctx context.Context, managerID string, capacity int) (*
 		if _, err := tx.ExecContext(ctx, `UPDATE runs SET status='failed',error='scope_confirmation_required',finished_at=now() WHERE id=$1`, a.ID); err != nil {
 			return nil, err
 		}
+		return nil, tx.Commit()
+	}
+	if allowed, err := p.checkQueuedAuthorIntent(ctx, tx, a.ID, a.Author); err != nil {
+		return nil, err
+	} else if !allowed {
 		return nil, tx.Commit()
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE runs SET status='dispatched',manager_id=$2,attempt_id=$3,slot_released=false WHERE id=$1`, a.ID, managerID, a.AttemptID); err != nil {

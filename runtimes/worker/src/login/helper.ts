@@ -3,6 +3,7 @@ import type {Page} from '@playwright/test';
 import {origin} from '../workspace-context.js';
 import {CredentialError,MAX_CREDENTIAL_FRAME,type Credentials,type LoginValues} from './client.js';
 import {maskKnownInputs} from './privacy.js';
+import {browserScope} from '../author/scope.js';
 
 export const LOGIN_HOOK=Symbol.for('whippet.login.hook');
 export interface LoginHook {pause():Promise<void>;resume():Promise<void>|void;remember(values:string[]):void;}
@@ -51,7 +52,16 @@ export async function loginAs(page:Page,roleId:string,usernameSelector:string,pa
     socket.on('data',(data)=>{buffer=Buffer.concat([buffer,data]);if(buffer.length>MAX_CREDENTIAL_FRAME)return fail();const n=buffer.indexOf(10);if(n<0)return;
       try{const reply=JSON.parse(buffer.subarray(0,n).toString('utf8'));if(reply.error)throw new CredentialError();done=true;resolve(reply.credentials);socket.destroy();}catch{fail();}});
   });
-  try{return await submitLogin(page,values,usernameSelector,passwordSelector,submitSelector);}finally{
+  try{
+    const gate = browserScope(page.context());
+    if (!gate) return await submitLogin(page, values, usernameSelector, passwordSelector, submitSelector);
+    return await gate.duringLogin(values.loginOrigin, async () => {
+      if (new URL(page.url()).origin !== new URL(values.loginOrigin).origin) {
+        await page.goto(values.loginOrigin, { waitUntil: "domcontentloaded" });
+      }
+      return submitLogin(page, values, usernameSelector, passwordSelector, submitSelector);
+    });
+  }finally{
     const cookies=await page.context().cookies().catch(()=>[]);
     await new Promise<void>((resolve)=>{
       const socket=createConnection(socketPath);socket.on('error',()=>{socket.destroy();resolve();});socket.setTimeout(2000,()=>{socket.destroy();resolve();});

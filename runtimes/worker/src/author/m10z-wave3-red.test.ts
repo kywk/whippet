@@ -9,6 +9,9 @@ import type {FullResult, TestCase, TestResult, TestStep} from '@playwright/test/
 import NDJSONReporter from '../reporter.js';
 import {explorationBrowser} from './tools.js';
 import {ModuleDiagnostics, type SelfTestObservation} from './module-diagnostics.js';
+import {unconfirmedBrowserScope} from './scope.js';
+
+test.before(() => { process.env.WHIPPET_LOCAL_TEST_FIXTURES = '1'; });
 
 test('M10.Z Wave3 red: actual no-browser verifyDraft expect failure needs a step category', async () => {
   const browser=explorationBrowser({PATH:process.env.PATH,TMPDIR:process.env.TMPDIR});
@@ -53,7 +56,9 @@ test('M10.Z Wave3 red: actual main-frame navigation is a page event', async () =
   const server=createServer((_req,res)=>{res.setHeader('Content-Type','text/html');res.end('<!doctype html><title>fixture</title>');});
   await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
   const port=(server.address() as AddressInfo).port;
-  const browser=explorationBrowser({PATH:process.env.PATH,TMPDIR:process.env.TMPDIR});
+  const browser=explorationBrowser({PATH:process.env.PATH,TMPDIR:process.env.TMPDIR}, {
+    scope: { ...unconfirmedBrowserScope(), targets: [{ name: 'fixture', purpose: 'test', origin: `http://127.0.0.1:${port}` }] },
+  });
   const seen:SelfTestObservation[]=[];
   try {
     const script=`import {test,expect} from '@playwright/test'; test('synthetic',async({page})=>{await page.goto('http://127.0.0.1:${port}/'); expect(1).toBe(2)});`;

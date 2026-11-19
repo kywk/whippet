@@ -378,6 +378,16 @@ TodoMVC 三輪對話以 Chrome 操作。原 64k Run `a5fd78d0-5670-4208-8b4e-222
 
 19687 展示環境的 TodoMVC「新增整理書桌驗證」以內建 AI 進行兩輪對話，正式驗證 `ec4bd7bf-d92d-42b9-aa46-2943fc8d9381` 和摘要 `97bbe2b6-0a1b-4393-bea3-a5d54a824ac3` 通過。發佈版本 `fd0339c6-b912-48e3-8e2d-db42ae3944c8` 對話與來源週期的 4 則訊息一致。桌面與 390 px Chromium 確認右欄順序、對話按需載入及唯讀顯示。四筆 Worker 皆已回收，報告可讀。
 
+## 測試腳本與對話 Harness（2026-11-19）
+
+完成（本機）／主 Agent。手動、AI 與舊版腳本在自試、驗證及正式執行時使用 Workspace 核准的網站快照。Server 在 Web 與 MCP 的 author 入口檢查與測試的關聯，已排隊的舊 author 任務在派送前補查。正式執行的監看使用 JPEG。
+
+隔離 Docker 的三個核准站均可連線。第四站在瀏覽器重新導向、Playwright API 及 Node 連線測試中收到零請求。成功與斷言失敗的正式執行均產出 HTML／JSON 報告，隔離 Worker 也產出有效 JPEG 影格。Server、Manager、隔離 PostgreSQL 定向測試、Web build 與 16 項監看回歸通過。Worker 廣泛回歸 196 通過、2 跳過，唯一失敗的 Module Stage 容量案例也在原始 HEAD 的乾淨副本重現。意圖服務使用合成 Responses 回應驗證。部署設定見 [AI 腳本撰寫操作指南](../guides/m3-authoring.md)。
+
+跨 Agent 入口已完成本機實作。MCP 接單瀏覽器綁定 Run 範圍快照，工具呼叫沿用任務額度與去重。Workspace 與 MCP 參考 Worker 可選 pi，沿用 Whippet 的模型傳輸及工具守衛。[AGENTS.md](../../AGENTS.md#agent-harness) 要求日後同次處理內建 Agent、MCP 互動／接單及各已支援的第三方 adapter。
+
+Server、Manager、Web build、40 項 Worker 定向測試、10 項參考 Worker 測試與 6 項 Docker 測試通過。隔離 PostgreSQL 與實際 HTTP MCP 驗證了意圖拒絕、接單瀏覽器範圍，及 Vercel／pi 的領單、讀取凍結快照與冪等提交。Worker 廣泛回歸 244 通過、7 跳過，唯一失敗為既有 Module Stage 容量案例。模型使用合成回應，候選尚未部署。
+
 ## M10–M12：Use Case 與 Agent 平台化（2026-11-13 使用者同意）
 
 規格見 [Use Case 與 Agent 平台化規格](../requirements/usecase-agent-platform.md)，架構見 [design.md M10–M12](../architecture/design.md)，分工見 [delegation.md](delegation.md)。開發期間每項只做「最小驗證」，通過就推進；每個階段收尾時執行一次 Z 項完整驗證。Z 項通過才能標記 tag 或 merge。

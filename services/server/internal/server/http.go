@@ -506,7 +506,13 @@ func (a *API) fail(w http.ResponseWriter, err error) {
 	case errors.Is(err, ErrHistoryUnavailable):
 		writeError(w, 409, "history_unavailable", "Conversation history is unavailable for this attempt")
 	case errors.Is(err, ErrScopeConfirmation):
-		writeError(w, 409, "scope_confirmation_required", "Confirm the Workspace scope before this AI workflow can run")
+		writeError(w, 409, "scope_confirmation_required", "請先確認 Workspace 的網站範圍。")
+	case errors.Is(err, ErrAuthorOffTopic):
+		writeError(w, 422, "author_off_topic", "這裡只處理 Playwright 測試、執行結果與測試相關的 Workspace 設定。請描述你要驗證的行為。")
+	case errors.Is(err, ErrAuthorClarification):
+		writeError(w, 422, "author_clarification_required", "請補充要測試的頁面、操作或預期結果，或說明你想釐清的測試問題。")
+	case errors.Is(err, ErrAuthorPolicy):
+		writeError(w, 503, "author_policy_unavailable", "測試對話的意圖檢查暫時無法使用，請稍後再試。")
 	case errors.Is(err, ErrCredentialUnavailable):
 		writeError(w, 409, "credential_unavailable", "The current attempt or confirmed role is no longer available")
 	case errors.Is(err, ErrSecretsUnavailable):

@@ -127,11 +127,13 @@ M9 歷史工具依 [v9 契約](../../contracts/mvp-v9.md)：Server 在排入 aut
 
 ### 網站與機密邊界
 
-2026-11-12 使用者最新裁定：AI探索/產稿/修復以已確認target與必要dependency為範圍，透過工具、瀏覽器導覽/redirect/popup/request與產稿指引盡量避免越界；不建任意Node的網路沙箱。工程師手動修改的Playwright腳本保留完整能力，不套用AI網站範圍限制。來源由Server依寫入路徑記錄並快照至revision/version/run，不相信模型自報來源。
+Server 固定 Workspace 已確認 targets、dependencies、排除項目及角色引用。一般測試、Module Harness 與 Use Case 使用相同執行邊界。範圍縮減時終止使用已撤銷範圍的任務。工程師來源保留獨立的稽核與驗證記錄。
 
-不採AST白名單直譯、network=none＋全通道代理平台或協定降級。保留既有Playwright runner與報告，手動腳本仍使用獨立Worker與既有資源/逾時/回收限制。AI探索工具對任何來源腳本都受範圍檢查；人工來源不代表可取得模型key、Manager token或跨Workspace機密。
+Worker 在自己的 Linux Docker 網路命名空間安裝 IPv4／IPv6 出站規則，並以降權 UID 執行 Playwright 腳本。該 UID 的連線只能送往同容器內的 HTTP 代理。代理核對快照中的 origin 後才連線，轉址交回用戶端重新核對。受控 Chromium 另外檢查導覽、popup、子資源及 WebSocket 的相依用途。腳本可用代理連線至核准的 origin，測試監看會切至 JPEG，補足隔離網路無 WebRTC 出站的情況。隔離初始化失敗時停止腳本。
 
-機密採A的AEAD/TLS/角色參照；任務限定登入工具不向模型回傳值。AI可讀登入後頁面內容、操作及監看，針對密碼/Token/cookie/已知敏感輸入遮蔽，不一律禁止登入後DOM或原生報告。真驗證結果與人工發佈門檻保持。憑證撤銷繼續生效；網站範圍撤銷不延伸成手動腳本出站限制。B機密任務傳遞由owner提出最小接縫後PM固定，不沿用已廢止的全代理租約平台需求。
+Server 使用獨立、無工具的 Responses 請求判斷最新對話是否與測試相關。分類輸入只含當輪文字與最近兩則有界對話。拒絕或無法判定時不排入 author，通過時記錄至 Run。網頁、腳本、報告、工具輸出及舊對話在作者流程中皆視為資料。Workspace 新範圍與發佈仍由既有人工確認流程授權。
+
+機密使用 AEAD、TLS 及角色引用。Worker 以 attempt 綁定的 Unix socket 提供登入，模型從登入工具取得操作狀態與去敏頁面。報告保留必要驗證證據，敏感輸入期間暫停監看。
 
 ### 契約交付界線
 
@@ -221,6 +223,8 @@ M12範圍收斂（2026-11-16，依本輪同意的推進建議）：供應商金�
 - 接單模式以 attempt 租約承載：claim、心跳、工具呼叫、submit 都必須核對 attempt 與租約；逾時就讓 attempt 失敗；取消會讓後續呼叫一律失效。
 
 ### Adapter（M12）
+
+Worker 的 builtin、Vercel 及 pi 進入同一個 `runAuthor`。pi 使用框架的工具迴圈，模型請求經過 Whippet 的傳輸、容量、機密及預算檢查。MCP 參考 Worker 使用同一套 adapter，工具呼叫由 Server 驗證 Token、attempt、租約及工具額度。MCP 接單瀏覽器固定使用該 Run 的 Workspace 快照，角色登入也以同一份快照驗證。
 
 - 開源引擎只負責迴圈、供應商、重試與 compaction，工具一律來自註冊表。依賴版本鎖定在 Worker 的 lockfile，並更新 tech-stack。
 - `runtimes/agent-bridge/` 是參考外部 Worker，以 MCP 接單模式連線，不能直接存取 DB 或 Manager。

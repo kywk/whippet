@@ -6,7 +6,7 @@ export const AI_DEFAULTS = {
 } as const;
 
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
-export type EngineId = "builtin" | "vercel";
+export type EngineId = "builtin" | "vercel" | "pi";
 export type ProviderId = "opencode" | "openai-responses";
 
 export interface AIConfig {
@@ -75,7 +75,7 @@ export function readAIConfig(env: Readonly<Record<string, string | undefined>>):
   let parsed: URL;
   try { parsed = new URL(baseURL); } catch { throw new AIError("invalid_config"); }
   if (
-    !["true", "false"].includes(enabled) || !["builtin", "vercel"].includes(engine) || !["opencode", "openai-responses"].includes(provider) ||
+    !["true", "false"].includes(enabled) || !["builtin", "vercel", "pi"].includes(engine) || !["opencode", "openai-responses"].includes(provider) ||
     !validCapacity(contextWindow) || !validCapacity(contextInput) || parsed.protocol !== "https:" ||
     parsed.username !== "" || parsed.password !== "" || parsed.search !== "" || parsed.hash !== "" ||
     parsed.pathname.replace(/\/+$/, "").endsWith("/responses") ||

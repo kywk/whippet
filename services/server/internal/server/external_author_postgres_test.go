@@ -225,15 +225,19 @@ func TestM11ExternalBrowserBusyRetrySameCallIDMCP(t *testing.T) {
 	if _, err = p.CreateAuthor(ctx, test.ID, session.ID, "探索頁面", session.Draft.Revision); err != nil {
 		t.Fatal(err)
 	}
-	_, secret, err := p.CreateAgentToken(ctx, w.ID, "browser agent")
+	token, secret, err := p.CreateAgentToken(ctx, w.ID, "browser agent")
 	if err != nil {
 		t.Fatal(err)
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	engine := NewEngine(p, log)
 	handler := NewAPI(p, nil, engine, NewID(), log).WithAdminAccess(NewID(), "https://whippet.example").Handler(nil)
-	post := func(name string, args any) *httptest.ResponseRecorder {
-		body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": name, "arguments": args}})
+	post := func(name string, args any, meta ...map[string]string) *httptest.ResponseRecorder {
+		params := map[string]any{"name": name, "arguments": args}
+		if len(meta) > 0 {
+			params["_meta"] = map[string]any{"whippet": meta[0]}
+		}
+		body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params})
 		r := httptest.NewRequest(http.MethodPost, "https://whippet.example/mcp", bytes.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")
 		r.Header.Set("Accept", "application/json, text/event-stream")
@@ -256,6 +260,10 @@ func TestM11ExternalBrowserBusyRetrySameCallIDMCP(t *testing.T) {
 	}
 	task := claim.Result.Structured.Task
 	assertExternalTaskTestID(t, task, &test.ID)
+	config.Targets = append(config.Targets, WorkspaceOrigin{Name: "approved after enqueue", Origin: "https://new-target.invalid"})
+	if _, err = p.DB.ExecContext(ctx, `UPDATE workspaces SET canonical_config=$2,authorization_revision=2 WHERE id=$1`, w.ID, jsonText(config)); err != nil {
+		t.Fatal(err)
+	}
 	allowed := false
 	for _, name := range task.ContextBundle.Author.AllowedTools {
 		if name == "browser_snapshot" {
@@ -288,14 +296,29 @@ func TestM11ExternalBrowserBusyRetrySameCallIDMCP(t *testing.T) {
 	go func() { retried <- post("task_tool_call", args) }()
 	opened := nextBrowserMessage(t, peer, "session.open")
 	var lease struct {
-		SessionID string `json:"sessionId"`
-		LeaseID   string `json:"leaseId"`
+		SessionID        string           `json:"sessionId"`
+		LeaseID          string           `json:"leaseId"`
+		WorkspaceContext WorkspaceContext `json:"workspaceContext"`
 	}
 	if json.Unmarshal(opened.Payload, &lease) != nil || !ValidID(lease.SessionID) {
 		t.Fatal("task browser open did not reach Manager")
 	}
-	if err = engine.Handle(ctx, manager, NewEnvelope("session.ready", "m11-task-browser", "", "", lease)); err != nil {
+	if scoped := lease.WorkspaceContext.Config; scoped == nil || len(scoped.Targets) != 1 || scoped.Targets[0].Origin != "https://m11.invalid" {
+		t.Fatal("external browser inherited an expanded Workspace")
+	}
+	if err = engine.Handle(ctx, manager, NewEnvelope("session.ready", "m11-task-browser", "", "", map[string]string{"sessionId": lease.SessionID, "leaseId": lease.LeaseID})); err != nil {
 		t.Fatal(err)
+	}
+	bound, err := p.BrowserLeaseOwned(ctx, token, lease.SessionID, lease.LeaseID)
+	if err != nil || stringValue(bound.AuthorRunID) != task.RunID {
+		t.Fatal("external browser is missing its Run binding", err)
+	}
+	if _, err = p.BrowserSessionLiveTarget(ctx, lease.SessionID, lease.LeaseID); err != nil {
+		t.Fatal("the bounded session could not be watched", err)
+	}
+	standalone := post("browser_snapshot", map[string]any{}, map[string]string{"sessionId": lease.SessionID, "leaseId": lease.LeaseID, "callId": NewID()})
+	if standalone.Code != 200 || !bytes.Contains(standalone.Body.Bytes(), []byte(`"isError":true`)) {
+		t.Fatal("a task browser accepted a call outside its Run and tool quota")
 	}
 	called := nextBrowserMessage(t, peer, "session.call")
 	var call struct {

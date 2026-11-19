@@ -8,7 +8,7 @@ import { BridgeError } from '../../runtimes/agent-bridge/dist/safety.js';
 
 const input = JSON.parse(readFileSync(0, 'utf8'));
 const key = 'synthetic-reference-model-key';
-const config = readAIConfig({ WHIPPET_AI_ENABLED: 'true', WHIPPET_AI_ENGINE: 'vercel', OPENCODE_API_KEY: key, ...(input.frozen === 'true' ? { WHIPPET_AI_CONTEXT_INPUT_TOKENS: '28000' } : {}) });
+const config = readAIConfig({ WHIPPET_AI_ENABLED: 'true', WHIPPET_AI_ENGINE: input.engine ?? 'vercel', OPENCODE_API_KEY: key, ...(input.frozen === 'true' ? { WHIPPET_AI_CONTEXT_INPUT_TOKENS: '28000' } : {}) });
 let models = 0, claims = 0, tools = 0, lost = false;
 let stage = 'first_attempt', firstCode = 'none', firstPhase = 'none';
 const submits = [];

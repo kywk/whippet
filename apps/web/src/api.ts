@@ -66,7 +66,7 @@ function parseWorkspaceAgentRuntime(value: unknown, workspaceId: string): Worksp
     },
     profiles: array(data.profiles, (value) => {
       const profile = record(value);
-      return { id: string(profile.id), engine: choice(profile.engine, ['builtin', 'vercel'] as const), provider: string(profile.provider), model: string(profile.model), reasoningEffort: string(profile.reasoningEffort) };
+      return { id: string(profile.id), engine: choice(profile.engine, ['builtin', 'vercel', 'pi'] as const), provider: string(profile.provider), model: string(profile.model), reasoningEffort: string(profile.reasoningEffort) };
     }),
   };
   if (result.workspaceId !== workspaceId || result.revision < 1 || new Set(result.profiles.map((profile) => profile.id)).size !== result.profiles.length) {

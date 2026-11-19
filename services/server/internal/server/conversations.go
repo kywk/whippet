@@ -237,6 +237,11 @@ func (p *Postgres) createAuthorInTxForRuntime(ctx context.Context, tx *sql.Tx, d
 	if err = validateAuthorPlatform(input, testKind); err != nil {
 		return AuthorSubmission{}, err
 	}
+	if chain == nil {
+		if err = p.checkAuthorIntent(ctx, input.SkillID, input.Messages); err != nil {
+			return AuthorSubmission{}, err
+		}
+	}
 
 	input.History, err = conversationHistorySnapshot(ctx, tx, conversationID)
 	if err != nil {

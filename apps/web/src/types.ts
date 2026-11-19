@@ -57,7 +57,7 @@ export interface AgentToolAudit {
 export type ScriptOrigin = 'ai' | 'manual' | 'legacy';
 export type AuthorEngine = 'builtin' | 'external';
 // Worker model loops are independent of the builtin/external task routing above.
-export type AgentRuntimeEngine = 'builtin' | 'vercel';
+export type AgentRuntimeEngine = 'builtin' | 'vercel' | 'pi';
 export const AGENT_RUNTIME_SKILLS = ['test-author', 'workspace-author', 'acceptance-summary', 'module-authoring', 'usecase-planner'] as const;
 export type AgentRuntimeSkill = typeof AGENT_RUNTIME_SKILLS[number];
 export interface AgentRuntimeSelection {

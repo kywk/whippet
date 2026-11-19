@@ -4,6 +4,8 @@ import {explorationBrowser} from './tools.js';
 import {unconfirmedBrowserScope} from './scope.js';
 import {ModuleDiagnostics} from './module-diagnostics.js';
 
+test.before(() => { process.env.WHIPPET_LOCAL_TEST_FIXTURES = '1'; });
+
 const prefix="import {test,expect} from '@playwright/test';";
 test('M109 v2 actual self-test branches, off equivalence, safe fixed evidence',async()=>{
  for(const [name,script,expected] of [

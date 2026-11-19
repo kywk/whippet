@@ -62,7 +62,7 @@ func validRuntimeSnapshot(raw json.RawMessage) bool {
 			return false
 		}
 	}
-	if r.SchemaVersion != 1 || !capabilityID.MatchString(r.ProfileID) || len(r.ProfileID) > 63 || r.Engine != "builtin" && r.Engine != "vercel" || r.Provider != "opencode" && r.Provider != "openai-responses" ||
+	if r.SchemaVersion != 1 || !capabilityID.MatchString(r.ProfileID) || len(r.ProfileID) > 63 || r.Engine != "builtin" && r.Engine != "vercel" && r.Engine != "pi" || r.Provider != "opencode" && r.Provider != "openai-responses" ||
 		!runtimeModel.MatchString(r.Model) || strings.HasPrefix(r.Model, "opencode-go/") || r.ReasoningEffort != "low" && r.ReasoningEffort != "medium" && r.ReasoningEffort != "high" && r.ReasoningEffort != "xhigh" ||
 		!(r.ContextWindowTokens >= 1024 && r.ContextWindowTokens <= 2097152 || r.ContextWindowTokens == 0 && r.Engine == "builtin") || r.ContextInputTokens < 1024 || r.ContextInputTokens > 2097152 || r.ContextWindowTokens > 0 && r.ContextInputTokens > r.ContextWindowTokens ||
 		r.Provider == "opencode" && r.Model == "muse-spark-1.3-contributor" && r.BaseURL == "https://opencode.ai/inference/go/openai/v1" && r.ContextWindowTokens > 1048576 {

@@ -73,6 +73,8 @@ Server保存lease的Token/Workspace/Manager、epoch、registry與scope快照、d
 
 open交易與Run Claim鎖同Manager row，capacity計算未釋放Run＋未回收lease；Manager也保留共用容量守衛。Workspace必須active／scope confirmed；Server由權威設定產生workspaceContext，租約四項browser能力與registry hash固定，不接受客戶端Workspace或scope。每個call先重驗Token未撤銷、所有權、Workspace scope版本與期限；失效標closing並收斂，不延續舊授權。
 
+接單任務使用 migration 033 持久綁定的專用瀏覽器租約。Server 從被領取的 Run 範圍快照派送瀏覽器，將租約期限限制在接單期限內，並在每次工具與憑證操作重驗有效任務及授權。`browser_session_open` 仍以 Workspace 當下的正式範圍開獨立租約。接單租約的瀏覽器工具只能經 `task_tool_call` 使用，沿用接單任務工具預算及去重規則。
+
 撤銷Token同交易將其lease標closing，阻止後續工具；close由Engine送，回收完成才釋名額。Engine維持單一WSS writer及目前Manager epoch驗證，session.*分流在Run/attempt要求之前。Gateway沿有界訊息與工具128KiB結果上限，不放寬credential/history frame。
 
 失聯／Server重啟將未回收lease標reclaim_pending，失效pending calls，只重送close，不重送open/call。heartbeat.sessions只作對帳，不以缺席推定回收；unknown／stale租約要求close。Manager同lease已回收tombstone重送原closed(true)；未知識別須核精確deterministic容器不存在或標籤吻合且移除成功才closed(true)，異lease現存record拒絕，不動其他容器。所有closed／reply必綁當前可信Manager連線與租約，遲到成功不能復活lease。Manager總期限仍為兜底回收，不因heartbeat續租。

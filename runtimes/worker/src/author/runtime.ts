@@ -25,7 +25,7 @@ export function validRuntime(value: unknown): value is AuthorRuntime {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const r = value as AuthorRuntime;
   if (Object.keys(r).length !== 10 || Object.keys(r).some(k => !["schemaVersion", "profileId", "engine", "provider", "baseURL", "model", "reasoningEffort", "contextWindowTokens", "contextInputTokens", "sha256"].includes(k)) ||
-    r.schemaVersion !== 1 || typeof r.profileId !== "string" || !/^[a-z][a-z0-9-]{0,62}$/.test(r.profileId) || !["builtin", "vercel"].includes(r.engine) || !["opencode", "openai-responses"].includes(r.provider) ||
+    r.schemaVersion !== 1 || typeof r.profileId !== "string" || !/^[a-z][a-z0-9-]{0,62}$/.test(r.profileId) || !["builtin", "vercel", "pi"].includes(r.engine) || !["opencode", "openai-responses"].includes(r.provider) ||
     typeof r.baseURL !== "string" || r.baseURL.length > 2048 || !/^[\x21-\x7e]+$/.test(r.baseURL) || /[\\"<>]/.test(r.baseURL) || r.baseURL.endsWith("/") ||
     typeof r.model !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9_./:-]{0,127}$/.test(r.model) || r.model.startsWith("opencode-go/") || !["low", "medium", "high", "xhigh"].includes(r.reasoningEffort) ||
     !(Number.isSafeInteger(r.contextWindowTokens) && r.contextWindowTokens >= 1024 && r.contextWindowTokens <= 2097152 || r.contextWindowTokens === 0 && r.engine === "builtin") ||

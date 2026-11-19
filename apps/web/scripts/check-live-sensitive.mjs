@@ -247,6 +247,21 @@ try {
     eq(h.image.src, ''); ok(revoked.includes(url)); eq(h.video.srcObject, null); pending();
     eq(timers.size, 0); eq(h.image.onload, null);
   });
+  await test('sandboxed runs switch to JPEG without showing frames during a sensitive pause', async () => {
+    const h = await start();
+    const requiresJPEG = { type: 'state', viewerId: viewer, state: 'waiting', reason: 'scope_jpeg_required', transport: 'webrtc' };
+    h.ws.json({ ...requiresJPEG, viewerId: id(999) }); eq(h.state().mode, 'webrtc');
+    h.ws.json(requiresJPEG); eq(h.state().mode, 'jpeg');
+    eq(h.ws.sent.at(-1), { type: 'mode', mode: 'jpeg' });
+    h.controller.close();
+
+    const paused = await start();
+    paused.pause(); paused.ws.json(requiresJPEG);
+    eq(paused.state().mode, 'jpeg'); eq(paused.state().phase, 'paused');
+    paused.ws.bytes(); eq(paused.image.src, '');
+    paused.complete('jpeg');
+    paused.ws.bytes(); paused.image.onload(); eq(paused.state().phase, 'streaming');
+  });
   await test('browser session uses its own same-origin socket and retains sensitive masking', async () => {
     const expected = `wss://platform.example/api/browser-sessions/${id(801)}/leases/${id(802)}/live`;
     eq(sessionLiveSocketUrl('/api', id(801), id(802), 'https://platform.example/'), expected);
@@ -256,7 +271,7 @@ try {
     eq(h.states.at(-1).sensitivePaused, true); eq(h.states.at(-1).phase, 'paused');
     h.controller.close(); eq(h.video.srcObject, null); eq(h.image.src, '');
   });
-  console.log(`Live sensitive checks: ${passed}/15 scenarios PASS; ${assertions} assertions. Browser/real media integration not run.`);
+  console.log(`Live sensitive checks: ${passed}/16 scenarios PASS; ${assertions} assertions. Browser/real media integration not run.`);
 } finally {
   for (const [key, value] of originals) { if (value === undefined) delete globalThis[key]; else globalThis[key] = value; }
   Date.now = originalNow; URL.createObjectURL = originalCreate; URL.revokeObjectURL = originalRevoke;

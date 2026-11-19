@@ -29,8 +29,8 @@ test("v12 golden digest survives jsonb order; malformed/expanded runtime fails c
   for (const bad of [null, { ...golden, model: "drift" }, { ...golden, apiKey: "forbidden" }, signed({ engine: "vercel", contextWindowTokens: 0 }), signed({ contextWindowTokens: 2097152 }), signed({ baseURL: "https://provider.example/v1?" }), signed({ baseURL: "https://user:pass@provider.example/v1" })]) assert.equal(validRuntime(bad), false);
 });
 
-test("queued builtin/Vercel runtime ignores later env drift and keeps skill budgets/tools", async () => {
-  for (const engine of ["builtin", "vercel"] as const) {
+test("each queued runtime ignores later env drift and keeps skill budgets and tools", async () => {
+  for (const engine of ["builtin", "vercel", "pi"] as const) {
     const r = signed({ engine, profileId: engine });
     const input = task(r), before = JSON.stringify(input);
     const config = readAuthorConfig({ WHIPPET_AI_ENABLED: "true", OPENCODE_API_KEY: "synthetic-opencode-key",

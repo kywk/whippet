@@ -1,10 +1,10 @@
 # Whippet 參考 MCP Worker
 
-以已鎖定的Vercel adapter執行**一筆普通Test的test-author接單任務**。只透過Whippet MCP領單、心跳、讀取打包skill資源、呼叫claim允許的原工具及提交候選；沒有DB／Manager介面、瀏覽器本機控制、shell／fs模型工具或發佈入口。
+以 Vercel 或 pi 執行一筆普通 Test 的 test-author 接單任務。透過 Whippet MCP 領單、心跳、讀取打包 skill 資源、呼叫 claim 允許的工具及提交候選。
 
 ## 建置與執行
 
-需要Node 22.12以上及monorepo內既有Worker依賴。共用Worker lockfile、registry、skills與Vercel引擎，不另外安裝一套SDK：
+需要 Node 22.12 以上及 monorepo 內的 Worker 依賴。兩種 adapter 共用 Worker lockfile、registry、skills 與 Harness。
 
 ```sh
 npm ci --prefix runtimes/worker
@@ -12,12 +12,13 @@ npm run build --prefix runtimes/agent-bridge
 node runtimes/agent-bridge/dist/cli.js --help
 ```
 
-先以既有受控環境設定提供Worker同名模型設定及對應provider key；不把金鑰放在命令列、journal或MCP參數。此客戶端明確使用Vercel，模型／effort／provider／HTTPS模型入口由操作者設定，不依MCP任務的runtime或頁面內容自動切換。Whippet平台的預設引擎仍為builtin。
+從受控環境提供模型設定及 provider key。此客戶端預設使用 Vercel。指定 `--engine pi` 可改用 Pi Agent Core。模型、推理強度、provider 和 HTTPS 端點由操作者設定。
 
 選用管理者核准的MCP Server與既有Workspace Agent Token。工作區須已將預期的新任務交給external；本程式不切Workspace模式、不建立Run，也不承接其他Token的任務。先使用隔離測試環境驗證，不將執行此命令視為部署固定基準。
 
 ```sh
 npm start --prefix runtimes/agent-bridge -- \
+  --engine pi \
   --mcp-url https://whippet.example/mcp \
   --token-file /absolute/private/secrets/agent \
   --state-file /absolute/private/client-state/task-001.json

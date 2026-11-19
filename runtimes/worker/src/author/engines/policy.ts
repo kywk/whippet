@@ -1,10 +1,10 @@
-// Harness policy for the production Vercel adapter.
+// Shared Harness policy for adapters that drive the guarded Responses transport.
 import type { AIConfig } from "../../ai/config.js";
 import { modelCapacity } from "../../ai/capacity.js";
 import { AuthorError } from "../types.js";
 import { pruneSnapshots, type EngineItem, type EngineResult, type EngineRun } from "../engine.js";
 import { loadToolRegistry, modelTool, validateToolArguments, validateToolResult, type ToolDefinition } from "../registry.js";
-import { guardRequest, modelResponseFailureStage, outputTokenLimit, partialResult, requestSettings, withAbort } from "../engine-policy.js";
+import { guardRequest, modelResponseFailureStage, outputTokenLimit, partialResult, requestSettings, responseToolCalls, withAbort } from "../engine-policy.js";
 import { ContextCapacityError, estimateInputTokens, fitContext } from "./context.js";
 
 export class AdapterPolicy {
@@ -96,17 +96,16 @@ export class AdapterPolicy {
       this.fail("invalid_response");
     }
     if (JSON.stringify(raw).includes(this.config.apiKey)) this.fail("sensitive_output");
-    for (const item of data.output) {
-      if (!item || typeof item.type !== "string") this.fail("invalid_response");
-      if (item.type === "function_call") {
-        let args: unknown;
-        try { args = JSON.parse(item.arguments); } catch { this.fail("invalid_response"); }
-        this.validateCall(item.name, args);
-      }
+    if (data.output.some(item => !item || typeof item.type !== "string")) this.fail("invalid_response");
+    try {
+      for (const item of responseToolCalls(data.output, this.seen)) this.validateCall(item.name, JSON.parse(item.arguments));
+    } catch {
+      this.fail("invalid_response");
     }
   }
   async execute(name: string, id: string, args: unknown): Promise<unknown> {
     this.checkAbort();
+    if (this.failure) throw this.failure;
     if (this.completedText !== undefined) return { stopped: true };
     if (this.executions >= this.input.budget.toolExecutions) { this.toolExhausted = true; return { budgetExhausted: true }; }
     if (!id || this.seen.has(id)) this.fail("invalid_response");

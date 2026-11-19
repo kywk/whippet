@@ -74,9 +74,9 @@ function fixture(t: { after(fn: () => void): void }) {
     loseSubmit: () => { failSubmit = true; }, loseHeartbeat: () => { failHeartbeat = true; }, uncertainTool: () => { uncertainTool = true; } };
 }
 
-test('MCP reference worker completes one task and persists no keys', async t => {
+for (const engine of ['vercel', 'pi'] as const) test(`MCP reference worker on ${engine} completes one task and persists no keys`, async t => {
   const f = fixture(t);
-  const result = await runOnce(f.options);
+  const result = await runOnce({ ...f.options, config: { ...f.options.config, engine } });
   assert.equal(result.state, 'submitted'); assert.equal(result.appliedRevision, 2); assert.equal(f.models(), 2);
   assert.equal(f.submissions.length, 1); assert.equal(f.calls.filter(c => c.params?.name === 'task_tool_call').length, 1);
   assert.ok(f.heartbeatCount() >= 2);

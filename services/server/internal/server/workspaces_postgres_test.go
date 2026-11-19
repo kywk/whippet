@@ -54,8 +54,10 @@ func workspaceTestDB(t *testing.T) (*Postgres, context.Context) {
 		t.Fatal("open isolated test schema")
 	}
 	t.Cleanup(func() { db.Close() })
-	return &Postgres{DB: db}, ctx
+	return &Postgres{DB: db, AuthorIntent: allowFixtureAuthorIntent}, ctx
 }
+
+func allowFixtureAuthorIntent(context.Context, string, []ChatMessage) error { return nil }
 
 func TestPostgresWorkspaceSettingsSnapshots(t *testing.T) {
 	t.Run("fresh_001_to_006_and_settings_transaction", func(t *testing.T) {

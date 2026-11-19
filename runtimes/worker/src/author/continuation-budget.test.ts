@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runAuthor } from "./loop.js";
 import { AuthorError, type AuthorInput, type AuthorOutput } from "./types.js";
-import { readAIConfig } from "../ai/config.js";
+import { readAIConfig, type EngineId } from "../ai/config.js";
 import { runtimeDigest, type AuthorRuntime } from "./runtime.js";
 import { loadToolRegistry, sha256 } from "./registry.js";
 import { envelope, call as fixtureCall } from "./spike/fixture.js";
 
 const config = readAIConfig({ WHIPPET_AI_ENABLED: "true", OPENCODE_API_KEY: "synthetic-continuation-key" });
-function task(engine: "builtin" | "vercel" = "builtin"): AuthorInput {
+function task(engine: EngineId = "builtin"): AuthorInput {
   const id = "11111111-1111-4111-8111-111111111111", registry = loadToolRegistry();
   const root = new URL("../../skills/test-author/", import.meta.url), raw = readFileSync(new URL("manifest.json", root)), manifest = JSON.parse(raw.toString());
   const runtime: AuthorRuntime = JSON.parse(readFileSync(new URL("../../../../contracts/testdata/agent-runtime.json", import.meta.url), "utf8"));
@@ -23,8 +23,8 @@ function task(engine: "builtin" | "vercel" = "builtin"): AuthorInput {
 }
 const call = (id: string) => ({ type: "function_call", call_id: id, name: "read_draft", arguments: "{}" });
 
-test("both production engines preserve reduced budgets and issue guarded partial receipts", async () => {
-  for (const engine of ["builtin", "vercel"] as const) {
+test("all production engines preserve reduced budgets and issue guarded partial receipts", async () => {
+  for (const engine of ["builtin", "vercel", "pi"] as const) {
     let requests = 0;
     const input = task(engine), before = JSON.stringify(input);
     const out = await runAuthor(input, config, undefined, { fetcher: async (_url, init) => {

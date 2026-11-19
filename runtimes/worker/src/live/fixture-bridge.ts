@@ -1,12 +1,12 @@
 // Generated outside the saved spec: path mapping intercepts only its import.
 // The bridge uses playwright/test to avoid recursively resolving its own alias.
-export function fixtureBridge(observerURL: string,options?:{scopeURL:string;scope:unknown;privacyURL:string;navigationObservationPath?:string}): string {
+export function fixtureBridge(observerURL: string,options?:{scopeURL:string;scope:unknown;privacyURL:string;navigationObservationPath?:string;jpegOnly?:boolean}): string {
   const scope=options?.scope;
   const navigationPath=options?.navigationObservationPath;
   return `const api = require('playwright/test');
 const test = api.test.extend({browser: [async ({browser}, use) => {
   let live;
-  try { const {LiveObserver} = await import(${JSON.stringify(observerURL)}); live = new LiveObserver(); live.observeBrowser(browser); } catch {}
+  try { const {LiveObserver} = await import(${JSON.stringify(observerURL)}); live = new LiveObserver(undefined,{jpegOnly:${options?.jpegOnly === true}}); live.observeBrowser(browser); } catch {}
   let privacy,restore,observedPage=false,navigated=false;
   ${options?`if(live){const {installLoginPrivacy}=await import(${JSON.stringify(options.privacyURL)});privacy=installLoginPrivacy(browser,live);}
   ${scope?`const {AIOriginGate,installAIOriginGate}=await import(${JSON.stringify(options.scopeURL)});`:''}`:''}

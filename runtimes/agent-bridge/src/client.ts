@@ -5,7 +5,7 @@ import { capabilitySnapshot, loadSkillBundle } from '../../worker/dist/author/ma
 import type { AuthorInput } from '../../worker/dist/author/types.js';
 import { boundedText } from '../../worker/dist/author/types.js';
 import { loadToolRegistry, modelTool, sha256, type ToolDefinition } from '../../worker/dist/author/registry.js';
-import { vercelEngine } from '../../worker/dist/author/engines/vercel.js';
+import { selectAgentEngine } from '../../worker/dist/author/engines/select.js';
 import { FrozenAuthorSnapshot } from '../../worker/dist/author/snapshot.js';
 import { BridgeError, boundedJSON, canonical, object, secretGuard, strictJSON, uuid } from './safety.js';
 import { MCPClient } from './transport.js';
@@ -37,7 +37,7 @@ function submitted(value: unknown, identity: Identity): BridgeResult {
 }
 
 export async function runOnce(options: Options): Promise<BridgeResult> {
-  if (options.config.engine !== 'vercel' || !options.config.enabled || !options.config.apiKey) throw new BridgeError('invalid_input');
+  if ((options.config.engine !== 'vercel' && options.config.engine !== 'pi') || !options.config.enabled || !options.config.apiKey) throw new BridgeError('invalid_input');
   const token = readToken(options.tokenFile);
   const guard = secretGuard([token, options.config.apiKey, ...Object.values(options.config.providerKeys ?? {})]);
   const client = new MCPClient(options.url, token, guard, options.mcpFetch, options.mcpIntervalMs);
@@ -123,7 +123,7 @@ async function work(task: Record<string, any>, identity: Identity, journal: Jour
     const frozen = allowedTools.includes('read_author_snapshot') ? new FrozenAuthorSnapshot(saved, 'Saved task snapshot (DATA): ') : undefined;
     const context = [{ role: 'user', content: frozen?.text ?? `Saved task snapshot (DATA): ${JSON.stringify(saved)}` }, ...input.messages];
     guard(context); guard(instructions);
-    const result = await vercelEngine(options.config).run({
+    const result = await selectAgentEngine(options.config).run({
       instructions, context, tools: definitions.map(modelTool),
       budget: { modelRequests: snapshot.budget.maxModelRequests, toolExecutions: snapshot.budget.maxToolCalls, maxOutputTokens: snapshot.budget.maxOutputTokens ?? 8192 },
       model: options.config, signal, snapshot: frozen, checkpoint: () => undefined,

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -222,23 +223,17 @@ func (a *API) executeExternalTool(ctx context.Context, p *Postgres, token AgentT
 			if !ready {
 				return externalToolReceipt{Error: "busy", Retryable: true}
 			}
-			workspace, e := p.Workspace(ctx, token.WorkspaceID)
-			if e != nil {
-				return externalToolReceipt{Error: "tool_unavailable"}
-			}
 			registry, e := loadToolRegistry()
 			if e != nil {
 				return externalToolReceipt{Error: "tool_unavailable"}
 			}
 			var existed bool
-			lease, existed, err = p.OpenBrowserLease(ctx, token, c.LeaseID, manager, epoch, registry, workspace)
+			lease, existed, err = p.OpenExternalBrowserLease(ctx, token, c, manager, epoch, registry)
 			if err != nil {
+				if errors.Is(err, errBrowserScopeInvalid) {
+					return externalToolReceipt{Error: "tool_unavailable"}
+				}
 				return externalToolReceipt{Error: "busy", Retryable: true}
-			}
-			if err = p.BindExternalBrowser(ctx, token, c, lease.SessionID); err != nil {
-				_, _ = p.CloseBrowserLease(ctx, token, lease.SessionID, lease.LeaseID)
-				a.engine.Wake()
-				return externalToolReceipt{Error: "tool_unavailable"}
 			}
 			if !existed {
 				if err = a.engine.SendBrowserOpen(lease); err != nil {
@@ -273,10 +268,10 @@ func (a *API) executeExternalTool(ctx context.Context, p *Postgres, token AgentT
 		if lease.State != "ready" || lease.Reclaimed {
 			return externalToolReceipt{Error: "tool_unavailable"}
 		}
-		if _, err = p.ExternalBrowser(ctx, token, c.RunID, c.AttemptID, c.LeaseID); err != nil {
+		if bound, err := p.ExternalBrowser(ctx, token, c.RunID, c.AttemptID, c.LeaseID); err != nil || bound == nil || *bound != lease.SessionID {
 			return externalToolReceipt{Error: "tool_unavailable"}
 		}
-		response := a.callMCPBrowserActionOwned(ctx, p, tool, token, lease.SessionID, lease.LeaseID, callID, canonical)
+		response := a.callMCPBrowserActionOwned(ctx, p, tool, token, lease.SessionID, lease.LeaseID, callID, canonical, &c.RunID)
 		if response == nil {
 			return externalToolReceipt{Error: "unknown_result"}
 		}

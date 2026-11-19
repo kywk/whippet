@@ -1,6 +1,6 @@
 # Whippet Playwright Worker（M1）
 
-最新 M8 A：新增 `workspace-author@1` 純訪談，沿用 `node dist/author/main.js`；交付見 [Manager DELIVERY](../../services/manager/DELIVERY.md)。這不代表 M8 受限網站執行已完成，舊版自由 spec 執行方式亦不代表新版網路授權。
+Workspace 的測試網路範圍由 Server 固定，Worker 在自試、正式驗證及執行時套用。Workspace 設定對話沿用 `node dist/author/main.js`。
 
 一次性 Node.js／TypeScript Worker，以真正的 Playwright Test Runner 執行完整 spec，輸出內建 HTML／JSON reporter 結果。映像及 `@playwright/test` 同為 **1.64.1**，依 [Playwright Docker 文件](https://playwright.dev/docs/docker) 保持版本一致；HTML／JSON 與自訂 NDJSON reporter 依 [官方 reporter 介面](https://playwright.dev/docs/test-reporters) 設定。
 
@@ -36,16 +36,26 @@ Playwright 的 global timeout 為 `timeoutMs`，外層 watchdog 額外留 10 秒
 Worker 依賴已安裝，正式型別檢查與 build 已通過。Docker 映像由總指揮代跑建置，本 Agent 不重複執行；映像結果以 [DELIVERY.md](../../services/manager/DELIVERY.md) 及總指揮回報為準。
 
 ```sh
-docker build -t whippet-worker:m1 runtimes/worker
+docker build -t whippet-worker:m1 -f runtimes/worker/Dockerfile .
 ```
 
 準備一個新工作目錄，將上方 JSON 存成 `input.json`，再執行：
 
 ```sh
 docker run --rm --init \
+  --cap-add NET_ADMIN --security-opt no-new-privileges=true \
   --mount "type=bind,source=$PWD/work-pass,target=/work" \
   --memory=1g --cpus=1 --pids-limit=256 --shm-size=256m \
   whippet-worker:m1
+```
+
+Manager 會為一次性 Worker 設定上述容器權限。腳本以降權 UID 執行，失去隔離能力時會以 `test_harness_unavailable` 停止。需要連站的測試由 Server 提供核准的 `workspaceContext`，舊 `workspaceSettings` 僅提供相容的執行資料。Chromium 與 Playwright request fixture 使用 Worker 的代理。使用新版 Node.js 的 `fetch` 也會讀取代理環境變數。
+
+可在 Docker 驗證實際出站限制。
+
+```sh
+docker run --rm --network none --cap-add NET_ADMIN --security-opt no-new-privileges=true \
+  -e WHIPPET_SCOPE_HARNESS_DOCKER_TEST=1 whippet-worker:m1 node --test dist/workspace.test.js
 ```
 
 可用 [examples/pass.spec.ts](examples/pass.spec.ts) 與 [examples/fail.spec.ts](examples/fail.spec.ts) 分別填入 JSON 的 `script`，每次使用不同目錄及 attemptId。兩者只用 `page.setContent`，沒有外網依賴；後者的斷言刻意失敗，預期 exit=1、`result.status=failed`，仍有真實報告。接著由整合 owner 串 Server → Manager → Worker，確認兩份附件上傳後 Run 才進終態。

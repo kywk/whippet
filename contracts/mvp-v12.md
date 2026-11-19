@@ -8,12 +8,12 @@
 
 | 環境設定 | 規則 |
 | --- | --- |
-| `WHIPPET_AI_ENGINE` | `builtin`（缺值預設）或 `vercel`；未知值拒絕，不 fallback |
+| `WHIPPET_AI_ENGINE` | `builtin`（缺值預設）、`vercel` 或 `pi`；未知值拒絕，不 fallback |
 | `WHIPPET_AI_PROVIDER` | `opencode`（預設）或 `openai-responses` |
 | `WHIPPET_AI_BASE_URL`／`WHIPPET_AI_MODEL` | HTTPS base URL／單一模型ID；opencode沿用原預設，其他provider必填；不從SDK catalog或環境自動探索 |
 | `OPENCODE_API_KEY` | 只供opencode使用 |
 | `WHIPPET_AI_API_KEY` | 只供顯式openai-responses使用；缺值不借用OPENCODE_API_KEY |
-| `WHIPPET_AI_CONTEXT_WINDOW_TOKENS` | 未知模型／非已核endpoint使用Vercel時必填；正整數1024..2097152。已知Muse profile只適用精確OpenCode Responses base URL，允許降低、不允許超過官方容量 |
+| `WHIPPET_AI_CONTEXT_WINDOW_TOKENS` | 未知模型／非已核 endpoint 使用 Vercel 或 Pi 時必填。正整數 1024..2097152。已知 Muse profile 只適用精確 OpenCode Responses base URL，允許降低，最高為官方容量 |
 | `WHIPPET_AI_CONTEXT_INPUT_TOKENS` | 保守輸入估算上限，預設 262,144 與模型視窗取較小值。可指定 1024 至模型視窗之間的整數。 |
 
 reasoning effort仍使用原設定與skill快照，模型／effort／output cap不由adapter改選。Manager只對author容器傳上述白名單名稱與既有AI設定，不把值寫入input.json／journal／docker arguments；一般run不繼承AI設定或key。沒有自動provider重試、模型切換或payg fallback。現有Server派工仍以原skill快照為權威，provider/model不匹配即拒絕；此Wave不提供UI切換。
@@ -23,7 +23,7 @@ reasoning effort仍使用原設定與skill快照，模型／effort／output cap�
 - `beforeRequest(context)`維持原context陣列介面。
 - 新增`prepareRequest(body)`，接收完整序列化Responses body，回傳完成noSecret／secrets.clean後的body。builtin支援此選填鉤子；正式Vercel adapter要求存在，由runAuthor提供。執行順序為SDK序列化→固定模型／工具／預算→context準備與安全壓縮→final guard→容量／bytes檢查→既有request傳輸。
 - 工具只來自同一份registry。schema／單次限額與guard dispatch仍由Whippet驗證；無SDK內建fs、shell、eval、fetch工具。SDK使用dummy key，其fetch接縫委派既有request；實際key、TLS、session header、heartbeat與noSecret仍在既有傳輸內。
-- builtin與Vercel共用output cap驗證、三回合Test／Planner與五回合Module收尾保留、partial文字規則。總模型／工具／時間額度不變；Vercel retries=0、工具依序執行、重複call ID零重做。
+- 各引擎共用 output cap、三回合 Test／Planner 與五回合 Module 收尾保留，以及 partial 文字規則。守衛限制模型、工具與時間額度，並在派送工具前檢查重複 call ID。Vercel 與 Pi 停用 SDK 重試，工具依序執行。
 - SDK文字答案不能覆蓋`pendingWork()`。在既定總請求尚有餘額時，附上guard尚未完成的工作繼續；耗盡則partial。guard確認交付後立即結束。
 
 ## 容量與壓縮
@@ -84,8 +84,8 @@ registry12.0與兩份skill新bytes需由Server／Manager／Worker／參考客戶
 
 ### 設定入口與優先序
 
-- Migration 026 新增 `workspaces.agent_runtime`，預設 `{"profileId":"builtin","skillProfiles":{}}`。與 M11 `authorEngine=builtin|external` 的接單路由分開；`runtime.engine=builtin|vercel` 是 Worker 內的模型迴圈。
-- `GET /api/workspaces/{id}/agent-runtime` 回 `workspaceId`、Workspace `revision`、`selection` 與可選 `profiles`。公開 profile 描述包含 id／engine／provider／model／reasoningEffort，不含 endpoint 或金鑰。內建 builtin／vercel 的 provider／model／effort 空字串表示沿用主 skill。
+- Migration 026 新增 `workspaces.agent_runtime`，預設 `{"profileId":"builtin","skillProfiles":{}}`。M11 `authorEngine=builtin|external` 選擇接單路由，`runtime.engine=builtin|vercel|pi` 選擇 Worker 內的模型迴圈。
+- `GET /api/workspaces/{id}/agent-runtime` 回 `workspaceId`、Workspace `revision`、`selection` 與可選 `profiles`。公開 profile 描述包含 id／engine／provider／model／reasoningEffort，不含 endpoint 或金鑰。內附 profile 的 provider／model／effort 空字串表示沿用主 skill。
 - `PATCH` 同一路徑，只接受 `revision`、`profileId`、`skillProfiles` 三個欄位；完整取代選擇，未設定 skill 繼承 Workspace profile。只允許五個主 skill ID，禁止輔助 skill 覆寫、未知 ID、重複 JSON key、null map、任意 endpoint／model／key。沿用既有管理 gate 與 Workspace revision CAS；不同選擇才增加 revision，舊 revision 衝突，不影響網站授權 revision。
 
 ```json
@@ -96,7 +96,7 @@ registry12.0與兩份skill新bytes需由Server／Manager／Worker／參考客戶
 
 ### 後端 profile 白名單
 
-保留 `builtin`、`vercel` 兩個 ID；兩者從主 skill 取 provider／model／effort，從 Server 的 `WHIPPET_AI_BASE_URL` 與 capacity 設定取非機密設定。缺值採用 OpenCode endpoint、Muse 容量與 262,144 估算 tokens 的輸入上限，較小的模型視窗優先。未知模型或 endpoint 使用 Vercel 必須明訂 capacity。builtin 未知 capacity 可為 0，以保留舊迴圈行為，不能據此宣稱有容量預檢。
+內附 `builtin`、`vercel` 與 `pi` profile，從主 skill 取 provider／model／effort，從 Server 的 `WHIPPET_AI_BASE_URL` 與 capacity 設定取非機密設定。缺值採用 OpenCode endpoint、Muse 容量與 262,144 估算 tokens 的輸入上限，較小的模型視窗優先。未知模型或 endpoint 使用 Vercel 或 Pi 必須明訂 capacity。builtin 未知 capacity 可為 0，以保留舊迴圈行為。已自訂 ID 為 `pi` 的 profile 優先於同名內附 profile。
 
 Server 可用 `WHIPPET_AI_RUNTIME_PROFILES_JSON` 明訂最多 16 個額外 profile（JSON 最多 64KiB）。每項完整提供以下非機密欄位，不接受 secret／key reference 或任意擴充欄位；這個設定不傳進 Worker：
 
@@ -118,6 +118,8 @@ reasoningEffort, contextWindowTokens, contextInputTokens, sha256
 三端拒絕畸形欄位／hash 漂移；Manager 額外拒絕重複欄位與 null，原樣轉送非機密快照。hash 是完整性檢查，不是簽章或授權。Worker 先校驗既有 skill bundle，再用 runtime 決定有效設定；`author.model` 保留原打包預設供套件完整性驗證，不再是有 runtime 時的執行設定。
 
 排隊後變更 Workspace、profile 宣告或非機密模型環境設定，不重建派工／重播的 runtime。Worker 在解析環境前套用 runtime，畸形的後續模型／effort／engine／capacity 環境值也不能覆寫快照。enable 與金鑰仍取目前後端，保留停用與輪替能力；金鑰不進 input、journal、profile、產物或模型 context，final guard 也檢查未選中供應商的 key。
+
+Pi 使用同一套 Whippet Responses transport、工具 registry、資料清理、容量與預算守衛。MCP 參考 Worker 也可用 `--engine pi` 執行。三種接入方式都適用 [共用 Agent Harness](../docs/requirements/usecase-agent-platform.md#agent-harness)。
 
 Test partial 的「繼續」沿用來源 runtime，保持既有回收、scope／revision／context CAS 與重送冪等；新建獨立 Run／Stage retry 依當時設定建立新快照。原 runtime／預算不回寫。Wave2沒有實作continuation鏈總額；Wave4已補受控continue的共用資源額度，規則見下節。
 

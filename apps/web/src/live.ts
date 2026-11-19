@@ -186,13 +186,13 @@ export function createLiveSession(options: Options) {
     }, 20_000);
   }
 
-  function switchMode(next: LiveMode, reason?: string) {
-    if (disposed || halted || sensitivePaused || mode === next) return;
+  function switchMode(next: LiveMode, reason?: string, allowWhilePaused = false) {
+    if (disposed || halted || (sensitivePaused && !allowWhilePaused) || mode === next) return;
     offerHistory.requireId = true;
     mode = next;
     clearTimeout(fallbackTimer); fallbackTimer = undefined;
     clearVideo(); clearImage(); lastFrameAt = 0;
-    emit('waiting', reason || (mode === 'jpeg' ? '已切換 JPEG 備援，等待第一張可顯示畫面。' : '正在重新協商 WebRTC，等待可播放影格。'), { needsPlay: false });
+    emit(sensitivePaused ? 'paused' : 'waiting', reason || (mode === 'jpeg' ? '已切換 JPEG 備援，等待第一張可顯示畫面。' : '正在重新協商 WebRTC，等待可播放影格。'), { needsPlay: false });
     if (ready && !send({ type: 'mode', mode })) { retryConnection('無法送出影像模式，正在重新連線。'); return; }
     if (ready && mode === 'webrtc') startFallbackClock();
   }
@@ -334,6 +334,11 @@ export function createLiveSession(options: Options) {
       case 'state': {
         const reason = typeof message.reason === 'string' ? message.reason : undefined;
         if (message.state === 'waiting' && reason === 'sensitive_input') { pauseSensitive(); return; }
+        if (message.state === 'waiting' && reason === 'scope_jpeg_required' && ready && message.viewerId === viewerId &&
+            message.transport === 'webrtc' && mode === 'webrtc') {
+          switchMode('jpeg', '這次測試使用隔離網路，已切換 JPEG 監看。', true);
+          return;
+        }
         if (message.state === 'ended') { finish('ended', options.browserSession ? '瀏覽器 session 監看已結束。' : reason || '此次監看已結束，測試結果請查看執行紀錄。'); return; }
         if (sensitivePaused) {
           if (message.state === 'waiting' && reason === 'sensitive_input_complete' && message.viewerId === viewerId && ready && message.transport === mode) {

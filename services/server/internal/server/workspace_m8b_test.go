@@ -49,8 +49,8 @@ func TestM8BScopeAndIndependentCapabilities(t *testing.T) {
 	if _, _, err := executionBinding(w, "ai", &old); !errors.Is(err, ErrScopeConfirmation) {
 		t.Fatal("old AI snapshot silently gained new permission")
 	}
-	if _, _, err := executionBinding(w, "manual", &old); err != nil {
-		t.Fatal("scope change restricted manual script")
+	if _, _, err := executionBinding(w, "manual", &old); !errors.Is(err, ErrScopeConfirmation) {
+		t.Fatal("manual execution retained a revoked scope")
 	}
 	w.Settings = nil
 	w.Lifecycle = "draft"

@@ -1,9 +1,13 @@
 FROM mcr.microsoft.com/playwright:v1.64.1-noble
 
+RUN apt-get update && apt-get install -y --no-install-recommends nftables procps \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /opt/whippet/worker
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     PLAYWRIGHT_HTML_OPEN=never \
     WHIPPET_WORK_DIR=/work \
+    WHIPPET_LOCAL_TEST_FIXTURES=0 \
     WHIPPET_TOOL_REGISTRY_PATH=/app/contracts/tools/registry.json \
     WHIPPET_SKILLS_PATH=/opt/whippet/worker/skills \
     NODE_ENV=production

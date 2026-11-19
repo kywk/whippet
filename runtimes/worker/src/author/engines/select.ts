@@ -7,5 +7,6 @@ import { vercelEngine } from "./vercel.js";
 export function selectAgentEngine(config: AIConfig): AgentEngine {
   if ((config.engine ?? "builtin") === "builtin") return builtinEngine;
   if (config.engine === "vercel") return vercelEngine(config);
+  if (config.engine === "pi") return { run: async input => (await import("./pi.js")).piEngine(config).run(input) };
   throw new AuthorError("invalid_input");
 }

@@ -48,6 +48,13 @@ func TestM12RuntimeProfilesAndDigest(t *testing.T) {
 	if err != nil || *got != expected {
 		t.Fatal("default per-skill selection", err)
 	}
+	t.Run("pi uses the same pinned provider and capacity policy", func(t *testing.T) {
+		got, err := resolveAuthorRuntime(input, RuntimeSelection{ProfileID: "pi", SkillProfiles: map[string]string{}})
+		if err != nil || got.Engine != "pi" || got.Provider != r.Provider || got.Model != r.Model ||
+			got.ContextInputTokens != 262144 || !validAuthorRuntime(got) {
+			t.Fatal("pi runtime policy", err)
+		}
+	})
 	t.Run("explicit input cap reproduces legacy digest", func(t *testing.T) {
 		t.Setenv("WHIPPET_AI_CONTEXT_INPUT_TOKENS", "65536")
 		got, err := resolveAuthorRuntime(input, selection)
@@ -71,6 +78,13 @@ func TestM12RuntimeProfilesAndDigest(t *testing.T) {
 	if err != nil || got.Provider != p.Provider || got.Model != p.Model || got.ContextInputTokens != 32768 {
 		t.Fatal("backend profile", err)
 	}
+	t.Run("existing custom pi id keeps its engine", func(t *testing.T) {
+		t.Setenv("WHIPPET_AI_RUNTIME_PROFILES_JSON", strings.Replace(string(raw), `"alternate"`, `"pi"`, 1))
+		got, err := resolveAuthorRuntime(input, RuntimeSelection{ProfileID: "pi", SkillProfiles: map[string]string{}})
+		if err != nil || got.Engine != p.Engine || got.Provider != p.Provider || got.Model != p.Model {
+			t.Fatal("existing profile was not preserved", err)
+		}
+	})
 	for _, body := range []string{"null", `[{"id":"bad","apiKey":"forbidden"}]`, string(raw[:len(raw)-1]) + `,` + string(raw[1:]), strings.Replace(string(raw), `"alternate"`, `"vercel"`, 1), strings.Replace(string(raw), `"id":"alternate"`, `"id":"alternate","id":"hidden"`, 1)} {
 		t.Setenv("WHIPPET_AI_RUNTIME_PROFILES_JSON", body)
 		if _, err := runtimeProfiles(); err == nil {

@@ -61,6 +61,7 @@ func (d dockerCLI) createArgs(r record, taskDir string) []string {
 		"--label", "whippet.attempt.id=" + r.AttemptID,
 		"--mount", "type=bind,source=" + taskDir + ",target=/work",
 		"--memory", "1g", "--cpus", "1", "--pids-limit", "256", "--shm-size", "256m",
+		"--cap-add", "NET_ADMIN", "--security-opt", "no-new-privileges=true",
 	}
 	if r.Kind == "author" {
 		if m109Enabled() {

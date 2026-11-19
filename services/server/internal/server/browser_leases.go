@@ -31,15 +31,16 @@ type BrowserLease struct {
 	WorkspaceContext      json.RawMessage `json:"-"`
 	AuthorizationRevision int64           `json:"-"`
 	DeadlineAt            time.Time       `json:"-"`
+	AuthorRunID           *string         `json:"-"`
 }
 
-const browserLeaseColumns = `session_id,lease_id,state,reclaimed,token_id,workspace_id,manager_id,manager_epoch,registry_version,registry_sha256,workspace_context,authorization_revision,deadline_at`
+const browserLeaseColumns = `session_id,lease_id,state,reclaimed,token_id,workspace_id,manager_id,manager_epoch,registry_version,registry_sha256,workspace_context,authorization_revision,deadline_at,author_run_id`
 
 func scanBrowserLease(row scanner) (BrowserLease, error) {
 	var lease BrowserLease
 	err := row.Scan(&lease.SessionID, &lease.LeaseID, &lease.State, &lease.Reclaimed, &lease.TokenID,
 		&lease.WorkspaceID, &lease.ManagerID, &lease.ManagerEpoch, &lease.RegistryVersion,
-		&lease.RegistrySHA256, &lease.WorkspaceContext, &lease.AuthorizationRevision, &lease.DeadlineAt)
+		&lease.RegistrySHA256, &lease.WorkspaceContext, &lease.AuthorizationRevision, &lease.DeadlineAt, &lease.AuthorRunID)
 	if err != nil {
 		return BrowserLease{}, dbError(err)
 	}
@@ -47,7 +48,7 @@ func scanBrowserLease(row scanner) (BrowserLease, error) {
 }
 
 func (p *Postgres) BrowserLeaseByRequest(ctx context.Context, tokenID, requestID string) (BrowserLease, error) {
-	return scanBrowserLease(p.DB.QueryRowContext(ctx, `SELECT `+browserLeaseColumns+` FROM agent_browser_leases WHERE token_id=$1 AND request_id=$2`, tokenID, requestID))
+	return scanBrowserLease(p.DB.QueryRowContext(ctx, `SELECT `+browserLeaseColumns+` FROM agent_browser_leases WHERE token_id=$1 AND request_id=$2 AND author_run_id IS NULL`, tokenID, requestID))
 }
 
 func (p *Postgres) BrowserLeaseOwned(ctx context.Context, token AgentToken, sessionID, leaseID string) (BrowserLease, error) {
@@ -63,26 +64,26 @@ func (p *Postgres) BrowserLeaseBySession(ctx context.Context, sessionID string) 
 }
 
 func (p *Postgres) OpenBrowserLease(ctx context.Context, token AgentToken, requestID, managerID, epoch string, registry *ToolRegistry, workspace Workspace) (BrowserLease, bool, error) {
-	if !ValidID(requestID) || !ValidID(epoch) || workspace.ID != token.WorkspaceID || workspace.Lifecycle != "active" || workspace.ScopeStatus != "confirmed" || workspace.Settings == nil || len(workspace.Settings.Targets) == 0 {
+	if workspace.ID != token.WorkspaceID || workspace.ScopeStatus != "confirmed" || !confirmedCanonical(workspace) {
 		return BrowserLease{}, false, ErrInvalid
 	}
-	contextJSON, err := json.Marshal(workspaceContext(workspace))
-	if err != nil {
-		return BrowserLease{}, false, err
+	return p.openBrowserLease(ctx, token, requestID, managerID, epoch, registry, &workspace, nil)
+}
+
+func (p *Postgres) OpenExternalBrowserLease(ctx context.Context, token AgentToken, claim externalClaim, managerID, epoch string, registry *ToolRegistry) (BrowserLease, bool, error) {
+	// The external attempt's known lease ID is not a public browser request ID.
+	return p.openBrowserLease(ctx, token, NewID(), managerID, epoch, registry, nil, &claim)
+}
+
+func (p *Postgres) openBrowserLease(ctx context.Context, token AgentToken, requestID, managerID, epoch string, registry *ToolRegistry, workspace *Workspace, author *externalClaim) (BrowserLease, bool, error) {
+	if !ValidID(requestID) || !ValidID(epoch) {
+		return BrowserLease{}, false, ErrInvalid
 	}
 	tx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return BrowserLease{}, false, err
 	}
 	defer tx.Rollback()
-	// The request ID remains a tombstone after cleanup. It is checked before capacity.
-	previous, err := scanBrowserLease(tx.QueryRowContext(ctx, `SELECT `+browserLeaseColumns+` FROM agent_browser_leases WHERE token_id=$1 AND request_id=$2`, token.ID, requestID))
-	if err == nil {
-		return previous, true, nil
-	}
-	if !errors.Is(err, ErrNotFound) {
-		return BrowserLease{}, false, err
-	}
 	var capacity int
 	if err := tx.QueryRowContext(ctx, `SELECT capacity FROM managers WHERE id=$1 FOR UPDATE`, managerID).Scan(&capacity); err != nil {
 		return BrowserLease{}, false, dbError(err)
@@ -92,23 +93,47 @@ func (p *Postgres) OpenBrowserLease(ctx context.Context, token AgentToken, reque
 	if err := tx.QueryRowContext(ctx, `SELECT workspace_id,revoked_at FROM agent_tokens WHERE id=$1 FOR UPDATE`, token.ID).Scan(&tokenWorkspace, &revoked); err != nil || tokenWorkspace != token.WorkspaceID || revoked.Valid {
 		return BrowserLease{}, false, ErrNotFound
 	}
-	// Recheck the authority snapshot while holding the workspace row.
-	var lifecycle, scope string
-	var revision int64
-	var config []byte
-	if err := tx.QueryRowContext(ctx, `SELECT lifecycle,scope_status,authorization_revision,canonical_config FROM workspaces WHERE id=$1 FOR SHARE`, token.WorkspaceID).Scan(&lifecycle, &scope, &revision, &config); err != nil {
-		return BrowserLease{}, false, dbError(err)
-	}
-	if lifecycle != "active" || scope != "confirmed" || revision != workspace.AuthorizationRevision || !jsonEqual(config, jsonText(workspace.Settings)) {
-		return BrowserLease{}, false, ErrConflict
-	}
-	// A concurrent open with the same request ID may have won while waiting on Manager.
-	previous, err = scanBrowserLease(tx.QueryRowContext(ctx, `SELECT `+browserLeaseColumns+` FROM agent_browser_leases WHERE token_id=$1 AND request_id=$2`, token.ID, requestID))
-	if err == nil {
-		return previous, true, nil
-	}
-	if !errors.Is(err, ErrNotFound) {
+	w, err := p.lockBrowserWorkspace(ctx, tx, token.WorkspaceID)
+	if err != nil {
 		return BrowserLease{}, false, err
+	}
+	var snapshot *WorkspaceContext
+	var authorRunID *string
+	deadline := time.Now().Add(30 * time.Minute)
+	if author == nil {
+		// Public request IDs remain tombstones after cleanup.
+		previous, err := scanBrowserLease(tx.QueryRowContext(ctx, `SELECT `+browserLeaseColumns+` FROM agent_browser_leases WHERE token_id=$1 AND request_id=$2 AND author_run_id IS NULL`, token.ID, requestID))
+		if err == nil {
+			return previous, true, nil
+		}
+		if !errors.Is(err, ErrNotFound) {
+			return BrowserLease{}, false, err
+		}
+		if w.ScopeStatus != "confirmed" || !confirmedCanonical(w) || w.AuthorizationRevision != workspace.AuthorizationRevision ||
+			jsonText(w.Settings) != jsonText(workspace.Settings) {
+			return BrowserLease{}, false, ErrConflict
+		}
+		snapshot = workspaceContext(w)
+	} else {
+		current, err := p.lockExternalClaim(ctx, tx, token, author.RunID, author.AttemptID, author.LeaseID)
+		if err != nil {
+			return BrowserLease{}, false, err
+		}
+		if err = p.externalLive(ctx, tx, current); err != nil {
+			return BrowserLease{}, false, err
+		}
+		snapshot, err = externalBrowserSnapshot(ctx, tx, w, token.ID, current.RunID, current.BrowserSessionID)
+		if err != nil {
+			return BrowserLease{}, false, err
+		}
+		if current.BrowserSessionID != nil {
+			previous, err := scanBrowserLease(tx.QueryRowContext(ctx, `SELECT `+browserLeaseColumns+` FROM agent_browser_leases WHERE session_id=$1 AND author_run_id=$2 AND token_id=$3 AND workspace_id=$4`, *current.BrowserSessionID, current.RunID, token.ID, token.WorkspaceID))
+			return previous, err == nil, err
+		}
+		authorRunID = &current.RunID
+		if current.DeadlineAt.Before(deadline) {
+			deadline = current.DeadlineAt
+		}
 	}
 	var occupied int
 	if err := tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM runs WHERE manager_id=$1 AND NOT slot_released)
@@ -121,15 +146,20 @@ func (p *Postgres) OpenBrowserLease(ctx context.Context, token AgentToken, reque
 	lease := BrowserLease{SessionID: NewID(), LeaseID: NewID(), State: "opening", TokenID: token.ID,
 		WorkspaceID: token.WorkspaceID, ManagerID: managerID, ManagerEpoch: epoch,
 		RegistryVersion: registry.Version, RegistrySHA256: registry.SHA256,
-		WorkspaceContext: contextJSON, AuthorizationRevision: revision,
-		DeadlineAt: time.Now().Add(30 * time.Minute)}
+		WorkspaceContext: json.RawMessage(jsonText(snapshot)), AuthorizationRevision: w.AuthorizationRevision,
+		DeadlineAt: deadline, AuthorRunID: authorRunID}
 	_, err = tx.ExecContext(ctx, `INSERT INTO agent_browser_leases(session_id,lease_id,request_id,token_id,workspace_id,manager_id,manager_epoch,
-		registry_version,registry_sha256,workspace_context,authorization_revision,state,deadline_at)
-		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'opening',$12)`, lease.SessionID, lease.LeaseID, requestID,
+		registry_version,registry_sha256,workspace_context,authorization_revision,state,deadline_at,author_run_id)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'opening',$12,$13)`, lease.SessionID, lease.LeaseID, requestID,
 		lease.TokenID, lease.WorkspaceID, lease.ManagerID, lease.ManagerEpoch, lease.RegistryVersion,
-		lease.RegistrySHA256, lease.WorkspaceContext, lease.AuthorizationRevision, lease.DeadlineAt)
+		lease.RegistrySHA256, lease.WorkspaceContext, lease.AuthorizationRevision, lease.DeadlineAt, authorRunID)
 	if err != nil {
 		return BrowserLease{}, false, dbError(err)
+	}
+	if authorRunID != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE external_author_claims SET browser_session_id=$2 WHERE run_id=$1`, *authorRunID, lease.SessionID); err != nil {
+			return BrowserLease{}, false, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return BrowserLease{}, false, err
@@ -137,9 +167,55 @@ func (p *Postgres) OpenBrowserLease(ctx context.Context, token AgentToken, reque
 	return lease, false, nil
 }
 
-func jsonEqual(raw []byte, expected string) bool {
-	var a, b any
-	return json.Unmarshal(raw, &a) == nil && json.Unmarshal([]byte(expected), &b) == nil && jsonText(a) == jsonText(b)
+func (p *Postgres) lockBrowserWorkspace(ctx context.Context, tx *sql.Tx, id string) (Workspace, error) {
+	var workspaceID string
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM workspaces WHERE id=$1 FOR SHARE`, id).Scan(&workspaceID); err != nil {
+		return Workspace{}, dbError(err)
+	}
+	w, proposalID, err := readWorkspaceCore(ctx, tx, workspaceID, false)
+	if err != nil {
+		return w, err
+	}
+	return fillWorkspace(ctx, tx, w, proposalID, false)
+}
+
+func externalBrowserSnapshot(ctx context.Context, q queryDB, w Workspace, tokenID, runID string, sessionID *string) (*WorkspaceContext, error) {
+	var raw []byte
+	var proposalID *string
+	err := q.QueryRowContext(ctx, `SELECT r.workspace_context,r.scope_proposal_id
+ FROM external_author_claims c JOIN runs r ON r.id=c.run_id AND r.attempt_id=c.attempt_id AND r.workspace_id=c.workspace_id
+ WHERE c.run_id=$1 AND c.token_id=$2 AND c.workspace_id=$3 AND ($4::uuid IS NULL OR c.browser_session_id=$4)
+ AND c.state='active' AND c.expires_at>now() AND c.deadline_at>now()
+ AND r.author_intent_checked AND r.status='running' AND r.author_engine='external'`, runID, tokenID, w.ID, sessionID).Scan(&raw, &proposalID)
+	if err != nil {
+		return nil, errBrowserScopeInvalid
+	}
+	snapshot, err := decodeWorkspaceContext(raw)
+	if err != nil {
+		return nil, errBrowserScopeInvalid
+	}
+	if _, _, err := scopeBinding(w, snapshot, proposalID); err != nil {
+		return nil, errBrowserScopeInvalid
+	}
+	return snapshot, nil
+}
+
+func browserLeaseScope(ctx context.Context, q queryDB, w Workspace, lease BrowserLease) (*WorkspaceContext, error) {
+	snapshot, err := decodeWorkspaceContext(lease.WorkspaceContext)
+	if err != nil || snapshot == nil || snapshot.WorkspaceID != w.ID || lease.AuthorizationRevision != w.AuthorizationRevision {
+		return nil, errBrowserScopeInvalid
+	}
+	if lease.AuthorRunID == nil {
+		if w.ScopeStatus != "confirmed" || !confirmedCanonical(w) || jsonText(w.Settings) != jsonText(snapshot.Config) {
+			return nil, errBrowserScopeInvalid
+		}
+		return snapshot, nil
+	}
+	runSnapshot, err := externalBrowserSnapshot(ctx, q, w, lease.TokenID, *lease.AuthorRunID, &lease.SessionID)
+	if err != nil || !sameWorkspaceContext(runSnapshot, snapshot) {
+		return nil, errBrowserScopeInvalid
+	}
+	return snapshot, nil
 }
 
 func (p *Postgres) CloseBrowserLease(ctx context.Context, token AgentToken, sessionID, leaseID string) (BrowserLease, error) {
@@ -235,7 +311,7 @@ func browserCallHash(name string, args []byte) [32]byte {
 	return sha256.Sum256(append(append([]byte(name), 0), args...))
 }
 
-func (p *Postgres) ReserveBrowserCall(ctx context.Context, token AgentToken, lease BrowserLease, callID, name string, args []byte) (bool, error) {
+func (p *Postgres) ReserveBrowserCall(ctx context.Context, token AgentToken, lease BrowserLease, callID, name string, args []byte, authorRunID *string) (bool, error) {
 	if !ValidID(callID) || !ValidID(lease.SessionID) || !ValidID(lease.LeaseID) {
 		return false, ErrInvalid
 	}
@@ -248,31 +324,23 @@ func (p *Postgres) ReserveBrowserCall(ctx context.Context, token AgentToken, lea
 	if err := tx.QueryRowContext(ctx, `SELECT revoked_at FROM agent_tokens WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, token.ID, token.WorkspaceID).Scan(&revoked); err != nil || revoked.Valid {
 		return false, ErrNotFound
 	}
-	var state string
-	var deadline time.Time
-	var snapshot json.RawMessage
-	var revision int64
-	if err := tx.QueryRowContext(ctx, `SELECT state,deadline_at,workspace_context,authorization_revision FROM agent_browser_leases
-		WHERE session_id=$1 AND lease_id=$2 AND token_id=$3 AND workspace_id=$4 FOR UPDATE`, lease.SessionID, lease.LeaseID, token.ID, token.WorkspaceID).Scan(&state, &deadline, &snapshot, &revision); err != nil {
-		return false, dbError(err)
+	w, err := p.lockBrowserWorkspace(ctx, tx, token.WorkspaceID)
+	if err != nil {
+		return false, err
 	}
-	if state != "ready" {
+	locked, err := scanBrowserLease(tx.QueryRowContext(ctx, `SELECT `+browserLeaseColumns+` FROM agent_browser_leases
+		WHERE session_id=$1 AND lease_id=$2 AND token_id=$3 AND workspace_id=$4 FOR UPDATE`, lease.SessionID, lease.LeaseID, token.ID, token.WorkspaceID))
+	if err != nil {
+		return false, err
+	}
+	if locked.State != "ready" || locked.Reclaimed || stringValue(locked.AuthorRunID) != stringValue(authorRunID) {
 		return false, ErrConflict
 	}
-	if !deadline.After(time.Now()) {
+	if !locked.DeadlineAt.After(time.Now()) {
 		return false, errBrowserScopeInvalid
 	}
-	var lifecycle, scope string
-	var currentRevision int64
-	var config []byte
-	if err := tx.QueryRowContext(ctx, `SELECT lifecycle,scope_status,authorization_revision,canonical_config FROM workspaces WHERE id=$1 FOR SHARE`, token.WorkspaceID).Scan(&lifecycle, &scope, &currentRevision, &config); err != nil {
-		return false, dbError(err)
-	}
-	var saved struct {
-		Config json.RawMessage `json:"config"`
-	}
-	if json.Unmarshal(snapshot, &saved) != nil || lifecycle != "active" || scope != "confirmed" || revision != currentRevision || !jsonEqual(config, string(saved.Config)) {
-		return false, errBrowserScopeInvalid
+	if _, err := browserLeaseScope(ctx, tx, w, locked); err != nil {
+		return false, err
 	}
 	hash := browserCallHash(name, args)
 	var prior []byte

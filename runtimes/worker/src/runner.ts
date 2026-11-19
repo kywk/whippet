@@ -1,7 +1,7 @@
 import { runBundle, writeRunFiles, MAX_INPUT_BYTES, type RunFile } from "./bundle.js";
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { createRequire } from "node:module";
-import { lstat, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { createInterface } from "node:readline";
@@ -17,6 +17,8 @@ import {loginBroker} from './login/broker.js';
 import {sanitizeLoginOutputs} from './login/artifacts.js';
 import {unconfirmedBrowserScope} from './author/scope.js';
 import { installModuleABI, validModuleABI, type ModuleABI } from './module-abi.js';
+import { startTestHarness, type TestHarness } from "./test-harness.js";
+import { boundedRead, mediaEnvironment } from "./live/files.js";
 
 interface Input {
   workspaceId?:string;testId?:string|null;workspaceContext?:WorkspaceContext|null;scriptOrigin?:'ai'|'manual'|'legacy';
@@ -103,7 +105,7 @@ function forwardLine(line: string): void {
   if (line) log(line);
 }
 
-async function execute(input: Input, taskDir: string): Promise<WorkerResult> {
+async function execute(input: Input, taskDir: string, harness: TestHarness): Promise<WorkerResult> {
   const packageDir = dirname(require.resolve("@playwright/test/package.json"));
   // Keep the generated spec isolated while making its @playwright/test import
   // resolvable. /work is a bind mount, outside the image's node_modules tree.
@@ -112,20 +114,36 @@ async function execute(input: Input, taskDir: string): Promise<WorkerResult> {
   if (input.files) await writeRunFiles(taskDir, input.files);
   else await writeFile(join(taskDir, "run.spec.ts"), input.script, "utf8");
   if (input.moduleAbi) await installModuleABI(taskDir, input.moduleAbi);
+  if (input.files && harness.networkIsolated) {
+    for (const directory of ["tests", "lib"]) {
+      const root = join(taskDir, directory);
+      for (const file of await readdir(root).catch(error => {
+        if (error.code === "ENOENT") return [];
+        throw error;
+      })) await harness.grantAccess(join(root, file));
+    }
+  }
   const bridgePath = join(taskDir, "live-fixture.cjs");
-  await writeFile(bridgePath, fixtureBridge(new URL("./live/observer.js", import.meta.url).href,{scopeURL:new URL('./author/scope.js',import.meta.url).href,scope:input.scriptOrigin!=='manual'?input.workspaceContext?.config??unconfirmedBrowserScope():null,privacyURL:new URL('./login/privacy.js',import.meta.url).href}), "utf8");
+  await writeFile(bridgePath, fixtureBridge(new URL("./live/observer.js", import.meta.url).href, {
+    scopeURL: new URL("./author/scope.js", import.meta.url).href,
+    scope: input.workspaceContext?.config ?? unconfirmedBrowserScope(),
+    privacyURL: new URL("./login/privacy.js", import.meta.url).href,
+    jpegOnly: harness.networkIsolated,
+  }), "utf8");
   const loginShim=join(taskDir,'login.cjs');await writeFile(loginShim,`exports.loginAs=async(...args)=>(await import(${JSON.stringify(new URL('./login/helper.js',import.meta.url).href)})).loginAs(...args);\n`,'utf8');
   const tsconfigPath = join(taskDir, "tsconfig.json");
   await writeFile(tsconfigPath, JSON.stringify({ compilerOptions: { baseUrl: taskDir, paths: { "@playwright/test": [bridgePath],"whippet/login":[loginShim], ...(input.files ? { "@lib/*": ["lib/*"] } : {}) } } }), "utf8");
   const summaryPath = join(taskDir, "runtime-summary.json");
-  const htmlDir = join(outputDir, "html");
+  const htmlDir = join(taskDir, "html");
+  const resultsPath = join(taskDir, "results.json");
+  const playwrightOutput = join(taskDir, "test-results");
   const reporterPath = fileURLToPath(new URL("./reporter.js", import.meta.url));
   const baseURL = input.workspaceContext?.config?.defaultTestUrl || input.workspaceSettings?.defaultTestUrl;
   const config = {
     tsconfig: tsconfigPath,
     testDir: taskDir,
     testMatch: input.files ? "tests/test.spec.ts" : "run.spec.ts",
-    outputDir: join(outputDir, "test-results"),
+    outputDir: playwrightOutput,
     workers: 1,
     fullyParallel: false,
     retries: 0,
@@ -135,10 +153,10 @@ async function execute(input: Input, taskDir: string): Promise<WorkerResult> {
     reporter: [
       [reporterPath, { summaryPath }],
       ["html", { outputFolder: htmlDir, open: "never", attachmentsBaseURL: "data/", noCopyPrompt: true }],
-      ["json", { outputFile: join(outputDir, "results.json") }],
+      ["json", { outputFile: resultsPath }],
     ],
     projects: [{ name: "chromium", use: {
-      browserName: "chromium", headless: true,
+      browserName: "chromium", headless: true, proxy: harness.proxy,
       ...(process.env.WHIPPET_BROWSER_EXECUTABLE_PATH ? { launchOptions: { executablePath: process.env.WHIPPET_BROWSER_EXECUTABLE_PATH } } : {}),
       trace: "retain-on-failure", screenshot: "only-on-failure", video: "off",
       ...(baseURL ? { baseURL } : {}),
@@ -150,11 +168,14 @@ async function execute(input: Input, taskDir: string): Promise<WorkerResult> {
   log(`Executing run ${input.runId}, attempt ${input.attemptId}`);
   let launchError: string | undefined;
   let watchdogExpired = false;
-  child = spawn(process.execPath, [join(packageDir, "cli.js"), "test", "--config", configPath], {
+  child = harness.spawn([join(packageDir, "cli.js"), "test", "--config", configPath], {
     cwd: taskDir,
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env,...(broker?{WHIPPET_LOGIN_SOCKET:broker.path}:{}), CI: "1", FORCE_COLOR: "0", PLAYWRIGHT_HTML_OPEN: "never", PLAYWRIGHT_HTML_ATTACHMENTS_BASE_URL: "data/", PLAYWRIGHT_HTML_NO_COPY_PROMPT: "1" },
+  }, {
+    ...mediaEnvironment(process.env), WHIPPET_WORK_DIR: workDir,
+    ...(broker ? { WHIPPET_LOGIN_SOCKET: broker.path } : {}),
+    CI: "1", FORCE_COLOR: "0", PLAYWRIGHT_HTML_OPEN: "never", PLAYWRIGHT_HTML_ATTACHMENTS_BASE_URL: "data/", PLAYWRIGHT_HTML_NO_COPY_PROMPT: "1",
   });
   const stdout = child.stdout;
   const stderr = child.stderr;
@@ -174,25 +195,32 @@ async function execute(input: Input, taskDir: string): Promise<WorkerResult> {
     clearTimeout(watchdog);
     if (killTimer) clearTimeout(killTimer);
     child = undefined;
+    await harness.stopScripts();
   }
   // This is the actual built-in Playwright HTML reporter output. Never create
   // a placeholder HTML file when Playwright fails to generate one.
-  await exportFailureArtifacts(htmlDir, join(outputDir, "test-results"), outputDir,
+  await exportFailureArtifacts(htmlDir, playwrightOutput, outputDir,
     (reason) => log(`Optional failure evidence skipped: ${reason}`));
-  if (await regularFile(join(htmlDir, "index.html"))) {
+  if ((await lstat(htmlDir).catch(() => undefined))?.isDirectory() && await regularFile(join(htmlDir, "index.html"))) {
     await exportHTMLReport(htmlDir, outputDir);
   }
   let json: unknown;
   let summary: RuntimeSummary | undefined;
-  try { json = await readJSON(join(outputDir, "results.json")); } catch { /* Evidence missing -> failed. */ }
-  try { summary = await readJSON(summaryPath) as RuntimeSummary; } catch { /* Reporter failure -> failed. */ }
+  try {
+    const report = await boundedRead(resultsPath, MAX_INPUT_BYTES);
+    const parsed: unknown = JSON.parse(report.toString());
+    await writeFile(join(outputDir, "results.json"), report);
+    json = parsed;
+  } catch { /* Evidence missing -> failed. */ }
+  try { summary = JSON.parse((await boundedRead(summaryPath, 1024 * 1024)).toString()) as RuntimeSummary; } catch { /* Reporter failure -> failed. */ }
   return decideResult({
     exitCode, cancelled, watchdogExpired, reportReady: await regularFile(join(outputDir, "report.html")), json, summary, launchError,
   });
 }
 
 async function main(): Promise<void> {
-  let taskDir: string | undefined;
+  let taskRoot: string | undefined;
+  let harness: TestHarness | undefined;
   let result: WorkerResult;
   try {
     // Exclusive mkdir prevents stale outputs from making a reused work
@@ -201,13 +229,25 @@ async function main(): Promise<void> {
     const info = await lstat(join(workDir, "input.json"));
     if (!info.isFile() || info.size > MAX_INPUT_BYTES) throw new Error("input.json is not a regular file <=64MiB");
     const input = validateInput(await readJSON(join(workDir, "input.json")));
-    if(input.workspaceId){credentials=new CredentialClient(input);broker=await loginBroker(credentials);}
-    taskDir = await mkdtemp(join(tmpdir(), "whippet-playwright-"));
-    result = await execute(input, taskDir);
+    harness = await startTestHarness(input.workspaceContext?.config ?? unconfirmedBrowserScope());
+    if (input.workspaceId) {
+      credentials = new CredentialClient(input);
+      broker = await loginBroker(credentials, harness.credentialUID);
+    }
+    if (harness.networkIsolated && (await lstat(join(workDir, "live")).catch(() => undefined))?.isDirectory()) {
+      await chmod(workDir, 0o711);
+      await harness.grantAccess(join(workDir, "live"));
+    }
+    taskRoot = await mkdtemp(join(tmpdir(), "whippet-playwright-"));
+    const taskDir = join(taskRoot, "test");
+    await mkdir(taskDir, { mode: 0o700 });
+    await harness.configureTask(taskRoot, taskDir);
+    result = await execute(input, taskDir, harness);
   } catch (error) {
     result = { status: cancelled ? "cancelled" : "failed", error: (error instanceof Error ? error.message : String(error)).slice(0, 8192) };
     log(`Worker infrastructure error: ${result.error}`);
   }
+  await harness?.close();
   credentials?.close();if(broker)await broker.close();
   if(credentials){try{await sanitizeLoginOutputs(outputDir,credentials.secrets,log);}catch{result={status:cancelled?'cancelled':'failed',error:'Credential evidence could not be safely retained'};for(const name of ['report.html','results.json','data'])await rm(join(outputDir,name),{recursive:true,force:true});}}
   // Manager reads this file only after the container stops. Rename still
@@ -216,7 +256,7 @@ async function main(): Promise<void> {
   await writeFile(temporary, `${JSON.stringify(result)}\n`, "utf8");
   await rename(temporary, join(outputDir, "result.json"));
   log(`Worker result: ${result.status}`);
-  if (taskDir) await rm(taskDir, { recursive: true, force: true });
+  if (taskRoot) await rm(taskRoot, { recursive: true, force: true });
   process.exitCode = { succeeded: 0, failed: 1, timed_out: 124, cancelled: 130 }[result.status];
 }
 

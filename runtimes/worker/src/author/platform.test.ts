@@ -13,6 +13,8 @@ import { explorationBrowser, type ExplorationBrowser } from './tools.js';
 import { KnownSecrets } from '../login/client.js';
 import { PassThrough } from 'node:stream';
 import { attemptIO, MAX_TOOL_FRAME, MAX_MODULE_TOOL_FRAME } from '../attempt-io.js';
+
+test.before(() => { process.env.WHIPPET_LOCAL_TEST_FIXTURES = '1'; });
 // Existing update-path assertions need an explicitly pinned legacy authorization fixture.
 // Production 10.3 manifest intentionally advertises stage/commit instead of update.
 const legacySkills=mkdtempSync(join(tmpdir(),'whippet-legacy-platform-'));

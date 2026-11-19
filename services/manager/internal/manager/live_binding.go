@@ -13,7 +13,7 @@ type liveOfferBinding struct {
 
 func safeLiveReason(reason string) string {
 	switch reason {
-	case "no_page", "media_failed", "sensitive_input", "sensitive_input_complete":
+	case "no_page", "media_failed", "sensitive_input", "sensitive_input_complete", "scope_jpeg_required":
 		return reason
 	}
 	return ""

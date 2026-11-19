@@ -10,7 +10,7 @@ export class BrowserScopeError extends Error {
   constructor(readonly issue:ScopeIssue){super(issue.message);this.name="BrowserScopeError";}
 }
 export function unconfirmedBrowserScope():WorkspaceConfig{return {name:'尚未確認範圍',purpose:'',backgroundSummary:'',targets:[],dependencies:[],excludedOrigins:[],exclusions:'',loginRoles:[],defaultTestUrl:'',timeoutMs:60000};}
-// AI workflow guard only. This does not sandbox arbitrary Node/Playwright code.
+// The browser guard also distinguishes test targets from dependency uses.
 export class AIOriginGate {
   private readonly targets=new Set<string>();
   private readonly dependencies=new Map<string,string>();
@@ -34,6 +34,7 @@ export class AIOriginGate {
     if(this.excluded.has(o))return {error:"origin_excluded",origin:o,message:"此網站已列為排除範圍，請先修改並明確確認 Workspace 設定。"};
     if(this.targets.has(o))return;
     const purpose=this.dependencies.get(o);
+    if(purpose&&kind==='transport')return;
     if(purpose==='api'&&['xhr','fetch','eventsource','websocket'].includes(kind))return;
     if(purpose==='cdn'&&['script','stylesheet','image','font','media','manifest','texttrack'].includes(kind))return;
     if(purpose==='login'&&this.loginOrigin===o)return;
@@ -61,6 +62,10 @@ export class AIOriginGate {
 
 function requestKind(request:Request):string{return request.isNavigationRequest()?'navigation':request.resourceType();}
 type ResponsePause={requestId:string;request:{url:string};resourceType:string;responseStatusCode?:number;responseHeaders?:{name:string;value:string}[]};
+const contextGates = new WeakMap<BrowserContext, AIOriginGate>();
+export function browserScope(context: BrowserContext): AIOriginGate | undefined {
+  return contextGates.get(context);
+}
 
 // Playwright skips route callbacks after the first request in an HTTP redirect
 // chain. A response-stage Chromium hook checks Location before native redirect.
@@ -105,5 +110,6 @@ export async function installAIOriginGate(context:BrowserContext,gate:AIOriginGa
     if(issue){gate.block(issue,'websocket');void ws.close({code:1008,reason:'Workspace scope confirmation required'});}
     else ws.connectToServer();
   });
+  contextGates.set(context, gate);
   return {ready};
 }

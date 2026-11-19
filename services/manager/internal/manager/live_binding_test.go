@@ -63,4 +63,7 @@ func TestLiveSensitiveLegacyInitialAndJPEGResumeOrdering(t *testing.T) {
 	if safeLiveReason("arbitrary script text") != "" {
 		t.Fatal("untrusted reason forwarded")
 	}
+	if safeLiveReason("scope_jpeg_required") != "scope_jpeg_required" {
+		t.Fatal("sandboxed run cannot signal JPEG mode")
+	}
 }

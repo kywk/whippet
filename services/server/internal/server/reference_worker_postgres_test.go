@@ -16,14 +16,18 @@ import (
 )
 
 func TestM12ReferenceWorkerMCPClaimToolSubmitAndRecovery(t *testing.T) {
-	runM12ReferenceWorkerFlow(t, false)
+	for _, engine := range []string{"vercel", "pi"} {
+		t.Run(engine, func(t *testing.T) { runM12ReferenceWorkerFlow(t, false, engine) })
+	}
 }
 
 func TestM12FrozenSnapshotMCPAndSubmitRecovery(t *testing.T) {
-	runM12ReferenceWorkerFlow(t, true)
+	for _, engine := range []string{"vercel", "pi"} {
+		t.Run(engine, func(t *testing.T) { runM12ReferenceWorkerFlow(t, true, engine) })
+	}
 }
 
-func runM12ReferenceWorkerFlow(t *testing.T, frozen bool) {
+func runM12ReferenceWorkerFlow(t *testing.T, frozen bool, engine string) {
 	// MCP publishes all packaged resources. The older M10 fixture deliberately
 	// omits catalog-reuse and therefore correctly disables the entire MCP gate.
 	t.Setenv("WHIPPET_SKILLS_PATH", repositoryFile("runtimes", "worker", "skills"))
@@ -81,7 +85,7 @@ func runM12ReferenceWorkerFlow(t *testing.T, frozen bool) {
 	if err = os.WriteFile(tokenPath, []byte(secret), 0600); err != nil {
 		t.Fatal(err)
 	}
-	fixture := map[string]string{"url": http.URL + "/mcp", "tokenFile": tokenPath, "stateFile": statePath}
+	fixture := map[string]string{"url": http.URL + "/mcp", "tokenFile": tokenPath, "stateFile": statePath, "engine": engine}
 	if frozen {
 		fixture["frozen"] = "true"
 		fixture["expectedSnapshotHash"] = scriptHash(original)
@@ -134,8 +138,8 @@ func runM12ReferenceWorkerFlow(t *testing.T, frozen bool) {
 		t.Fatal("journal exposed Agent Token")
 	}
 	if frozen {
-		t.Log("real HTTP MCP -> frozen snapshot reference -> pinned 8KiB page -> synthetic model x2 -> submit x2 same ID/body -> AI draft revision +1; paid provider calls=0")
+		t.Logf("real HTTP MCP -> %s reference client -> frozen snapshot reference -> pinned 8KiB page -> synthetic model x2 -> submit x2 same ID/body -> AI draft revision +1; paid provider calls=0", engine)
 	} else {
-		t.Log("real HTTP MCP -> Vercel reference client -> synthetic model x2 -> read_draft x1 -> submit x2 same ID/body -> AI draft revision +1; paid provider calls=0")
+		t.Logf("real HTTP MCP -> %s reference client -> synthetic model x2 -> read_draft x1 -> submit x2 same ID/body -> AI draft revision +1; paid provider calls=0", engine)
 	}
 }
