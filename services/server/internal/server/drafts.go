@@ -89,6 +89,10 @@ func checkPublication(revision int, confirmed bool, d draftState, v validationEv
 }
 
 func (p *Postgres) CreateTest(ctx context.Context, workspaceID, name, description string) (Test, error) {
+	return insertTest(ctx, p.DB, workspaceID, name, description)
+}
+
+func insertTest(ctx context.Context, q queryDB, workspaceID, name, description string) (Test, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		name = "未命名測試"
@@ -96,7 +100,7 @@ func (p *Postgres) CreateTest(ctx context.Context, workspaceID, name, descriptio
 	if name == "" || len(name) > 200 || len(description) > 16<<10 {
 		return Test{}, fmt.Errorf("%w: name is required (max 200 bytes); description max 16 KiB", ErrInvalid)
 	}
-	return scanTest(p.DB.QueryRowContext(ctx, `INSERT INTO tests(id,workspace_id,name,description)
+	return scanTest(q.QueryRowContext(ctx, `INSERT INTO tests(id,workspace_id,name,description)
         SELECT $1,id,$3,$4 FROM workspaces WHERE id=$2 RETURNING `+testColumns,
 		NewID(), workspaceID, name, description))
 }

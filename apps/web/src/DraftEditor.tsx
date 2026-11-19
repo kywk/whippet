@@ -34,6 +34,7 @@ interface Props {
   sessionRefreshing: boolean;
   onRefreshSession: () => Promise<EditingSession | undefined>;
   onDiscard?: () => void;
+  onReplaceDraft?: (replyId: string, revision: number) => void;
   discardBusy: boolean;
   onReloadSession: () => void;
   testName?: string;
@@ -59,7 +60,7 @@ export function DraftEditor(props: Props) {
   </section>;
 }
 
-function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, onDirtyChange, onRefreshRuns, settingsRefresh, onDraftChange, onWatch, liveView, renderRunHistory, initialSettingsSequence, session, sessionRefreshing, onRefreshSession, capabilities, authorEngine, onDiscard, discardBusy, onReloadSession, testName, testKind, testSlug }: Props & { initial: Draft; initialSettingsSequence: number }) {
+function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, onDirtyChange, onRefreshRuns, settingsRefresh, onDraftChange, onWatch, liveView, renderRunHistory, initialSettingsSequence, session, sessionRefreshing, onRefreshSession, capabilities, authorEngine, onDiscard, onReplaceDraft, discardBusy, onReloadSession, testName, testKind, testSlug }: Props & { initial: Draft; initialSettingsSequence: number }) {
   const [draft, setDraft] = useState(initial);
   const [script, setScript] = useState(initial.script);
   const [module, setModule] = useState(() => initial.module ?? emptyModule(testSlug ?? ''));
@@ -321,7 +322,8 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
   return <div className={`studio${sideOpen ? ' side-open' : ' side-closed'}${sideExpanded ? ' side-expanded' : ''}`}>
     {sideOpen ? <div className="side-backdrop" aria-hidden="true" onClick={() => setSideOpen(false)} /> : null}
     <section className="studio-chat" aria-label="對話編輯工作區">
-      <ConversationPanel api={api} apiBase={apiBase} testId={testId} editingSessionId={session.id} aiExploration={capabilities?.aiExploration} authorEngine={authorEngine} testKind={testKind} draft={draft} draftDirty={dirty} draftBusy={planGuarded || readOnly || Boolean(busy) || syncing || settingsSyncing || settingsPending || conflict || summaryRequestBusy} runs={runs} onRun={onRun} onRefreshRuns={onRefreshRuns} onSynchronized={synchronizeDraft} onUseCandidate={useCandidate} onOpenManual={openManualEditor} onGuardChange={setConversationGuarded} onConversationChanged={() => { setInvalidatedSummaryId(session.summary?.runId); setConfirmed(false); void onRefreshSession().catch(() => undefined); }} onRefreshSession={onRefreshSession} onShowTab={showSideTab} onWatch={watchInConversation} liveView={liveView} sideOpen={sideOpen} onToggleSide={() => setSideOpen((open) => !open)} testName={testName} publishReady={eligible} planMode={testKind === 'usecase'} />
+      <ConversationPanel api={api} apiBase={apiBase} testId={testId} editingSessionId={session.id} aiExploration={capabilities?.aiExploration} authorEngine={authorEngine} testKind={testKind} draft={draft} draftDirty={dirty} draftBusy={planGuarded || readOnly || Boolean(busy) || syncing || settingsSyncing || settingsPending || conflict || summaryRequestBusy} runs={runs} onRun={onRun} onRefreshRuns={onRefreshRuns} onSynchronized={synchronizeDraft} onUseCandidate={useCandidate} onOpenManual={openManualEditor} onGuardChange={setConversationGuarded} onConversationChanged={() => { setInvalidatedSummaryId(session.summary?.runId); setConfirmed(false); void onRefreshSession().catch(() => undefined); }} onRefreshSession={onRefreshSession} onShowTab={showSideTab} onWatch={watchInConversation} liveView={liveView} sideOpen={sideOpen} onToggleSide={() => setSideOpen((open) => !open)} testName={testName} publishReady={eligible} planMode={testKind === 'usecase'}
+        onReplaceDraft={onReplaceDraft} replacementBusy={discardBusy || sessionRefreshing} />
     </section>
     <aside className="studio-side" aria-label="腳本、驗證與發佈" hidden={!sideOpen}>
       <div className="side-tabs" role="tablist" aria-label="產物面板">

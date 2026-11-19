@@ -67,6 +67,7 @@ export interface AuthorOutput {
   message: string;
   script?: string;
   requestValidation: boolean;
+  newTestNeeded?: true;
   conversationSummary?: string;
 }
 

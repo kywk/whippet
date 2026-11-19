@@ -559,6 +559,8 @@ p { line-height: 1.7; }
 /* Shared details, tables, forms */
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .action-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.action-row.new-test-actions { margin-top: 0; }
+.new-test-actions .button { min-height: 44px; }
 .inline-hint { margin-top: 8px; color: var(--muted); font-size: .78rem; line-height: 1.55; }
 .muted { color: var(--muted); font-size: .8rem; }
 .blocked-hint { margin-top: 8px; color: var(--bad); font-size: .8rem; line-height: 1.6; }

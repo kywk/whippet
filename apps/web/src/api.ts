@@ -353,6 +353,7 @@ function parseMessage(value: unknown): Message {
     appliedRevision: data.appliedRevision == null ? undefined : revision(data.appliedRevision),
     baseScript: optionalString(data.baseScript),
     proposedScript: optionalString(data.proposedScript), validationRunId: optionalString(data.validationRunId),
+    newTestNeeded: data.newTestNeeded === true,
   };
 }
 
@@ -677,6 +678,15 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
       await request(`/tests/${id(testId)}/editing-sessions/${id(sessionId)}/discard`, 'POST', signal, { revision, confirmed: true });
       // 以純讀端點確認真實狀態，不從 POST 成功碼推定已完成回收。
       return parseSession(record(await request(`/tests/${id(testId)}/editing-sessions/${id(sessionId)}`, 'GET', signal)).session);
+    },
+    async replaceDraftWithNewTest(testId, sessionId, revision, replyId, signal) {
+      const data = record(await request(`/tests/${id(testId)}/editing-sessions/${id(sessionId)}/replace-with-new-test`, 'POST', signal, { revision, replyId, confirmed: true }));
+      const sourceTest = parseTest(data.sourceTest);
+      const test = parseTest(data.test);
+      if (sourceTest.id !== testId || test.id === testId || test.workspaceId !== sourceTest.workspaceId) {
+        throw new ApiError('放棄草稿與新增測試的回應不符。', 'INVALID_RESPONSE');
+      }
+      return { sourceTest, test };
     },
     async requestSummary(testId, editingSessionId, revision, validationRunId, signal) {
       return parseRun(record(await request(`/tests/${id(testId)}/draft/summary`, 'POST', signal, { editingSessionId, revision, validationRunId })).run);

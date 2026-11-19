@@ -240,6 +240,13 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
     setTestModes((current) => current[selectedTestId] === mode ? current : { ...current, [selectedTestId]: mode });
   }, [selectedTestId]);
 
+  function openCreatedTest(test: Test, edit = true) {
+    setModuleForm(false); setModuleInput({ slug: '', name: '', description: '' });
+    updateTest(test); setSelectedId(test.id); onSelected(test.id); setAutoEditId(edit ? test.id : undefined);
+    setTestModes((current) => ({ ...current, [test.id]: edit ? 'editing' : 'general' }));
+    setSearch(''); setSelectedTag(undefined); setSurface('tests'); setRailOpen(false);
+  }
+
   async function createTest(kind: 'test' | 'module' | 'usecase' = 'test') {
     if (createLock.current || !confirmNavigation()) return;
     createLock.current = true; setCreating(true); setCreateError(undefined);
@@ -247,10 +254,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
     try {
       const test = await api.createTest(workspace.id, kind === 'module' ? { kind, ...moduleInput } : kind === 'usecase' ? { kind } : {}, controller.signal);
       if (controller.signal.aborted) return;
-      setModuleForm(false); setModuleInput({ slug: '', name: '', description: '' });
-      updateTest(test); setSelectedId(test.id); onSelected(test.id); setAutoEditId(test.id);
-      setTestModes((current) => ({ ...current, [test.id]: 'editing' }));
-      setSearch(''); setSelectedTag(undefined); setSurface('tests'); setRailOpen(false);
+      openCreatedTest(test);
     } catch (cause) { if (!controller.signal.aborted) setCreateError(`${errorMessage(cause)} 若結果不明，請先重新載入列表確認是否已建立，避免重複新增。`); }
     finally { if (!controller.signal.aborted) setCreating(false); createLock.current = false; }
   }
@@ -380,6 +384,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
               apiBase={apiBase}
               onDirtyChange={reportEditorGuard}
               onTestUpdated={updateTest}
+              onTestCreated={(test) => openCreatedTest(test, Boolean(test.activeEditingSession))}
               settingsRefresh={0}
               initialEditing={shouldInitialEdit}
               preferredMode={selectedPreferredMode}

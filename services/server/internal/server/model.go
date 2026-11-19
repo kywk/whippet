@@ -141,6 +141,7 @@ type Message struct {
 	AppliedRevision *int      `json:"appliedRevision,omitempty"`
 	ProposedScript  *string   `json:"proposedScript,omitempty"`
 	ValidationRunID *string   `json:"validationRunId,omitempty"`
+	NewTestNeeded   bool      `json:"newTestNeeded,omitempty"`
 }
 
 type ChatMessage struct {
@@ -309,6 +310,7 @@ type Store interface {
 	StartEditingSession(context.Context, string) (EditingSession, bool, error)
 	EditingSession(context.Context, string, string) (*EditingSession, error)
 	DiscardEditingSession(context.Context, string, string, int) (EditingSession, error)
+	ReplaceDraftWithNewTest(context.Context, string, string, int, string) (TestReplacement, error)
 	CreateSummary(context.Context, string, string, int, string) (Run, error)
 	CreateRun(context.Context, string) (Run, error)
 	Runs(context.Context, string) ([]Run, error)

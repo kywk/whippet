@@ -27,6 +27,8 @@ interface Props {
   onSynchronized: (draft: Draft) => void;
   onUseCandidate: (script: string) => boolean;
   onOpenManual: () => void;
+  onReplaceDraft?: (replyId: string, revision: number) => void;
+  replacementBusy: boolean;
   aiExploration: WorkspaceCapability | undefined;
   authorEngine: AuthorEngine;
   testKind?: 'test' | 'module' | 'usecase';
@@ -50,7 +52,7 @@ const STARTERS = [
   '搜尋關鍵字，確認結果清單依相關度排序',
 ];
 
-export function ConversationPanel({ api, apiBase, testId, editingSessionId, draft, draftDirty, draftBusy, runs, onRun, onRefreshRuns, onSynchronized, onUseCandidate, onOpenManual, onGuardChange, onConversationChanged, onRefreshSession, onShowTab, onWatch, liveView, sideOpen, onToggleSide, aiExploration, authorEngine = 'builtin', testKind, publishReady, planMode = false }: Props) {
+export function ConversationPanel({ api, apiBase, testId, editingSessionId, draft, draftDirty, draftBusy, runs, onRun, onRefreshRuns, onSynchronized, onUseCandidate, onOpenManual, onReplaceDraft, replacementBusy, onGuardChange, onConversationChanged, onRefreshSession, onShowTab, onWatch, liveView, sideOpen, onToggleSide, aiExploration, authorEngine = 'builtin', testKind, publishReady, planMode = false }: Props) {
   const nextEngine = authorEngine;
   const [conversation, setConversation] = useState<Conversation>();
   const [content, setContent] = useStoredText(editingSessionId);
@@ -67,6 +69,7 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
   const [continueChecked, setContinueChecked] = useState<string>();
   const [continuedSources, setContinuedSources] = useState<string[]>([]);
   const [sentRunId, setSentRunId] = useState<string>();
+  const [dismissedRecommendationId, setDismissedRecommendationId] = useState<string>();
   const [scripts, setScripts] = useState<Record<number, string>>({ [draft.revision]: draft.script });
   const runsRef = useRef(runs);
   runsRef.current = runs;
@@ -245,6 +248,16 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
   const pendingTurn = authorActive && (!lastMessage || lastMessage.role === 'user');
   const lastAssistantIndex = messages.reduce((found, message, index) => message.role === 'assistant' ? index : found, -1);
   const lastAssistantMessage = lastAssistantIndex >= 0 ? messages[lastAssistantIndex] : undefined;
+  const recommendationActions = onReplaceDraft && lastMessage?.role === 'assistant' && lastMessage.newTestNeeded &&
+    lastMessage.baseRevision === draft.revision && lastMessage.id !== dismissedRecommendationId ? (
+      <div className="action-row new-test-actions">
+        <button type="button" className="button danger-outline" disabled={blocked || replacementBusy} onClick={() => onReplaceDraft(lastMessage.id, draft.revision)}>放棄草稿並新增測試</button>
+        <button type="button" className="button secondary" disabled={submitting || replacementBusy} onClick={() => {
+          setDismissedRecommendationId(lastMessage.id);
+          document.getElementById('author-message')?.focus();
+        }}>繼續調整</button>
+      </div>
+    ) : null;
   const lastTurnChangedDraft = lastAssistantMessage
     ? (lastAssistantMessage.proposedScript !== undefined || lastAssistantMessage.appliedRevision !== undefined)
     : undefined;
@@ -302,7 +315,7 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
       <ol className="turns" aria-label="已儲存的對話訊息">
         {messages.map((message, index) => message.role === 'user'
           ? <UserTurn key={message.id} message={message} />
-          : <ConversationMessage key={message.id} message={message} latest={index === lastAssistantIndex} scripts={scripts} draft={draft} runs={runs} apiBase={apiBase} onRefreshRuns={onRefreshRuns} onUseCandidate={onUseCandidate} onRequestRepair={() => { void send(repairPrompt); }} candidateDisabled={draftBusy || authorActive || synchronizing} />)}
+          : <ConversationMessage key={message.id} message={message} latest={index === lastAssistantIndex} scripts={scripts} draft={draft} runs={runs} apiBase={apiBase} onRefreshRuns={onRefreshRuns} onUseCandidate={onUseCandidate} onRequestRepair={() => { void send(repairPrompt); }} candidateDisabled={draftBusy || authorActive || synchronizing} actions={message === lastMessage ? recommendationActions : null} />)}
         {pendingTurn ? <AssistantTurn pending>
           <AuthorLiveStatus run={trackedRun ?? activeRun} mode="edit" />
           <div className="pending-actions">
@@ -371,9 +384,10 @@ function ScriptChange({ message, scripts, draft, candidateDisabled, run, onUseCa
   </section>;
 }
 
-function ConversationMessage({ message, latest, scripts, draft, runs, apiBase, onRefreshRuns, onUseCandidate, onRequestRepair, candidateDisabled }: {
+function ConversationMessage({ message, latest, scripts, draft, runs, apiBase, onRefreshRuns, onUseCandidate, onRequestRepair, candidateDisabled, actions }: {
   message: Message; latest: boolean; scripts: Record<number, string>; draft: Draft; runs: Run[]; apiBase: string;
   onRefreshRuns: () => void; onUseCandidate: (script: string) => boolean; onRequestRepair: () => void; candidateDisabled: boolean;
+  actions: ReactNode;
 }) {
   const run = runs.find((item) => item.id === message.runId);
   const validation = runs.find((item) => item.id === message.validationRunId);
@@ -381,6 +395,7 @@ function ConversationMessage({ message, latest, scripts, draft, runs, apiBase, o
   const validationFailed = validation?.status === 'failed';
   return <AssistantTurn time={message.createdAt}>
     {message.content ? <p className="message-content">{message.content}</p> : null}
+    {actions}
     {hasScript ? <ScriptChange message={message} scripts={scripts} draft={draft} candidateDisabled={candidateDisabled} run={run} onUseCandidate={onUseCandidate} /> : null}
     {message.validationRunId ? <section className="artifact validation" aria-label="續接驗證">
       <header className="artifact-head"><strong>續接驗證</strong>{validation ? <RunStatusBadge run={validation} /> : null}</header>

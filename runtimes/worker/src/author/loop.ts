@@ -509,9 +509,8 @@ export async function runAuthor(
         message = final.message; conversationSummary = final.conversationSummary;
         if (final.newTestNeeded) {
           // Redirects are conversation replies. Discard any staged edit or validation request.
-          const guidance = "\n\n請使用「新增測試」，把這個流程建立成獨立的測試案例。";
-          message = [...message].slice(0, 16000 - [...guidance].length).join("").trimEnd() + guidance;
-          const reply: AuthorOutput = { message, requestValidation: false };
+          message = [...message.trim()].slice(0, 16000).join("").trimEnd();
+          const reply: AuthorOutput = { message, requestValidation: false, newTestNeeded: true };
           if (options.secrets) reply.message = options.secrets.redact(reply.message);
           noSecret(reply, config);
           return reply;

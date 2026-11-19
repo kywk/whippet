@@ -70,6 +70,35 @@ func (a *API) discardEditing(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, status, map[string]any{"session": session})
 }
+
+func (a *API) replaceDraftWithNewTest(w http.ResponseWriter, r *http.Request) {
+	testID, ok := a.id(w, r)
+	if !ok {
+		return
+	}
+	sessionID := r.PathValue("sessionId")
+	var body struct {
+		Revision  int    `json:"revision"`
+		ReplyID   string `json:"replyId"`
+		Confirmed bool   `json:"confirmed"`
+	}
+	if err := decodeBody(w, r, &body); err != nil {
+		a.fail(w, err)
+		return
+	}
+	if !ValidID(sessionID) || !ValidID(body.ReplyID) || body.Revision < 1 || !body.Confirmed {
+		writeError(w, 400, "invalid_request", "session, reply, positive revision and confirmed:true are required")
+		return
+	}
+	result, err := a.store.ReplaceDraftWithNewTest(r.Context(), testID, sessionID, body.Revision, body.ReplyID)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	a.engine.Wake()
+	writeJSON(w, 200, result)
+}
+
 func (a *API) createSummary(w http.ResponseWriter, r *http.Request) {
 	id, ok := a.id(w, r)
 	if !ok {

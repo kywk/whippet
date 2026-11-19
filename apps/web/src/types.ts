@@ -356,6 +356,7 @@ export interface Message {
   baseScript?: string;
   proposedScript?: string;
   validationRunId?: string;
+  newTestNeeded?: boolean;
 }
 
 export type VersionConversationMessage = Pick<Message, 'id' | 'role' | 'content' | 'createdAt'>;
@@ -448,6 +449,7 @@ export interface WhippetApi {
   getActiveEditingSession(testId: string, signal?: AbortSignal): Promise<EditingSession | null>;
   getEditingSession(testId: string, sessionId: string, signal?: AbortSignal): Promise<EditingSession>;
   discardEditingSession(testId: string, sessionId: string, revision: number, signal?: AbortSignal): Promise<EditingSession>;
+  replaceDraftWithNewTest(testId: string, sessionId: string, revision: number, replyId: string, signal?: AbortSignal): Promise<{ sourceTest: Test; test: Test }>;
   requestSummary(testId: string, editingSessionId: string, revision: number, validationRunId: string, signal?: AbortSignal): Promise<Run>;
   getWorkspace(workspaceId: string, signal?: AbortSignal): Promise<WorkspaceDetail>;
   updateWorkspaceAuthorEngine(workspaceId: string, revision: number, authorEngine: AuthorEngine, signal?: AbortSignal): Promise<WorkspaceDetail>;

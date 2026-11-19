@@ -169,6 +169,7 @@ test('本機頁面', async ({ page }) => {
     async getActiveEditingSession() { throw new ApiError('示範模式未提供編輯週期狀態。', 'MOCK_SESSION_UNAVAILABLE', 400); },
     async getEditingSession() { throw new ApiError('示範模式未提供編輯週期狀態。', 'MOCK_SESSION_UNAVAILABLE', 400); },
     async discardEditingSession() { throw new ApiError('示範模式不會放棄草稿。', 'MOCK_SESSION_UNAVAILABLE', 400); },
+    async replaceDraftWithNewTest() { throw new ApiError('示範模式不會放棄草稿。', 'MOCK_SESSION_UNAVAILABLE', 400); },
     async requestSummary() { throw new ApiError('示範模式不產生驗收摘要，請使用真實 API。', 'MOCK_SUMMARY_UNAVAILABLE', 400); },
     async getWorkspace() { throw new ApiError('M8 設定對話請使用真實 API。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
     async updateWorkspaceAuthorEngine() { throw new ApiError('示範模式不會切換 AI 撰寫引擎。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },

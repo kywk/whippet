@@ -94,6 +94,7 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	mux.HandleFunc("GET /api/tests/{id}/editing-session", a.editingSession)
 	mux.HandleFunc("GET /api/tests/{id}/editing-sessions/{sessionId}", a.editingSession)
 	mux.HandleFunc("POST /api/tests/{id}/editing-sessions/{sessionId}/discard", a.discardEditing)
+	mux.HandleFunc("POST /api/tests/{id}/editing-sessions/{sessionId}/replace-with-new-test", a.replaceDraftWithNewTest)
 	mux.HandleFunc("POST /api/tests/{id}/draft/summary", a.createSummary)
 	mux.HandleFunc("GET /api/tests/{id}/draft", a.draft)
 	mux.HandleFunc("PUT /api/tests/{id}/draft", a.saveDraft)

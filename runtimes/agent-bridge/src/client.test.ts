@@ -91,7 +91,7 @@ test('MCP reference worker forwards the saved test and submits a new test recomm
     testName: '購物車品項數量',
     validation: { runId: randomUUID(), status: 'failed' },
   });
-  const output = { message: '這次要驗證密碼重設。請選「新增測試」。', requestValidation: false };
+  const output = { message: '這次要驗證密碼重設。', requestValidation: false, newTestNeeded: true };
   const result = await runOnce({ ...f.options, modelFetch: async (_url, init) => {
     const body = strictJSON(String(init?.body));
     const content = body.input[0].content;
@@ -100,7 +100,7 @@ test('MCP reference worker forwards the saved test and submits a new test recomm
     assert.equal(saved.script, revision.script);
     assert.equal(saved.testName, '購物車品項數量');
     assert.equal(saved.validation.status, 'failed');
-    assert.match(body.instructions, /requestValidation:false/);
+    assert.match(body.instructions, /newTestNeeded:true and requestValidation:false/);
     return Response.json(envelope([text(JSON.stringify(output))]));
   } });
   assert.equal(result.appliedRevision, null);

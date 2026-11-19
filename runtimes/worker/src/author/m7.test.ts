@@ -45,7 +45,7 @@ test("M7 edit captures flat pinned context, executes only allowed tools, maintai
   assert.equal("skillId"in result,false);assert.equal("editingSessionId"in result,false);
 });
 
-test("a separate test recommendation drops staged script and validation, and names the UI action", async () => {
+test("a separate test recommendation reports its intent and drops staged script and validation", async () => {
   const task = input();
   task.author.messages = [{ role: "user", content: "把購物車情境改成忘記密碼流程" }];
   const replies = [
@@ -58,8 +58,9 @@ test("a separate test recommendation drops staged script and validation, and nam
     return replies.shift()!;
   } });
   assert.deepEqual(output, {
-    message: "原案例驗證購物車，這次要驗證密碼重設。\n\n請使用「新增測試」，把這個流程建立成獨立的測試案例。",
+    message: "原案例驗證購物車，這次要驗證密碼重設。",
     requestValidation: false,
+    newTestNeeded: true,
   });
 });
 

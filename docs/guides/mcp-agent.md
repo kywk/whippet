@@ -129,6 +129,8 @@ Agent依序使用task_claim（requestId冪等）、task_heartbeat、task_tool_ca
 
 送出前先在客戶端記憶體保留完整submit request，再以同一submitId與同一output提交完整message/script/requestValidation/conversationSummary；busy可待回收後原樣重試，unknown_result不能用新callId重做副作用。直接提交只是尚未自試的AI候選；requestValidation=true讓平台另外排正式keyless Playwright Run。submit成功不等於驗證通過，需由UI看目前revision驗證成功與報告。發佈仍由人在UI操作。
 
+普通 Test 的需求改成另一個驗證目標時，依 `contextBundle.instructions` 送出 `{message, newTestNeeded: true, requestValidation: false}`。Whippet 在對話顯示放棄草稿與繼續調整的選項。
+
 本機bridge另會替獨立browser session的原四工具補入ready lease metadata；已有顯式metadata不覆寫，close或未知結果清除隱式綁定。接單主線仍用task_tool_call明示身份。
 
 2026-11-14實測：真網頁送單，全新Codex透過MCP探索／產稿／提交，revision2來源ai，正式validation為succeeded且expected=1/unexpected=0/flaky=0/skipped=0，報告可開啟。QA沒有代寫腳本或攔API。驗收摘要仍走builtin，本次附帶summary Run failed，未驗發佈，不能據此宣稱整個M11已完成。

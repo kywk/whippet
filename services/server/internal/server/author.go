@@ -21,6 +21,7 @@ type authorOutput struct {
 	Message             *string              `json:"message"`
 	Script              *string              `json:"script,omitempty"`
 	RequestValidation   *bool                `json:"requestValidation"`
+	NewTestNeeded       bool                 `json:"newTestNeeded,omitempty"`
 }
 
 func decodeAuthorOutput(data []byte) (authorOutput, error) {
@@ -36,6 +37,9 @@ func decodeAuthorOutput(data []byte) (authorOutput, error) {
 	}
 	if err := validateAuthorPartial(result, data); err != nil {
 		return result, err
+	}
+	if result.NewTestNeeded && (result.Script != nil || result.Partial != nil || *result.RequestValidation) {
+		return result, fmt.Errorf("a new test recommendation must be a conversation-only reply")
 	}
 	return result, nil
 }
@@ -304,8 +308,9 @@ func (p *Postgres) completeAuthorWith(ctx context.Context, testID, runID, attemp
 							}
 							validationID = &validation.ID
 						}
-						if _, err = tx.ExecContext(ctx, `INSERT INTO messages(id,conversation_id,role,content,run_id,base_revision,applied_revision,proposed_script,validation_run_id)
-       VALUES($1,$2,'assistant',$3,$4,$5,$6,$7,$8)`, NewID(), session.ConversationID, plan.message, runID, baseRevision, appliedRevision, plan.proposedScript, validationID); err != nil {
+						newTestNeeded := output.NewTestNeeded && snapshotMatches && (strings.TrimSpace(d.Script) != "" || session.SourceVersionID != nil)
+						if _, err = tx.ExecContext(ctx, `INSERT INTO messages(id,conversation_id,role,content,run_id,base_revision,applied_revision,proposed_script,validation_run_id,new_test_needed)
+       VALUES($1,$2,'assistant',$3,$4,$5,$6,$7,$8,$9)`, NewID(), session.ConversationID, plan.message, runID, baseRevision, appliedRevision, plan.proposedScript, validationID, newTestNeeded); err != nil {
 							return err
 						}
 						var recap *string

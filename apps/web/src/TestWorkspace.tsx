@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { errorMessage } from './api';
+import { ApiError, errorMessage } from './api';
 import { executionCapabilityForScript, scriptOriginLabel } from './capabilities';
 import { Loading, Notice } from './components';
 import { DraftEditor } from './DraftEditor';
@@ -32,9 +32,10 @@ interface Props {
   settingsRefresh: number;
   onDirtyChange: (dirty: boolean) => void;
   onTestUpdated: (test: Test) => void;
+  onTestCreated: (test: Test) => void;
 }
 
-export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredMode, onModeChange, railCollapsed, onExpandRail, unreadCount, tags, workspaceTags, onAddTag, onRemoveTag, capabilities, authorEngine, settingsRefresh, onDirtyChange, onTestUpdated }: Props) {
+export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredMode, onModeChange, railCollapsed, onExpandRail, unreadCount, tags, workspaceTags, onAddTag, onRemoveTag, capabilities, authorEngine, settingsRefresh, onDirtyChange, onTestUpdated, onTestCreated }: Props) {
   const loadTest = useCallback((signal: AbortSignal) => api.getTest(testId, signal), [api, testId]);
   const loadVersions = useCallback((signal: AbortSignal) => api.listVersions(testId, signal), [api, testId]);
   const test = useResource(loadTest);
@@ -51,7 +52,7 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
   const [sessionBusy, setSessionBusy] = useState(false);
   const [sessionRefreshing, setSessionRefreshing] = useState(false);
   const [sessionError, setSessionError] = useState<string>();
-  const [discardTarget, setDiscardTarget] = useState<EditingSession>();
+  const [discardTarget, setDiscardTarget] = useState<{ session: EditingSession; replyId?: string }>();
   const [discardError, setDiscardError] = useState<string>();
   const sessionLock = useRef(false);
   const sessionGuard = useRef(false);
@@ -168,7 +169,7 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
     return () => { stopped = true; clearTimeout(timer); };
   }, [session?.id, session?.status, activity, readSession]);
   useEffect(() => {
-    if (session && session.status !== 'active') { setDiscardTarget(undefined); setDiscardError(undefined); }
+    if (session && session.status !== 'active') setDiscardTarget((current) => current?.replyId ? current : undefined);
   }, [session?.status]);
   useEffect(() => {
     if (session?.status !== 'discarded' && session?.status !== 'published') return;
@@ -185,24 +186,52 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
       catch (cause) { setSessionError(errorMessage(cause)); }
     } else await openEditor();
   }
-  async function askDiscard() {
+  async function askDiscard(recommendation?: { id: string; revision: number }) {
     if (!activeInfo || sessionLock.current) return;
-    setSessionBusy(true); setDiscardError(undefined);
-    try { const next = await readSession(activeInfo.id, true); if (next?.status === 'active') setDiscardTarget(next); }
-    catch (cause) { setSessionError(errorMessage(cause)); }
-    finally { setSessionBusy(false); }
+    sessionLock.current = true; setSessionBusy(true); setDiscardError(undefined);
+    try {
+      const next = await readSession(activeInfo.id, true);
+      if (next?.status !== 'active') return;
+      if (recommendation && next.draft?.revision !== recommendation.revision) {
+        setSessionError('草稿已更新，請重新整理對話後再決定是否另開測試。');
+        return;
+      }
+      setDiscardTarget({ session: next, replyId: recommendation?.id });
+    } catch (cause) { setSessionError(errorMessage(cause)); }
+    finally { sessionLock.current = false; setSessionBusy(false); }
   }
   async function discard() {
-    if (!discardTarget?.draft || sessionLock.current) return;
+    if (!discardTarget?.session.draft || sessionLock.current) return;
+    const { session: target, replyId } = discardTarget;
+    const revision = discardTarget.session.draft.revision;
     sessionLock.current = true; setSessionBusy(true); setDiscardError(undefined);
     const controller = new AbortController(); sessionControllers.current.add(controller);
     try {
-      const next = await api.discardEditingSession(testId, discardTarget.id, discardTarget.draft.revision, controller.signal);
+      if (replyId) {
+        const result = await api.replaceDraftWithNewTest(testId, target.id, revision, replyId, controller.signal);
+        if (controller.signal.aborted) return;
+        setDiscardTarget(undefined);
+        onModeChange?.('general');
+        onTestUpdated(result.sourceTest);
+        onTestCreated(result.test);
+        return;
+      }
+      const next = await api.discardEditingSession(testId, target.id, revision, controller.signal);
       if (controller.signal.aborted) return;
       ++sessionSequence.current; setSessionRefreshing(false);
       setSession(next); setDiscardTarget(undefined); test.retry();
       if (next.status === 'discarding') { setMode('editing'); setEditorMounted(true); }
-    } catch (cause) { if (!controller.signal.aborted) { setDiscardError(`${errorMessage(cause)} 草稿未被視為已刪除；若請求已送達，請重新載入週期確認回收狀態。`); void refreshSession().catch(() => undefined); } }
+    } catch (cause) {
+      if (controller.signal.aborted) return;
+      if (replyId) {
+        setDiscardError(cause instanceof ApiError && cause.status === 409
+          ? '草稿或對話已更新。請關閉視窗並重新整理對話。'
+          : `${errorMessage(cause)} 可以重試並接續同一個新測試。`);
+      } else {
+        setDiscardError(`${errorMessage(cause)} 草稿未被視為已刪除；若請求已送達，請重新載入週期確認回收狀態。`);
+      }
+      void refreshSession().catch(() => undefined);
+    }
     finally { sessionControllers.current.delete(controller); sessionLock.current = false; if (!controller.signal.aborted) setSessionBusy(false); }
   }
 
@@ -334,10 +363,11 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
         <div className="action-row"><button className="button quiet compact" disabled={sessionRefreshing} onClick={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }}>重新載入週期</button></div></section> : null)
         : sessionBusy ? <Loading text="正在開始或接續編輯週期…" /> : <div className="mode-empty"><p>尚未載入編輯週期。請重試開始或接續修改。</p><button className="button secondary" onClick={() => { void openEditor(); }}>開始或接續修改</button></div>}
       {session && session.draft && (session.status === 'active' || session.status === 'discarding') ? <DraftEditor key={session.id} api={api} apiBase={apiBase} testId={testId} capabilities={capabilities} authorEngine={authorEngine} session={session} sessionRefreshing={sessionRefreshing} onRefreshSession={refreshSession} runs={editingRuns} onRun={history.addRun} onPublished={published} onDirtyChange={handleEditorGuard} onRefreshRuns={history.refresh} settingsRefresh={settingsRefresh} onDraftChange={setKnownDraft} onDiscard={session.status === 'active' ? () => { void askDiscard(); } : undefined} discardBusy={sessionBusy} onReloadSession={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }} testName={loadedTest.current?.name} testKind={loadedTest.current?.kind} testSlug={loadedTest.current?.slug}
+        onReplaceDraft={session.status === 'active' ? (id, revision) => { void askDiscard({ id, revision }); } : undefined}
         onWatch={startLive} liveView={mode === 'editing' && liveRun?.editingSessionId === session.id ? liveView : null}
         renderRunHistory={(onWatch) => <RunHistory {...runHistoryProps} runs={editingRuns} group="editing" onWatch={onWatch} />}
       /> : null}
     </div> : null}
-    {discardTarget ? <DiscardSessionDialog session={discardTarget} busy={sessionBusy} error={discardError} onCancel={() => setDiscardTarget(undefined)} onConfirm={() => { void discard(); }} /> : null}
+    {discardTarget ? <DiscardSessionDialog session={discardTarget.session} replacing={Boolean(discardTarget.replyId)} busy={sessionBusy} error={discardError} onCancel={() => setDiscardTarget(undefined)} onConfirm={() => { void discard(); }} /> : null}
   </div>;
 }

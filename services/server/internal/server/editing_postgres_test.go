@@ -227,7 +227,7 @@ func TestM7EditingLifecycle(t *testing.T) {
 		stringValue(a.Author.SourceVersion.BackgroundSummary) != *published.BackgroundSummary {
 		t.Fatalf("missing revision baseline: %+v", a.Author)
 	}
-	h.upload(a, "author.json", `{"message":"兩者驗證的功能不同，請按「新增測試」。","requestValidation":false}`)
+	h.upload(a, "author.json", `{"message":"兩者驗證的功能不同。","requestValidation":false,"newTestNeeded":true}`)
 	h.complete(a, "succeeded")
 	h.release()
 	replyRun, err := p.Run(ctx, edit.Run.ID)
@@ -239,7 +239,7 @@ func TestM7EditingLifecycle(t *testing.T) {
 		t.Fatalf("a conversation reply changed the case: %+v %v", afterRedirect, err)
 	}
 	convo, err = p.Conversation(ctx, testID, next.ID)
-	if err != nil || len(convo.Messages) != 2 || !strings.Contains(convo.Messages[1].Content, "新增測試") || convo.Messages[1].ProposedScript != nil {
+	if err != nil || len(convo.Messages) != 2 || !convo.Messages[1].NewTestNeeded || convo.Messages[1].ProposedScript != nil {
 		t.Fatalf("missing conversation reply: %+v %v", convo, err)
 	}
 	formal, err := p.CreateRun(ctx, testID)

@@ -136,7 +136,11 @@ func (p *Postgres) Tests(ctx context.Context, workspaceID string) ([]Test, error
 }
 
 func (p *Postgres) Test(ctx context.Context, id string) (Test, error) {
-	return scanTest(p.DB.QueryRowContext(ctx, `SELECT `+testColumns+` FROM tests WHERE id=$1`, id))
+	return readTest(ctx, p.DB, id)
+}
+
+func readTest(ctx context.Context, q queryDB, id string) (Test, error) {
+	return scanTest(q.QueryRowContext(ctx, `SELECT `+testColumns+` FROM tests WHERE id=$1`, id))
 }
 
 const runColumns = `r.id,r.test_id,r.status,r.created_at,r.started_at,r.finished_at,r.error,

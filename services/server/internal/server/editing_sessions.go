@@ -273,27 +273,7 @@ func (p *Postgres) DiscardEditingSession(ctx context.Context, testID, id string,
 	if err != nil {
 		return s, err
 	}
-	if s.Status == "published" {
-		return s, ErrConflict
-	}
-	if s.Status == "active" {
-		d, err := scanDraft(tx.QueryRowContext(ctx, draftSelect, testID))
-		if err != nil {
-			return s, err
-		}
-		if err = checkRevision(revision, d.Revision); err != nil {
-			return s, err
-		}
-		if _, err = tx.ExecContext(ctx, `UPDATE editing_sessions SET status='discarding' WHERE id=$1`, id); err != nil {
-			return s, err
-		}
-		if _, err = tx.ExecContext(ctx, `UPDATE runs SET status=CASE WHEN status='queued' THEN 'cancelled' ELSE 'cancelling' END,
-          finished_at=CASE WHEN status='queued' THEN now() ELSE finished_at END WHERE editing_session_id=$1
-          AND status IN ('queued','dispatched','running','collecting')`, id); err != nil {
-			return s, err
-		}
-	}
-	if err = finishDiscard(ctx, tx, testID, id); err != nil {
+	if err = discardEditingInTx(ctx, tx, s, revision); err != nil {
 		return s, err
 	}
 	s, err = readEditing(ctx, tx, testID, id)
@@ -308,6 +288,30 @@ func (p *Postgres) DiscardEditingSession(ctx context.Context, testID, id string,
 		return s, err
 	}
 	return s, nil
+}
+
+func discardEditingInTx(ctx context.Context, tx *sql.Tx, s EditingSession, revision int) error {
+	if s.Status == "published" {
+		return ErrConflict
+	}
+	if s.Status == "active" {
+		d, err := scanDraft(tx.QueryRowContext(ctx, draftSelect, s.TestID))
+		if err != nil {
+			return err
+		}
+		if err = checkRevision(revision, d.Revision); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE editing_sessions SET status='discarding' WHERE id=$1`, s.ID); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE runs SET status=CASE WHEN status='queued' THEN 'cancelled' ELSE 'cancelling' END,
+          finished_at=CASE WHEN status='queued' THEN now() ELSE finished_at END WHERE editing_session_id=$1
+          AND status IN ('queued','dispatched','running','collecting')`, s.ID); err != nil {
+			return err
+		}
+	}
+	return finishDiscard(ctx, tx, s.TestID, s.ID)
 }
 
 // Called independently, after heartbeat/result transactions have committed. It

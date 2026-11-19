@@ -26,7 +26,7 @@ func (p *Postgres) Conversation(ctx context.Context, testID, sessionID string) (
 	id := session.ConversationID
 	c := Conversation{ID: id, TestID: testID, EditingSessionID: session.ID, Messages: []Message{}}
 	rows, err := tx.QueryContext(ctx, `SELECT m.id,m.role,m.content,m.created_at,m.run_id,m.base_revision,
-        m.applied_revision,m.proposed_script,m.validation_run_id,
+        m.applied_revision,m.proposed_script,m.validation_run_id,m.new_test_needed,
         CASE WHEN m.role='assistant' THEN dr.script ELSE NULL END
         FROM messages m LEFT JOIN draft_revisions dr ON dr.test_id=$2 AND dr.revision=m.base_revision
         WHERE m.conversation_id=$1 ORDER BY m.sequence`, id, testID)
@@ -36,11 +36,14 @@ func (p *Postgres) Conversation(ctx context.Context, testID, sessionID string) (
 	for rows.Next() {
 		var m Message
 		if err := rows.Scan(&m.ID, &m.Role, &m.Content, &m.CreatedAt, &m.RunID, &m.BaseRevision,
-			&m.AppliedRevision, &m.ProposedScript, &m.ValidationRunID, &m.BaseScript); err != nil {
+			&m.AppliedRevision, &m.ProposedScript, &m.ValidationRunID, &m.NewTestNeeded, &m.BaseScript); err != nil {
 			rows.Close()
 			return Conversation{}, err
 		}
 		m.CreatedAt = m.CreatedAt.UTC()
+		if m.Role == "assistant" && m.RunID != nil && m.BaseRevision != nil && m.AppliedRevision == nil && m.ProposedScript == nil && m.ValidationRunID == nil {
+			m.NewTestNeeded = isNewTestRecommendation(m.NewTestNeeded, m.Content)
+		}
 		c.Messages = append(c.Messages, m)
 	}
 	err = rows.Err()
