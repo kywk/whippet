@@ -35,6 +35,7 @@ interface Props {
   onRefreshSession: () => Promise<EditingSession | undefined>;
   onDiscard?: () => void;
   onReplaceDraft?: (replyId: string, revision: number) => void;
+  deletesTest: boolean;
   discardBusy: boolean;
   onReloadSession: () => void;
   testName?: string;
@@ -60,7 +61,7 @@ export function DraftEditor(props: Props) {
   </section>;
 }
 
-function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, onDirtyChange, onRefreshRuns, settingsRefresh, onDraftChange, onWatch, liveView, renderRunHistory, initialSettingsSequence, session, sessionRefreshing, onRefreshSession, capabilities, authorEngine, onDiscard, onReplaceDraft, discardBusy, onReloadSession, testName, testKind, testSlug }: Props & { initial: Draft; initialSettingsSequence: number }) {
+function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, onDirtyChange, onRefreshRuns, settingsRefresh, onDraftChange, onWatch, liveView, renderRunHistory, initialSettingsSequence, session, sessionRefreshing, onRefreshSession, capabilities, authorEngine, onDiscard, onReplaceDraft, deletesTest, discardBusy, onReloadSession, testName, testKind, testSlug }: Props & { initial: Draft; initialSettingsSequence: number }) {
   const [draft, setDraft] = useState(initial);
   const [script, setScript] = useState(initial.script);
   const [module, setModule] = useState(() => initial.module ?? emptyModule(testSlug ?? ''));
@@ -407,9 +408,9 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
           <h4>本次對話背景</h4><p className="summary-content">{session.conversationSummary ?? '此編輯週期尚無已保存的對話摘要。'}</p>
         </section>
         <div className="side-actions"><button className="button quiet compact" disabled={sessionRefreshing} onClick={onReloadSession}><RefreshIcon />重新載入週期</button></div>
-        {onDiscard ? <section className="danger-zone" aria-labelledby="danger-title"><h3 id="danger-title">放棄這次修改</h3>
-          <p className="inline-hint">會放棄草稿與對話接續；正式版本、歷史執行與附件證據不受影響。進行中的任務會先取消。</p>
-          <button className="button danger-outline" disabled={discardBusy} onClick={onDiscard}><TrashIcon />刪除草稿…</button></section> : null}
+        {onDiscard ? <section className="danger-zone" aria-labelledby="danger-title"><h3 id="danger-title">{deletesTest ? '刪除未發佈測試' : '放棄這次修改'}</h3>
+          <p className="inline-hint">{deletesTest ? '刪除草稿後，這個未發佈的測試會從 Workspace 移除。' : '會放棄草稿與對話接續；正式版本、歷史執行與附件證據不受影響。進行中的任務會先取消。'}</p>
+          <button className="button danger-outline" disabled={discardBusy} onClick={onDiscard}><TrashIcon />{deletesTest ? '刪除測試…' : '刪除草稿…'}</button></section> : null}
       </div>
     </aside>
   </div>;

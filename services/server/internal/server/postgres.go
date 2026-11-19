@@ -94,7 +94,7 @@ func (p *Postgres) Workspaces(ctx context.Context) ([]Workspace, error) {
 	return items, nil
 }
 
-const testColumns = `id,workspace_id,name,description,published_version_id,kind,slug,
+const testColumns = `id,workspace_id,name,description,published_version_id,kind,slug,deleted_at IS NOT NULL,
  (SELECT json_build_object('id',e.id,'status',e.status,'draftRevision',d.current_revision,'updatedAt',d.updated_at)
   FROM editing_sessions e JOIN drafts d ON d.editing_session_id=e.id
   WHERE e.test_id=tests.id AND e.status IN ('active','discarding'))`
@@ -104,7 +104,7 @@ type scanner interface{ Scan(...any) error }
 func scanTest(row scanner) (Test, error) {
 	var t Test
 	var active []byte
-	err := row.Scan(&t.ID, &t.WorkspaceID, &t.Name, &t.Description, &t.PublishedVersionID, &t.Kind, &t.Slug, &active)
+	err := row.Scan(&t.ID, &t.WorkspaceID, &t.Name, &t.Description, &t.PublishedVersionID, &t.Kind, &t.Slug, &t.Deleted, &active)
 	if err == nil && len(active) > 0 {
 		err = json.Unmarshal(active, &t.ActiveEditingSession)
 	}
@@ -119,7 +119,7 @@ func (p *Postgres) Tests(ctx context.Context, workspaceID string) ([]Test, error
 	if !exists {
 		return nil, ErrNotFound
 	}
-	rows, err := p.DB.QueryContext(ctx, `SELECT `+testColumns+` FROM tests WHERE workspace_id=$1 ORDER BY id`, workspaceID)
+	rows, err := p.DB.QueryContext(ctx, `SELECT `+testColumns+` FROM tests WHERE workspace_id=$1 AND deleted_at IS NULL ORDER BY id`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,11 @@ func (p *Postgres) Tests(ctx context.Context, workspaceID string) ([]Test, error
 }
 
 func (p *Postgres) Test(ctx context.Context, id string) (Test, error) {
-	return readTest(ctx, p.DB, id)
+	test, err := readTest(ctx, p.DB, id)
+	if test.Deleted {
+		return Test{}, ErrNotFound
+	}
+	return test, err
 }
 
 func readTest(ctx context.Context, q queryDB, id string) (Test, error) {

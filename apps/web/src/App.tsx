@@ -114,7 +114,7 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onDirtyChange, conf
   const [workspaceOverrides, setWorkspaceOverrides] = useState<Record<string, WorkspaceDetail>>({});
   const setupDirty = useRef(false);
   const reportSetupGuard = useCallback((dirty: boolean) => { setupDirty.current = dirty; onSettingsDirtyChange(dirty); }, [onSettingsDirtyChange]);
-  const selectedTests = useRef<Record<string, string>>({});
+  const selectedTests = useRef<Partial<Record<string, string | null>>>({});
   const allWorkspaces = [...new Map([...(workspaces.data ?? []), ...Object.values(workspaceOverrides)].map((item) => [item.id, item])).values()];
   const workspace = allWorkspaces.find((item) => item.id === selectedId) ?? allWorkspaces[0];
   const updateWorkspace = useCallback((next: WorkspaceDetail) => {
@@ -124,7 +124,7 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onDirtyChange, conf
   const createdWorkspace = useCallback((next: WorkspaceDetail) => {
     setWorkspaceOverrides((previous) => ({ ...previous, [next.id]: next })); setSelectedId(next.id); setSetupTarget(next); setSurface('settings'); workspaces.retry();
   }, [workspaces.retry]);
-  const rememberTest = useCallback((id: string) => { if (workspace) selectedTests.current[workspace.id] = id; }, [workspace?.id]);
+  const rememberTest = useCallback((id: string | null) => { if (workspace) selectedTests.current[workspace.id] = id; }, [workspace?.id]);
   function openSetup(create = false) {
     if (surface === 'tests' && !confirmTestNavigation()) return;
     const target = create ? 'create' : workspace;
@@ -151,7 +151,7 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onDirtyChange, conf
       </main>
     </div>;
   }
-  return <TestBrowser key={workspace.id} api={api} apiBase={apiBase} mock={mock} user={user} onLogout={onLogout} workspace={workspace} workspaces={allWorkspaces} switchWorkspace={switchWorkspace} openSetup={openSetup} surface={surface} setSurface={setSurface} setupTarget={setupTarget} onDirtyChange={onDirtyChange} confirmNavigation={confirmTestNavigation} initialSelectedId={selectedTests.current[workspace.id] ?? ''} onSelected={rememberTest} setupView={setupView} onOpenCatalog={() => { if (confirmNavigation()) setSurface('catalog'); }} />;
+  return <TestBrowser key={workspace.id} api={api} apiBase={apiBase} mock={mock} user={user} onLogout={onLogout} workspace={workspace} workspaces={allWorkspaces} switchWorkspace={switchWorkspace} openSetup={openSetup} surface={surface} setSurface={setSurface} setupTarget={setupTarget} onDirtyChange={onDirtyChange} confirmNavigation={confirmTestNavigation} initialSelectedId={selectedTests.current[workspace.id]} onSelected={rememberTest} setupView={setupView} onOpenCatalog={() => { if (confirmNavigation()) setSurface('catalog'); }} />;
 }
 
 function RailHead({ user, onLogout, onCollapse }: { user: DevUser; onLogout: () => void; onCollapse?: () => void }) {
@@ -168,7 +168,7 @@ interface BrowserProps extends Pick<AppProps, 'api' | 'apiBase' | 'mock'>, Editi
   user: DevUser; onLogout: () => void; workspace: WorkspaceDetail; workspaces: WorkspaceDetail[];
   switchWorkspace: (id: string) => void; openSetup: (create?: boolean) => void;
   surface: Surface; setSurface: (surface: Surface) => void; setupTarget?: WorkspaceDetail | 'create';
-  initialSelectedId: string; onSelected: (id: string) => void; setupView: ReactNode; onOpenCatalog: () => void;
+  initialSelectedId?: string | null; onSelected: (id: string | null) => void; setupView: ReactNode; onOpenCatalog: () => void;
 }
 
 function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout, switchWorkspace, openSetup, surface, setSurface, setupTarget, onDirtyChange, confirmNavigation, initialSelectedId, onSelected, setupView, onOpenCatalog }: BrowserProps) {
@@ -209,9 +209,15 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
   const createLock = useRef(false);
   const createController = useRef<AbortController | null>(null);
   useEffect(() => () => createController.current?.abort(), []);
-  const [overrides, setOverrides] = useState<Record<string, Test>>({});
-  const allTests = [...new Map([...(tests.data ?? []), ...Object.values(overrides)].map((test) => [test.id, test])).values()];
-  const selected = allTests.find((item) => item.id === selectedId) ?? allTests[0];
+  const [overrides, setOverrides] = useState<Record<string, Test | null>>({});
+  const allTests = [...new Map<string, Test | null>([
+    ...(tests.data ?? []).map((test) => [test.id, test] as const),
+    ...Object.entries(overrides),
+  ]).values()].filter((test) => test !== null);
+  const selected = selectedId === null ? undefined : allTests.find((item) => item.id === selectedId) ?? allTests[0];
+  useEffect(() => {
+    if (selectedId === null && surface === 'tests') document.getElementById('main')?.focus();
+  }, [selectedId, surface]);
   const workspaceTags = useMemo(() => {
     const set = new Set<string>();
     for (const item of allTests) {
@@ -230,7 +236,13 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
     const tagSearchText = testTags.map((tag) => `#${tag} ${tag}`).join(' ');
     return `${test.name} ${test.description} ${tagSearchText}`.toLocaleLowerCase().includes(query);
   });
-  const updateTest = useCallback((test: Test) => setOverrides((current) => ({ ...current, [test.id]: test })), []);
+  const updateTest = useCallback((test: Test) => setOverrides((current) => current[test.id] === null ? current : { ...current, [test.id]: test }), []);
+  const removeTest = useCallback((id: string) => {
+    setOverrides((current) => ({ ...current, [id]: null }));
+    setSelectedId(null);
+    setAutoEditId(undefined);
+    onSelected(null);
+  }, [onSelected]);
   const { activity, running, unread, permission, enableNotifications } = useActivity(api, allTests, surface === 'tests' ? selected?.id : undefined);
   const selectedTestId = selected?.id;
   // Session closure effects depend on this callback; keep its identity stable
@@ -384,6 +396,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
               apiBase={apiBase}
               onDirtyChange={reportEditorGuard}
               onTestUpdated={updateTest}
+              onTestRemoved={removeTest}
               onTestCreated={(test) => openCreatedTest(test, Boolean(test.activeEditingSession))}
               settingsRefresh={0}
               initialEditing={shouldInitialEdit}

@@ -186,6 +186,7 @@ function parseTest(value: unknown): Test {
     description: optionalString(data.description) ?? '',
     publishedVersionId: optionalString(data.publishedVersionId) || null,
     activeEditingSession: data.activeEditingSession === undefined ? undefined : data.activeEditingSession === null ? null : parseActiveSession(data.activeEditingSession),
+    deleted: data.deleted === true,
   };
 }
 
@@ -395,6 +396,7 @@ function parseSession(value: unknown): EditingSession {
     draft: data.draft == null ? null : parseDraft(data.draft), summary: data.summary == null ? null : parseSummary(data.summary),
     pendingRunIds: data.pendingRunIds.map(string), reclaimPending: data.reclaimPending,
     publishedVersionId: optionalString(data.publishedVersionId) ?? null, createdAt: string(data.createdAt), closedAt: optionalString(data.closedAt) ?? null,
+    testDeleted: data.testDeleted === true,
   };
 }
 

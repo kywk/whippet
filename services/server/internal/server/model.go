@@ -45,6 +45,7 @@ type Test struct {
 	Description          string                `json:"description"`
 	PublishedVersionID   *string               `json:"publishedVersionId"`
 	ActiveEditingSession *ActiveEditingSession `json:"activeEditingSession"`
+	Deleted              bool                  `json:"deleted,omitempty"`
 }
 
 type Run struct {

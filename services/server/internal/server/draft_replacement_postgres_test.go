@@ -8,6 +8,12 @@ import (
 )
 
 func TestReplaceDraftWithNewTest(t *testing.T) {
+	t.Run("published", func(t *testing.T) { checkDraftReplacement(t, true) })
+	t.Run("unpublished", func(t *testing.T) { checkDraftReplacement(t, false) })
+}
+
+func checkDraftReplacement(t *testing.T, published bool) {
+	t.Helper()
 	p, ctx := workspaceTestDB(t)
 	if err := p.Migrate(ctx); err != nil {
 		t.Fatal(err)
@@ -22,7 +28,14 @@ func TestReplaceDraftWithNewTest(t *testing.T) {
 	if err := p.RegisterManager(ctx, "m7-test", 1); err != nil {
 		t.Fatal(err)
 	}
-	const testID = "10000000-0000-4000-8000-000000000001"
+	testID := "10000000-0000-4000-8000-000000000001"
+	if !published {
+		item, err := p.CreateTest(ctx, "00000000-0000-4000-8000-000000000001", "Unpublished source", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		testID = item.ID
+	}
 	source, _, err := p.StartEditingSession(ctx, testID)
 	if err != nil {
 		t.Fatal(err)
@@ -108,6 +121,10 @@ func TestReplaceDraftWithNewTest(t *testing.T) {
 	}
 	if _, err := p.Draft(ctx, testID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("source draft after Worker reclamation: %v", err)
+	}
+	replay, err := p.ReplaceDraftWithNewTest(ctx, testID, source.ID, revision, replyID)
+	if err != nil || replay.Test.ID != newTest.ID || replay.SourceTest.Deleted != !published {
+		t.Fatalf("replacement replay after Worker reclamation: %+v %v", replay, err)
 	}
 	queued := h.claim(stringValue(newConversation.ActiveRunID))
 	if queued.Script != "" || queued.Author.SourceVersion != nil || len(queued.Author.Messages) != 1 || queued.Author.Messages[0].Content != prompt {

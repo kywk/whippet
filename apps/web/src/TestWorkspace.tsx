@@ -32,10 +32,11 @@ interface Props {
   settingsRefresh: number;
   onDirtyChange: (dirty: boolean) => void;
   onTestUpdated: (test: Test) => void;
+  onTestRemoved: (testId: string) => void;
   onTestCreated: (test: Test) => void;
 }
 
-export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredMode, onModeChange, railCollapsed, onExpandRail, unreadCount, tags, workspaceTags, onAddTag, onRemoveTag, capabilities, authorEngine, settingsRefresh, onDirtyChange, onTestUpdated, onTestCreated }: Props) {
+export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredMode, onModeChange, railCollapsed, onExpandRail, unreadCount, tags, workspaceTags, onAddTag, onRemoveTag, capabilities, authorEngine, settingsRefresh, onDirtyChange, onTestUpdated, onTestRemoved, onTestCreated }: Props) {
   const loadTest = useCallback((signal: AbortSignal) => api.getTest(testId, signal), [api, testId]);
   const loadVersions = useCallback((signal: AbortSignal) => api.listVersions(testId, signal), [api, testId]);
   const test = useResource(loadTest);
@@ -82,6 +83,7 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
   const formalRuns = history.runs.filter((run) => !run.kind || run.kind === 'run');
   const editingRuns = history.runs.filter((run) => run.editingSessionId === session?.id && (run.kind === 'author' || run.kind === 'validation'));
   const publishedId = test.data?.publishedVersionId;
+  const deletesUnpublishedTest = (loadedTest.current?.kind ?? 'test') === 'test' && loadedTest.current?.publishedVersionId === null;
   const publishedVersion = versions.data?.find((version) => version.id === publishedId);
   const formalCapability = executionCapabilityForScript(capabilities, publishedVersion?.scriptOrigin);
   const executionAvailable = formalCapability?.available === true;
@@ -171,12 +173,18 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
   useEffect(() => {
     if (session && session.status !== 'active') setDiscardTarget((current) => current?.replyId ? current : undefined);
   }, [session?.status]);
+  const replacingDraft = Boolean(discardTarget?.replyId);
   useEffect(() => {
     if (session?.status !== 'discarded' && session?.status !== 'published') return;
+    if (session.testDeleted) {
+      // Keep the confirmation available to replay a replacement whose response was lost.
+      if (!replacingDraft) onTestRemoved(testId);
+      return;
+    }
     userChoseMode.current = 'general';
     onModeChange?.('general');
     setEditorMounted(false); setKnownDraft(undefined); setMode('general'); setLiveSelection(undefined); test.retry(); versions.retry();
-  }, [session?.id, session?.status, test.retry, versions.retry, onModeChange]);
+  }, [session?.id, session?.status, session?.testDeleted, replacingDraft, testId, onTestRemoved, test.retry, versions.retry, onModeChange]);
 
   async function edit() {
     userChoseMode.current = 'editing';
@@ -212,15 +220,16 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
         if (controller.signal.aborted) return;
         setDiscardTarget(undefined);
         onModeChange?.('general');
-        onTestUpdated(result.sourceTest);
+        if (result.sourceTest.deleted || deletesUnpublishedTest) onTestRemoved(testId);
+        else onTestUpdated(result.sourceTest);
         onTestCreated(result.test);
         return;
       }
       const next = await api.discardEditingSession(testId, target.id, revision, controller.signal);
       if (controller.signal.aborted) return;
       ++sessionSequence.current; setSessionRefreshing(false);
-      setSession(next); setDiscardTarget(undefined); test.retry();
-      if (next.status === 'discarding') { setMode('editing'); setEditorMounted(true); }
+      setSession(next); setDiscardTarget(undefined);
+      if (next.status === 'discarding') { setMode('editing'); setEditorMounted(true); test.retry(); }
     } catch (cause) {
       if (controller.signal.aborted) return;
       if (replyId) {
@@ -269,7 +278,7 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
 
   const statusChips = <>
     <span className={`chip ${publishedId ? 'ok' : 'neutral'}`}>{publishedId ? '已發佈' : test.loading ? '載入中' : !test.data ? '狀態尚未確認' : '尚未發佈'}</span>
-    {activeInfo ? <span className="chip warm">{activeInfo.status === 'discarding' ? '正在放棄草稿' : `草稿 revision ${knownDraft?.revision ?? activeInfo.draftRevision}`}</span> : null}
+    {activeInfo ? <span className="chip warm">{activeInfo.status === 'discarding' ? (deletesUnpublishedTest ? '正在刪除測試' : '正在放棄草稿') : `草稿 revision ${knownDraft?.revision ?? activeInfo.draftRevision}`}</span> : null}
     {tags.map((tag) => <span key={tag} className="chip tag-chip">#{tag}</span>)}
   </>;
   const tabBusy = sessionBusy && !session;
@@ -354,20 +363,20 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
             <textarea className="script-editor readonly-script" readOnly rows={12} value={publishedVersion.script} spellCheck={false} aria-label="正式版本腳本（唯讀）" />
           </> : !publishedId ? <p className="mode-empty">完成發佈後會顯示正式版本腳本。</p> : <Notice message="目前無法載入正式版本腳本。" retry={versions.retry} />}
         </section>
-        <VersionHistory api={api} apiBase={apiBase} versions={versions.data} runs={history.runs} publishedVersionId={publishedId} loading={versions.loading} error={versions.error} onRefresh={versions.retry} onEditDraft={() => { void edit(); }} onDiscardDraft={() => { void askDiscard(); }} activeEditingSession={activeInfo} sessionBusy={sessionBusy} knownDraft={knownDraft} editorGuarded={editorGuarded} />
+        <VersionHistory api={api} apiBase={apiBase} versions={versions.data} runs={history.runs} publishedVersionId={publishedId} loading={versions.loading} error={versions.error} onRefresh={versions.retry} onEditDraft={() => { void edit(); }} onDiscardDraft={() => { void askDiscard(); }} activeEditingSession={activeInfo} sessionBusy={sessionBusy} knownDraft={knownDraft} editorGuarded={editorGuarded} deletesTest={deletesUnpublishedTest} />
       </div>
     </div>
     {editorMounted ? <div className="test-mode editing-mode" hidden={mode !== 'editing'} role="tabpanel" aria-label="測試編輯模式" data-mode="editing">
-      {session ? (session.status === 'discarding' ? <section className="editing-session-status" aria-label="編輯週期狀態"><p>正在放棄草稿，等待任務停止與資源回收。</p>
+      {session ? (session.status === 'discarding' ? <section className="editing-session-status" aria-label="編輯週期狀態"><p role="status">{deletesUnpublishedTest ? '正在刪除測試' : '正在放棄草稿'}，等待任務停止與資源回收。</p>
         <p className="inline-hint">{session.reclaimPending ? '等待執行節點確認回收，尚未完成放棄。' : '正在確認本週期所有任務已終止。'}待確認任務：{session.pendingRunIds.length}；正式執行不受影響。</p>
         <div className="action-row"><button className="button quiet compact" disabled={sessionRefreshing} onClick={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }}>重新載入週期</button></div></section> : null)
         : sessionBusy ? <Loading text="正在開始或接續編輯週期…" /> : <div className="mode-empty"><p>尚未載入編輯週期。請重試開始或接續修改。</p><button className="button secondary" onClick={() => { void openEditor(); }}>開始或接續修改</button></div>}
       {session && session.draft && (session.status === 'active' || session.status === 'discarding') ? <DraftEditor key={session.id} api={api} apiBase={apiBase} testId={testId} capabilities={capabilities} authorEngine={authorEngine} session={session} sessionRefreshing={sessionRefreshing} onRefreshSession={refreshSession} runs={editingRuns} onRun={history.addRun} onPublished={published} onDirtyChange={handleEditorGuard} onRefreshRuns={history.refresh} settingsRefresh={settingsRefresh} onDraftChange={setKnownDraft} onDiscard={session.status === 'active' ? () => { void askDiscard(); } : undefined} discardBusy={sessionBusy} onReloadSession={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }} testName={loadedTest.current?.name} testKind={loadedTest.current?.kind} testSlug={loadedTest.current?.slug}
-        onReplaceDraft={session.status === 'active' ? (id, revision) => { void askDiscard({ id, revision }); } : undefined}
+        onReplaceDraft={session.status === 'active' ? (id, revision) => { void askDiscard({ id, revision }); } : undefined} deletesTest={deletesUnpublishedTest}
         onWatch={startLive} liveView={mode === 'editing' && liveRun?.editingSessionId === session.id ? liveView : null}
         renderRunHistory={(onWatch) => <RunHistory {...runHistoryProps} runs={editingRuns} group="editing" onWatch={onWatch} />}
       /> : null}
     </div> : null}
-    {discardTarget ? <DiscardSessionDialog session={discardTarget.session} replacing={Boolean(discardTarget.replyId)} busy={sessionBusy} error={discardError} onCancel={() => setDiscardTarget(undefined)} onConfirm={() => { void discard(); }} /> : null}
+    {discardTarget ? <DiscardSessionDialog session={discardTarget.session} replacing={replacingDraft} deletesTest={deletesUnpublishedTest} busy={sessionBusy} error={discardError} onCancel={() => setDiscardTarget(undefined)} onConfirm={() => { void discard(); }} /> : null}
   </div>;
 }

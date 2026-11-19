@@ -255,7 +255,7 @@ func TestM7EditingLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	done, err := p.DiscardEditingSession(ctx, testID, next.ID, next.Draft.Revision)
-	if err != nil || done.Status != "discarded" {
+	if err != nil || done.Status != "discarded" || done.TestDeleted {
 		t.Fatalf("queued discard: %+v %v", done, err)
 	}
 	formalState, err := p.Run(ctx, formal.ID)
@@ -316,6 +316,66 @@ func TestM7EditingLifecycle(t *testing.T) {
 	}
 	if _, err = p.DB.ExecContext(ctx, `UPDATE test_versions SET description='overwritten' WHERE id=$1`, published.ID); err == nil {
 		t.Fatal("version description mutable")
+	}
+}
+
+func TestDiscardUnpublishedTest(t *testing.T) {
+	p, ctx := workspaceTestDB(t)
+	if err := p.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	const workspaceID = "00000000-0000-4000-8000-000000000001"
+	item, err := p.CreateTest(ctx, workspaceID, "Discard before publication", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, _, err := p.StartEditingSession(ctx, item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revision := session.Draft.Revision
+	if err := p.RegisterManager(ctx, "m7-test", 1); err != nil {
+		t.Fatal(err)
+	}
+	sent, err := p.CreateAuthor(ctx, item.ID, session.ID, "QA cancellation fixture", revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := m7DBHarness{t: t, p: p, ctx: ctx}
+	assignment := h.claim(sent.Run.ID)
+	closing, err := p.DiscardEditingSession(ctx, item.ID, session.ID, revision)
+	if err != nil || closing.Status != "discarding" || closing.TestDeleted || closing.Draft == nil {
+		t.Fatalf("discard should wait for Worker release: %+v %v", closing, err)
+	}
+	if _, err := p.Test(ctx, item.ID); err != nil {
+		t.Fatalf("test disappeared before Worker release: %v", err)
+	}
+	h.complete(assignment, "cancelled")
+	h.release()
+	if err := p.FinalizeDiscardingSessions(ctx); err != nil {
+		t.Fatal(err)
+	}
+	closed, err := p.DiscardEditingSession(ctx, item.ID, session.ID, revision)
+	if err != nil || closed.Status != "discarded" || !closed.TestDeleted || closed.Draft != nil {
+		t.Fatalf("discard replay should report the deleted Test: %+v %v", closed, err)
+	}
+	if _, err := p.Test(ctx, item.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted test is still readable: %v", err)
+	}
+	if _, _, err := p.StartEditingSession(ctx, item.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted test could be reopened: %v", err)
+	}
+	if _, err := p.Conversation(ctx, item.ID, session.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted conversation is still readable: %v", err)
+	}
+	items, err := p.Tests(ctx, workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, visible := range items {
+		if visible.ID == item.ID {
+			t.Fatal("deleted test is still listed")
+		}
 	}
 }
 

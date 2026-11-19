@@ -49,6 +49,7 @@ type EditingSession struct {
 	PublishedVersionID  *string         `json:"publishedVersionId"`
 	CreatedAt           time.Time       `json:"createdAt"`
 	ClosedAt            *time.Time      `json:"closedAt"`
+	TestDeleted         bool            `json:"testDeleted,omitempty"`
 }
 
 type queryDB interface {
@@ -70,13 +71,13 @@ func lockEditingTest(ctx context.Context, tx *sql.Tx, testID string) (*Workspace
 }
 
 const editingSelect = `SELECT e.id,e.test_id,t.workspace_id,e.status,e.source_version_id,e.conversation_id,
- e.conversation_summary,e.context_revision,e.published_version_id,e.created_at,e.closed_at,v.description,v.background_summary
+ e.conversation_summary,e.context_revision,e.published_version_id,e.created_at,e.closed_at,v.description,v.background_summary,t.deleted_at IS NOT NULL
  FROM editing_sessions e JOIN tests t ON t.id=e.test_id LEFT JOIN test_versions v ON v.id=e.source_version_id`
 
 func scanEditing(row scanner) (EditingSession, error) {
 	var s EditingSession
 	var description, background *string
-	err := row.Scan(&s.ID, &s.TestID, &s.WorkspaceID, &s.Status, &s.SourceVersionID, &s.ConversationID, &s.ConversationSummary, &s.ContextRevision, &s.PublishedVersionID, &s.CreatedAt, &s.ClosedAt, &description, &background)
+	err := row.Scan(&s.ID, &s.TestID, &s.WorkspaceID, &s.Status, &s.SourceVersionID, &s.ConversationID, &s.ConversationSummary, &s.ContextRevision, &s.PublishedVersionID, &s.CreatedAt, &s.ClosedAt, &description, &background, &s.TestDeleted)
 	if s.SourceVersionID != nil {
 		s.SourceVersion = &SourceVersion{*s.SourceVersionID, description, background}
 	}
@@ -131,12 +132,14 @@ func (p *Postgres) EditingSession(ctx context.Context, testID, id string) (*Edit
 		return nil, err
 	}
 	defer tx.Rollback()
-	var exists bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM tests WHERE id=$1)`, testID).Scan(&exists); err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, ErrNotFound
+	if id == "" {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM tests WHERE id=$1 AND deleted_at IS NULL)`, testID).Scan(&exists); err != nil {
+			return nil, err
+		}
+		if !exists {
+			return nil, ErrNotFound
+		}
 	}
 	s, err := readEditing(ctx, tx, testID, id)
 	if id == "" && errors.Is(err, ErrNotFound) {
@@ -181,9 +184,9 @@ func startEditingSessionInTx(ctx context.Context, tx *sql.Tx, testID string, ini
 	if errors.Is(err, ErrNotFound) {
 		created = true
 		id, conversationID := NewID(), NewID()
-		if _, err = tx.ExecContext(ctx, `INSERT INTO editing_sessions(id,test_id,status,source_version_id,conversation_id)
-          SELECT $1,id,'active',published_version_id,$3 FROM tests WHERE id=$2`, id, testID, conversationID); err != nil {
-			return s, false, err
+		if err = tx.QueryRowContext(ctx, `INSERT INTO editing_sessions(id,test_id,status,source_version_id,conversation_id)
+          SELECT $1,id,'active',published_version_id,$3 FROM tests WHERE id=$2 AND deleted_at IS NULL RETURNING id`, id, testID, conversationID).Scan(&id); err != nil {
+			return s, false, dbError(err)
 		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO conversations(id,test_id,editing_session_id,workspace_id) SELECT $1,id,$3,workspace_id FROM tests WHERE id=$2`, conversationID, testID, id); err != nil {
 			return s, false, err
@@ -253,10 +256,20 @@ func finishDiscard(ctx context.Context, tx *sql.Tx, testID, id string) error {
 	if pending {
 		return nil
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE editing_sessions SET status='discarded',closed_at=now() WHERE id=$1 AND test_id=$2 AND status='discarding'`, id, testID); err != nil {
+	closed, err := tx.ExecContext(ctx, `UPDATE editing_sessions SET status='discarded',closed_at=now() WHERE id=$1 AND test_id=$2 AND status='discarding'`, id, testID)
+	if err != nil {
 		return err
 	}
-	_, err := tx.ExecContext(ctx, `DELETE FROM drafts WHERE test_id=$1 AND editing_session_id=$2 AND EXISTS(SELECT 1 FROM editing_sessions WHERE id=$2 AND status='discarded')`, testID, id)
+	if count, err := closed.RowsAffected(); err != nil || count == 0 {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM drafts WHERE test_id=$1 AND editing_session_id=$2`, testID, id); err != nil {
+		return err
+	}
+	// Keep immutable Run and conversation records available for cleanup and replay.
+	_, err = tx.ExecContext(ctx, `UPDATE tests t SET deleted_at=now()
+ WHERE t.id=$1 AND t.kind='test' AND t.published_version_id IS NULL AND t.deleted_at IS NULL
+   AND NOT EXISTS (SELECT 1 FROM test_versions v WHERE v.test_id=t.id)`, testID)
 	return err
 }
 

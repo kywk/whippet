@@ -161,6 +161,7 @@ export interface Test {
   description: string;
   publishedVersionId: string | null;
   activeEditingSession?: ActiveEditingSession | null;
+  deleted?: boolean;
 }
 
 export interface ActiveEditingSession {
@@ -343,6 +344,7 @@ export interface EditingSession {
   publishedVersionId: string | null;
   createdAt: string;
   closedAt: string | null;
+  testDeleted?: boolean;
 }
 
 export interface Message {

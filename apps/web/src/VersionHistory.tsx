@@ -22,32 +22,34 @@ interface Props {
   sessionBusy: boolean;
   knownDraft?: Draft;
   editorGuarded: boolean;
+  deletesTest: boolean;
 }
 
 export function VersionHistory({ api, apiBase, versions, runs, publishedVersionId, loading, error, onRefresh,
-  onEditDraft, onDiscardDraft, activeEditingSession, sessionBusy, knownDraft, editorGuarded }: Props) {
+  onEditDraft, onDiscardDraft, activeEditingSession, sessionBusy, knownDraft, editorGuarded, deletesTest }: Props) {
   const [viewingId, setViewingId] = useState<string>();
   const index = versions?.findIndex((version) => version.id === viewingId) ?? -1;
   const viewing = index < 0 ? undefined : versions?.[index];
+  const hasPublishedVersions = Boolean(publishedVersionId || versions?.length);
 
   return <section className="versions-section" aria-labelledby="versions-title">
     <div className="section-heading">
-      <h2 id="versions-title">版本歷史 <span className="count">{versions?.length ?? '—'}</span></h2>
-      <button className="button secondary compact" disabled={loading} onClick={onRefresh}>重新整理版本</button>
+      <h2 id="versions-title">{hasPublishedVersions ? <>版本歷史 <span className="count">{versions?.length || '—'}</span></> : '目前草稿'}</h2>
+      {hasPublishedVersions ? <button className="button secondary compact" disabled={loading} onClick={onRefresh}>重新整理版本</button> : null}
     </div>
     {activeEditingSession ? <div className="draft-version-entry">
       <div className="version-heading">
         <strong>草稿{activeEditingSession.status === 'discarding' ? ' · 正在放棄' : ''}</strong>
         <div className="action-row">
           <button className="button secondary compact" disabled={sessionBusy} onClick={onEditDraft}>{activeEditingSession.status === 'discarding' ? '查看放棄進度' : '繼續修改'}</button>
-          <button className="button quiet compact" disabled={sessionBusy || activeEditingSession.status === 'discarding'} onClick={onDiscardDraft}>刪除草稿</button>
+          <button className="button quiet compact" disabled={sessionBusy || activeEditingSession.status === 'discarding'} onClick={onDiscardDraft}>{deletesTest ? '刪除測試…' : '刪除草稿'}</button>
         </div>
       </div>
       <p className="muted">{activeEditingSession.status === 'discarding' ? '等待本週期任務終止及資源回收。' : editorGuarded ? '切回編輯模式可接續未儲存的內容或進行中的操作。' : `草稿 revision ${knownDraft?.revision ?? activeEditingSession.draftRevision}，尚未發佈。`}</p>
     </div> : activeEditingSession === undefined ? <p className="mode-empty">草稿狀態尚未確認，請重新載入編輯狀態。</p> : null}
-    {loading ? <Loading text="正在載入版本歷史…" /> : null}
-    {error ? <Notice message={error} retry={onRefresh} /> : null}
-    {versions?.length === 0 ? <p className="muted">首次發佈後會在這裡顯示版本歷史。</p> : null}
+    {hasPublishedVersions && loading ? <Loading text="正在載入版本歷史…" /> : null}
+    {hasPublishedVersions && error ? <Notice message={error} retry={onRefresh} /> : null}
+    {!hasPublishedVersions && activeEditingSession === null ? <p className="muted">開啟對話編輯來建立草稿。</p> : null}
     {versions?.length ? <ol className="version-list" aria-label="已發佈版本">
       {versions.map((version, position) => {
         const previous = versions[position + 1];

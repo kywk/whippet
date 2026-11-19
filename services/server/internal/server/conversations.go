@@ -23,6 +23,9 @@ func (p *Postgres) Conversation(ctx context.Context, testID, sessionID string) (
 	if err != nil {
 		return Conversation{}, err
 	}
+	if session.TestDeleted {
+		return Conversation{}, ErrNotFound
+	}
 	id := session.ConversationID
 	c := Conversation{ID: id, TestID: testID, EditingSessionID: session.ID, Messages: []Message{}}
 	rows, err := tx.QueryContext(ctx, `SELECT m.id,m.role,m.content,m.created_at,m.run_id,m.base_revision,
