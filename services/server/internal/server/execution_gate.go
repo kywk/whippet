@@ -295,7 +295,7 @@ func offlineAuthorAllowed(a Assignment) bool {
 		return false
 	}
 	for _, tool := range a.Author.AllowedTools {
-		if tool != "read_draft" && tool != "read_author_snapshot" && tool != "read_validation_report" && tool != "update_draft" && tool != "read_conversation_history" && tool != "read_skill_reference" && !platformServerTool(tool) {
+		if tool != "read_draft" && tool != "read_author_snapshot" && tool != "read_validation_report" && tool != "update_draft" && tool != "read_conversation_history" && tool != "read_skill_reference" && tool != "record_conversation_memory" && !platformServerTool(tool) {
 			return false
 		}
 	}
@@ -361,7 +361,7 @@ func cancelRoleRuns(ctx context.Context, tx *sql.Tx, workspace, role string) err
 
 func workspaceAuthorToolsValid(tools []string) bool {
 	for _, tool := range tools {
-		found := tool == "browser_login" || tool == "read_conversation_history" || tool == "read_skill_reference"
+		found := tool == "browser_login" || tool == "read_conversation_history" || tool == "read_skill_reference" || tool == "record_conversation_memory"
 		for _, allowed := range browserTools {
 			found = found || tool == allowed
 		}

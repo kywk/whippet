@@ -166,7 +166,7 @@ func TestM9HistoryHTTP(t *testing.T) {
 }
 
 func TestM9HistoryToolRouting(t *testing.T) {
-	a := Assignment{Run: Run{Kind: "author"}, Author: &AuthorInput{AllowedTools: []string{"read_conversation_history"}}}
+	a := Assignment{Run: Run{Kind: "author"}, Author: &AuthorInput{AllowedTools: []string{"read_conversation_history", "record_conversation_memory"}}}
 	if !offlineAuthorAllowed(a) || hasBrowserTools(a.Author) || !workspaceAuthorToolsValid(a.Author.AllowedTools) {
 		t.Fatal("history-only task acquired browser requirements")
 	}
