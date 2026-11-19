@@ -54,7 +54,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/test/m12-dev-env.py status
 
 MCP採明確啟用：部署端提供獨立 `WHIPPET_ADMIN_TOKEN`，不得使用Manager token或Agent Token代替。未設定時，MCP與Token管理回503；原開發模式不代表可以安全對外開放MCP。
 
-啟用後，管理客戶端所有 `/api` 請求以 `X-Whippet-Admin-Token` 傳管理key。Manager仍走原專用Bearer；外部Agent只走 `/mcp`，使用Workspace Agent Bearer。管理API拒絕任何Bearer，即使同時帶正確管理key。
+啟用後，部署端 CLI 以 `X-Whippet-Admin-Token` 傳管理 key。Web 在開發登入時驗證管理 key，後續用登入身分的 session 授權。發放、撤銷 Token 及查看工具稽核需以 Super Admin 身分操作。Manager 使用專用 Bearer，外部 Agent 以 Workspace Agent Bearer 連接 `/mcp`。
 
 使用HTTPS；本機隔離測試可用loopback HTTP。若客戶端會傳Origin，部署設定 `WHIPPET_PUBLIC_ORIGIN` 為精確scheme、host與port；不接受任意Origin或由轉送Host推導信任。管理key與Agent Token不可放在URL、瀏覽器持久儲存、一般log或版本控制。
 

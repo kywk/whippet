@@ -187,8 +187,9 @@ func TestM10PostgresPlanFailureAndClosedCapabilities(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	engine := NewEngine(p, log)
 	defer engine.Close()
-	handler := NewAPI(p, nil, engine, "synthetic", log).Handler(nil)
+	handler := NewAPI(p, nil, engine, "synthetic", log).WithAdminAccess(fixtureAdminKey, "").Handler(nil)
 	request := httptest.NewRequest("POST", "http://server/api/plans/"+plan.ID+"/publish", strings.NewReader(jsonText(map[string]any{"planRevision": revised.Revision, "confirmed": true, "summaryRunId": NewID()})))
+	request.Header.Set("X-Whippet-Admin-Token", fixtureAdminKey)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	if response.Code != 409 {
@@ -196,12 +197,14 @@ func TestM10PostgresPlanFailureAndClosedCapabilities(t *testing.T) {
 	}
 	// Writable Stage inputs never accept server status/Run IDs.
 	request = httptest.NewRequest("PUT", "http://server/api/tests/"+item.ID+"/plan", strings.NewReader(jsonText(map[string]any{"editingSessionId": session.ID, "revision": revised.BaseRevision, "planRevision": revised.Revision, "stages": []any{map[string]any{"id": "x", "title": "x", "action": "reuse", "args": map[string]any{}, "status": "ready", "moduleVersionId": stage.ModuleVersionID}}})))
+	request.Header.Set("X-Whippet-Admin-Token", fixtureAdminKey)
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	if response.Code != 400 {
 		t.Fatal("caller wrote Stage status", response.Code)
 	}
 	request = httptest.NewRequest("GET", "http://server/api/tests/"+item.ID+"/plan?editingSessionId="+session.ID, nil)
+	request.Header.Set("X-Whippet-Admin-Token", fixtureAdminKey)
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	var envelope struct {

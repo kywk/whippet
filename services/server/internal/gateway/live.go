@@ -78,7 +78,7 @@ func (g *LiveGateway) Viewer(w http.ResponseWriter, r *http.Request) {
 		rejectLive(conn, err)
 		return
 	}
-	g.serve(conn, session, session.Viewer, false)
+	g.serveViewer(r.Context(), conn, session)
 }
 
 func (g *LiveGateway) Media(w http.ResponseWriter, r *http.Request) {
@@ -121,7 +121,7 @@ func (g *LiveGateway) SessionViewer(w http.ResponseWriter, r *http.Request) {
 		rejectLive(conn, err)
 		return
 	}
-	g.serve(conn, session, session.Viewer, false)
+	g.serveViewer(r.Context(), conn, session)
 }
 
 func (g *LiveGateway) SessionMedia(w http.ResponseWriter, r *http.Request) {
@@ -143,6 +143,15 @@ func (g *LiveGateway) SessionMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	g.serve(conn, session, endpoint, true)
+}
+
+func (g *LiveGateway) serveViewer(ctx context.Context, conn *websocket.Conn, session *server.LiveSession) {
+	stop := context.AfterFunc(ctx, func() {
+		_ = conn.Close()
+		g.Hub.CloseViewer(session)
+	})
+	defer stop()
+	g.serve(conn, session, session.Viewer, false)
 }
 
 func (g *LiveGateway) serve(conn *websocket.Conn, session *server.LiveSession, endpoint *server.LiveEndpoint, media bool) {

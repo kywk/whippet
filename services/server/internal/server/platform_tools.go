@@ -275,7 +275,10 @@ func searchToolCatalog(ctx context.Context, tx *sql.Tx, workspace string, raw []
 		}
 		after = c.After
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT t.id,v.id,t.name,v.module FROM tests t JOIN test_versions v ON v.id=t.published_version_id WHERE t.workspace_id=$1 AND t.kind='module' AND v.module IS NOT NULL AND t.id>$2::uuid AND (strpos(lower(t.name),lower($3))>0 OR strpos(lower(t.slug),lower($3))>0) ORDER BY t.id LIMIT $4`, workspace, after, args.Query, args.Limit+1)
+	rows, err := tx.QueryContext(ctx, `SELECT t.id,v.id,t.name,v.module FROM tests t JOIN test_versions v ON v.id=t.published_version_id
+ WHERE t.workspace_id=$1 AND t.kind='module' AND t.deleted_at IS NULL AND v.module IS NOT NULL
+ AND t.id>$2::uuid AND (strpos(lower(t.name),lower($3))>0 OR strpos(lower(t.slug),lower($3))>0)
+ ORDER BY t.id LIMIT $4`, workspace, after, args.Query, args.Limit+1)
 	if err != nil {
 		return nil, err
 	}

@@ -105,7 +105,10 @@ func preparePlanStages(ctx context.Context, q queryDB, workspace string, inputs 
 				return nil, ErrInvalid
 			}
 			var testID string
-			if err := q.QueryRowContext(ctx, `SELECT t.id FROM test_versions v JOIN tests t ON t.id=v.test_id WHERE v.id=$1 AND t.workspace_id=$2 AND t.kind='module' AND v.module IS NOT NULL`, input.ModuleVersionID, workspace).Scan(&testID); err != nil {
+			// Reuse reads a fixed version. Modifying a Module opens a new editing session.
+			if err := q.QueryRowContext(ctx, `SELECT t.id FROM test_versions v JOIN tests t ON t.id=v.test_id
+ WHERE v.id=$1 AND t.workspace_id=$2 AND t.kind='module' AND (t.deleted_at IS NULL OR $3='reuse')
+ AND v.module IS NOT NULL`, input.ModuleVersionID, workspace, input.Action).Scan(&testID); err != nil {
 				if errors.Is(err, sql.ErrNoRows) {
 					return nil, ErrInvalid
 				}

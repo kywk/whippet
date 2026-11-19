@@ -34,6 +34,7 @@ type Workspace struct {
 	ExecutionAvailable    bool                  `json:"executionAvailable"`
 	UnavailableReason     *string               `json:"unavailableReason"`
 	Capabilities          WorkspaceCapabilities `json:"capabilities"`
+	Permissions           *workspacePermissions `json:"permissions,omitempty"`
 }
 
 type Test struct {
@@ -48,6 +49,7 @@ type Test struct {
 	PublishedVersionID   *string               `json:"publishedVersionId"`
 	ActiveEditingSession *ActiveEditingSession `json:"activeEditingSession"`
 	Deleted              bool                  `json:"deleted,omitempty"`
+	Archived             bool                  `json:"archived,omitempty"`
 }
 
 type Run struct {

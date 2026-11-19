@@ -1,6 +1,31 @@
+export const SITE_ROLES = ['none', 'site_admin', 'superadmin'] as const;
+export const WORKSPACE_MEMBER_ROLES = ['none', 'qa', 'workspace_admin'] as const;
+export type SiteRole = typeof SITE_ROLES[number];
+export type WorkspaceMemberRole = typeof WORKSPACE_MEMBER_ROLES[number];
+
 export interface DevUser {
   id: string;
-  role: string;
+  name: string;
+  role: SiteRole;
+  permissions: {
+    createWorkspace: boolean;
+    manageUsers: boolean;
+    manageSuperAdmins: boolean;
+  };
+}
+
+export interface WorkspaceMember {
+  id: string;
+  name: string;
+  role: WorkspaceMemberRole;
+}
+
+export interface WorkspacePermissions {
+  manageTests: boolean;
+  manageSettings: boolean;
+  manageMembers: boolean;
+  manageWorkspaceAdmins: boolean;
+  manageAgentTokens: boolean;
 }
 
 export interface Workspace {
@@ -102,6 +127,7 @@ export interface WorkspaceProposal {
 }
 
 export interface WorkspaceDetail extends Workspace, WorkspaceSettingsSnapshot {
+  permissions: WorkspacePermissions;
   authorEngine: AuthorEngine;
   lifecycle: 'draft' | 'needs_confirmation' | 'active';
   revision: number;
@@ -153,6 +179,7 @@ export interface WorkspaceSettingsPatch {
 }
 
 export interface Test {
+  archived?: boolean;
   slug?: string;
   kind?: 'test' | 'module' | 'usecase';
   id: string;
@@ -454,9 +481,16 @@ export interface WhippetApi {
   // Optional: older/mock adapters must report unavailable, never fabricate results.
   listCatalog?: (workspaceId: string, signal?: AbortSignal) => Promise<CatalogItem[]>;
   continueAuthor?: (runId: string, editingSessionId: string, revision: number, signal?: AbortSignal) => Promise<{ run: Run; conversationId: string }>;
-  login(signal?: AbortSignal): Promise<DevUser>;
+  login(userId: string, signal?: AbortSignal): Promise<DevUser>;
+  getMe(signal?: AbortSignal): Promise<DevUser>;
+  listUsers(signal?: AbortSignal): Promise<DevUser[]>;
+  updateUserRole(userId: string, role: SiteRole, signal?: AbortSignal): Promise<DevUser>;
+  listMembers(workspaceId: string, signal?: AbortSignal): Promise<WorkspaceMember[]>;
+  updateMember(workspaceId: string, userId: string, role: WorkspaceMemberRole, signal?: AbortSignal): Promise<WorkspaceMember>;
   listWorkspaces(signal?: AbortSignal): Promise<WorkspaceDetail[]>;
   listTests(workspaceId: string, signal?: AbortSignal): Promise<Test[]>;
+  listArchivedTests(workspaceId: string, signal?: AbortSignal): Promise<Test[]>;
+  archiveTest(testId: string, signal?: AbortSignal): Promise<void>;
   getTest(testId: string, signal?: AbortSignal): Promise<Test>;
   updateTestMetadata(testId: string, patch: TestMetadataPatch, signal?: AbortSignal): Promise<Test>;
   createRun(testId: string, signal?: AbortSignal): Promise<Run>;

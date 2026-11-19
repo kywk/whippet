@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, errorMessage } from './api';
+import { ArchiveTestDialog } from './ArchivedTests';
 import { executionCapabilityForScript } from './capabilities';
 import { Loading, Notice } from './components';
 import { ConfirmScriptEditDialog } from './ConfirmScriptEditDialog';
@@ -32,11 +33,12 @@ interface Props {
   onDirtyChange: (dirty: boolean) => void;
   onTestUpdated: (test: Test) => void;
   onTestRemoved: (testId: string) => void;
+  onArchived: (test: Test) => void;
   onTestCreated: (test: Test) => void;
   onEditSimilarTest: (test: Test, content: string) => void;
 }
 
-export function TestWorkspace({ testId, api, apiBase, initialEditing, editHandoff, preferredMode, onModeChange, railCollapsed, onExpandRail, unreadCount, tags, workspaceTags, capabilities, authorEngine, settingsRefresh, onDirtyChange, onTestUpdated, onTestRemoved, onTestCreated, onEditSimilarTest }: Props) {
+export function TestWorkspace({ testId, api, apiBase, initialEditing, editHandoff, preferredMode, onModeChange, railCollapsed, onExpandRail, unreadCount, tags, workspaceTags, capabilities, authorEngine, settingsRefresh, onDirtyChange, onTestUpdated, onTestRemoved, onArchived, onTestCreated, onEditSimilarTest }: Props) {
   const loadTest = useCallback((signal: AbortSignal) => api.getTest(testId, signal), [api, testId]);
   const loadVersions = useCallback((signal: AbortSignal) => api.listVersions(testId, signal), [api, testId]);
   const test = useResource(loadTest);
@@ -56,6 +58,7 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, editHandof
   const [discardTarget, setDiscardTarget] = useState<{ session: EditingSession; replyId?: string }>();
   const [discardError, setDiscardError] = useState<string>();
   const [confirmingEdit, setConfirmingEdit] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<Test>();
   const sessionLock = useRef(false);
   const sessionGuard = useRef(false);
   sessionGuard.current = sessionBusy || session?.status === 'discarding';
@@ -327,7 +330,11 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, editHandof
           <ScriptIcon />{tabBusy ? '處理中…' : publishedId ? '調整測試腳本' : '對話編輯'}{activeInfo && mode !== 'editing' ? <span className="tab-dot" role="img" aria-label="有進行中的草稿" /> : null}
         </button>
       </div>
-      <div className="test-actions"><button className="button primary" disabled={submitting || !publishedId || !executionAvailable} aria-describedby={publishedVersion && !executionAvailable ? 'formal-execution-reason' : undefined} onClick={runTest}><PlayIcon />{submitting ? '送出中…' : '執行正式版本'}</button></div>
+      <div className="test-actions">
+        <button className="button primary" disabled={submitting || !publishedId || !executionAvailable} aria-describedby={publishedVersion && !executionAvailable ? 'formal-execution-reason' : undefined} onClick={runTest}><PlayIcon />{submitting ? '送出中…' : '執行正式版本'}</button>
+        {mode === 'general' && test.data && !test.data.archived ? <button type="button" className="button secondary test-archive-button" aria-haspopup="dialog" disabled={submitting || sessionBusy}
+          onClick={() => setArchiveTarget(test.data)}>封存測試</button> : null}
+      </div>
     </header>
     <div className="test-mode general-mode overview" hidden={mode !== 'general'} role="tabpanel" aria-label="測試概覽" data-mode="general">
       <TestOverview test={test.data} version={publishedVersion} loading={test.loading || versions.loading} executionCapability={formalCapability} onRefreshVersions={versions.retry} tags={tags} workspaceTags={workspaceTags} onSaveMetadata={saveMetadata}
@@ -351,6 +358,7 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, editHandof
       /> : null}
     </div> : null}
     {confirmingEdit ? <ConfirmScriptEditDialog hasDraft={activeInfo?.status === 'active'} onCancel={() => setConfirmingEdit(false)} onConfirm={() => { setConfirmingEdit(false); void edit(); }} /> : null}
+    {archiveTarget ? <ArchiveTestDialog api={api} test={archiveTarget} activeEditing={Boolean(activeInfo)} onCancel={() => setArchiveTarget(undefined)} onArchived={onArchived} /> : null}
     {discardTarget ? <DiscardSessionDialog session={discardTarget.session} replacing={replacingDraft} deletesTest={deletesUnpublishedTest} busy={sessionBusy} error={discardError} onCancel={() => setDiscardTarget(undefined)} onConfirm={() => { void discard(); }} /> : null}
   </div>;
 }

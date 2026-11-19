@@ -93,9 +93,10 @@ func (s *workspaceHTTPStore) PatchWorkspace(ctx context.Context, id string, patc
 func TestWorkspaceHTTPRejectsLegacyMutation(t *testing.T) {
 	store := &workspaceHTTPStore{w: Workspace{ID: NewID(), Name: "Default", WorkspaceSettings: WorkspaceSettings{Revision: 1, Sites: []WorkspaceSite{}, TimeoutMS: 60000}}}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := NewAPI(store, nil, NewEngine(store, log), "test", log).Handler(nil)
+	handler := NewAPI(store, nil, NewEngine(store, log), "test", log).WithAdminAccess(fixtureAdminKey, "").Handler(nil)
 	request := func(method, id, body string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "/api/workspaces/"+id, strings.NewReader(body))
+		r.Header.Set("X-Whippet-Admin-Token", fixtureAdminKey)
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, r)
 		return w

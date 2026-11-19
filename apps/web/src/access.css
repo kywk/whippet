@@ -1,0 +1,80 @@
+.login-form { display: grid; gap: 14px; margin-block: 20px 4px; }
+.login-panel .login-form .login-button { margin-top: 2px; }
+.login-form select { min-height: 44px; }
+.rail-identity { color: var(--rail-muted); padding-inline: 4px; font-size: .78rem; }
+.rail-foot { max-height: 48svh; flex-shrink: 0; overflow-y: auto; }
+.rail-foot [aria-current="page"] { background: var(--rail-2); color: #fff; }
+
+.access-view {
+  width: min(100%, 980px);
+  margin-inline: auto;
+  padding: clamp(16px, 3vw, 40px);
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.access-view-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 14px;
+}
+.access-view-header h1 { overflow-wrap: anywhere; }
+.access-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+.access-list > li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px 20px;
+  padding: 16px;
+}
+.access-list > li + li { border-top: 1px solid var(--line); }
+.access-person { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.access-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 4px 10px;
+  width: min(100%, 310px);
+}
+.access-form .settings-field, .access-form .notice { grid-column: 1 / -1; }
+.access-form .text-input { margin: 0; }
+.access-form select, .access-form .button.compact, .access-view-header .button.compact { min-height: 44px; }
+.access-role { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.access-role .muted { font-size: .82rem; }
+.access-note:empty { margin: 0; }
+.archive-list > li { padding: 0; }
+.archive-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 1;
+  min-width: 0;
+  min-height: 52px;
+  padding: 12px 16px;
+  gap: 10px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius);
+  text-align: start;
+}
+.archive-list button:hover, .archive-list button:focus-visible { background: var(--subtle); }
+.archive-list button > span { display: grid; gap: 2px; overflow-wrap: anywhere; }
+.archive-list .muted { font-size: .8rem; }
+
+@media (max-width: 680px) {
+  .test-archive-button { justify-content: center; }
+  .test-actions:has(.test-archive-button) { grid-column: 1 / -1; flex-wrap: wrap; gap: 6px; }
+}

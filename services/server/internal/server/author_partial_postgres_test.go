@@ -168,8 +168,9 @@ func TestM10PostgresPartialPersistenceAndContinueCAS(t *testing.T) {
 			log := slog.New(slog.NewTextHandler(io.Discard, nil))
 			engine := NewEngine(f.p, log)
 			defer engine.Close()
-			handler := NewAPI(f.p, f.files, engine, "token", log).Handler(nil)
+			handler := NewAPI(f.p, f.files, engine, "token", log).WithAdminAccess(fixtureAdminKey, "").Handler(nil)
 			request := httptest.NewRequest("POST", "http://server/api/runs/"+run.ID+"/continue", strings.NewReader(jsonText(map[string]any{"editingSessionId": f.sessionID, "revision": expected})))
+			request.Header.Set("X-Whippet-Admin-Token", fixtureAdminKey)
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, request)
 			var body AuthorSubmission
@@ -177,6 +178,7 @@ func TestM10PostgresPartialPersistenceAndContinueCAS(t *testing.T) {
 				t.Fatalf("HTTP continuation retry %d", response.Code)
 			}
 			request = httptest.NewRequest("POST", "http://server/api/runs/"+run.ID+"/continue", strings.NewReader(jsonText(map[string]any{"editingSessionId": f.sessionID, "revision": expected, "contextRevision": 1})))
+			request.Header.Set("X-Whippet-Admin-Token", fixtureAdminKey)
 			response = httptest.NewRecorder()
 			handler.ServeHTTP(response, request)
 			if response.Code != 400 {

@@ -39,7 +39,7 @@ func (p *Postgres) Catalog(ctx context.Context, workspace string) ([]CatalogModu
  FROM version_dependencies dep JOIN test_versions source ON source.id=dep.version_id
  JOIN test_versions target ON target.id=dep.module_version_id WHERE target.test_id=t.id),'[]'::jsonb)
  FROM tests t JOIN test_versions v ON v.id=t.published_version_id LEFT JOIN runs r ON r.id=v.validation_run_id
- WHERE t.workspace_id=$1 AND t.kind='module' AND v.module IS NOT NULL ORDER BY t.slug`, workspace)
+ WHERE t.workspace_id=$1 AND t.kind='module' AND t.deleted_at IS NULL AND v.module IS NOT NULL ORDER BY t.slug`, workspace)
 	if err != nil {
 		return nil, err
 	}

@@ -23,10 +23,14 @@ func TestRunFlowWaitsForReclaimedSlot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := NewAPI(store, files, engine, "test-token", log).Handler(nil)
+	handler := NewAPI(store, files, engine, "test-token", log).WithAdminAccess(fixtureAdminKey, "").Handler(nil)
 	request := func(method, path, body, attempt string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, path, strings.NewReader(body))
-		r.Header.Set("Authorization", "Bearer test-token")
+		if strings.HasPrefix(r.URL.Path, "/api/manager/") {
+			r.Header.Set("Authorization", "Bearer test-token")
+		} else {
+			r.Header.Set("X-Whippet-Admin-Token", fixtureAdminKey)
+		}
 		if attempt != "" {
 			r.Header.Set("X-Attempt-Id", attempt)
 		}

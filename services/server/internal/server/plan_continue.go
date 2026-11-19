@@ -80,7 +80,7 @@ func (p *Postgres) ContinuePlanStage(ctx context.Context, id, stageID string, re
 	ids := []string{}
 	seen := map[string]bool{}
 	for _, s := range plan.Stages {
-		if s.ModuleTestID != "" && !seen[s.ModuleTestID] {
+		if s.Action != "reuse" && s.ModuleTestID != "" && !seen[s.ModuleTestID] {
 			ids = append(ids, s.ModuleTestID)
 			seen[s.ModuleTestID] = true
 		}

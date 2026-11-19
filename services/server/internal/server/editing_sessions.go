@@ -64,9 +64,12 @@ func lockEditingTest(ctx context.Context, tx *sql.Tx, testID string) (*Workspace
 	if err := tx.QueryRowContext(ctx, `SELECT w.settings FROM workspaces w JOIN tests t ON t.workspace_id=w.id WHERE t.id=$1 FOR SHARE OF w`, testID).Scan(&raw); err != nil {
 		return nil, dbError(err)
 	}
-	var id string
-	if err := tx.QueryRowContext(ctx, `SELECT id FROM tests WHERE id=$1 FOR UPDATE`, testID).Scan(&id); err != nil {
+	var archived bool
+	if err := tx.QueryRowContext(ctx, `SELECT archived_at IS NOT NULL FROM tests WHERE id=$1 FOR UPDATE`, testID).Scan(&archived); err != nil {
 		return nil, dbError(err)
+	}
+	if archived {
+		return nil, errTestArchived
 	}
 	return decodeSettings(raw)
 }

@@ -12,7 +12,7 @@ func (a *API) workspace(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, item)
+	writeJSON(w, http.StatusOK, presentWorkspace(item, workspaceGrantFromContext(r.Context()).permissions))
 }
 
 func (a *API) patchWorkspace(w http.ResponseWriter, r *http.Request) {

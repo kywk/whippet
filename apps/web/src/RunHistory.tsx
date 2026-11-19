@@ -18,8 +18,8 @@ interface Props {
   error?: string;
   polling: boolean;
   onRefresh: () => void;
-  onRun: (run: Run) => void;
-  onWatch: (run: Run) => void;
+  onRun?: (run: Run) => void;
+  onWatch?: (run: Run) => void;
   liveView?: ReactNode;
 }
 
@@ -48,7 +48,10 @@ export function RunHistory({ api, apiBase, runs, group, loading, error, polling,
         </div>
         <RunProblem run={latest} />
         {latest.kind !== 'author' && latest.error ? <details className="error-details"><summary>查看技術細節</summary><pre className="run-error">{latest.error}</pre></details> : null}
-        {isActiveRun(latest) ? <div className="action-row">{canWatchRun(latest) ? <button className="button secondary compact" onClick={() => onWatch(latest)}>開始監看</button> : null}<CancelRunButton api={api} run={latest} onUpdated={onRun} /></div> : null}
+        {isActiveRun(latest) && (onWatch || onRun) ? <div className="action-row">
+          {onWatch && canWatchRun(latest) ? <button className="button secondary compact" onClick={() => onWatch(latest)}>開始監看</button> : null}
+          {onRun ? <CancelRunButton api={api} run={latest} onUpdated={onRun} /> : null}
+        </div> : null}
       </div>
     </section> : null}
     {liveView}
@@ -73,7 +76,10 @@ export function RunHistory({ api, apiBase, runs, group, loading, error, polling,
               <ReportLink reportUrl={run.reportUrl} apiBase={apiBase} />
               {isBadStatus(run.status) ? <RunArtifacts api={api} apiBase={apiBase} runId={run.id} /> : null}
             </>}
-            {isActiveRun(run) ? <>{canWatchRun(run) ? <button className="button secondary compact" aria-label={`開始監看 Run ${run.id}`} onClick={() => onWatch(run)}>開始監看</button> : null}<CancelRunButton api={api} run={run} onUpdated={onRun} /></> : null}
+            {isActiveRun(run) ? <>
+              {onWatch && canWatchRun(run) ? <button className="button secondary compact" aria-label={`開始監看 Run ${run.id}`} onClick={() => onWatch(run)}>開始監看</button> : null}
+              {onRun ? <CancelRunButton api={api} run={run} onUpdated={onRun} /> : null}
+            </> : null}
           </div></td>
         </tr>)}</tbody>
       </table></div> : !loading && !error ? <p className="run-history-empty muted">{formal ? '尚無正式執行紀錄。' : '尚無 AI 撰寫或草稿驗證紀錄。'}</p> : null}

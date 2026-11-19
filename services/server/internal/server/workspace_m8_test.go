@@ -147,11 +147,12 @@ func TestM8CredentialHTTPAndOwner(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	engine := NewEngine(store, log)
 	defer engine.Close()
-	h := NewAPI(store, nil, engine, "test", log).Handler(nil)
+	h := NewAPI(store, nil, engine, "test", log).WithAdminAccess(fixtureAdminKey, "").Handler(nil)
 	endpoint := "/api/workspaces/" + store.w.ID
 	rolePath := endpoint + "/roles/" + NewID() + "/credentials"
 	request := func(method, path, body string, secure bool) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "http://localhost"+path, strings.NewReader(body))
+		r.Header.Set("X-Whippet-Admin-Token", fixtureAdminKey)
 		r.RemoteAddr = "172.18.0.2:45678"
 		r.Header.Set("X-Forwarded-Proto", "https")
 		if secure {

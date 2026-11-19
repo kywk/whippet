@@ -27,7 +27,7 @@ Worker 內部包含 Agent runtime、Playwright 及瀏覽器；畫面傳輸與任
 | Artifact | run_id、相對儲存鍵、種類、大小與上傳狀態 |
 | Manager | id、連線狀態、capacity、最後心跳；MVP 只允許一個啟用 |
 
-MVP 身分可由後端固定 provider 提供；資源存取走共同授權函式，之後接真正使用者／membership。測試、對話與執行均透過 Workspace 範圍查詢。
+Server 以固定身分發送 session，持久保存使用者的全站角色與 Workspace 成員。HTTP 入口依操作及資料庫資源歸屬授權，前端使用相同規則輸出的權限欄位。角色異動套用於後續查詢與現有即時監看。詳細 API 見 [v13 契約](../../contracts/mvp-v13.md)。
 
 ## 草稿與發佈
 
@@ -100,7 +100,7 @@ WebRTC 作主要方向，預留 TURN；受限環境可用 WSS 畫面轉送備援
 
 Manager 使用部署 token；模型金鑰僅在後端執行環境；測試腳本不得取得主機管理 socket。報告以受控附件端點或隔離頁面呈現，避免執行內容混入管理介面。
 產品採開源方向，Apache-2.0 為候選，實際 LICENSE 於初始化依選用依賴決定。本輪不複製外部專案程式碼。
-本輪完成多 Workspace；未來沿既有邊界增加 RBAC、多 manager、替代模型、S3 儲存與新 transport；MVP 不為這些先建完整系統。
+平台授權以全站角色及 Workspace 成員資格為核心。未來可在 session 前接身分提供者。多 Manager、S3 儲存與新 transport 沿各自既有邊界擴充。
 
 
 ## M7–M9：對話工作區擴充（2026-11-12）

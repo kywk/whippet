@@ -17,44 +17,54 @@ const (
 
 type adminSessions struct {
 	mu    sync.Mutex
-	items map[[32]byte]time.Time
+	items map[[32]byte]adminSession
 }
 
-func newAdminSessions() *adminSessions { return &adminSessions{items: make(map[[32]byte]time.Time)} }
+type adminSession struct {
+	userID    string
+	expiresAt time.Time
+	reportKey [sha256.Size]byte
+}
 
-func (s *adminSessions) issue(now time.Time) (string, bool) {
+func newAdminSessions() *adminSessions { return &adminSessions{items: make(map[[32]byte]adminSession)} }
+
+func (s *adminSessions) issue(now time.Time, userID, replace string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for hash, expires := range s.items {
-		if !now.Before(expires) {
+	for hash, session := range s.items {
+		if !now.Before(session.expiresAt) {
 			delete(s.items, hash)
 		}
 	}
-	if len(s.items) >= maxAdminSessions {
+	replaceHash := sha256.Sum256([]byte(replace))
+	if _, replacing := s.items[replaceHash]; len(s.items) >= maxAdminSessions && !replacing {
 		return "", false
 	}
-	var secret [32]byte
+	var secret [64]byte
 	if _, err := rand.Read(secret[:]); err != nil {
 		return "", false
 	}
-	value := base64.RawURLEncoding.EncodeToString(secret[:])
-	s.items[sha256.Sum256([]byte(value))] = now.Add(adminSessionLifetime)
+	value := base64.RawURLEncoding.EncodeToString(secret[:32])
+	session := adminSession{userID: userID, expiresAt: now.Add(adminSessionLifetime)}
+	copy(session.reportKey[:], secret[32:])
+	delete(s.items, replaceHash)
+	s.items[sha256.Sum256([]byte(value))] = session
 	return value, true
 }
 
-func (s *adminSessions) valid(value string, now time.Time) bool {
-	if value == "" {
-		return false
-	}
-	hash := sha256.Sum256([]byte(value))
+func (s *adminSessions) lookup(value string, now time.Time) (adminSession, bool) {
+	return s.lookupHash(sha256.Sum256([]byte(value)), now)
+}
+
+func (s *adminSessions) lookupHash(hash [sha256.Size]byte, now time.Time) (adminSession, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	expires, ok := s.items[hash]
-	if ok && !now.Before(expires) {
+	session, ok := s.items[hash]
+	if ok && !now.Before(session.expiresAt) {
 		delete(s.items, hash)
-		return false
+		return adminSession{}, false
 	}
-	return ok
+	return session, ok
 }
 
 func (s *adminSessions) revoke(value string) {
@@ -66,10 +76,13 @@ func (s *adminSessions) revoke(value string) {
 	s.mu.Unlock()
 }
 
-func adminCookie(r *http.Request) string {
-	c, err := r.Cookie(adminCookieName)
-	if err != nil || len(c.Value) > 128 {
-		return ""
+func adminCookie(r *http.Request) (string, bool) {
+	cookies := r.CookiesNamed(adminCookieName)
+	if len(cookies) == 0 {
+		return "", false
 	}
-	return c.Value
+	if len(cookies) != 1 || len(cookies[0].Value) > 128 {
+		return "", true
+	}
+	return cookies[0].Value, true
 }

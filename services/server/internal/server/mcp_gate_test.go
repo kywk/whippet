@@ -13,10 +13,21 @@ type m11GateStore struct{ Store }
 
 func (m11GateStore) Workspaces(context.Context) ([]Workspace, error) { return []Workspace{}, nil }
 
+func (m11GateStore) platformUser(_ context.Context, id string) (platformUser, error) {
+	switch id {
+	case developmentAdmin:
+		return presentUser(id, "Super Admin", superAdmin), nil
+	case developmentQA:
+		return presentUser(id, "QA User", noSiteRole), nil
+	default:
+		return platformUser{}, ErrNotFound
+	}
+}
+
 func TestM11AdminGateKeepsManagerAndHealthSeparate(t *testing.T) {
 	admin := NewID()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	api := NewAPI(nil, nil, nil, NewID(), log).WithAdminAccess(admin, "https://whippet.example")
+	api := NewAPI(m11GateStore{}, nil, nil, NewID(), log).WithAdminAccess(admin, "https://whippet.example")
 	handler := api.Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
 	request := func(path, method, adminHeader, bearer string) int {
 		t.Helper()

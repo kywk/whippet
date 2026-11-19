@@ -154,6 +154,10 @@ func (p *Postgres) CreateWorkspace(ctx context.Context, name string) (Workspace,
 	if _, err = tx.ExecContext(ctx, `INSERT INTO workspaces(id,name,lifecycle) VALUES($1,$2,'draft')`, id, name); err != nil {
 		return Workspace{}, err
 	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO workspace_memberships(workspace_id,user_id,role)
+VALUES($1,$2,$3),($1,$4,$5)`, id, developmentWorkspaceAdmin, workspaceAdmin, developmentQA, workspaceQA); err != nil {
+		return Workspace{}, err
+	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO conversations(id,workspace_id,owner_type) VALUES($1,$2,'workspace')`, conversationID, id); err != nil {
 		return Workspace{}, err
 	}

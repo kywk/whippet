@@ -3,11 +3,18 @@ map $http_upgrade $connection_upgrade {
     '' close;
 }
 
+# Report-view paths contain a short-lived attachment grant.
+map $uri $whippet_log_request {
+    default 1;
+    ~^/api/runs/[^/]+/report-view/ 0;
+}
+
 server {
     listen 80;
     server_name _;
     root /usr/share/nginx/html;
     index index.html;
+    access_log /var/log/nginx/access.log main if=$whippet_log_request;
 
     location /api/ {
         proxy_pass ${WHIPPET_API_UPSTREAM};

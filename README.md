@@ -30,7 +30,7 @@ docker compose --env-file deploy/.env -f deploy/compose.runner.yml -f deploy/com
 
 首次建置需要取得 Docker 基底映像與鎖定依賴。本輪禁止下載新套件，正常 Dockerfile 的離線建置因依賴層缺少快取而未通過；隔離驗收使用既有映像加已編譯產物，不把此方式當成乾淨安裝證據。
 
-開啟 **http://localhost:18080**，點擊開發登入，選擇「固定頁面：成功範例」並執行。Server readiness 為 **http://localhost:18081/readyz**。Web／Server 僅綁定 `127.0.0.1`，PostgreSQL 不發布主機埠。
+開啟 **http://localhost:18080**，以預選的 **QA User** 登入，選擇「固定頁面：成功範例」並執行。要管理角色、Workspace 或 MCP Token，請在登入前切換身分。Server readiness 為 **http://localhost:18081/readyz**。Web／Server 綁定 `127.0.0.1`，PostgreSQL 留在 Compose 網路。[角色與權限](contracts/mvp-v13.md)
 
 「固定頁面：斷言失敗範例」會刻意產生 `failed`，用於確認失敗狀態與報告；兩份腳本都使用本地 `page.setContent`，不依賴外網。完整檢查、持久化、停止與獨立 runner 設定見 [本機 M1 操作指南](docs/guides/local-m1.md)。
 

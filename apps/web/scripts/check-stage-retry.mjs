@@ -7,7 +7,9 @@ const out=process.env.REVIEW_OUT ?? '/private/tmp/whippet-m10-web-review/stage-r
 await mkdir(out,{recursive:true});
 const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE ?? '/Users/kywk/Library/Caches/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-mac-arm64/chrome-headless-shell'});
 const results=[];const now='2026-11-13T00:00:00Z',tid='synthetic-usecase',sid='synthetic-session',wid='synthetic-workspace',pid='synthetic-plan';
-const workspace={id:wid,name:'合成 API：Stage 重試測試',revision:1,authorizationRevision:1,lifecycle:'active',scopeStatus:'confirmed',settings:null,conversationId:'workspace-chat',activeRunId:null,currentProposal:null,sites:[],defaultTestUrl:'',timeoutMs:60000,roles:[],secretsAvailable:false,executionAvailable:true,unavailableReason:null,capabilities:Object.fromEntries(['aiExploration','aiExecution','manualExecution','credentialLogin'].map(k=>[k,{available:true,reason:null}]))};
+const user={id:'dev-qa',name:'QA User',role:'none',permissions:{createWorkspace:false,manageUsers:false,manageSuperAdmins:false}};
+const access={manageTests:true,manageSettings:false,manageMembers:false,manageWorkspaceAdmins:false,manageAgentTokens:false};
+const workspace={permissions:access,id:wid,name:'合成 API：Stage 重試測試',revision:1,authorizationRevision:1,lifecycle:'active',scopeStatus:'confirmed',settings:null,conversationId:'workspace-chat',activeRunId:null,currentProposal:null,sites:[],defaultTestUrl:'',timeoutMs:60000,roles:[],secretsAvailable:false,executionAvailable:true,unavailableReason:null,capabilities:Object.fromEntries(['aiExploration','aiExecution','manualExecution','credentialLogin'].map(k=>[k,{available:true,reason:null}]))};
 const draft={testId:tid,editingSessionId:sid,revision:2,script:'// 合成：未執行測試',updatedAt:now,scriptOrigin:'manual',validationRunId:'validation',validationStatus:'succeeded',reportUrl:'/synthetic-report'};
 const run={id:'validation',workspaceId:wid,testId:tid,editingSessionId:sid,kind:'validation',status:'succeeded',draftRevision:2,createdAt:now,finishedAt:now,reportUrl:'/synthetic-report'};
 const version={id:'published-usecase',testId:tid,editingSessionId:sid,revision:2,script:draft.script,createdAt:now,validationRunId:run.id,summaryRunId:'summary',description:'合成已發佈版本',backgroundSummary:'僅回歸測試，沒有真後端寫入。',scriptOrigin:'manual'};
@@ -22,7 +24,7 @@ try{for(const [size,width]of [['desktop',1440],['narrow',390]])for(const status 
  await page.addInitScript(()=>addEventListener('DOMContentLoaded',()=>{const b=document.createElement('div');b.textContent='合成 API 回歸測試 · 非真後端驗收';b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:99999;background:#fff0b5;color:#432b00;text-align:center;padding:5px;pointer-events:none';document.body.append(b);}));
  page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/api/**',async route=>{const req=route.request(),path=new URL(req.url()).pathname.replace('/api',''),method=req.method();calls.push({method,path,at:Date.now(),body:req.postDataJSON()});let data,code=200;
- if(path==='/dev-login')data={user:{id:'admin',role:'superadmin'}};
+ if(path==='/dev-login'||path==='/me')data={user};
  else if(path==='/workspaces')data={items:[workspace]};
  else if(path===`/workspaces/${wid}`||path===`/workspaces/${wid}/settings`)data=workspace;
  else if(path===`/workspaces/${wid}/tests`)data={items:[test()]};
@@ -45,7 +47,7 @@ try{for(const [size,width]of [['desktop',1440],['narrow',390]])for(const status 
  });
  const label=`${size}-${status}`;const result={label};
  try{
- await page.goto('http://127.0.0.1:5187/');await page.getByRole('button',{name:'以開發管理員登入'}).click();await page.locator('#side-tab-script').waitFor({state:'attached'});if(width<=1220)await page.getByRole('button',{name:'展開右側欄',exact:true}).click();await page.getByRole('tab',{name:'驗證與發佈',exact:true}).click();const panel=page.locator('.plan-panel');await panel.getByRole('button',{name:'修復並重試',exact:true}).click();const form=page.getByRole('region',{name:'失敗 Stage 人工修復',exact:true});const text=form.getByRole('textbox',{name:'人工修復指示'}),check=form.getByRole('checkbox'),submit=form.getByRole('button',{name:'確認修復並重試',exact:true});
+ await page.goto('http://127.0.0.1:5187/');await page.getByRole('button',{name:'登入',exact:true}).click();if(width<=960)await page.locator('.mobile-bar').getByRole('button').click();await page.locator('.test-item').first().click();await page.locator('#side-tab-script').waitFor({state:'attached'});if(width<=1220)await page.getByRole('button',{name:'展開右側欄',exact:true}).click();await page.getByRole('tab',{name:'驗證與發佈',exact:true}).click();const panel=page.locator('.plan-panel');await panel.getByRole('button',{name:'修復並重試',exact:true}).click();const form=page.getByRole('region',{name:'失敗 Stage 人工修復',exact:true});const text=form.getByRole('textbox',{name:'人工修復指示'}),check=form.getByRole('checkbox'),submit=form.getByRole('button',{name:'確認修復並重試',exact:true});
  await text.fill('  合成人工修復 🐕  ');await check.check();await text.fill('  合成人工修復 🐕 再核對  ');assert.equal(await check.isChecked(),false);await check.check();
  if(status==='gates'||status==='unknown'){
  if(status==='unknown'){gate='unknown';await page.waitForTimeout(3300);assert.ok(await submit.isDisabled());assert.ok(await check.isDisabled());await form.getByRole('alert').waitFor();}else{

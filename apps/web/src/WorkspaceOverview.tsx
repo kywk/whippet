@@ -16,8 +16,8 @@ interface Props {
   apiBase: string;
   creating: boolean;
   createError?: string;
-  onCreate: () => void;
-  onSettings: () => void;
+  onCreate?: () => void;
+  onSettings?: () => void;
   onOpenTest: (test: Test) => void;
 }
 
@@ -80,12 +80,12 @@ export function WorkspaceOverview({ workspace, tests, testsLoading, testsError, 
         <div className="workspace-masthead-identity">
           <div className="workspace-masthead-context"><HomeIcon /><span>Workspace 概覽</span><span className={`chip ${setupNeeded ? 'warm' : 'ok'}`}>{scopeLabels[workspace.scopeStatus]}</span></div>
           <h1 id="workspace-overview-title" ref={title} tabIndex={-1}>{workspace.name}</h1>
-          <p>{workspace.settings?.purpose.trim() || '尚未設定驗測目的。可在 Workspace 設定中補上要驗證的流程與網站範圍。'}</p>
+          <p>{workspace.settings?.purpose.trim() || '尚未設定驗測目的。'}</p>
         </div>
-        <div className="workspace-masthead-actions">
-          <button type="button" className={`button ${setupNeeded ? 'secondary' : 'primary'}`} disabled={creating} onClick={onCreate}><PlusIcon />{creating ? '正在建立…' : '建立測試案例'}</button>
-          <button type="button" className={`button ${setupNeeded ? 'primary' : 'secondary'}`} onClick={onSettings}><GearIcon />管理 Workspace</button>
-        </div>
+        {onCreate || onSettings ? <div className="workspace-masthead-actions">
+          {onCreate ? <button type="button" className={`button ${setupNeeded && onSettings ? 'secondary' : 'primary'}`} disabled={creating} onClick={onCreate}><PlusIcon />{creating ? '正在建立…' : '建立測試案例'}</button> : null}
+          {onSettings ? <button type="button" className={`button ${setupNeeded ? 'primary' : 'secondary'}`} onClick={onSettings}><GearIcon />管理 Workspace</button> : null}
+        </div> : null}
       </header>
 
       {createError ? <Notice message={createError} /> : null}

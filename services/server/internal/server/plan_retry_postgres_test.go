@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
@@ -217,17 +218,21 @@ func TestM109StageRetryGuardsAndRollback(t *testing.T) {
 
 func TestM109StageRetryHTTP(t *testing.T) {
 	p, ctx, plan, body := retryFixture(t, false)
-	api := NewAPI(p, nil, NewEngine(p, slog.New(slog.NewTextHandler(io.Discard, nil))), "synthetic-manager", slog.Default()).Handler(nil)
+	api := NewAPI(p, nil, NewEngine(p, slog.New(slog.NewTextHandler(io.Discard, nil))), "synthetic-manager", slog.Default()).WithAdminAccess(fixtureAdminKey, "").Handler(nil)
+	call := func(w *httptest.ResponseRecorder, r *http.Request) {
+		r.Header.Set("X-Whippet-Admin-Token", fixtureAdminKey)
+		api.ServeHTTP(w, r)
+	}
 	path := "/api/plans/" + plan.ID + "/stages/repair/retry"
 	for _, payload := range []string{`{}`, `{"planRevision":1,"moduleRevision":1,"moduleContextRevision":null,"confirmed":true,"content":"repair"}`, strings.TrimSuffix(jsonText(body), "}") + `,"moduleTestId":"` + NewID() + `"}`} {
 		w := httptest.NewRecorder()
-		api.ServeHTTP(w, httptest.NewRequest("POST", path, strings.NewReader(payload)))
+		call(w, httptest.NewRequest("POST", path, strings.NewReader(payload)))
 		if w.Code != 400 {
 			t.Fatal("bad body", w.Code)
 		}
 	}
 	w := httptest.NewRecorder()
-	api.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+	call(w, httptest.NewRequest("GET", path, nil))
 	var envelope struct {
 		Retry StageRetry `json:"retry"`
 	}
@@ -235,12 +240,12 @@ func TestM109StageRetryHTTP(t *testing.T) {
 		t.Fatal("GET", w.Code, w.Body.String())
 	}
 	w = httptest.NewRecorder()
-	api.ServeHTTP(w, httptest.NewRequest("GET", "/api/plans/"+plan.ID+"/stages/missing/retry", nil))
+	call(w, httptest.NewRequest("GET", "/api/plans/"+plan.ID+"/stages/missing/retry", nil))
 	if w.Code != 404 {
 		t.Fatal(w.Code)
 	}
 	w = httptest.NewRecorder()
-	api.ServeHTTP(w, httptest.NewRequest("POST", path, strings.NewReader(jsonText(body))))
+	call(w, httptest.NewRequest("POST", path, strings.NewReader(jsonText(body))))
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}

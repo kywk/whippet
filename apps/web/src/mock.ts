@@ -1,10 +1,40 @@
 import { ApiError } from './api';
+import { DEFAULT_DEV_USER, DEV_IDENTITIES } from './access';
 import { isActiveRun } from './types';
-import type { Draft, Run, Test, Version, WhippetApi, WorkspaceDetail } from './types';
+import type { DevUser, Draft, Run, SiteRole, Test, Version, WhippetApi, WorkspaceDetail, WorkspaceMemberRole } from './types';
 
 // 明確 opt-in 的 UI 示範；不與真實 API 自動互相切換。
 export function createMockApi(): WhippetApi {
-  const workspace: WorkspaceDetail = { id: '00000000-0000-4000-8000-000000000001', name: '示範 Workspace', revision: 1, authorEngine: 'builtin', sites: [], defaultTestUrl: '', timeoutMs: 60000, lifecycle: 'needs_confirmation', authorizationRevision: 0, scopeStatus: 'unconfirmed', settings: null, conversationId: 'mock-unavailable', activeRunId: null, currentProposal: null, roles: [], secretsAvailable: false, executionAvailable: false, unavailableReason: 'mock_unavailable' };
+  const workspace: Omit<WorkspaceDetail, 'permissions'> = { id: '00000000-0000-4000-8000-000000000001', name: '示範 Workspace', revision: 1, authorEngine: 'builtin', sites: [], defaultTestUrl: '', timeoutMs: 60000, lifecycle: 'needs_confirmation', authorizationRevision: 0, scopeStatus: 'unconfirmed', settings: null, conversationId: 'mock-unavailable', activeRunId: null, currentProposal: null, roles: [], secretsAvailable: false, executionAvailable: false, unavailableReason: 'mock_unavailable' };
+  let currentUserId: string | undefined;
+  const siteRoles = new Map<string, SiteRole>([['dev-admin', 'superadmin'], ['dev-site-admin', 'site_admin']]);
+  const workspaceRoles = new Map<string, WorkspaceMemberRole>([['dev-workspace-admin', 'workspace_admin'], [DEFAULT_DEV_USER, 'qa']]);
+
+  function user(id: string | undefined): DevUser {
+    const identity = DEV_IDENTITIES.find((entry) => entry.id === id);
+    if (!identity) throw new ApiError('請先選擇身分登入。', 'UNAUTHORIZED', 401);
+    const role = siteRoles.get(identity.id) ?? 'none';
+    return {
+      ...identity, role,
+      permissions: { createWorkspace: role !== 'none', manageUsers: role !== 'none', manageSuperAdmins: role === 'superadmin' },
+    };
+  }
+
+  function workspaceAccess(workspaceId: string) {
+    const current = user(currentUserId);
+    const siteAdmin = current.permissions.manageUsers;
+    const memberRole = workspaceRoles.get(current.id) ?? 'none';
+    const manager = siteAdmin || memberRole === 'workspace_admin';
+    return {
+      manageTests: workspaceId === workspace.id && (manager || memberRole === 'qa'),
+      manageSettings: manager, manageMembers: manager, manageWorkspaceAdmins: siteAdmin,
+      manageAgentTokens: current.permissions.manageSuperAdmins,
+    };
+  }
+
+  function forbid() {
+    throw new ApiError('你沒有執行此操作的權限。', 'FORBIDDEN', 403);
+  }
   const tests: Test[] = [
     {
       id: '00000000-0000-4000-8000-000000000011', workspaceId: workspace.id,
@@ -42,11 +72,18 @@ test('本機頁面', async ({ page }) => {
   function getTest(testId: string): Test {
     const test = tests.find((item) => item.id === testId);
     if (!test) throw new ApiError('找不到示範測試。', 'NOT_FOUND', 404);
+    if (!workspaceAccess(test.workspaceId).manageTests) forbid();
+    return test;
+  }
+
+  function editableTest(testId: string): Test {
+    const test = getTest(testId);
+    if (test.archived) throw new ApiError('此測試已封存。', 'CONFLICT', 409);
     return test;
   }
 
   function getDraft(testId: string): Draft {
-    getTest(testId);
+    editableTest(testId);
     const draft = drafts.get(testId)!;
     if (draft.validationRunId) {
       const run = progress(runs.get(draft.validationRunId)!);
@@ -90,12 +127,59 @@ test('本機頁面', async ({ page }) => {
   }
 
   return {
-    async login() { return { id: 'dev-admin', role: 'superadmin' }; },
-    async listWorkspaces() { return [workspace]; },
-    async listTests() { return tests.map((test) => ({ ...test })); },
+    async login(userId) {
+      const next = user(userId);
+      currentUserId = next.id;
+      return next;
+    },
+    async logout() { currentUserId = undefined; },
+    async getMe() { return user(currentUserId); },
+    async listUsers() {
+      if (!user(currentUserId).permissions.manageUsers) forbid();
+      return DEV_IDENTITIES.map(({ id }) => user(id));
+    },
+    async updateUserRole(userId, role) {
+      const actor = user(currentUserId);
+      const target = user(userId);
+      if (!actor.permissions.manageUsers || (!actor.permissions.manageSuperAdmins && (target.role === 'superadmin' || role === 'superadmin'))) forbid();
+      if (target.role === 'superadmin' && role !== 'superadmin' && ![...siteRoles].some(([id, siteRole]) => id !== userId && siteRole === 'superadmin')) {
+        throw new ApiError('必須保留至少一位 Super Admin。', 'CONFLICT', 409);
+      }
+      siteRoles.set(userId, role);
+      return user(userId);
+    },
+    async listMembers(workspaceId) {
+      const access = workspaceAccess(workspaceId);
+      if (workspaceId !== workspace.id || !access.manageMembers) forbid();
+      return DEV_IDENTITIES.map(({ id, name }) => ({ id, name, role: workspaceRoles.get(id) ?? 'none' }));
+    },
+    async updateMember(workspaceId, userId, role) {
+      const access = workspaceAccess(workspaceId);
+      const target = user(userId);
+      if (workspaceId !== workspace.id || !access.manageMembers || (!access.manageWorkspaceAdmins && (role === 'workspace_admin' || workspaceRoles.get(userId) === 'workspace_admin'))) forbid();
+      workspaceRoles.set(userId, role);
+      return { id: target.id, name: target.name, role };
+    },
+    async listWorkspaces() {
+      const permissions = workspaceAccess(workspace.id);
+      return permissions.manageTests ? [{ ...workspace, permissions }] : [];
+    },
+    async listTests(workspaceId) {
+      if (!workspaceAccess(workspaceId).manageTests) forbid();
+      return tests.filter((test) => !test.archived).map((test) => ({ ...test }));
+    },
+    async listArchivedTests(workspaceId) {
+      if (!workspaceAccess(workspaceId).manageTests) forbid();
+      return tests.filter((test) => test.archived).map((test) => ({ ...test }));
+    },
+    async archiveTest(testId) {
+      const test = getTest(testId);
+      if (test.activeEditingSession) throw new ApiError('請先完成發佈或放棄草稿。', 'CONFLICT', 409);
+      test.archived = true;
+    },
     async getTest(testId) { return { ...getTest(testId) }; },
     async updateTestMetadata(testId, patch) {
-      const test = getTest(testId);
+      const test = editableTest(testId);
       const version = test.publishedVersionId ? versions.get(test.publishedVersionId) : undefined;
       if (test.metadataRevision !== patch.metadataRevision || (!version && (patch.description !== undefined || patch.backgroundSummary !== undefined))) {
         throw new ApiError('測試資訊已變更。', 'CONFLICT', 409);
@@ -110,19 +194,22 @@ test('本機頁面', async ({ page }) => {
       return { ...test };
     },
     async createRun(testId) {
-      const test = getTest(testId);
+      const test = editableTest(testId);
       if (!test.publishedVersionId) throw new ApiError('請先發佈測試。', 'UNPUBLISHED', 409);
       return newRun(testId, 'run', versions.get(test.publishedVersionId)!.script);
     },
     async listRuns(testId) {
+      getTest(testId);
       return [...runs.values()].filter((run) => run.testId === testId).map(progress);
     },
     async getRun(runId) {
       const run = runs.get(runId);
       if (!run) throw new Error('找不到示範執行紀錄。');
+      if (run.testId) getTest(run.testId);
       return progress(run);
     },
     async createTest(workspaceId, input) {
+      if (!workspaceAccess(workspaceId).manageTests) forbid();
       const test: Test = { id: crypto.randomUUID(), workspaceId, kind: input.kind, name: input.name?.trim() || '未命名測試', description: input.description ?? '', publishedVersionId: null, metadataRevision: 1 };
       tests.push(test);
       drafts.set(test.id, { testId: test.id, revision: 1, script: '', updatedAt: new Date().toISOString() });
@@ -152,8 +239,12 @@ test('本機頁面', async ({ page }) => {
       test.metadataRevision = (test.metadataRevision ?? 0) + 1;
       return { ...version };
     },
-    async listVersions(testId) { return [...versions.values()].filter((version) => version.testId === testId).reverse().map((version) => ({ ...version })); },
+    async listVersions(testId) {
+      getTest(testId);
+      return [...versions.values()].filter((version) => version.testId === testId).reverse().map((version) => ({ ...version }));
+    },
     async getVersionConversation(testId, versionId) {
+      getTest(testId);
       const version = versions.get(versionId);
       if (version?.testId !== testId || version.scriptOrigin !== 'ai') throw new ApiError('找不到這個版本的對話歷程。', 'NOT_FOUND', 404);
       return { messages: [], nextCursor: null };
@@ -161,6 +252,7 @@ test('本機頁面', async ({ page }) => {
     async cancelRun(runId) {
       const stored = runs.get(runId);
       if (!stored) throw new ApiError('找不到執行紀錄。', 'NOT_FOUND', 404);
+      if (stored.testId) getTest(stored.testId);
       const run = progress(stored);
       if (!isActiveRun(run)) return run;
       if (run.status === 'queued') { const result: Run = { ...run, status: 'cancelled', finishedAt: new Date().toISOString() }; runs.set(runId, result); return { ...result }; }
@@ -182,7 +274,9 @@ test('本機頁面', async ({ page }) => {
       throw new ApiError('示範模式不會儲存 Workspace 設定，請使用真實 Server API。', 'MOCK_SETTINGS_UNAVAILABLE', 400);
     },
     async getRunArtifacts(runId) {
-      if (!runs.has(runId)) throw new ApiError('找不到執行紀錄。', 'NOT_FOUND', 404);
+      const run = runs.get(runId);
+      if (!run) throw new ApiError('找不到執行紀錄。', 'NOT_FOUND', 404);
+      if (run.testId) getTest(run.testId);
       // mock 沒有產生 ZIP／MD，不假造下載連結或證據內容。
       return [];
     },

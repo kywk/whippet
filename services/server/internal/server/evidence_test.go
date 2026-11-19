@@ -99,14 +99,18 @@ func TestEvidenceHTTPDownloadHeadersAndKind(t *testing.T) {
 		t.Fatal(err)
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := NewAPI(store, files, NewEngine(store, log), "token", log).Handler(nil)
+	handler := NewAPI(store, files, NewEngine(store, log), "token", log).WithAdminAccess(fixtureAdminKey, "").Handler(nil)
 	request := func(method, name string, body []byte, attempt string, length int64) *httptest.ResponseRecorder {
 		prefix := "/api/runs/"
 		if method == "POST" {
 			prefix = "/api/manager/runs/"
 		}
 		r := httptest.NewRequest(method, prefix+run.ID+"/artifacts/"+name, bytes.NewReader(body))
-		r.Header.Set("Authorization", "Bearer token")
+		if strings.HasPrefix(r.URL.Path, "/api/manager/") {
+			r.Header.Set("Authorization", "Bearer token")
+		} else {
+			r.Header.Set("X-Whippet-Admin-Token", fixtureAdminKey)
+		}
 		r.Header.Set("X-Attempt-Id", attempt)
 		if length >= 0 {
 			r.ContentLength = length
@@ -166,13 +170,15 @@ func (s artifactListHTTPStore) ListArtifacts(_ context.Context, id string) ([]Ar
 func TestArtifactsListHTTPEmptyAndUnknownRun(t *testing.T) {
 	store := artifactListHTTPStore{runID: NewID(), items: []ArtifactInfo{}}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := NewAPI(store, nil, NewEngine(store, log), "token", log).Handler(nil)
+	handler := NewAPI(store, nil, NewEngine(store, log), "token", log).WithAdminAccess(fixtureAdminKey, "").Handler(nil)
 	for _, tc := range []struct {
 		id     string
 		status int
 	}{{store.runID, 200}, {NewID(), 404}, {"invalid", 400}} {
 		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/runs/"+tc.id+"/artifacts", nil))
+		request := httptest.NewRequest("GET", "/api/runs/"+tc.id+"/artifacts", nil)
+		request.Header.Set("X-Whippet-Admin-Token", fixtureAdminKey)
+		handler.ServeHTTP(w, request)
 		if w.Code != tc.status {
 			t.Fatalf("artifact list: expected %d got %d %s", tc.status, w.Code, w.Body)
 		}

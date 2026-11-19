@@ -104,7 +104,7 @@ func (draftHTTPStore) SaveDraft(context.Context, string, string, int, string) (D
 func TestDraftHTTPRejectsStaleAndInvalidRequests(t *testing.T) {
 	store := draftHTTPStore{}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := NewAPI(store, nil, NewEngine(store, log), "test", log).Handler(nil)
+	handler := NewAPI(store, nil, NewEngine(store, log), "test", log).WithAdminAccess(fixtureAdminKey, "").Handler(nil)
 	for _, tc := range []struct {
 		method, suffix, body string
 		status               int
@@ -118,6 +118,7 @@ func TestDraftHTTPRejectsStaleAndInvalidRequests(t *testing.T) {
 		{"POST", "/draft/validate", `{"revision":0}`, 400},
 	} {
 		r := httptest.NewRequest(tc.method, "/api/tests/"+NewID()+tc.suffix, strings.NewReader(tc.body))
+		r.Header.Set("X-Whippet-Admin-Token", fixtureAdminKey)
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, r)
 		if w.Code != tc.status || !strings.Contains(w.Body.String(), `"error"`) {

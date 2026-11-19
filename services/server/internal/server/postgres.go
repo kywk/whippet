@@ -98,7 +98,8 @@ func (p *Postgres) Workspaces(ctx context.Context) ([]Workspace, error) {
 
 const testColumns = `id,workspace_id,name,
  COALESCE((SELECT n.description_override FROM test_version_notes n WHERE n.version_id=tests.published_version_id),description),
- published_version_id,kind,slug,deleted_at IS NOT NULL,COALESCE(tags,'null'::jsonb),metadata_revision,
+ published_version_id,kind,slug,deleted_at IS NOT NULL AND archived_at IS NULL,archived_at IS NOT NULL,
+ COALESCE(tags,'null'::jsonb),metadata_revision,
  (SELECT json_build_object('id',e.id,'status',e.status,'draftRevision',d.current_revision,'updatedAt',d.updated_at)
   FROM editing_sessions e JOIN drafts d ON d.editing_session_id=e.id
   WHERE e.test_id=tests.id AND e.status IN ('active','discarding'))`
@@ -108,7 +109,7 @@ type scanner interface{ Scan(...any) error }
 func scanTest(row scanner) (Test, error) {
 	var t Test
 	var active, tags []byte
-	err := row.Scan(&t.ID, &t.WorkspaceID, &t.Name, &t.Description, &t.PublishedVersionID, &t.Kind, &t.Slug, &t.Deleted, &tags, &t.MetadataRevision, &active)
+	err := row.Scan(&t.ID, &t.WorkspaceID, &t.Name, &t.Description, &t.PublishedVersionID, &t.Kind, &t.Slug, &t.Deleted, &t.Archived, &tags, &t.MetadataRevision, &active)
 	if err == nil {
 		err = json.Unmarshal(tags, &t.Tags)
 	}
@@ -119,6 +120,14 @@ func scanTest(row scanner) (Test, error) {
 }
 
 func (p *Postgres) Tests(ctx context.Context, workspaceID string) ([]Test, error) {
+	return p.listTests(ctx, workspaceID, false)
+}
+
+func (p *Postgres) ArchivedTests(ctx context.Context, workspaceID string) ([]Test, error) {
+	return p.listTests(ctx, workspaceID, true)
+}
+
+func (p *Postgres) listTests(ctx context.Context, workspaceID string, archived bool) ([]Test, error) {
 	var exists bool
 	if err := p.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM workspaces WHERE id=$1)`, workspaceID).Scan(&exists); err != nil {
 		return nil, err
@@ -126,7 +135,11 @@ func (p *Postgres) Tests(ctx context.Context, workspaceID string) ([]Test, error
 	if !exists {
 		return nil, ErrNotFound
 	}
-	rows, err := p.DB.QueryContext(ctx, `SELECT `+testColumns+` FROM tests WHERE workspace_id=$1 AND deleted_at IS NULL ORDER BY id`, workspaceID)
+	filter := "deleted_at IS NULL"
+	if archived {
+		filter = "archived_at IS NOT NULL"
+	}
+	rows, err := p.DB.QueryContext(ctx, `SELECT `+testColumns+` FROM tests WHERE workspace_id=$1 AND `+filter+` ORDER BY id`, workspaceID)
 	if err != nil {
 		return nil, err
 	}

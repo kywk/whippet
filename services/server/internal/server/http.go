@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -23,6 +24,8 @@ type API struct {
 	adminToken    string
 	publicOrigin  string
 	adminSessions *adminSessions
+	viewerMu      sync.Mutex
+	userViewers   map[*viewerGrant]struct{}
 	agentLimiter  *agentRateLimiter
 	log           *slog.Logger
 	liveViewer    http.Handler
@@ -32,10 +35,13 @@ type API struct {
 }
 
 func NewAPI(store Store, artifacts ArtifactStorage, engine *Engine, token string, log *slog.Logger) *API {
-	return &API{store: store, artifacts: artifacts, engine: engine, token: token, log: log, adminSessions: newAdminSessions(), agentLimiter: newAgentRateLimiter()}
+	return &API{
+		store: store, artifacts: artifacts, engine: engine, token: token, log: log,
+		adminSessions: newAdminSessions(), userViewers: make(map[*viewerGrant]struct{}), agentLimiter: newAgentRateLimiter(),
+	}
 }
 
-// WithAdminAccess enables the M11 opt-in management boundary.
+// WithAdminAccess configures the shared development key and public browser origin.
 func (a *API) WithAdminAccess(token, publicOrigin string) *API {
 	a.adminToken, a.publicOrigin = token, publicOrigin
 	return a
@@ -52,95 +58,115 @@ func (a *API) WithSessionLiveHandlers(viewer, media http.Handler) *API {
 	return a
 }
 
-// The MVP identity provider deliberately returns one development Superadmin.
-// This is the shared authorization seam for future workspace membership checks.
-func authorizeDevelopment(_ context.Context) error { return nil }
-
 func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	mux := http.NewServeMux()
+	handle := func(pattern string, next http.HandlerFunc) { mux.Handle(pattern, boundedRequest(next)) }
+	site := func(pattern string, permission siteAccess, next http.HandlerFunc) {
+		handle(pattern, a.siteAPI(permission, next))
+	}
+	workspace := func(pattern string, permission workspaceAccess, next http.HandlerFunc) {
+		handle(pattern, a.workspaceAPI(workspaceByID, permission, next))
+	}
+	test := func(pattern string, next http.HandlerFunc) {
+		handle(pattern, a.workspaceAPI(workspaceByTest, useTests, next))
+	}
+	plan := func(pattern string, next http.HandlerFunc) {
+		handle(pattern, a.workspaceAPI(workspaceByPlan, useTests, next))
+	}
+	run := func(pattern string, next http.HandlerFunc) {
+		handle(pattern, a.workspaceAPI(workspaceByRun, useTests, next))
+	}
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) })
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+	handle("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		if err := a.store.Ping(r.Context()); err != nil {
 			writeError(w, 503, "not_ready", "database unavailable")
 			return
 		}
 		writeJSON(w, 200, map[string]string{"status": "ready"})
 	})
-	mux.Handle("/mcp", a.newMCPHandler())
-	mux.HandleFunc("POST /api/dev-login", a.devLogin)
-	mux.HandleFunc("POST /api/dev-logout", a.devLogout)
-	mux.HandleFunc("GET /api/workspaces", a.workspaces)
-	mux.HandleFunc("POST /api/workspaces", a.createWorkspace)
-	mux.HandleFunc("POST /api/workspaces/{id}/agent-tokens", a.createAgentToken)
-	mux.HandleFunc("GET /api/workspaces/{id}/agent-tokens", a.listAgentTokens)
-	mux.HandleFunc("DELETE /api/workspaces/{id}/agent-tokens/{tokenId}", a.revokeAgentToken)
-	mux.HandleFunc("GET /api/workspaces/{id}/agent-tool-audit", a.listAgentAudit)
-	mux.HandleFunc("GET /api/workspaces/{id}/browser-sessions", a.listBrowserSessions)
-	mux.HandleFunc("GET /api/workspaces/{id}/conversation", a.workspaceConversation)
-	mux.HandleFunc("POST /api/workspaces/{id}/messages", a.workspaceMessage)
-	mux.HandleFunc("GET /api/workspaces/{id}/proposals/{proposalId}", a.workspaceProposal)
-	mux.HandleFunc("POST /api/workspaces/{id}/proposals/{proposalId}/{action}", a.workspaceProposalAction)
-	mux.HandleFunc("PUT /api/workspaces/{id}/roles/{roleId}/credentials", a.workspaceCredentials)
-	mux.HandleFunc("DELETE /api/workspaces/{id}/roles/{roleId}/credentials", a.workspaceCredentials)
-	mux.HandleFunc("GET /api/workspaces/{id}", a.workspace)
-	mux.HandleFunc("PATCH /api/workspaces/{id}/author-engine", a.patchAuthorEngine)
-	mux.HandleFunc("GET /api/workspaces/{id}/agent-runtime", a.agentRuntime)
-	mux.HandleFunc("PATCH /api/workspaces/{id}/agent-runtime", a.agentRuntime)
-	mux.HandleFunc("PATCH /api/workspaces/{id}", a.patchWorkspace)
-	mux.HandleFunc("GET /api/workspaces/{id}/tests", a.tests)
-	mux.HandleFunc("POST /api/workspaces/{id}/tests", a.createTest)
-	mux.HandleFunc("GET /api/tests/{id}", a.test)
-	mux.HandleFunc("PATCH /api/tests/{id}/metadata", a.patchTestMetadata)
-	mux.HandleFunc("POST /api/tests/{id}/editing-session", a.startEditing)
-	mux.HandleFunc("GET /api/tests/{id}/editing-session", a.editingSession)
-	mux.HandleFunc("GET /api/tests/{id}/editing-sessions/{sessionId}", a.editingSession)
-	mux.HandleFunc("POST /api/tests/{id}/editing-sessions/{sessionId}/discard", a.discardEditing)
-	mux.HandleFunc("POST /api/tests/{id}/editing-sessions/{sessionId}/replace-with-new-test", a.replaceDraftWithNewTest)
-	mux.HandleFunc("POST /api/tests/{id}/editing-sessions/{sessionId}/similar-test", a.decideSimilarTest)
-	mux.HandleFunc("POST /api/tests/{id}/draft/summary", a.createSummary)
-	mux.HandleFunc("GET /api/tests/{id}/draft", a.draft)
-	mux.HandleFunc("PUT /api/tests/{id}/draft", a.saveDraft)
-	mux.HandleFunc("POST /api/tests/{id}/draft/validate", a.validateDraft)
-	mux.HandleFunc("POST /api/tests/{id}/publish", a.publish)
-	mux.HandleFunc("GET /api/tests/{id}/versions", a.versions)
-	mux.HandleFunc("GET /api/tests/{id}/versions/{versionId}/conversation", a.versionConversation)
-	mux.HandleFunc("GET /api/tests/{id}/conversation", a.conversation)
-	mux.HandleFunc("GET /api/workspaces/{id}/catalog", a.catalog)
-	mux.HandleFunc("GET /api/tests/{id}/plan", a.getPlan)
-	mux.HandleFunc("PUT /api/tests/{id}/plan", a.putPlan)
-	mux.HandleFunc("POST /api/plans/{id}/confirm", a.confirmPlan)
-	mux.HandleFunc("POST /api/plans/{id}/stages/{stageId}/split", a.splitPlanStage)
-	mux.HandleFunc("GET /api/plans/{id}/stages/{stageId}/retry", a.stageRetry)
-	mux.HandleFunc("POST /api/plans/{id}/stages/{stageId}/retry", a.stageRetry)
-	mux.HandleFunc("POST /api/plans/{id}/stages/{stageId}/continue", a.continuePlanStage)
-	mux.HandleFunc("POST /api/plans/{id}/cancel", a.cancelPlan)
-	mux.HandleFunc("POST /api/plans/{id}/publish", a.publishPlan)
-	mux.HandleFunc("POST /api/plans/{id}/summary", a.createPlanSummary)
-	mux.HandleFunc("GET /api/plans/{id}/summary", a.getPlanSummary)
-	mux.HandleFunc("POST /api/tests/{id}/messages", a.createAuthor)
-	mux.HandleFunc("POST /api/tests/{id}/runs", a.createRun)
-	mux.HandleFunc("GET /api/tests/{id}/runs", a.runs)
-	mux.HandleFunc("GET /api/runs/{id}", a.run)
-	mux.HandleFunc("GET /api/runs/{id}/artifacts", a.listArtifacts)
-	mux.HandleFunc("POST /api/runs/{id}/cancel", a.cancel)
-	mux.HandleFunc("POST /api/runs/{id}/continue", a.continueAuthor)
-	mux.HandleFunc("POST /api/manager/runs/{id}/artifacts/{name...}", a.upload)
-	mux.Handle("POST /api/manager/runs/{id}/attempts/{attemptId}/credentials/resolve", a.ManagerAuth(http.HandlerFunc(a.resolveCredentials)))
-	mux.Handle("POST /api/manager/browser-sessions/{sessionId}/leases/{leaseId}/credentials/resolve", a.ManagerAuth(http.HandlerFunc(a.resolveBrowserSessionCredentials)))
-	mux.Handle("POST /api/manager/runs/{id}/attempts/{attemptId}/tools", a.ManagerAuth(http.HandlerFunc(a.harnessTool)))
-	mux.Handle("POST /api/manager/runs/{id}/attempts/{attemptId}/history", a.ManagerAuth(http.HandlerFunc(a.conversationHistory)))
-	mux.HandleFunc("GET /api/runs/{id}/artifacts/{name...}", a.artifact)
+	mux.Handle("/mcp", boundedRequest(a.newMCPHandler()))
+	handle("POST /api/dev-login", a.devLogin)
+	handle("POST /api/dev-logout", a.devLogout)
+	site("GET /api/me", signedIn, a.me)
+	site("GET /api/users", manageDirectory, a.users)
+	site("PATCH /api/users/{userId}/role", manageDirectory, a.updateUserRole)
+	site("GET /api/workspaces", signedIn, a.workspaces)
+	site("POST /api/workspaces", createWorkspaces, a.createWorkspace)
+	handle("POST /api/workspaces/{id}/agent-tokens", a.mcpFeature(a.workspaceAPI(workspaceByID, manageAgentTokens, a.createAgentToken)))
+	handle("GET /api/workspaces/{id}/agent-tokens", a.mcpFeature(a.workspaceAPI(workspaceByID, manageAgentTokens, a.listAgentTokens)))
+	handle("DELETE /api/workspaces/{id}/agent-tokens/{tokenId}", a.mcpFeature(a.workspaceAPI(workspaceByID, manageAgentTokens, a.revokeAgentToken)))
+	handle("GET /api/workspaces/{id}/agent-tool-audit", a.mcpFeature(a.workspaceAPI(workspaceByID, manageAgentTokens, a.listAgentAudit)))
+	handle("GET /api/workspaces/{id}/browser-sessions", a.mcpFeature(a.workspaceAPI(workspaceByID, manageSettings, a.listBrowserSessions)))
+	workspace("GET /api/workspaces/{id}/conversation", manageSettings, a.workspaceConversation)
+	workspace("POST /api/workspaces/{id}/messages", manageSettings, a.workspaceMessage)
+	workspace("GET /api/workspaces/{id}/proposals/{proposalId}", manageSettings, a.workspaceProposal)
+	workspace("POST /api/workspaces/{id}/proposals/{proposalId}/{action}", manageSettings, a.workspaceProposalAction)
+	workspace("PUT /api/workspaces/{id}/roles/{roleId}/credentials", manageSettings, a.workspaceCredentials)
+	workspace("DELETE /api/workspaces/{id}/roles/{roleId}/credentials", manageSettings, a.workspaceCredentials)
+	workspace("GET /api/workspaces/{id}", useTests, a.workspace)
+	workspace("PATCH /api/workspaces/{id}/author-engine", manageSettings, a.patchAuthorEngine)
+	workspace("GET /api/workspaces/{id}/agent-runtime", manageSettings, a.agentRuntime)
+	workspace("PATCH /api/workspaces/{id}/agent-runtime", manageSettings, a.agentRuntime)
+	workspace("PATCH /api/workspaces/{id}", manageSettings, a.patchWorkspace)
+	workspace("GET /api/workspaces/{id}/members", manageMembers, a.workspaceMembers)
+	workspace("PUT /api/workspaces/{id}/members/{userId}", manageMembers, a.updateWorkspaceMember)
+	workspace("GET /api/workspaces/{id}/tests", useTests, a.tests)
+	workspace("GET /api/workspaces/{id}/archived-tests", useTests, a.archivedTests)
+	workspace("POST /api/workspaces/{id}/tests", useTests, a.createTest)
+	test("GET /api/tests/{id}", a.test)
+	test("POST /api/tests/{id}/archive", a.archiveTest)
+	test("PATCH /api/tests/{id}/metadata", a.patchTestMetadata)
+	test("POST /api/tests/{id}/editing-session", a.startEditing)
+	test("GET /api/tests/{id}/editing-session", a.editingSession)
+	test("GET /api/tests/{id}/editing-sessions/{sessionId}", a.editingSession)
+	test("POST /api/tests/{id}/editing-sessions/{sessionId}/discard", a.discardEditing)
+	test("POST /api/tests/{id}/editing-sessions/{sessionId}/replace-with-new-test", a.replaceDraftWithNewTest)
+	test("POST /api/tests/{id}/editing-sessions/{sessionId}/similar-test", a.decideSimilarTest)
+	test("POST /api/tests/{id}/draft/summary", a.createSummary)
+	test("GET /api/tests/{id}/draft", a.draft)
+	test("PUT /api/tests/{id}/draft", a.saveDraft)
+	test("POST /api/tests/{id}/draft/validate", a.validateDraft)
+	test("POST /api/tests/{id}/publish", a.publish)
+	test("GET /api/tests/{id}/versions", a.versions)
+	test("GET /api/tests/{id}/versions/{versionId}/conversation", a.versionConversation)
+	test("GET /api/tests/{id}/conversation", a.conversation)
+	workspace("GET /api/workspaces/{id}/catalog", useTests, a.catalog)
+	test("GET /api/tests/{id}/plan", a.getPlan)
+	test("PUT /api/tests/{id}/plan", a.putPlan)
+	plan("POST /api/plans/{id}/confirm", a.confirmPlan)
+	plan("POST /api/plans/{id}/stages/{stageId}/split", a.splitPlanStage)
+	plan("GET /api/plans/{id}/stages/{stageId}/retry", a.stageRetry)
+	plan("POST /api/plans/{id}/stages/{stageId}/retry", a.stageRetry)
+	plan("POST /api/plans/{id}/stages/{stageId}/continue", a.continuePlanStage)
+	plan("POST /api/plans/{id}/cancel", a.cancelPlan)
+	plan("POST /api/plans/{id}/publish", a.publishPlan)
+	plan("POST /api/plans/{id}/summary", a.createPlanSummary)
+	plan("GET /api/plans/{id}/summary", a.getPlanSummary)
+	test("POST /api/tests/{id}/messages", a.createAuthor)
+	test("POST /api/tests/{id}/runs", a.createRun)
+	test("GET /api/tests/{id}/runs", a.runs)
+	run("GET /api/runs/{id}", a.run)
+	run("GET /api/runs/{id}/artifacts", a.listArtifacts)
+	run("POST /api/runs/{id}/cancel", a.cancel)
+	run("POST /api/runs/{id}/continue", a.continueAuthor)
+	run("GET /api/runs/{id}/artifacts/{name...}", a.artifact)
+	handle("GET /api/runs/{id}/report-view/{reportGrant}/{name...}", a.reportView)
+	handle("POST /api/manager/runs/{id}/artifacts/{name...}", a.upload)
+	mux.Handle("POST /api/manager/runs/{id}/attempts/{attemptId}/credentials/resolve", boundedRequest(a.ManagerAuth(http.HandlerFunc(a.resolveCredentials))))
+	mux.Handle("POST /api/manager/browser-sessions/{sessionId}/leases/{leaseId}/credentials/resolve", boundedRequest(a.ManagerAuth(http.HandlerFunc(a.resolveBrowserSessionCredentials))))
+	mux.Handle("POST /api/manager/runs/{id}/attempts/{attemptId}/tools", boundedRequest(a.ManagerAuth(http.HandlerFunc(a.harnessTool))))
+	mux.Handle("POST /api/manager/runs/{id}/attempts/{attemptId}/history", boundedRequest(a.ManagerAuth(http.HandlerFunc(a.conversationHistory))))
 	if managerConnect != nil {
 		mux.Handle("GET /api/manager/connect", a.ManagerAuth(managerConnect))
 	}
 	if a.liveViewer != nil {
-		mux.Handle("GET /api/runs/{id}/live", a.liveViewer)
+		mux.HandleFunc("GET /api/runs/{id}/live", a.liveWorkspaceAPI(workspaceByRun, useTests, a.liveViewer))
 	}
 	if a.liveMedia != nil {
 		mux.Handle("GET /api/manager/runs/{id}/live", a.ManagerAuth(a.liveMedia))
 	}
 	if a.sessionViewer != nil {
-		mux.Handle("GET /api/browser-sessions/{sessionId}/leases/{leaseId}/live", a.sessionViewerAuth(a.sessionViewer))
+		mux.HandleFunc("GET /api/browser-sessions/{sessionId}/leases/{leaseId}/live", a.mcpFeature(a.liveWorkspaceAPI(workspaceByBrowserLease, manageSettings, a.sessionViewer)))
 	}
 	if a.sessionMedia != nil {
 		mux.Handle("GET /api/manager/browser-sessions/{sessionId}/leases/{leaseId}/live", a.ManagerAuth(a.sessionMedia))
@@ -148,104 +174,16 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { writeError(w, 404, "not_found", "route not found") })
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		managerPath := strings.HasPrefix(r.URL.Path, "/api/manager/")
-		if a.adminToken == "" && (r.URL.Path == "/mcp" || agentManagementPath(r.URL.Path)) {
-			writeError(w, http.StatusServiceUnavailable, "disabled", "MCP is disabled")
-			return
-		}
-		if a.adminToken != "" && strings.HasPrefix(r.URL.Path, "/api/") && !managerPath {
-			if len(r.Header.Values("Authorization")) != 0 {
-				writeError(w, http.StatusForbidden, "forbidden", "Bearer authentication is not accepted on management routes")
-				return
-			}
-			if !a.adminRequestAllowed(r) {
-				writeError(w, http.StatusUnauthorized, "unauthorized", "admin token required")
-				return
-			}
-			if !a.adminRequestOriginAllowed(r) {
-				writeError(w, http.StatusForbidden, "forbidden", "origin not allowed")
-				return
-			}
-		}
-		if err := authorizeDevelopment(r.Context()); err != nil {
-			a.fail(w, err)
-			return
-		}
-		// A bounded context protects database operations, without limiting a WS session.
-		livePath := sessionLivePath(r.URL.Path) || strings.HasSuffix(r.URL.Path, "/live") && (strings.HasPrefix(r.URL.Path, "/api/runs/") || strings.HasPrefix(r.URL.Path, "/api/manager/runs/"))
-		if r.URL.Path != "/api/manager/connect" && !livePath {
-			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-			defer cancel()
-			r = r.WithContext(ctx)
-		}
-		if !a.authorizeResource(w, r) {
-			return
-		}
 		mux.ServeHTTP(w, r)
-		if a.engine != nil && strings.HasPrefix(r.URL.Path, "/api/workspaces/") &&
-			(strings.Contains(r.URL.Path, "/proposals/") || strings.Contains(r.URL.Path, "/roles/") || r.Method == http.MethodPatch) {
-			a.engine.refreshLive(r.Context())
-		}
 	})
 }
 
-func (a *API) adminHeaderValid(r *http.Request) bool {
-	values := r.Header.Values("X-Whippet-Admin-Token")
-	return len(values) == 1 && subtle.ConstantTimeCompare([]byte(values[0]), []byte(a.adminToken)) == 1
-}
-
-func (a *API) adminRequestAllowed(r *http.Request) bool {
-	if r.URL.Path == "/api/dev-logout" {
-		return true
-	}
-	if a.adminHeaderValid(r) {
-		return true
-	}
-	if r.URL.Path == "/api/dev-login" {
-		return false
-	}
-	return a.adminSessions.valid(adminCookie(r), time.Now())
-}
-
-func (a *API) adminRequestOriginAllowed(r *http.Request) bool {
-	origins := r.Header.Values("Origin")
-	if len(origins) > 0 && (len(origins) != 1 || a.publicOrigin == "" || origins[0] != a.publicOrigin) {
-		return false
-	}
-	if r.URL.Path == "/api/dev-logout" {
-		return len(origins) == 1 && origins[0] == a.publicOrigin
-	}
-	if r.URL.Path == "/api/dev-login" || a.adminHeaderValid(r) {
-		return true
-	}
-	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
-		return len(origins) == 1 && origins[0] == a.publicOrigin
-	}
-	return true
-}
-
-func (a *API) devLogin(w http.ResponseWriter, r *http.Request) {
-	if a.adminToken != "" {
-		value, ok := a.adminSessions.issue(time.Now())
-		if !ok {
-			writeError(w, http.StatusServiceUnavailable, "session_capacity", "admin sessions unavailable")
-			return
-		}
-		http.SetCookie(w, &http.Cookie{Name: adminCookieName, Value: value, Path: "/api", HttpOnly: true, Secure: r.TLS != nil || strings.HasPrefix(a.publicOrigin, "https://"), SameSite: http.SameSiteStrictMode, MaxAge: int(adminSessionLifetime.Seconds())})
-		w.Header().Set("Cache-Control", "no-store")
-	}
-	writeJSON(w, 200, map[string]any{"user": map[string]string{"id": "dev-admin", "role": "superadmin"}})
-}
-
-func (a *API) devLogout(w http.ResponseWriter, r *http.Request) {
-	a.adminSessions.revoke(adminCookie(r))
-	http.SetCookie(w, &http.Cookie{Name: adminCookieName, Path: "/api", MaxAge: -1, HttpOnly: true, Secure: r.TLS != nil || strings.HasPrefix(a.publicOrigin, "https://"), SameSite: http.SameSiteStrictMode})
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func agentManagementPath(path string) bool {
-	return strings.HasSuffix(path, "/agent-tokens") || strings.Contains(path, "/agent-tokens/") || strings.HasSuffix(path, "/agent-tool-audit")
+func boundedRequest(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+		defer cancel()
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 func (a *API) ManagerAuth(next http.Handler) http.Handler {
@@ -270,7 +208,23 @@ func (a *API) id(w http.ResponseWriter, r *http.Request) (string, bool) {
 }
 
 func (a *API) workspaces(w http.ResponseWriter, r *http.Request) {
-	items, err := a.store.Workspaces(r.Context())
+	ctx := r.Context()
+	user := actorFromContext(ctx).user
+	var items []Workspace
+	var err error
+	if user.Role.admin() {
+		items, err = a.store.Workspaces(ctx)
+		if err == nil {
+			permissions := permissionsForWorkspace(user.Role, noMemberRole)
+			for i := range items {
+				items[i] = presentWorkspace(items[i], permissions)
+			}
+		}
+	} else if p, ok := a.store.(*Postgres); ok {
+		items, err = p.memberWorkspaces(ctx, user.ID)
+	} else {
+		err = errForbidden
+	}
 	if err != nil {
 		a.fail(w, err)
 		return
@@ -432,7 +386,6 @@ func (a *API) listArtifacts(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, err)
 		return
 	}
-	w.Header().Set("Cache-Control", "private, no-cache")
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
@@ -451,6 +404,9 @@ func (a *API) artifact(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, err)
 		return
 	}
+	if name == "report.html" && a.redirectReport(w, r, id) {
+		return
+	}
 	f, err := a.artifacts.Open(item.StorageKey)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -466,7 +422,6 @@ func (a *API) artifact(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, err)
 		return
 	}
-	w.Header().Set("Cache-Control", "private, no-cache")
 	w.Header().Set("ETag", `"`+item.SHA256+`"`)
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, path.Base(name)))
 	w.Header().Set("Referrer-Policy", "no-referrer")
@@ -526,6 +481,10 @@ func (a *API) fail(w http.ResponseWriter, err error) {
 	case errors.Is(err, ErrProposalRequired):
 		w.Header().Set("Allow", "GET")
 		writeError(w, 405, "proposal_required", "Workspace changes require a confirmed proposal")
+	case errors.Is(err, errForbidden):
+		writeError(w, 403, "forbidden", err.Error())
+	case errors.Is(err, errLastSuper):
+		writeError(w, 409, "last_super_admin", "至少需要保留一位 Super Admin。")
 	case errors.Is(err, ErrNotFound):
 		writeError(w, 404, "not_found", "resource not found")
 	case errors.Is(err, ErrConflict):

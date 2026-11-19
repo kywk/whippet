@@ -26,8 +26,9 @@ globalThis.fetch = async (url, options) => {
 
 try {
   api.setAdminToken(admin);
-  body = { user: { id: 'superadmin', role: 'superadmin' } };
-  await api.login();
+  body = { user: { id: 'dev-admin', name: 'Super Admin', role: 'superadmin', permissions: { createWorkspace: true, manageUsers: true, manageSuperAdmins: true } } };
+  await api.login('dev-admin');
+  assert.deepEqual(JSON.parse(lastRequest.options.body), { userId: 'dev-admin' });
   assert.ok(lastRequest.options.headers['X-Whippet-Admin-Token'] === admin);
   assert.ok(lastRequest.options.cache === 'no-store' && lastRequest.options.redirect === 'error');
   assert.ok(!lastRequest.url.includes(admin));

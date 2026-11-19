@@ -3,12 +3,15 @@ import { errorMessage } from './api';
 import { isActiveRun } from './types';
 import type { Run, WhippetApi } from './types';
 
-export function useResource<T>(load: (signal: AbortSignal) => Promise<T>) {
+export function useResource<T>(load: (signal: AbortSignal) => Promise<T>, keepPreviousData = false) {
   const [state, setState] = useState<{ data?: T; loading: boolean; error?: string }>({ loading: true });
   const [revision, retry] = useReducer((value: number) => value + 1, 0);
+  const updateData = useCallback((update: (current: T | undefined) => T | undefined) => {
+    setState((current) => ({ ...current, data: update(current.data) }));
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
-    setState({ loading: true });
+    setState((current) => ({ loading: true, data: keepPreviousData ? current.data : undefined }));
     load(controller.signal).then(
       (data) => { if (!controller.signal.aborted) setState({ data, loading: false }); },
       (error: unknown) => {
@@ -16,8 +19,8 @@ export function useResource<T>(load: (signal: AbortSignal) => Promise<T>) {
       },
     );
     return () => controller.abort();
-  }, [load, revision]);
-  return { ...state, retry };
+  }, [load, revision, keepPreviousData]);
+  return { ...state, retry, updateData };
 }
 
 function newestFirst(runs: Run[]): Run[] {

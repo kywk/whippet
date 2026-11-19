@@ -2,6 +2,12 @@
 
 規格已寫入；M1 三個模組首批程式已交付；M1 已完成本機真實端到端驗收：成功、斷言失敗及兩份 HTML 報告顯示皆通過。M2、M3 已完成本機驗收；M4 已完成本機驗收；M5／M6 本機功能已通過，部署與開源缺口獨立追蹤；M7–M9 對話工作區已完成本機驗收；目前優先 M10–M12 Use Case 與 Agent 平台化（見文末章節）。需求以 [MVP 規格](../requirements/mvp.md) 為準，技術邊界見 [架構設計](../architecture/design.md)，負責範圍見 [分工計畫](delegation.md)。
 
+## 平台角色與 Workspace 權限（2026-11-20）
+
+完成（Codex 整合、Server、Web）。登入預選 QA User。全站與 Workspace 角色可指派及撤銷，Server 對 API、即時監看及附件查核權限。測試封存保留版本、報告及固定 Module 引用。 [v13 契約](../../contracts/mvp-v13.md)
+
+隔離 PostgreSQL 與 Chromium 通過四個登入身分、桌機／手機管理、跨 Workspace 拒絕、撤權、封存與報告 PNG。Go 競態與整合測試通過，排除原始 `d368b1f` 同樣失敗的 `TestM109OutputBudgetRetrySnapshot`。內建 Worker、MCP 互動／接單、Vercel 與 Pi 參考 Worker 皆完成合成模型驗證。舊版 `TestM10HarnessServerBridge` 的合成 provider 連線失敗於原始版本同樣重現。監看已驗證 Server 撤權取消連線，WebRTC 媒體中斷延遲待實測。
+
 ## Workspace 概覽（2026-11-20）
 
 完成（Web／Codex）。登入、切換工作區及放棄未發佈測試後顯示概覽。整合驗測範圍、資產統計、近 7 天執行數據及報告入口，共用側欄執行紀錄。Web 建置與 Chromium 合成 API 驗收通過，涵蓋工作區切換、統計口徑、報告、錯誤重試、手機建立失敗及六種視窗尺寸。

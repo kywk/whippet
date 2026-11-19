@@ -16,13 +16,13 @@ interface Props {
   loading: boolean;
   error?: string;
   onRefresh: () => void;
-  onEditDraft: () => void;
-  onDiscardDraft: () => void;
+  onEditDraft?: () => void;
+  onDiscardDraft?: () => void;
   activeEditingSession?: ActiveEditingSession | null;
-  sessionBusy: boolean;
+  sessionBusy?: boolean;
   knownDraft?: Draft;
-  editorGuarded: boolean;
-  deletesTest: boolean;
+  editorGuarded?: boolean;
+  deletesTest?: boolean;
 }
 
 export function VersionHistory({ api, apiBase, versions, runs, publishedVersionId, loading, error, onRefresh,
@@ -31,13 +31,15 @@ export function VersionHistory({ api, apiBase, versions, runs, publishedVersionI
   const index = versions?.findIndex((version) => version.id === viewingId) ?? -1;
   const viewing = index < 0 ? undefined : versions?.[index];
   const hasPublishedVersions = Boolean(publishedVersionId || versions?.length);
+  const showDraftControls = Boolean(onEditDraft && onDiscardDraft);
+  const showVersions = hasPublishedVersions || !showDraftControls;
 
   return <section className="versions-section" aria-labelledby="versions-title">
     <div className="section-heading">
-      <h2 id="versions-title">{hasPublishedVersions ? <>版本歷史 <span className="count">{versions?.length || '—'}</span></> : '目前草稿'}</h2>
-      {hasPublishedVersions ? <button className="button secondary compact" disabled={loading} onClick={onRefresh}>重新整理版本</button> : null}
+      <h2 id="versions-title">{showVersions ? <>版本歷史 <span className="count">{versions?.length ?? '—'}</span></> : '目前草稿'}</h2>
+      {showVersions ? <button className="button secondary compact" disabled={loading} onClick={onRefresh}>重新整理版本</button> : null}
     </div>
-    {activeEditingSession ? <div className="draft-version-entry">
+    {showDraftControls && activeEditingSession ? <div className="draft-version-entry">
       <div className="version-heading">
         <strong>草稿{activeEditingSession.status === 'discarding' ? ' · 正在放棄' : ''}</strong>
         <div className="action-row">
@@ -46,10 +48,11 @@ export function VersionHistory({ api, apiBase, versions, runs, publishedVersionI
         </div>
       </div>
       <p className="muted">{activeEditingSession.status === 'discarding' ? '等待本週期任務終止及資源回收。' : editorGuarded ? '切回編輯模式可接續未儲存的內容或進行中的操作。' : `草稿 revision ${knownDraft?.revision ?? activeEditingSession.draftRevision}，尚未發佈。`}</p>
-    </div> : activeEditingSession === undefined ? <p className="mode-empty">草稿狀態尚未確認，請重新載入編輯狀態。</p> : null}
-    {hasPublishedVersions && loading ? <Loading text="正在載入版本歷史…" /> : null}
-    {hasPublishedVersions && error ? <Notice message={error} retry={onRefresh} /> : null}
-    {!hasPublishedVersions && activeEditingSession === null ? <p className="muted">開啟對話編輯來建立草稿。</p> : null}
+    </div> : showDraftControls && activeEditingSession === undefined ? <p className="mode-empty">草稿狀態尚未確認，請重新載入編輯狀態。</p> : null}
+    {showVersions && loading ? <Loading text="正在載入版本歷史…" /> : null}
+    {showVersions && error ? <Notice message={error} retry={onRefresh} /> : null}
+    {!hasPublishedVersions && !loading && !error && !showDraftControls ? <p className="muted">尚無已發佈版本。</p> : null}
+    {!hasPublishedVersions && showDraftControls && activeEditingSession === null ? <p className="muted">開啟對話編輯來建立草稿。</p> : null}
     {versions?.length ? <ol className="version-list" aria-label="已發佈版本">
       {versions.map((version, position) => {
         const previous = versions[position + 1];

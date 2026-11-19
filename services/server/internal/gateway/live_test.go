@@ -34,7 +34,8 @@ func TestLiveOriginIncludesPort(t *testing.T) {
 
 func TestLiveRoutesAuthAndLongLivedContext(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	api := server.NewAPI(nil, nil, server.NewEngine(nil, log), "manager-token", log)
+	api := server.NewAPI(nil, nil, server.NewEngine(nil, log), "manager-token", log).
+		WithAdminAccess("test-admin-key", "http://example.com")
 	called := false
 	viewer := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if deadline, ok := r.Context().Deadline(); ok && time.Until(deadline) <= 30*time.Second {
@@ -46,7 +47,15 @@ func TestLiveRoutesAuthAndLongLivedContext(t *testing.T) {
 	handler := api.WithLiveHandlers(viewer, media).Handler(nil)
 	id := server.NewID()
 	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, httptest.NewRequest("GET", "/api/runs/"+id+"/live", nil))
+	view := httptest.NewRequest("GET", "/api/runs/"+id+"/live", nil)
+	handler.ServeHTTP(w, view)
+	if w.Code != 401 {
+		t.Fatal("viewer bypassed platform auth", w.Code)
+	}
+	view.Header.Set("X-Whippet-Admin-Token", "test-admin-key")
+	view.Header.Set("Origin", "http://example.com")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, view)
 	if w.Code != 204 {
 		t.Fatal(w.Code)
 	}

@@ -1,6 +1,6 @@
 import { validRepairContent, editableStage } from './plan';
-import { AGENT_RUNTIME_SKILLS, RUN_STATUSES } from './types';
-import type { SimilarTestSuggestion, VersionConversationMessage, WorkspaceAgentRuntime } from './types';
+import { AGENT_RUNTIME_SKILLS, RUN_STATUSES, SITE_ROLES, WORKSPACE_MEMBER_ROLES } from './types';
+import type { SimilarTestSuggestion, VersionConversationMessage, WorkspaceAgentRuntime, WorkspaceMember } from './types';
 import type { AgentToken, AgentToolAudit, AuthorEngine, BrowserSession, StageRetry, ModuleMetadata, Plan, PlanStage, PlanSummary, StageArgument, JsonValue, AuthorPartial, CatalogItem, AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
 
 export class ApiError extends Error {
@@ -110,6 +110,24 @@ function choice<T extends string>(value: unknown, choices: readonly T[]): T {
   return value as T;
 }
 
+function parseUser(value: unknown): DevUser {
+  const data = record(value);
+  const permissions = record(data.permissions);
+  return {
+    id: string(data.id), name: string(data.name), role: choice(data.role, SITE_ROLES),
+    permissions: {
+      createWorkspace: bool(permissions.createWorkspace),
+      manageUsers: bool(permissions.manageUsers),
+      manageSuperAdmins: bool(permissions.manageSuperAdmins),
+    },
+  };
+}
+
+function parseMember(value: unknown): WorkspaceMember {
+  const data = record(value);
+  return { id: string(data.id), name: string(data.name), role: choice(data.role, WORKSPACE_MEMBER_ROLES) };
+}
+
 function parseWorkspaceConfig(value: unknown): WorkspaceConfig {
   const data = record(value);
   const timeoutMs = revision(data.timeoutMs);
@@ -144,6 +162,7 @@ function parseWorkspaceProposal(value: unknown): WorkspaceProposal {
 
 function parseWorkspaceDetail(value: unknown): WorkspaceDetail {
   const data = record(value);
+  const permissions = record(data.permissions);
   const result: WorkspaceDetail = {
     ...parseWorkspaceSettings(data), authorEngine: parseAuthorEngine(data.authorEngine), lifecycle: choice(data.lifecycle, ['draft', 'needs_confirmation', 'active'] as const),
     authorizationRevision: revision(data.authorizationRevision), scopeStatus: choice(data.scopeStatus, ['unconfirmed', 'confirmed', 'revoking'] as const),
@@ -151,6 +170,11 @@ function parseWorkspaceDetail(value: unknown): WorkspaceDetail {
     currentProposal: data.currentProposal === null ? null : parseWorkspaceProposal(data.currentProposal), roles: array(data.roles, parseWorkspaceRole),
     secretsAvailable: bool(data.secretsAvailable), executionAvailable: bool(data.executionAvailable), unavailableReason: nullableString(data.unavailableReason),
     capabilities: parseCapabilities(data.capabilities),
+    permissions: {
+      manageTests: bool(permissions.manageTests), manageSettings: bool(permissions.manageSettings),
+      manageMembers: bool(permissions.manageMembers), manageWorkspaceAdmins: bool(permissions.manageWorkspaceAdmins),
+      manageAgentTokens: bool(permissions.manageAgentTokens),
+    },
   };
   if (result.currentProposal && result.currentProposal.workspaceId !== result.id) throw new ApiError('提案所屬 Workspace 不符。', 'WORKSPACE_CONFLICT');
   return result;
@@ -189,6 +213,7 @@ function parseTest(value: unknown): Test {
     publishedVersionId: optionalString(data.publishedVersionId) || null,
     activeEditingSession: data.activeEditingSession === undefined ? undefined : data.activeEditingSession === null ? null : parseActiveSession(data.activeEditingSession),
     deleted: data.deleted === true,
+    archived: data.archived === true,
   };
 }
 
@@ -539,10 +564,30 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
       const data = record(await request(`/workspaces/${id(workspaceId)}/agent-tool-audit?${query}`, 'GET', signal, undefined, false, 200));
       return { items: array(data.items, (value) => parseAgentToolAudit(value, workspaceId)), nextCursor: nullableString(data.nextCursor) };
     },
-    async login(signal) {
-      const data = record(await request('/dev-login', 'POST', signal));
-      const user = record(data.user);
-      return { id: string(user.id), role: string(user.role) } satisfies DevUser;
+    async login(userId, signal) {
+      const data = record(await request('/dev-login', 'POST', signal, { userId }, false, 200));
+      const user = parseUser(data.user);
+      if (user.id !== userId) throw new ApiError('Server 回傳的登入身分與選擇不符。', 'INVALID_RESPONSE');
+      return user;
+    },
+    async getMe(signal) {
+      return parseUser(record(await request('/me', 'GET', signal, undefined, false, 200)).user);
+    },
+    async listUsers(signal) {
+      return items(await request('/users', 'GET', signal, undefined, false, 200), parseUser);
+    },
+    async updateUserRole(userId, role, signal) {
+      const user = parseUser(record(await request(`/users/${id(userId)}/role`, 'PATCH', signal, { role }, false, 200)).user);
+      if (user.id !== userId || user.role !== role) throw new ApiError('全站角色儲存回應不符。', 'INVALID_RESPONSE');
+      return user;
+    },
+    async listMembers(workspaceId, signal) {
+      return items(await request(`/workspaces/${id(workspaceId)}/members`, 'GET', signal, undefined, false, 200), parseMember);
+    },
+    async updateMember(workspaceId, userId, role, signal) {
+      const member = parseMember(record(await request(`/workspaces/${id(workspaceId)}/members/${id(userId)}`, 'PUT', signal, { role }, false, 200)).member);
+      if (member.id !== userId || member.role !== role) throw new ApiError('Workspace 成員儲存回應不符。', 'INVALID_RESPONSE');
+      return member;
     },
     async getPlan(testId, editingSessionId, signal) {
       const data = record(await request(`/tests/${id(testId)}/plan?editingSessionId=${id(editingSessionId)}`, 'GET', signal, undefined, false, 200));
@@ -621,6 +666,14 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     },
     async listTests(workspaceId, signal) {
       return items(await request(`/workspaces/${id(workspaceId)}/tests`, 'GET', signal), parseTest);
+    },
+    async listArchivedTests(workspaceId, signal) {
+      const tests = items(await request(`/workspaces/${id(workspaceId)}/archived-tests`, 'GET', signal, undefined, false, 200), parseTest);
+      if (tests.some((test) => test.workspaceId !== workspaceId || !test.archived)) throw new ApiError('封存測試清單與目前的 Workspace 不符。', 'INVALID_RESPONSE');
+      return tests;
+    },
+    async archiveTest(testId, signal) {
+      await request(`/tests/${id(testId)}/archive`, 'POST', signal, { confirmed: true }, false, 204);
     },
     async getTest(testId, signal) {
       return parseTest(await request(`/tests/${id(testId)}`, 'GET', signal));

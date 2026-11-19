@@ -38,7 +38,7 @@ func (a *API) patchAuthorEngine(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, item)
+	writeJSON(w, http.StatusOK, presentWorkspace(item, workspaceGrantFromContext(r.Context()).permissions))
 }
 
 func (p *Postgres) SetAuthorEngine(ctx context.Context, id string, revision int, engine string) (Workspace, error) {

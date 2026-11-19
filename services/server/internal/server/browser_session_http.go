@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"strings"
-	"time"
 )
 
 func (a *API) listBrowserSessions(w http.ResponseWriter, r *http.Request) {
@@ -96,22 +94,4 @@ func (a *API) resolveBrowserSessionCredentials(w http.ResponseWriter, r *http.Re
 		return
 	}
 	writeJSON(w, http.StatusOK, value)
-}
-
-func (a *API) sessionViewerAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-store")
-		origins := r.Header.Values("Origin")
-		if a.adminToken == "" || a.publicOrigin == "" || !a.adminSessions.valid(adminCookie(r), time.Now()) ||
-			len(origins) != 1 || origins[0] != a.publicOrigin || len(r.Header.Values("Authorization")) != 0 {
-			writeError(w, http.StatusForbidden, "forbidden", "valid same-origin management session required")
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-// Keep the long-lived WebSocket out of the normal 30-second API context.
-func sessionLivePath(path string) bool {
-	return (strings.HasPrefix(path, "/api/browser-sessions/") || strings.HasPrefix(path, "/api/manager/browser-sessions/")) && strings.HasSuffix(path, "/live")
 }

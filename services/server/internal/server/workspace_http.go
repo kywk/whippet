@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"net"
 	"net/http"
 	"strings"
@@ -20,7 +19,8 @@ func (a *API) createWorkspace(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, err)
 		return
 	}
-	writeJSON(w, 201, item)
+	permissions := permissionsForWorkspace(actorFromContext(r.Context()).user.Role, noMemberRole)
+	writeJSON(w, 201, presentWorkspace(item, permissions))
 }
 func (a *API) workspaceConversation(w http.ResponseWriter, r *http.Request) {
 	id, ok := a.id(w, r)
@@ -107,6 +107,7 @@ func (a *API) workspaceProposalAction(w http.ResponseWriter, r *http.Request) {
 	}
 	a.engine.Wake()
 	if action == "confirm" {
+		workspace = presentWorkspace(workspace, workspaceGrantFromContext(r.Context()).permissions)
 		writeJSON(w, 200, map[string]any{"workspace": workspace, "proposal": proposal})
 	} else {
 		writeJSON(w, 200, proposal)
@@ -192,51 +193,4 @@ func (a *API) workspaceCredentials(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, 200, ref)
 	}
-}
-
-// Current provider is Superadmin. Resource ownership is nevertheless obtained
-// from trusted database relations; optional client scope never grants access.
-func authorizeWorkspace(_ context.Context, _ string) error { return nil }
-func (p *Postgres) ResourceWorkspace(ctx context.Context, kind, id string) (string, error) {
-	query := ""
-	switch kind {
-	case "workspaces":
-		query = `SELECT id FROM workspaces WHERE id=$1`
-	case "tests":
-		query = `SELECT workspace_id FROM tests WHERE id=$1`
-	case "plans":
-		query = `SELECT t.workspace_id FROM plans p JOIN tests t ON t.id=p.test_id WHERE p.id=$1`
-	case "runs":
-		query = `SELECT workspace_id FROM runs WHERE id=$1`
-	default:
-		return "", ErrNotFound
-	}
-	var workspace string
-	err := p.DB.QueryRowContext(ctx, query, id).Scan(&workspace)
-	if err != nil {
-		return "", dbError(err)
-	}
-	return workspace, authorizeWorkspace(ctx, workspace)
-}
-func (a *API) authorizeResource(w http.ResponseWriter, r *http.Request) bool {
-	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if len(parts) < 3 || parts[0] != "api" || (parts[1] != "tests" && parts[1] != "runs" && parts[1] != "workspaces" && parts[1] != "plans") || !ValidID(parts[2]) {
-		return true
-	}
-	authorizer, ok := a.store.(interface {
-		ResourceWorkspace(context.Context, string, string) (string, error)
-	})
-	if !ok {
-		return true
-	}
-	workspace, err := authorizer.ResourceWorkspace(r.Context(), parts[1], parts[2])
-	if err != nil {
-		a.fail(w, err)
-		return false
-	}
-	if expected := r.URL.Query().Get("workspaceId"); expected != "" && expected != workspace {
-		a.fail(w, ErrNotFound)
-		return false
-	}
-	return true
 }

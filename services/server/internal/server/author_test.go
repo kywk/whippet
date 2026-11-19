@@ -242,9 +242,10 @@ func (conversationHTTPStore) CreateAuthor(_ context.Context, testID, _sessionID,
 func TestConversationHTTPAndStoredDiffFields(t *testing.T) {
 	store := conversationHTTPStore{}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := NewAPI(store, nil, NewEngine(store, log), "token", log).Handler(nil)
+	handler := NewAPI(store, nil, NewEngine(store, log), "token", log).WithAdminAccess(fixtureAdminKey, "").Handler(nil)
 	id := NewID()
 	r := httptest.NewRequest("GET", "/api/tests/"+id+"/conversation", nil)
+	r.Header.Set("X-Whippet-Admin-Token", fixtureAdminKey)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"baseScript":"original script"`) || !strings.Contains(w.Body.String(), `"proposedScript":"generated script"`) {
@@ -260,6 +261,7 @@ func TestConversationHTTPAndStoredDiffFields(t *testing.T) {
 		{`{"content":"修改測試","revision":0}`, 400},
 	} {
 		r := httptest.NewRequest("POST", "/api/tests/"+id+"/messages", strings.NewReader(tc.body))
+		r.Header.Set("X-Whippet-Admin-Token", fixtureAdminKey)
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, r)
 		if w.Code != tc.status {

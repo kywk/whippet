@@ -76,10 +76,14 @@ func TestScreenshotHTTPRelativeReportAndSandbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := NewAPI(store, files, NewEngine(store, log), "token", log).Handler(nil)
+	handler := NewAPI(store, files, NewEngine(store, log), "token", log).WithAdminAccess(fixtureAdminKey, "").Handler(nil)
 	request := func(method, target string, body []byte, length int64) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, target, bytes.NewReader(body))
-		r.Header.Set("Authorization", "Bearer token")
+		if strings.HasPrefix(r.URL.Path, "/api/manager/") {
+			r.Header.Set("Authorization", "Bearer token")
+		} else {
+			r.Header.Set("X-Whippet-Admin-Token", fixtureAdminKey)
+		}
 		r.Header.Set("X-Attempt-Id", assignment.AttemptID)
 		if length >= 0 {
 			r.ContentLength = length

@@ -19,7 +19,7 @@ interface Props {
   versionHistory: ReactNode;
   tags: string[];
   workspaceTags: string[];
-  onSaveMetadata: (patch: TestMetadataPatch, signal: AbortSignal) => Promise<void>;
+  onSaveMetadata?: (patch: TestMetadataPatch, signal: AbortSignal) => Promise<void>;
 }
 
 export function TestOverview({ test, version, loading, executionCapability, onRefreshVersions, runHistory, versionHistory, tags, workspaceTags, onSaveMetadata }: Props) {
@@ -32,12 +32,12 @@ export function TestOverview({ test, version, loading, executionCapability, onRe
   const aiTags = version?.suggestedTags?.filter((tag) => !tags.includes(tag)) ?? [];
   const suggestions = workspaceTags.filter((tag) => !tags.includes(tag) && !aiTags.includes(tag));
   const atLimit = tags.length >= MAX_TEST_TAGS;
-  const canEditTags = Boolean(metadataRevision) && !savingTags;
+  const canEditTags = Boolean(onSaveMetadata && metadataRevision) && !savingTags;
   const published = Boolean(test?.publishedVersionId);
   useEffect(() => () => tagRequest.current?.abort(), []);
 
   async function saveTags(next: string[], clearInput = false) {
-    if (!metadataRevision || tagRequest.current) return;
+    if (!onSaveMetadata || !metadataRevision || tagRequest.current) return;
     if (next.length > MAX_TEST_TAGS) {
       setTagError(`每個測試最多可設定 ${MAX_TEST_TAGS} 個標籤。`);
       return;
@@ -74,7 +74,7 @@ export function TestOverview({ test, version, loading, executionCapability, onRe
           <h2 id="version-description-title">腳本說明</h2>
           {version ? <div className="overview-summary-actions">
             <div className="overview-release"><span>目前正式版本</span><strong className="overview-revision mono">revision {version.revision}</strong></div>
-            {!loading && metadataRevision ? <button type="button" className="button quiet compact" aria-haspopup="dialog" disabled={savingTags}
+            {onSaveMetadata && !loading && metadataRevision ? <button type="button" className="button quiet compact" aria-haspopup="dialog" disabled={savingTags}
               onClick={() => setNotes({ version, metadataRevision })}>編輯說明與背景</button> : null}
           </div> : null}
         </div>
@@ -83,11 +83,11 @@ export function TestOverview({ test, version, loading, executionCapability, onRe
             <VersionMarkdown text={version.description?.trim() || '此版本尚無說明。'} />
             {version.backgroundSummary?.trim() ? <details className="version-background"><summary>版本背景摘要</summary><p className="summary-content">{version.backgroundSummary}</p></details> : null}
           </> : published ? <Notice message="目前無法載入正式版本。" retry={onRefreshVersions} retryLabel="重新整理版本" />
-            : <p className="muted">{test?.description?.trim() || '在對話中描述測試步驟與預期結果。'}</p>}
+            : <p className="muted">{test?.description?.trim() || (onSaveMetadata ? '在對話中描述測試步驟與預期結果。' : '尚無測試說明。')}</p>}
         </div>
         {version ? <div className="overview-release-meta">
           <p className="overview-release-time"><span>發佈時間</span><time dateTime={version.createdAt}>{formatDate(version.createdAt)}</time></p>
-          {executionCapability?.available !== true ? <p id="formal-execution-reason" className="overview-execution-note"><AlertIcon /><span>{capabilityReason(executionCapability)}</span></p> : null}
+          {onSaveMetadata && executionCapability?.available !== true ? <p id="formal-execution-reason" className="overview-execution-note"><AlertIcon /><span>{capabilityReason(executionCapability)}</span></p> : null}
         </div> : null}
       </section>
       {runHistory}
@@ -100,10 +100,11 @@ export function TestOverview({ test, version, loading, executionCapability, onRe
           {tags.length ? <div className="tag-list" aria-label="已設定的標籤">
             {tags.map((tag) => <span key={tag} className="tag-pill">
               <span>#{tag}</span>
-              <button type="button" className="tag-remove" aria-label={`移除標籤 ${tag}`} disabled={!canEditTags}
-                onClick={() => { void saveTags(tags.filter((value) => value !== tag)); }}><CloseIcon /></button>
+              {onSaveMetadata ? <button type="button" className="tag-remove" aria-label={`移除標籤 ${tag}`} disabled={!canEditTags}
+                onClick={() => { void saveTags(tags.filter((value) => value !== tag)); }}><CloseIcon /></button> : null}
             </span>)}
-          </div> : null}
+          </div> : onSaveMetadata ? null : <p className="muted">尚無標籤。</p>}
+          {onSaveMetadata ? <>
           <form className="tag-form" onSubmit={(event) => { event.preventDefault(); addTags(parseTagInput(tagInput), true); }}>
             <input type="text" className="text-input tag-input" value={tagInput} maxLength={32} disabled={!canEditTags || atLimit}
               placeholder="輸入標籤" aria-label="新增測試標籤" onChange={(event) => setTagInput(event.target.value)} />
@@ -121,6 +122,7 @@ export function TestOverview({ test, version, loading, executionCapability, onRe
           </div> : null}
           {savingTags ? <p className="inline-hint" role="status">正在儲存標籤…</p> : null}
           {tagError ? <Notice message={tagError} /> : null}
+          </> : null}
         </div>
       </section>
       {version ? <section className="published-script-section" aria-labelledby="published-script-title">
@@ -130,6 +132,6 @@ export function TestOverview({ test, version, loading, executionCapability, onRe
       </section> : null}
       {versionHistory}
     </aside>
-    {notes ? <ScriptNotesDialog version={notes.version} metadataRevision={notes.metadataRevision} onSave={onSaveMetadata} onClose={() => setNotes(undefined)} /> : null}
+    {notes && onSaveMetadata ? <ScriptNotesDialog version={notes.version} metadataRevision={notes.metadataRevision} onSave={onSaveMetadata} onClose={() => setNotes(undefined)} /> : null}
   </div>;
 }
