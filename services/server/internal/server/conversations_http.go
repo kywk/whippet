@@ -20,6 +20,34 @@ func (a *API) conversation(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, conversation)
 }
 
+func (a *API) versionConversation(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	id, ok := a.id(w, r)
+	if !ok {
+		return
+	}
+	versionID := r.PathValue("versionId")
+	if !ValidID(versionID) {
+		a.fail(w, ErrInvalid)
+		return
+	}
+	var after int64
+	if cursor := r.URL.Query().Get("after"); cursor != "" {
+		var err error
+		after, err = historySequence(cursor)
+		if err != nil {
+			a.fail(w, err)
+			return
+		}
+	}
+	page, err := a.store.VersionConversation(r.Context(), id, versionID, after)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
 func (a *API) createAuthor(w http.ResponseWriter, r *http.Request) {
 	id, ok := a.id(w, r)
 	if !ok {

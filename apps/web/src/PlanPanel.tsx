@@ -7,6 +7,7 @@ import './platform-preview.css';
 import { StageRetryForm } from './StageRetryForm';
 import { StageSplitForm } from './StageSplitForm';
 import { AuthorEngineStatus } from './AuthorEngineStatus';
+import { VersionMarkdown } from './VersionMarkdown';
 
 const planLabels = { draft: '待確認', confirmed: '已暫停，等待繼續確認', running: '逐階段執行中', composed: '已組合，等待驗證／摘要', done: '整批已發佈', stopped: '已停止' };
 const stageLabels = { pending: '等待前一階段', authoring: '作者任務中', validating: '驗證中', ready: '就緒', failed: '失敗' };
@@ -231,10 +232,11 @@ export function PlanPanel({ api, testId, session, draft, runs, authorEngine, blo
         {summary.stale || summary.planRevision !== plan.revision || summary.planId !== plan.id ? <p className="blocked-hint">此摘要已過期或不屬於目前 Plan，不可發佈。</p> : null}
         <h4>本批次候選 Module（{summary.candidates.length}）</h4>
         {summary.candidates.length ? <ul>{summary.candidates.map((item) => <li className="identifier" key={item.versionId}>{item.name} · @lib/{item.slug} · {item.moduleKind} · r{item.revision}<br />候選 {item.versionId}<details><summary>批次綁定</summary>Test {item.testId}<br />Bundle {item.bundleHash}</details></li>)}</ul> : <p>此批次沒有新建／修改候選；複用版本不重新發佈。</p>}
-        <h4>整批摘要</h4><p className="summary-content">{summary.description ?? '摘要尚未完成。'}</p><p className="summary-content">{summary.backgroundSummary ?? '尚無背景摘要。'}</p>{summary.message ? <p className="summary-content">{summary.message}</p> : null}
+        <h4>整批摘要</h4><VersionMarkdown text={summary.description ?? '摘要尚未完成。'} /><p className="summary-content">{summary.backgroundSummary ?? '尚無背景摘要。'}</p>{summary.message ? <p className="summary-content">{summary.message}</p> : null}
         <details><summary>批次識別</summary><code className="identifier">{summary.batchHash}</code></details>
       </> : <p>尚無可讀取的整批摘要；不使用單一 Test 摘要替代。</p>}
       {!publishReady ? <p className="blocked-hint">整批候選／摘要／發佈資格尚未確認，不可發佈。</p> : null}
+      {publishReady ? <p className="inline-hint">本批次以 AI 產生的版本會各自保留對話，供 Workspace 內使用者從版本詳情查看。</p> : null}
       <label className="checkbox-label"><input type="checkbox" checked={Boolean(confirmationKey) && confirmation === confirmationKey} disabled={!mayPublish} onChange={(event) => setConfirmation(event.target.checked ? confirmationKey : '')} />我已檢視全部候選清單與整批摘要，確認一起發佈 Use Case 與候選 Module。</label>
       <button className="button primary" disabled={!mayPublish || confirmation !== confirmationKey} onClick={() => { void mutate('publish'); }}>確認整批發佈</button>
     </section> : null}

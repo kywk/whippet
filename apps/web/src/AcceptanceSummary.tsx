@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { errorMessage, resolveReportUrl } from './api';
 import { Notice, RunProblem, RunStatusBadge, StatusBadge } from './components';
 import { CancelRunButton } from './TestActions';
+import { VersionMarkdown } from './VersionMarkdown';
 import { isActiveRun } from './types';
 import type { AuthorEngine, Draft, EditingSession, Run, WhippetApi } from './types';
 
@@ -62,7 +63,7 @@ export function AcceptanceSummaryCard({ api, apiBase, testId, session, draft, ru
     {summary?.status === 'succeeded' ? <>
       {!valid ? <p className="blocked-hint">此摘要已過期或內容不完整，不能用於目前草稿的發佈。</p> : <p className="action-message">驗收摘要已就緒，請檢視說明、背景與驗證報告後確認發佈。</p>}
       {summary.name ? <p className="summary-name">候選名稱：{summary.name}</p> : null}
-      <h5>版本說明</h5><p className="summary-content">{summary.description || '尚未提供版本說明。'}</p>
+      <h5>版本說明</h5><VersionMarkdown text={summary.description || '尚未提供版本說明。'} />
       <details><summary>查看背景摘要</summary><p className="summary-content">{summary.backgroundSummary || '尚未提供背景摘要。'}</p></details>
     </> : null}
     {!ready ? <p className="muted">等待目前草稿驗證通過且報告就緒。</p> : null}

@@ -112,6 +112,7 @@ Manager 使用部署 token；模型金鑰僅在後端執行環境；測試腳本
 - EditingSession：testId、sourceVersionId、conversationId、狀態 active／discarding／discarded／published；唯一約束保證每 Test 最多一個活躍週期。DraftRevision／author／validation 綁定週期與 revision。
 - 放棄先封鎖新任務，取消既有任務；回收／終態確認後封存。結果交易必須同時核對 session 狀態、revision 與 attempt，不能僅比較 revision。
 - 版本保存 description、backgroundSummary、來源編輯週期、驗證 Run 與摘要來源 revision。摘要任務唯讀腳本；發佈交易核對摘要及驗證指向相同腳本／設定快照。
+- 正式 AI 版本的對話由已發佈且封存的來源週期保存。版本對話 API 核對 Test、Workspace 與版本的雙向發佈關聯，依訊息 sequence 分頁讀取角色、文字與時間。新編輯週期有自己的對話。
 - Conversation 可屬 Workspace 設定或 Test 編輯週期，採明確 owner 關聯；歷史查詢依 workspace_id 範圍授權。
 - Workspace 設定對話產生 proposal，使用 expectedRevision 提交；建立中 Workspace 尚未啟用，僅允許訪談及經確認的範圍內探索。
 - 舊正式版本、Run 與附件不變；既有草稿／對話需遷移歸屬，不可遺失或一律誤判為未發佈修改。無正式版本或草稿內容／設定異於正式版本者視為活躍草稿；其餘保留歷史，首次修改才建立新週期。

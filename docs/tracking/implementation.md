@@ -340,6 +340,30 @@ Server、Manager、Worker、MCP 參考客戶端建置與定向測試通過。真
 
 19687 獨立展示站使用 migration 029。Chrome 實際執行原購物車測試，正式 Run `98a7138c-ec4a-40c8-86c5-67fd7e525bb3` 的 Playwright 報告通過 1 項。對話 Run `d1fd986a-d5d1-4953-ae03-769015cb2515` 引導另建忘記密碼測試，資料庫核對原腳本、草稿 revision 1 與發佈版本，兩筆 Worker 皆已回收。修正側欄將純對話誤標為改稿完成的問題，重新整理 Chrome 後顯示「AI 已回覆，草稿維持原樣」。Web build 與 Server 回歸通過。
 
+## 長對話展示與 256k 輸入上限（2026-11-19）
+
+完成／主 Agent。Server 與 Worker 將缺省的單次請求輸入上限調至 262,144 估算 tokens。較小的模型視窗與明確指定的上限依既有政策生效。Server 單元測試與 Worker 定向 27 項通過，涵蓋越過舊門檻、超出新門檻、較小視窗與舊快照。展示環境從 `0a6057d` 加本機變更建置並套用至 19687，Worker 映像為 `sha256:68cff230c3459396d27330319f9c1ca83c4b781ff4192a3a9dde46acaf4a957f`。
+
+TodoMVC 三輪對話以 Chrome 操作。原 64k Run `a5fd78d0-5670-4208-8b4e-22261ae98052` 保留容量停止紀錄。沿同一對話送出 256k 新 Run `d0c1d327-b6b6-4b55-9878-41e63c5546da`，內建引擎用 3 次模型請求與 3 次工具呼叫產出 revision 2。正式驗證 `5f675040-2b37-466b-85e7-4526e00262e7` 的 Playwright 報告通過 1 項，驗收摘要已就緒。任務皆已回收，草稿待人工確認發佈。
+
+展示準備時修正 Workspace 對話完成檢查拒絕既有記憶工具的問題。定向回歸與隔離 PostgreSQL 測試通過，原失敗 Run `defe4edd-34e3-4965-9ac6-454f4fc4a5b5` 保留。同一工作區的新設定 Run `6e043563-eff0-452d-91df-ca50834034b5` 已成功產生提案並確認官方 TodoMVC 範圍。
+
+## 編輯對話內監看（2026-11-19）
+
+完成／主 Agent。編輯模式的開始監看集中在對話內，同一時間使用一張唯讀監看卡。窄版從紀錄開啟時會收合右欄。Web build、監看遮蔽與連線回歸通過。19687 的真實草稿驗證在 Chrome 桌面及 390 px 窄版皆收到多張 JPEG 影格。桌面關閉後 Run `74282e9b-d57b-4f9c-83f8-1231c09d793a` 繼續通過，窄版 Run `e3225888-17fe-49cd-8e78-6339031cd9c4` 完成時關閉監看連線。兩筆報告可讀且 Worker 已回收。
+
+## 概覽的版本歷史與說明（2026-11-19）
+
+完成／主 Agent。版本歷史依發佈順序列出短摘要，點每一筆可查看與上一個發佈版本的逐行差異、版本說明及完整腳本。新版 AI 摘要以 Markdown 保存，沿用既有 `description` 欄位。Web build、Worker 定向 14 項、Go 摘要與技能測試及瀏覽器發佈回歸 6 項通過。
+
+19687 展示環境以 `0a6057d` 加本機變更驗證。TodoMVC 隔離案例 `573a6ab1-5c9b-4a6a-9888-8ca6c3077a92` 的 revision 2 與 4 各通過一次 Playwright 驗證，Run 為 `6f3b9921-1afb-46a2-a41f-c03f26d3c2ec` 和 `7b024913-68e2-4cd3-b4ca-31df89c957c6`。內建 Muse／xhigh 摘要 Run `db889ed3-254c-4cf7-b75c-61f04cd2d3c6` 與 `ad3abde2-6f5b-4e7b-9512-37af497d1768` 皆生成結構化 Markdown 並發佈，四筆 Worker 已回收。桌面與 390 px Chromium 確認版本順序、首版可檢視、Markdown 標題和清單、revision 2 → 4 新增 4 行／移除 2 行及焦點返回。新版 Worker 映像 `sha256:75058de3eac4c312ae6c7a92f44401cb20a1f516b31d4dbe3e97706518bcbf71` 的驗收摘要技能與 Server 指紋一致。
+
+## 已發佈版本的 AI 對話（2026-11-19）
+
+完成／主 Agent。概覽右欄先顯示正式腳本，再顯示版本歷史。AI 版本詳情按需分頁載入該版發佈時封存的對話。Go 與 PostgreSQL 回歸確認權限、跨 Test／Workspace、未發佈週期、分頁與新草稿隔離；Web build 和瀏覽器回歸 6 項通過。
+
+19687 展示環境的 TodoMVC「新增整理書桌驗證」以內建 AI 進行兩輪對話，正式驗證 `ec4bd7bf-d92d-42b9-aa46-2943fc8d9381` 和摘要 `97bbe2b6-0a1b-4393-bea3-a5d54a824ac3` 通過。發佈版本 `fd0339c6-b912-48e3-8e2d-db42ae3944c8` 對話與來源週期的 4 則訊息一致。桌面與 390 px Chromium 確認右欄順序、對話按需載入及唯讀顯示。四筆 Worker 皆已回收，報告可讀。
+
 ## M10–M12：Use Case 與 Agent 平台化（2026-11-13 使用者同意）
 
 規格見 [Use Case 與 Agent 平台化規格](../requirements/usecase-agent-platform.md)，架構見 [design.md M10–M12](../architecture/design.md)，分工見 [delegation.md](delegation.md)。開發期間每項只做「最小驗證」，通過就推進；每個階段收尾時執行一次 Z 項完整驗證。Z 項通過才能標記 tag 或 merge。

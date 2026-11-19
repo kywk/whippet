@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { ApiError, errorMessage } from './api';
 import { Loading, Notice, ReportLink, RunProblem, RunStatusBadge } from './components';
 import { AssistantTurn, ChatScroll, Composer, UserTurn, useStoredText } from './chat';
@@ -7,7 +8,7 @@ import { CancelRunButton } from './TestActions';
 import { AuthorLiveStatus, trailFromRuns, TrailCard } from './trail';
 import { capabilityReason } from './capabilities';
 import { AuthorEngineStatus } from './AuthorEngineStatus';
-import { isActiveRun } from './types';
+import { canWatchRun, isActiveRun } from './types';
 import { PanelIcon, RefreshIcon, ScriptIcon } from './icons';
 import type { AuthorEngine, Conversation, Draft, EditingSession, Message, Run, WhippetApi, WorkspaceCapability } from './types';
 
@@ -34,6 +35,8 @@ interface Props {
   onConversationChanged: () => void;
   onRefreshSession: () => Promise<EditingSession | undefined>;
   onShowTab: (tab: SideTab) => void;
+  onWatch: (run: Run) => void;
+  liveView?: ReactNode;
   sideOpen?: boolean;
   onToggleSide?: () => void;
   testName?: string;
@@ -47,7 +50,7 @@ const STARTERS = [
   '搜尋關鍵字，確認結果清單依相關度排序',
 ];
 
-export function ConversationPanel({ api, apiBase, testId, editingSessionId, draft, draftDirty, draftBusy, runs, onRun, onRefreshRuns, onSynchronized, onUseCandidate, onOpenManual, onGuardChange, onConversationChanged, onRefreshSession, onShowTab, sideOpen, onToggleSide, aiExploration, authorEngine = 'builtin', testKind, publishReady, planMode = false }: Props) {
+export function ConversationPanel({ api, apiBase, testId, editingSessionId, draft, draftDirty, draftBusy, runs, onRun, onRefreshRuns, onSynchronized, onUseCandidate, onOpenManual, onGuardChange, onConversationChanged, onRefreshSession, onShowTab, onWatch, liveView, sideOpen, onToggleSide, aiExploration, authorEngine = 'builtin', testKind, publishReady, planMode = false }: Props) {
   const nextEngine = authorEngine;
   const [conversation, setConversation] = useState<Conversation>();
   const [content, setContent] = useStoredText(editingSessionId);
@@ -251,11 +254,14 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
     [runs, editingSessionId, draft.revision, lastTurnChangedDraft],
   );
   // 僅在任務失敗、本輪有腳本/驗證進展、或尚未有對話但已有執行紀錄時顯示四站進度卡；AI 執行中已由對話氣泡即時顯示步驟，純對話與環境問題回報保持自然對話呈現。
-  const showTrail = !planMode && ((trail.running && !pendingTurn) || (!authorActive && (trail.failed || lastTurnTouchedPipeline)) || (messages.length === 0 && runs.length > 0 && !pendingTurn));
+  const showTrail = !planMode && !partialRun && ((trail.running && !pendingTurn) || (!authorActive && (trail.failed || lastTurnTouchedPipeline)) || (messages.length === 0 && runs.length > 0 && !pendingTurn));
   const failedStage = trail.failed ? trail.stages[trail.step - 1] : undefined;
   const failedRun = runs.find((run) => run.id === failedStage?.runId);
   const canRepairValidation = failedStage?.key === 'validate' && failedRun?.status === 'failed';
   const activeRun = runs.find(isActiveRun);
+  const watchRun = runs.find((run) => run.kind === 'validation' && canWatchRun(run))
+    ?? (aiExploration?.available && trackedRun && canWatchRun(trackedRun) ? trackedRun : undefined);
+  const watchAction = watchRun ? <button className="button secondary compact" onClick={() => onWatch(watchRun)}>開始監看</button> : null;
   const scrollWatch = `${messages.length}:${pendingTurn}:${trackedRun?.progressEvents?.length ?? 0}:${trail.step}:${trail.running}:${failedRun?.id ?? ''}:${loading}`;
   const repairPrompt = nextEngine === 'external'
     ? planMode ? '請根據目前 Plan 與失敗原因提出修訂建議；新的 Plan 仍須由我確認。'
@@ -267,7 +273,7 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
     <span className="foot-actions">
       {activeRun ? <CancelRunButton api={api} run={activeRun} onUpdated={onRun} /> : null}
       {canRepairValidation && !trail.running ? <button className="button primary compact" disabled={blocked} onClick={() => { void send(repairPrompt); }}>請 AI 排查並修正</button> : null}
-      {trail.running ? <button className="button secondary compact" onClick={() => onShowTab('runs')}>監看與紀錄</button>
+      {trail.running ? <>{watchAction}<button className="button quiet compact" onClick={() => onShowTab('runs')}>查看執行紀錄</button></>
         : trail.awaitingPublish ? <button className="button primary compact" onClick={() => onShowTab('publish')}>前往確認發佈</button>
           : <button className="button secondary compact" onClick={() => onShowTab('publish')}>{failedStage?.key === 'summary' ? '前往重試摘要' : '前往驗證與發佈'}</button>}
     </span>
@@ -301,7 +307,8 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
           <AuthorLiveStatus run={trackedRun ?? activeRun} mode="edit" />
           <div className="pending-actions">
             {activeRun ? <CancelRunButton api={api} run={activeRun} onUpdated={onRun} /> : null}
-            <button className="button quiet compact" onClick={() => onShowTab('runs')}>監看與紀錄</button>
+            {watchAction}
+            <button className="button quiet compact" onClick={() => onShowTab('runs')}>查看執行紀錄</button>
           </div>
         </AssistantTurn> : null}
       </ol>
@@ -319,12 +326,14 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
           {continueChecked === partialRun.id && partialMatches ? <button className="button secondary" disabled={blocked} onClick={() => { setContinueConflict(undefined); setContinueChecked(undefined); setSubmitError(undefined); }}>已檢視草稿，允許再次嘗試</button> : null}
         </div> : null}
       </section> : null}
-      {showTrail && !partialRun ? <div className="trail-slot" aria-live="polite">
+      {showTrail ? <div className="trail-slot" aria-live="polite">
         <TrailCard trail={trail} title="目前進度" footer={failedStage?.key === 'author' && !trail.running && !activeRun ? undefined : trailFooter} />
         {failedRun ? <RunProblem run={failedRun} /> : null}
         {synchronizing ? <p className="inline-hint" role="status">正在同步對話、草稿與驗證紀錄…</p> : null}
       </div> : null}
       {planMode && !authorActive && trackedRun ? <RunProblem run={trackedRun} /> : null}
+      {!pendingTurn && (!showTrail || !trail.running) && watchAction ? <div className="pending-actions">{watchAction}</div> : null}
+      {liveView}
     </ChatScroll>
     <div className="composer-dock">
       {submitError ? <Notice message={submitError} /> : null}

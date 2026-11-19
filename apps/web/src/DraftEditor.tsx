@@ -8,6 +8,7 @@ import { emptyModule, ModuleFields, moduleProblem } from './ModuleFields';
 import { PlanPanel } from './PlanPanel';
 import { ConversationPanel } from './ConversationPanel';
 import { AcceptanceSummaryCard } from './AcceptanceSummary';
+import { VersionMarkdown } from './VersionMarkdown';
 import { CapabilityStatus } from './WorkspaceSettings';
 import { isActiveRun } from './types';
 import { CheckIcon, CloseIcon, CollapseIcon, ExpandIcon, RefreshIcon, TrashIcon } from './icons';
@@ -26,7 +27,9 @@ interface Props {
   onDraftChange: (draft: Draft) => void;
   capabilities: WorkspaceCapabilities | undefined;
   authorEngine: AuthorEngine;
-  children?: ReactNode;
+  onWatch: (run: Run) => void;
+  liveView?: ReactNode;
+  renderRunHistory: (onWatch: (run: Run) => void) => ReactNode;
   session: EditingSession;
   sessionRefreshing: boolean;
   onRefreshSession: () => Promise<EditingSession | undefined>;
@@ -56,7 +59,7 @@ export function DraftEditor(props: Props) {
   </section>;
 }
 
-function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, onDirtyChange, onRefreshRuns, settingsRefresh, onDraftChange, children, initialSettingsSequence, session, sessionRefreshing, onRefreshSession, capabilities, authorEngine, onDiscard, discardBusy, onReloadSession, testName, testKind, testSlug }: Props & { initial: Draft; initialSettingsSequence: number }) {
+function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, onDirtyChange, onRefreshRuns, settingsRefresh, onDraftChange, onWatch, liveView, renderRunHistory, initialSettingsSequence, session, sessionRefreshing, onRefreshSession, capabilities, authorEngine, onDiscard, discardBusy, onReloadSession, testName, testKind, testSlug }: Props & { initial: Draft; initialSettingsSequence: number }) {
   const [draft, setDraft] = useState(initial);
   const [script, setScript] = useState(initial.script);
   const [module, setModule] = useState(() => initial.module ?? emptyModule(testSlug ?? ''));
@@ -310,10 +313,15 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
     setSideOpen(true);
   }, []);
 
+  function watchInConversation(run: Run) {
+    onWatch(run);
+    if (window.matchMedia('(max-width: 1220px)').matches) setSideOpen(false);
+  }
+
   return <div className={`studio${sideOpen ? ' side-open' : ' side-closed'}${sideExpanded ? ' side-expanded' : ''}`}>
     {sideOpen ? <div className="side-backdrop" aria-hidden="true" onClick={() => setSideOpen(false)} /> : null}
     <section className="studio-chat" aria-label="對話編輯工作區">
-      <ConversationPanel api={api} apiBase={apiBase} testId={testId} editingSessionId={session.id} aiExploration={capabilities?.aiExploration} authorEngine={authorEngine} testKind={testKind} draft={draft} draftDirty={dirty} draftBusy={planGuarded || readOnly || Boolean(busy) || syncing || settingsSyncing || settingsPending || conflict || summaryRequestBusy} runs={runs} onRun={onRun} onRefreshRuns={onRefreshRuns} onSynchronized={synchronizeDraft} onUseCandidate={useCandidate} onOpenManual={openManualEditor} onGuardChange={setConversationGuarded} onConversationChanged={() => { setInvalidatedSummaryId(session.summary?.runId); setConfirmed(false); void onRefreshSession().catch(() => undefined); }} onRefreshSession={onRefreshSession} onShowTab={showSideTab} sideOpen={sideOpen} onToggleSide={() => setSideOpen((open) => !open)} testName={testName} publishReady={eligible} planMode={testKind === 'usecase'} />
+      <ConversationPanel api={api} apiBase={apiBase} testId={testId} editingSessionId={session.id} aiExploration={capabilities?.aiExploration} authorEngine={authorEngine} testKind={testKind} draft={draft} draftDirty={dirty} draftBusy={planGuarded || readOnly || Boolean(busy) || syncing || settingsSyncing || settingsPending || conflict || summaryRequestBusy} runs={runs} onRun={onRun} onRefreshRuns={onRefreshRuns} onSynchronized={synchronizeDraft} onUseCandidate={useCandidate} onOpenManual={openManualEditor} onGuardChange={setConversationGuarded} onConversationChanged={() => { setInvalidatedSummaryId(session.summary?.runId); setConfirmed(false); void onRefreshSession().catch(() => undefined); }} onRefreshSession={onRefreshSession} onShowTab={showSideTab} onWatch={watchInConversation} liveView={liveView} sideOpen={sideOpen} onToggleSide={() => setSideOpen((open) => !open)} testName={testName} publishReady={eligible} planMode={testKind === 'usecase'} />
     </section>
     <aside className="studio-side" aria-label="腳本、驗證與發佈" hidden={!sideOpen}>
       <div className="side-tabs" role="tablist" aria-label="產物面板">
@@ -380,18 +388,19 @@ function DraftForm({ api, apiBase, testId, initial, runs, onRun, onPublished, on
           <h3 id="publish-title">確認發佈</h3>
           <ul className="conditions" aria-label="發佈條件">{conditions.map((item) => <li key={item.label} className={item.ok ? 'ok' : ''}><span className="node" aria-hidden="true">{item.ok ? <CheckIcon /> : null}</span>{item.label}<span className="sr-only">{item.ok ? '：已達成' : '：尚未達成'}</span></li>)}</ul>
           <p className="inline-hint">{dirty ? '有未儲存變更，驗證結果只對應已儲存腳本。' : eligible ? '條件都已就緒。請檢視驗證報告與驗收摘要，由你明確確認。AI 不會自動發佈。' : '需目前 revision 驗證通過、報告與有效驗收摘要就緒，且沒有未儲存變更，才可發佈。'}</p>
+          {draft.scriptOrigin === 'ai' ? <p className="inline-hint">這次 AI 對話會隨版本發佈，供 Workspace 內使用者從版本詳情查看。</p> : null}
           <label className="checkbox-label"><input type="checkbox" checked={confirmed} disabled={!eligible || Boolean(busy)} onChange={(event) => setConfirmed(event.target.checked)} />我已檢視驗證報告與驗收摘要，確認發佈 revision {draft.revision}</label>
           <button className="button primary" disabled={!eligible || !confirmed || Boolean(busy)} onClick={() => perform('publish')}>{busy === 'publish' ? '發佈中…' : `確認發佈 revision ${draft.revision}`}</button>
         </section>
         </>}
       </div>
 
-      <div id="side-panel-runs" role="tabpanel" aria-labelledby="side-tab-runs" className="side-panel" hidden={tab !== 'runs'}>{children}</div>
+      <div id="side-panel-runs" role="tabpanel" aria-labelledby="side-tab-runs" className="side-panel" hidden={tab !== 'runs'}>{renderRunHistory(watchInConversation)}</div>
 
       <div id="side-panel-background" role="tabpanel" aria-labelledby="side-tab-background" className="side-panel" hidden={tab !== 'background'}>
         <section className="session-background" aria-labelledby="background-title"><h3 id="background-title">本次編輯的版本背景</h3>
           <p className="inline-hint">來源版本：{session.sourceVersionId ?? '尚無正式版本'}</p>
-          <h4>來源版本說明</h4><p className="summary-content">{session.sourceVersion?.description ?? '來源版本尚無獨立說明（舊資料或新測試）。'}</p>
+          <h4>來源版本說明</h4><VersionMarkdown text={session.sourceVersion?.description ?? '來源版本尚無獨立說明（舊資料或新測試）。'} />
           <h4>來源背景摘要</h4><p className="summary-content">{session.sourceVersion?.backgroundSummary ?? '尚未提供來源背景摘要。'}</p>
           <h4>本次對話背景</h4><p className="summary-content">{session.conversationSummary ?? '此編輯週期尚無已保存的對話摘要。'}</p>
         </section>

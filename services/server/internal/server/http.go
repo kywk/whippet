@@ -100,6 +100,7 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	mux.HandleFunc("POST /api/tests/{id}/draft/validate", a.validateDraft)
 	mux.HandleFunc("POST /api/tests/{id}/publish", a.publish)
 	mux.HandleFunc("GET /api/tests/{id}/versions", a.versions)
+	mux.HandleFunc("GET /api/tests/{id}/versions/{versionId}/conversation", a.versionConversation)
 	mux.HandleFunc("GET /api/tests/{id}/conversation", a.conversation)
 	mux.HandleFunc("GET /api/workspaces/{id}/catalog", a.catalog)
 	mux.HandleFunc("GET /api/tests/{id}/plan", a.getPlan)

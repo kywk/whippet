@@ -62,6 +62,7 @@
 | POST /api/tests/:id/editing-session，body {} | 無活躍週期：201 `{session:EditingSession}`；已有 active：200 同一 session（即 resume），不建立 revision／Run；discarding：409。一個 endpoint 合併 start/resume。 |
 | GET /api/tests/:id/editing-session | 200 `{session:EditingSession|null}`，未知 Test 404。純讀取。 |
 | GET /api/tests/:id/editing-sessions/:sessionId | 200 `{session:EditingSession}`，供放棄進度／已結束週期查詢；不存在或不屬於 Test 回 404，純讀取。 |
+| GET /api/tests/:id/versions/:versionId/conversation，選填 `after` | 200 `{testId,versionId,messages:[{id,role,content,createdAt}],nextCursor}`。限發佈時來源為 `ai` 且綁定封存對話的版本，依訊息順序每頁至多 40 則。`after` 使用上一頁傳回的 `nextCursor`，末頁為 `null`。未綁定或跨 Test 版本回 404。 |
 | POST /api/tests/:id/editing-sessions/:sessionId/discard，body {revision,confirmed:true} | active 須核對 revision；若可立即結束回 200，等待取消／回收回 202。重複 discarding／discarded 請求冪等；不得放棄 published session。 |
 
 建議 EditingSession 最小形狀：

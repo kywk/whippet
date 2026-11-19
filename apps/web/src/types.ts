@@ -358,6 +358,13 @@ export interface Message {
   validationRunId?: string;
 }
 
+export type VersionConversationMessage = Pick<Message, 'id' | 'role' | 'content' | 'createdAt'>;
+
+export interface VersionConversationPage {
+  messages: VersionConversationMessage[];
+  nextCursor: string | null;
+}
+
 export interface Conversation {
   id: string;
   testId: string;
@@ -388,6 +395,10 @@ export const STATUS_LABELS: Record<RunStatus, string> = {
 
 export function isActiveRun(run: Run): boolean {
   return ['queued', 'dispatched', 'running', 'collecting', 'cancelling'].includes(run.status);
+}
+
+export function canWatchRun(run: Run): boolean {
+  return isActiveRun(run) && run.authorMode !== 'summary' && run.authorEngine !== 'external';
 }
 
 export interface WhippetApi {
@@ -426,6 +437,7 @@ export interface WhippetApi {
   validateDraft(testId: string, editingSessionId: string, revision: number, signal?: AbortSignal): Promise<Run>;
   publishTest(testId: string, editingSessionId: string, revision: number, summaryRunId: string, signal?: AbortSignal): Promise<Version>;
   listVersions(testId: string, signal?: AbortSignal): Promise<Version[]>;
+  getVersionConversation(testId: string, versionId: string, after: string | null, signal?: AbortSignal): Promise<VersionConversationPage>;
   cancelRun(runId: string, signal?: AbortSignal): Promise<Run>;
   getConversation(testId: string, editingSessionId: string, signal?: AbortSignal): Promise<Conversation>;
   sendMessage(testId: string, editingSessionId: string, content: string, revision: number, signal?: AbortSignal): Promise<{ run: Run; conversationId: string }>;

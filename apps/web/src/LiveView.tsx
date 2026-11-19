@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createLiveOfferHistory, createLiveSession } from './live';
 import type { LiveMode, LiveState } from './live';
 import { isActiveRun } from './types';
 import type { Run } from './types';
 import { runKindLabel } from './components';
 
-export function LiveView({ run, apiBase, onClose }: { run: Run; apiBase: string; onClose: () => void }) {
-  return <Viewer target={{ kind: 'run', run }} apiBase={apiBase} onClose={onClose} />;
+export function LiveView({ run, apiBase, onClose, revealInChat }: { run: Run; apiBase: string; onClose: () => void; revealInChat?: boolean }) {
+  return <Viewer target={{ kind: 'run', run }} apiBase={apiBase} onClose={onClose} revealInChat={revealInChat} />;
 }
 
 export function SessionLiveView({ sessionId, leaseId, apiBase, onClose }: { sessionId: string; leaseId: string; apiBase: string; onClose: () => void }) {
@@ -15,10 +15,12 @@ export function SessionLiveView({ sessionId, leaseId, apiBase, onClose }: { sess
 
 type Target = { kind: 'run'; run: Run } | { kind: 'session'; sessionId: string; leaseId: string };
 
-function Viewer({ target, apiBase, onClose }: { target: Target; apiBase: string; onClose: () => void }) {
+function Viewer({ target, apiBase, onClose, revealInChat }: { target: Target; apiBase: string; onClose: () => void; revealInChat?: boolean }) {
   const [enabled, setEnabled] = useState(true);
   const [revision, setRevision] = useState(0);
   const [state, setState] = useState<LiveState>({ phase: 'connecting', mode: 'webrtc' });
+  const titleId = useId();
+  const panel = useRef<HTMLElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const image = useRef<HTMLImageElement>(null);
   const session = useRef<ReturnType<typeof createLiveSession> | null>(null);
@@ -31,6 +33,13 @@ function Viewer({ target, apiBase, onClose }: { target: Target; apiBase: string;
   const sessionId = target.kind === 'session' ? target.sessionId : undefined;
   const leaseId = target.kind === 'session' ? target.leaseId : undefined;
   const active = target.kind === 'session' || isActiveRun(target.run);
+
+  useLayoutEffect(() => {
+    if (revealInChat) {
+      panel.current?.scrollIntoView({ block: 'start' });
+      panel.current?.focus({ preventScroll: true });
+    }
+  }, [revealInChat]);
 
   useEffect(() => {
     if (!active || !enabled) {
@@ -54,8 +63,8 @@ function Viewer({ target, apiBase, onClose }: { target: Target; apiBase: string;
   const controlsAvailable = enabled && active && !['ended', 'unavailable', 'error', 'paused'].includes(state.phase);
   function reconnect() { setEnabled(true); setRevision((value) => value + 1); }
 
-  return <section className="live-panel" aria-labelledby="live-title">
-    <div className="section-heading"><h3 id="live-title">唯讀監看</h3><button className="button quiet compact" onClick={onClose}>關閉監看面板</button></div>
+  return <section ref={panel} className="live-panel" aria-labelledby={titleId} tabIndex={revealInChat ? -1 : undefined}>
+    <div className="section-heading"><h3 id={titleId}>唯讀監看</h3><button className="button quiet compact" onClick={onClose}>關閉監看面板</button></div>
     <p className="live-run">{target.kind === 'run' ? <>{runKindLabel(target.run)} · Run <span className="identifier">{target.run.id}</span></> : <>瀏覽器 session <span className="identifier">{target.sessionId.slice(0, 8)}</span></>}</p>
     <div className="live-status" role="status" aria-label="監看連線狀態" data-testid="live-status"><strong>{label}</strong>{state.reason ? <p>{state.reason}</p> : null}</div>
     <div className="live-media" data-transport={state.mode}>

@@ -116,6 +116,20 @@ type Conversation struct {
 	ActiveRunID      *string   `json:"activeRunId,omitempty"`
 }
 
+type VersionConversationPage struct {
+	TestID     string                       `json:"testId"`
+	VersionID  string                       `json:"versionId"`
+	Messages   []VersionConversationMessage `json:"messages"`
+	NextCursor *string                      `json:"nextCursor"`
+}
+
+type VersionConversationMessage struct {
+	ID        string    `json:"id"`
+	Role      string    `json:"role"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
 type Message struct {
 	ID              string    `json:"id"`
 	Role            string    `json:"role"`
@@ -289,6 +303,7 @@ type Store interface {
 	ValidateDraft(context.Context, string, string, int) (Run, error)
 	Publish(context.Context, string, string, int, string, bool) (Version, error)
 	Versions(context.Context, string) ([]Version, error)
+	VersionConversation(context.Context, string, string, int64) (VersionConversationPage, error)
 	Conversation(context.Context, string, string) (Conversation, error)
 	CreateAuthor(context.Context, string, string, string, int) (AuthorSubmission, error)
 	StartEditingSession(context.Context, string) (EditingSession, bool, error)

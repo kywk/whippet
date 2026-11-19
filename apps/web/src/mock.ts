@@ -132,7 +132,12 @@ test('本機頁面', async ({ page }) => {
       versions.set(version.id, version); getTest(testId).publishedVersionId = version.id;
       return { ...version };
     },
-    async listVersions(testId) { return [...versions.values()].filter((version) => version.testId === testId).map((version) => ({ ...version })); },
+    async listVersions(testId) { return [...versions.values()].filter((version) => version.testId === testId).reverse().map((version) => ({ ...version })); },
+    async getVersionConversation(testId, versionId) {
+      const version = versions.get(versionId);
+      if (version?.testId !== testId || version.scriptOrigin !== 'ai') throw new ApiError('找不到這個版本的對話歷程。', 'NOT_FOUND', 404);
+      return { messages: [], nextCursor: null };
+    },
     async cancelRun(runId) {
       const stored = runs.get(runId);
       if (!stored) throw new ApiError('找不到執行紀錄。', 'NOT_FOUND', 404);

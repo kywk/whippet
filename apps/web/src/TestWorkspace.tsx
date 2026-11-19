@@ -7,7 +7,8 @@ import { LiveView } from './LiveView';
 import { RunHistory } from './RunHistory';
 import { DiscardSessionDialog } from './DiscardSessionDialog';
 import { CloseIcon, PlayIcon, PlusIcon, SidebarIcon } from './icons';
-import { VersionHistory } from './TestActions';
+import { VersionHistory } from './VersionHistory';
+import { VersionMarkdown } from './VersionMarkdown';
 import { CapabilityStatus } from './WorkspaceSettings';
 import { useResource, useRuns } from './hooks';
 import type { ActiveEditingSession, AuthorEngine, Draft, EditingSession, Run, Test, Version, WhippetApi, WorkspaceCapabilities } from './types';
@@ -58,7 +59,6 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
   const sessionControllers = useRef(new Set<AbortController>());
   const sessionSequence = useRef(0);
   const initialStart = useRef(false);
-  const [selectedVersionId, setSelectedVersionId] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string>();
   const [liveSelection, setLiveSelection] = useState<Run>();
@@ -84,9 +84,6 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
   const publishedVersion = versions.data?.find((version) => version.id === publishedId);
   const formalCapability = executionCapabilityForScript(capabilities, publishedVersion?.scriptOrigin);
   const executionAvailable = formalCapability?.available === true;
-  const viewingVersionId = selectedVersionId ?? publishedId;
-  const selectedVersion = versions.data?.find((version) => version.id === viewingVersionId);
-  const historical = Boolean(selectedVersionId && selectedVersionId !== publishedId);
   const liveRun = liveSelection ? history.runs.find((run) => run.id === liveSelection.id) ?? liveSelection : undefined;
   const pointer = test.data?.activeEditingSession;
   let activeInfo: ActiveEditingSession | null | undefined = pointer;
@@ -217,7 +214,7 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
     setMode(next);
   }
   function startLive(run: Run) { setLiveSelection(run); setLiveRequest((value) => value + 1); }
-  const liveView = liveRun ? <LiveView key={`${liveRun.id}:${liveRequest}`} run={liveRun} apiBase={apiBase} onClose={() => setLiveSelection(undefined)} /> : null;
+  const liveView = liveRun ? <LiveView key={`${liveRun.id}:${liveRequest}`} run={liveRun} apiBase={apiBase} onClose={() => setLiveSelection(undefined)} revealInChat={mode === 'editing'} /> : null;
 
   async function runTest() {
     if (submitLock.current || !publishedId || !executionAvailable) return;
@@ -230,7 +227,7 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
   function published(version: Version) {
     if (test.data) onTestUpdated({ ...test.data, publishedVersionId: version.id });
     setSession((current) => current ? { ...current, status: 'published', draft: null, publishedVersionId: version.id } : current);
-    setEditorMounted(false); setKnownDraft(undefined); setSelectedVersionId(undefined); test.retry(); versions.retry(); changeMode('general');
+    setEditorMounted(false); setKnownDraft(undefined); test.retry(); versions.retry(); changeMode('general');
   }
   const runHistoryProps = { api, apiBase, loading: history.loading, error: history.error, polling: history.polling, onRefresh: history.refresh, onRun: history.addRun, onWatch: startLive };
 
@@ -309,24 +306,26 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
             ) : null}
           </div>
         </section>
-        <section className="version-description" aria-labelledby="version-description-title"><h2 id="version-description-title">版本說明</h2>
-          <p className="version-description-content">{test.loading || versions.loading ? '正在載入正式版本資訊…' : !publishedId ? '尚未發佈，尚無正式版本說明。切到「對話編輯」說明要驗證的流程，完成驗證並確認後即可發佈。' : selectedVersion?.description ?? '此版本尚無版本說明（舊資料）。'}</p>
-          {selectedVersion ? <details className="version-background"><summary>查看版本背景摘要</summary><p className="summary-content">{selectedVersion.backgroundSummary ?? '此版本尚無背景摘要（舊資料）。'}</p></details> : null}
-          {historical ? <p className="inline-hint">正在檢視歷史版本 {selectedVersion?.id ?? selectedVersionId}。正式執行仍使用目前發佈版本。</p> : null}
-          {publishedId ? <div className="formal-capability"><p className="inline-hint">目前正式版本來源：{scriptOriginLabel(publishedVersion?.scriptOrigin)}。執行能力依目前正式版本判斷，不隨歷史版本檢視切換。</p><CapabilityStatus label="正式版本執行" capability={formalCapability} /></div> : null}
+        <section className="version-description" aria-labelledby="version-description-title">
+          <h2 id="version-description-title">版本說明</h2>
+          {test.loading || versions.loading ? <Loading text="正在載入正式版本資訊…" /> : publishedVersion ? <>
+            <VersionMarkdown text={publishedVersion.description || '此版本尚無版本說明（舊資料）。'} />
+            <details className="version-background"><summary>查看版本背景摘要</summary><p className="summary-content">{publishedVersion.backgroundSummary ?? '此版本尚無背景摘要（舊資料）。'}</p></details>
+            <div className="formal-capability"><CapabilityStatus label="正式版本執行" capability={formalCapability} /></div>
+          </> : <p className="muted">{publishedId ? '目前無法載入正式版本說明。' : '完成草稿驗證並確認發佈後，這裡會顯示版本說明。'}</p>}
         </section>
         {submitError ? <Notice message={submitError} retry={history.refresh} retryLabel="重新整理正式執行紀錄" /> : null}
         <RunHistory {...runHistoryProps} runs={formalRuns} group="formal" liveView={mode === 'general' ? liveView : null} />
       </div>
       <div className="overview-side">
-        <VersionHistory api={api} apiBase={apiBase} versions={versions.data} runs={history.runs} publishedVersionId={publishedId} loading={versions.loading} error={versions.error} onRefresh={versions.retry} selectedVersionId={viewingVersionId} onSelectVersion={(version) => setSelectedVersionId(version.id)} onEditDraft={() => { void edit(); }} onDiscardDraft={() => { void askDiscard(); }} activeEditingSession={activeInfo} sessionBusy={sessionBusy} knownDraft={knownDraft} editorGuarded={editorGuarded} />
-        <section className="published-script-section" aria-labelledby="published-script-title" id="published-script-panel">
-          <div className="section-heading"><h3 id="published-script-title">{historical ? '歷史版本唯讀腳本' : '正式版本唯讀腳本'}</h3>{historical ? <button className="button quiet compact" onClick={() => setSelectedVersionId(undefined)}>回到目前正式版本</button> : null}</div>
-          {test.loading || versions.loading ? <Loading text="正在載入版本腳本…" /> : selectedVersion ? <>
-            <p className="script-version-label">{historical ? '歷史版本' : '目前正式版本'} · revision {selectedVersion.revision} · {scriptOriginLabel(selectedVersion.scriptOrigin)}</p><p className="version-id identifier">{selectedVersion.id}</p>
-            <textarea className="script-editor readonly-script" readOnly rows={12} value={selectedVersion.script} spellCheck={false} aria-label={historical ? '歷史版本腳本（唯讀）' : '正式版本腳本（唯讀）'} />
-          </> : !publishedId ? <p className="mode-empty">尚無正式版本腳本。草稿只會在「對話編輯」顯示。</p> : versions.error ? <p className="muted">版本載入失敗，請從歷史版本區重新載入。</p> : <Notice message="未取得所選版本的腳本，請重新載入版本。" retry={versions.retry} />}
+        <section className="published-script-section" aria-labelledby="published-script-title">
+          <div className="section-heading"><h3 id="published-script-title">正式版本唯讀腳本</h3></div>
+          {test.loading || versions.loading ? <Loading text="正在載入版本腳本…" /> : publishedVersion ? <>
+            <p className="script-version-label">revision {publishedVersion.revision} · {scriptOriginLabel(publishedVersion.scriptOrigin)}</p>
+            <textarea className="script-editor readonly-script" readOnly rows={12} value={publishedVersion.script} spellCheck={false} aria-label="正式版本腳本（唯讀）" />
+          </> : !publishedId ? <p className="mode-empty">完成發佈後會顯示正式版本腳本。</p> : <Notice message="目前無法載入正式版本腳本。" retry={versions.retry} />}
         </section>
+        <VersionHistory api={api} apiBase={apiBase} versions={versions.data} runs={history.runs} publishedVersionId={publishedId} loading={versions.loading} error={versions.error} onRefresh={versions.retry} onEditDraft={() => { void edit(); }} onDiscardDraft={() => { void askDiscard(); }} activeEditingSession={activeInfo} sessionBusy={sessionBusy} knownDraft={knownDraft} editorGuarded={editorGuarded} />
       </div>
     </div>
     {editorMounted ? <div className="test-mode editing-mode" hidden={mode !== 'editing'} role="tabpanel" aria-label="測試編輯模式" data-mode="editing">
@@ -334,9 +333,10 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, preferredM
         <p className="inline-hint">{session.reclaimPending ? '等待執行節點確認回收，尚未完成放棄。' : '正在確認本週期所有任務已終止。'}待確認任務：{session.pendingRunIds.length}；正式執行不受影響。</p>
         <div className="action-row"><button className="button quiet compact" disabled={sessionRefreshing} onClick={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }}>重新載入週期</button></div></section> : null)
         : sessionBusy ? <Loading text="正在開始或接續編輯週期…" /> : <div className="mode-empty"><p>尚未載入編輯週期。請重試開始或接續修改。</p><button className="button secondary" onClick={() => { void openEditor(); }}>開始或接續修改</button></div>}
-      {session && session.draft && (session.status === 'active' || session.status === 'discarding') ? <DraftEditor key={session.id} api={api} apiBase={apiBase} testId={testId} capabilities={capabilities} authorEngine={authorEngine} session={session} sessionRefreshing={sessionRefreshing} onRefreshSession={refreshSession} runs={editingRuns} onRun={history.addRun} onPublished={published} onDirtyChange={handleEditorGuard} onRefreshRuns={history.refresh} settingsRefresh={settingsRefresh} onDraftChange={setKnownDraft} onDiscard={session.status === 'active' ? () => { void askDiscard(); } : undefined} discardBusy={sessionBusy} onReloadSession={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }} testName={loadedTest.current?.name} testKind={loadedTest.current?.kind} testSlug={loadedTest.current?.slug}>
-        <RunHistory {...runHistoryProps} runs={editingRuns} group="editing" liveView={mode === 'editing' ? liveView : null} />
-      </DraftEditor> : null}
+      {session && session.draft && (session.status === 'active' || session.status === 'discarding') ? <DraftEditor key={session.id} api={api} apiBase={apiBase} testId={testId} capabilities={capabilities} authorEngine={authorEngine} session={session} sessionRefreshing={sessionRefreshing} onRefreshSession={refreshSession} runs={editingRuns} onRun={history.addRun} onPublished={published} onDirtyChange={handleEditorGuard} onRefreshRuns={history.refresh} settingsRefresh={settingsRefresh} onDraftChange={setKnownDraft} onDiscard={session.status === 'active' ? () => { void askDiscard(); } : undefined} discardBusy={sessionBusy} onReloadSession={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }} testName={loadedTest.current?.name} testKind={loadedTest.current?.kind} testSlug={loadedTest.current?.slug}
+        onWatch={startLive} liveView={mode === 'editing' && liveRun?.editingSessionId === session.id ? liveView : null}
+        renderRunHistory={(onWatch) => <RunHistory {...runHistoryProps} runs={editingRuns} group="editing" onWatch={onWatch} />}
+      /> : null}
     </div> : null}
     {discardTarget ? <DiscardSessionDialog session={discardTarget} busy={sessionBusy} error={discardError} onCancel={() => setDiscardTarget(undefined)} onConfirm={() => { void discard(); }} /> : null}
   </div>;

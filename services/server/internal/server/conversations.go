@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
 
 const authorTimeoutMS = 900000
+const versionConversationPageSize = 40
 
 func (p *Postgres) Conversation(ctx context.Context, testID, sessionID string) (Conversation, error) {
 	tx, err := p.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
@@ -55,6 +57,42 @@ func (p *Postgres) Conversation(ctx context.Context, testID, sessionID string) (
 		return Conversation{}, err
 	}
 	return c, nil
+}
+
+// Publication binds the version to its editing session in the same transaction
+// that closes the session. Message writers require an active session under the Test lock.
+func (p *Postgres) VersionConversation(ctx context.Context, testID, versionID string, after int64) (VersionConversationPage, error) {
+	page := VersionConversationPage{TestID: testID, VersionID: versionID, Messages: []VersionConversationMessage{}}
+	var conversationID string
+	err := p.DB.QueryRowContext(ctx, `SELECT c.id
+ FROM test_versions v JOIN tests t ON t.id=v.test_id
+ JOIN editing_sessions e ON e.id=v.editing_session_id AND e.test_id=v.test_id
+ JOIN conversations c ON c.id=e.conversation_id AND c.editing_session_id=e.id AND c.test_id=t.id AND c.workspace_id=t.workspace_id
+ WHERE v.test_id=$1 AND v.id=$2 AND v.script_origin='ai'
+ AND e.status='published' AND e.published_version_id=v.id AND c.owner_type='test'`, testID, versionID).Scan(&conversationID)
+	if err != nil {
+		return page, dbError(err)
+	}
+	rows, err := p.DB.QueryContext(ctx, `SELECT sequence,id,role,content,created_at FROM messages
+ WHERE conversation_id=$1 AND sequence>$2 ORDER BY sequence LIMIT $3`, conversationID, after, versionConversationPageSize+1)
+	if err != nil {
+		return page, err
+	}
+	defer rows.Close()
+	var lastSequence int64
+	for rows.Next() {
+		if len(page.Messages) == versionConversationPageSize {
+			page.NextCursor = stringPointer(strconv.FormatInt(lastSequence, 10))
+			break
+		}
+		var message VersionConversationMessage
+		if err := rows.Scan(&lastSequence, &message.ID, &message.Role, &message.Content, &message.CreatedAt); err != nil {
+			return page, err
+		}
+		message.CreatedAt = message.CreatedAt.UTC()
+		page.Messages = append(page.Messages, message)
+	}
+	return page, rows.Err()
 }
 
 func validateUserMessage(content string) error {

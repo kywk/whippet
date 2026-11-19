@@ -12,7 +12,9 @@ When author.moduleSummary is present, the top-level script is the Module body. R
 
 When author.batch is present, summarize the whole pinned Use Case and its deduplicated Modules. Cover the flow, reused versus new/modified Modules, each recorded validation and its limits. Module metadata plus harnessHash identifies the tested harness; the harness body is not supplied, so do not invent its assertions. Preserve the batchHash association as evidence, not publication authority.
 
-Return exactly one JSON object with message, description, backgroundSummary and optional name. Description (at most 16384 UTF-8 bytes) covers purpose, prerequisites, steps, assertions and limitations. BackgroundSummary (8192 bytes) preserves nonsecret setup and decisions for the next editing cycle. Optional name is a candidate of at most 200 bytes for QA confirmation. All fields are nonempty strings.
+Return exactly one JSON object with message, description, backgroundSummary and optional name. All fields are nonempty strings. BackgroundSummary (8192 UTF-8 bytes) preserves nonsecret setup and decisions for the next editing cycle. Optional name is a candidate of at most 200 bytes for QA confirmation.
+
+Write description as concise Markdown in the user's language (default Traditional Chinese for Taiwan), at most 16384 UTF-8 bytes. Start with one short plain-text sentence on its own line for version history. State the user-visible change supported by the source version and current evidence, or summarize the verified behavior when the change is unclear. After a blank line, use short Markdown headings and lists. Cover purpose, prerequisites and steps under `### 測試範圍`, recorded assertions and outcome under `### 驗證結果`, and any gaps under `### 限制`. Use reader-facing terms in place of internal IDs, hashes and selectors. Return the Markdown directly in the JSON string without an enclosing code fence or raw HTML.
 
 For an external MCP claim, read the packaged acceptance-summary/external-mcp reference before submitting. Its task identity, lease and output procedure apply only to that claim.
 

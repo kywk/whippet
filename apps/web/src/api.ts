@@ -1,6 +1,6 @@
 import { validRepairContent, editableStage } from './plan';
 import { AGENT_RUNTIME_SKILLS, RUN_STATUSES } from './types';
-import type { WorkspaceAgentRuntime } from './types';
+import type { VersionConversationMessage, WorkspaceAgentRuntime } from './types';
 import type { AgentToken, AgentToolAudit, AuthorEngine, BrowserSession, StageRetry, ModuleMetadata, Plan, PlanStage, PlanSummary, StageArgument, JsonValue, AuthorPartial, CatalogItem, AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
 
 export class ApiError extends Error {
@@ -340,11 +340,15 @@ function parseVersion(value: unknown, historical = false): Version {
   };
 }
 
+function parseMessageText(data: Record<string, unknown>): VersionConversationMessage {
+  if (data.role !== 'user' && data.role !== 'assistant') throw new ApiError('對話角色格式不符。', 'INVALID_RESPONSE');
+  return { id: string(data.id), role: data.role, content: string(data.content), createdAt: string(data.createdAt) };
+}
+
 function parseMessage(value: unknown): Message {
   const data = record(value);
-  if (data.role !== 'user' && data.role !== 'assistant') throw new ApiError('對話角色格式不符。', 'INVALID_RESPONSE');
   return {
-    id: string(data.id), role: data.role, content: string(data.content), createdAt: string(data.createdAt),
+    ...parseMessageText(data),
     runId: optionalString(data.runId), baseRevision: data.baseRevision == null ? undefined : revision(data.baseRevision),
     appliedRevision: data.appliedRevision == null ? undefined : revision(data.appliedRevision),
     baseScript: optionalString(data.baseScript),
@@ -637,6 +641,15 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     },
     async listVersions(testId, signal) {
       return items(await request(`/tests/${id(testId)}/versions`, 'GET', signal), (value) => parseVersion(value, true));
+    },
+    async getVersionConversation(testId, versionId, after, signal) {
+      const query = after === null ? '' : `?after=${encodeURIComponent(after)}`;
+      const data = record(await request(`/tests/${id(testId)}/versions/${id(versionId)}/conversation${query}`, 'GET', signal));
+      const nextCursor = nullableString(data.nextCursor);
+      if (data.testId !== testId || data.versionId !== versionId || (nextCursor !== null && (!/^[1-9]\d{0,18}$/.test(nextCursor) || nextCursor === after))) {
+        throw new ApiError('對話歷程所屬版本或分頁資訊不符。', 'INVALID_RESPONSE');
+      }
+      return { messages: array(data.messages, (value) => parseMessageText(record(value))), nextCursor };
     },
     async cancelRun(runId, signal) {
       return parseRun(await request(`/runs/${id(runId)}/cancel`, 'POST', signal));

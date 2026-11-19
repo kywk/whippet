@@ -10,7 +10,8 @@ const results=[];const now='2026-11-13T00:00:00Z',tid='synthetic-usecase',sid='s
 const workspace={id:wid,name:'合成 API：發佈收斂測試',revision:1,authorizationRevision:1,lifecycle:'active',scopeStatus:'confirmed',settings:null,conversationId:'workspace-chat',activeRunId:null,currentProposal:null,sites:[],defaultTestUrl:'',timeoutMs:60000,roles:[],secretsAvailable:false,executionAvailable:true,unavailableReason:null,capabilities:Object.fromEntries(['aiExploration','aiExecution','manualExecution','credentialLogin'].map(k=>[k,{available:true,reason:null}]))};
 const draft={testId:tid,editingSessionId:sid,revision:2,script:'// 合成：未執行測試',updatedAt:now,scriptOrigin:'manual',validationRunId:'validation',validationStatus:'succeeded',reportUrl:'/synthetic-report'};
 const run={id:'validation',workspaceId:wid,testId:tid,editingSessionId:sid,kind:'validation',status:'succeeded',draftRevision:2,createdAt:now,finishedAt:now,reportUrl:'/synthetic-report'};
-const version={id:'published-usecase',testId:tid,editingSessionId:sid,revision:2,script:draft.script,createdAt:now,validationRunId:run.id,summaryRunId:'summary',description:'合成已發佈版本',backgroundSummary:'僅回歸測試，沒有真後端寫入。',scriptOrigin:'manual'};
+const version={id:'published-usecase',testId:tid,editingSessionId:sid,revision:2,script:draft.script,createdAt:now,validationRunId:run.id,summaryRunId:'summary',description:'合成已發佈版本',backgroundSummary:'僅回歸測試，沒有真後端寫入。',scriptOrigin:'ai'};
+const conversationPath=`/tests/${tid}/versions/${version.id}/conversation`;
 const candidate={testId:'candidate-module',versionId:'candidate-version',name:'合成候選',slug:'synthetic-candidate',moduleKind:'step',revision:2,bundleHash:'c'.repeat(64)};
 try{for(const [size,width]of [['desktop',1440],['narrow',390]])for(const status of process.env.SUCCESS_ONLY? [200]:[200,409,503]){
  const context=await browser.newContext({viewport:{width,height:width===390?844:1000},reducedMotion:'reduce'});const page=await context.newPage();page.setDefaultTimeout(10000);const calls=[],errors=[];let published=false,publishAt;
@@ -27,6 +28,12 @@ try{for(const [size,width]of [['desktop',1440],['narrow',390]])for(const status 
  else if(path===`/workspaces/${wid}/tests`)data={items:[test()]};
  else if(path===`/tests/${tid}`)data=test();
  else if(path===`/tests/${tid}/versions`)data={items:published?[version]:[]};
+ else if(path===conversationPath&&method==='GET'){
+   const next=new URL(req.url()).searchParams.get('after')==='123';
+   data={testId:tid,versionId:version.id,nextCursor:next?null:'123',messages:[next
+     ? {id:'reply',role:'assistant',content:'已理解，會確認一筆待辦。',createdAt:now}
+     : {id:'request',role:'user',content:'先確認一筆待辦。',createdAt:now}]};
+ }
  else if(path===`/tests/${tid}/draft`)data=draft;
  else if(path===`/tests/${tid}/editing-sessions/${sid}`)data={session:session()};
  else if(path===`/tests/${tid}/editing-sessions`)data={items:[session()]};
@@ -47,7 +54,32 @@ try{for(const [size,width]of [['desktop',1440],['narrow',390]])for(const status 
  await page.screenshot({path:`${out}/${label}.png`,fullPage:true,animations:'disabled'});await writeFile(`${out}/${label}.txt`,await page.locator('body').innerText());
  assert.equal(result.publishPosts,1);assert.equal(calls.filter(c=>c.method==='POST'&&c.path.endsWith('/editing-session')).length,0);assert.equal(calls.filter(c=>c.method==='POST'&&c.path.endsWith('/summary')).length,0);
  assert.equal(result.secondWindowGets,0,'GETs must stop after published/failed transition, not continuously re-fetch');assert.ok(total<=12,`unexpected GET burst ${total}`);
- if(status===200){assert.equal(await page.getByRole('tab',{name:'概覽',exact:true}).getAttribute('aria-selected'),'true');await page.locator('.test-head').getByRole('heading',{name:'合成發布收斂',exact:true}).waitFor();assert.equal(await page.getByText('正在載入測試詳情…',{exact:true}).count(),0);await page.getByRole('tab',{name:'概覽',exact:true}).click();await page.waitForTimeout(300);assert.equal(targetCalls().length,total,'stable general mode must not trigger another fetch');}
+ if(status===200){
+  assert.equal(await page.getByRole('tab',{name:'概覽',exact:true}).getAttribute('aria-selected'),'true');
+  await page.locator('.test-head').getByRole('heading',{name:'合成發布收斂',exact:true}).waitFor();
+  assert.equal(await page.getByText('正在載入測試詳情…',{exact:true}).count(),0);
+  await page.getByRole('tab',{name:'概覽',exact:true}).click();
+  await page.waitForTimeout(300);
+  assert.equal(targetCalls().length,total,'stable general mode must not trigger another fetch');
+  assert.deepEqual(await page.locator('.overview-side > section').evaluateAll(sections=>sections.map(section=>section.getAttribute('aria-labelledby'))),['published-script-title','versions-title']);
+  const viewVersion=page.getByRole('button',{name:'檢視版本 revision 2'});
+  await viewVersion.click();
+  const details=page.getByRole('dialog',{name:'版本詳情 · revision 2'});
+  await details.getByText('這是第一個已發佈版本。',{exact:true}).waitFor();
+  const conversationGets=()=>calls.filter(call=>call.method==='GET'&&call.path===conversationPath).length;
+  assert.equal(conversationGets(),0,'version chat is loaded on demand');
+  await details.getByText('查看對話歷程',{exact:true}).click();
+  const messages=details.getByRole('list',{name:'版本對話歷程'});
+  await messages.getByText('先確認一筆待辦。',{exact:true}).waitFor();
+  await details.getByRole('button',{name:'載入更多訊息'}).click();
+  await messages.getByText('已理解，會確認一筆待辦。',{exact:true}).waitFor();
+  assert.equal(await messages.getByRole('listitem').count(),2);
+  assert.equal(conversationGets(),2);
+  assert.equal(await details.getByRole('textbox').count(),0,'version chat is read only');
+  await page.keyboard.press('Escape');
+  await details.waitFor({state:'hidden'});
+  assert.equal(await viewVersion.evaluate(button=>button===document.activeElement),true,'closing version details must return focus to the opener');
+ }
  else {assert.equal(published,false);assert.equal(await page.getByRole('tab',{name:'對話編輯',exact:true}).getAttribute('aria-selected'),'true');assert.ok(await panel.getByRole('button',{name:'確認整批發佈',exact:true}).isDisabled());assert.equal(await panel.getByRole('checkbox').isChecked(),false);}
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth)<=width);assert.deepEqual(errors,[]);result.verdict='PASS';
  }catch(e){await page.screenshot({path:`${out}/${label}-failure.png`,fullPage:true,animations:'disabled'});await writeFile(`${out}/${label}-failure.txt`,await page.locator('body').innerText());result.verdict='FAIL';result.error=e.message;process.exitCode=1;}
