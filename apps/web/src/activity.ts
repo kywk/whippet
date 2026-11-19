@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { isActiveRun } from './types';
 import { publishedTrail, trailFromRuns } from './trail';
 import type { Stage } from './trail';
@@ -36,7 +36,9 @@ const signature = (runs: Run[]): string => {
  * 讓左欄顯示目前停在哪一站，結果完成但還沒看過的測試會亮燈。
  */
 export function useActivity(api: WhippetApi, tests: Test[], selectedId: string | undefined) {
-  const [runsByTest, setRunsByTest] = useState<Record<string, Run[]>>({});
+  const [{ runsByTest, failedRunLoads }, setHistory] = useState({ runsByTest: {} as Record<string, Run[]>, failedRunLoads: new Set<string>() });
+  const [refreshingRuns, setRefreshingRuns] = useState(false);
+  const [refreshRevision, refreshRuns] = useReducer((revision: number) => revision + 1, 0);
   const [seen, setSeen] = useState<Record<string, string>>(readSeen);
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
   const testsRef = useRef(tests); testsRef.current = tests;
@@ -51,12 +53,22 @@ export function useActivity(api: WhippetApi, tests: Test[], selectedId: string |
     let cycle = 0;
     const controller = new AbortController();
     async function load(targets: Test[]) {
+      if (!targets.length) return;
       const results = await Promise.allSettled(targets.map((test) => api.listRuns(test.id, controller.signal)));
       if (stopped) return;
-      setRunsByTest((current) => {
-        const next = { ...current };
-        results.forEach((result, index) => { if (result.status === 'fulfilled') next[targets[index].id] = result.value; });
-        return next;
+      setHistory((current) => {
+        const nextRuns = { ...current.runsByTest };
+        const nextFailures = new Set(current.failedRunLoads);
+        results.forEach((result, index) => {
+          const id = targets[index].id;
+          if (result.status === 'fulfilled') {
+            nextRuns[id] = result.value;
+            nextFailures.delete(id);
+          } else {
+            nextFailures.add(id);
+          }
+        });
+        return { runsByTest: nextRuns, failedRunLoads: nextFailures };
       });
     }
     async function tick() {
@@ -64,11 +76,15 @@ export function useActivity(api: WhippetApi, tests: Test[], selectedId: string |
       const hot = all.filter((test) => test.activeEditingSession || (runsRef.current[test.id] ?? []).some(isActiveRun));
       await load(cycle % SLOW_EVERY === 0 ? all : hot);
       cycle += 1;
-      if (!stopped) timer = setTimeout(tick, FAST_MS);
+      if (!stopped) {
+        if (cycle === 1) setRefreshingRuns(false);
+        timer = setTimeout(tick, FAST_MS);
+      }
     }
+    setRefreshingRuns(Boolean(ids));
     void tick();
     return () => { stopped = true; controller.abort(); clearTimeout(timer); };
-  }, [api, ids]);
+  }, [api, ids, refreshRevision]);
 
   // 首次看到某測試時，以目前結果為已讀基準，避免第一次開啟就全部亮燈。
   useEffect(() => {
@@ -166,5 +182,5 @@ export function useActivity(api: WhippetApi, tests: Test[], selectedId: string |
     setPermission(await Notification.requestPermission());
   }, []);
 
-  return { activity, running, unread, permission, enableNotifications };
+  return { activity, running, unread, permission, enableNotifications, runHistory: { runsByTest, failedRunLoads, refreshingRuns, refreshRuns } };
 }

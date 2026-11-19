@@ -34,6 +34,7 @@ export const SidebarIcon = () => <Icon><rect x="3" y="4" width="14" height="12" 
 export const ExpandIcon = () => <Icon><path d="M12.5 3.5h4v4M16.5 3.5l-4.8 4.8M7.5 16.5h-4v-4M3.5 16.5l4.8-4.8" /></Icon>;
 export const CollapseIcon = () => <Icon><path d="M16.5 8h-4.5V3.5M12 8l4.5-4.5M3.5 12H8v4.5M8 12l-4.5 4.5" /></Icon>;
 export const MenuIcon = () => <Icon><path d="M3.5 6h13M3.5 10h13M3.5 14h13" /></Icon>;
+export const HomeIcon = () => <Icon><path d="m2.5 9 7.5-6 7.5 6M4.5 8v8.5H8v-5h4v5h3.5V8" /></Icon>;
 
 export function BrandMark({ className = 'brand-mark' }: { className?: string }) {
   return <img className={className} src={whippetIcon} width={30} height={30} alt="" />;

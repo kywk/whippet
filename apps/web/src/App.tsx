@@ -4,13 +4,14 @@ import { ApiError, errorMessage } from './api';
 import { ModuleCatalog } from './ModuleCatalog';
 import { Loading, Notice } from './components';
 import { WorkspaceConversation } from './WorkspaceConversation';
+import { WorkspaceOverview } from './WorkspaceOverview';
 import { WorkspaceAvailability } from './WorkspaceSettings';
 import { TestWorkspace } from './TestWorkspace';
 import { useActivity } from './activity';
 import { useLegacyTestTags } from './tags';
 import { MiniTrail } from './trail';
 import { useResource } from './hooks';
-import { ArrowRightIcon, BellIcon, BrandMark, ChevronDownIcon, CloseIcon, GearIcon, MenuIcon, PlusIcon, RefreshIcon, SearchIcon, SidebarIcon } from './icons';
+import { ArrowRightIcon, BellIcon, BrandMark, ChevronDownIcon, CloseIcon, GearIcon, HomeIcon, MenuIcon, PlusIcon, RefreshIcon, SearchIcon, SidebarIcon } from './icons';
 import whippetIllustration from './assets/whippet-illustration.webp';
 import type { DevUser, Test, WhippetApi, WorkspaceDetail } from './types';
 
@@ -25,7 +26,7 @@ interface EditingGuard {
   confirmNavigation: () => boolean;
 }
 
-type Surface = 'tests' | 'settings' | 'catalog';
+type Surface = 'overview' | 'tests' | 'settings' | 'catalog';
 
 export function App({ api, apiBase, mock }: AppProps) {
   const [user, setUser] = useState<DevUser>();
@@ -109,12 +110,12 @@ interface ViewProps extends Pick<AppProps, 'api' | 'apiBase' | 'mock'>, EditingG
 function WorkspaceView({ api, apiBase, mock, user, onLogout, onDirtyChange, confirmNavigation, onSettingsDirtyChange, confirmTestNavigation }: ViewProps) {
   const workspaces = useResource(api.listWorkspaces);
   const [selectedId, setSelectedId] = useState('');
-  const [surface, setSurface] = useState<Surface>('tests');
+  const [surface, setSurface] = useState<Surface>('overview');
   const [setupTarget, setSetupTarget] = useState<WorkspaceDetail | 'create'>();
   const [workspaceOverrides, setWorkspaceOverrides] = useState<Record<string, WorkspaceDetail>>({});
+  const setupReturnSurface = useRef<Exclude<Surface, 'settings'>>('overview');
   const setupDirty = useRef(false);
   const reportSetupGuard = useCallback((dirty: boolean) => { setupDirty.current = dirty; onSettingsDirtyChange(dirty); }, [onSettingsDirtyChange]);
-  const selectedTests = useRef<Partial<Record<string, string | null>>>({});
   const allWorkspaces = [...new Map([...(workspaces.data ?? []), ...Object.values(workspaceOverrides)].map((item) => [item.id, item])).values()];
   const workspace = allWorkspaces.find((item) => item.id === selectedId) ?? allWorkspaces[0];
   const updateWorkspace = useCallback((next: WorkspaceDetail) => {
@@ -122,21 +123,25 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onDirtyChange, conf
     setSetupTarget((previous) => previous !== 'create' && previous?.id === next.id ? next : previous);
   }, []);
   const createdWorkspace = useCallback((next: WorkspaceDetail) => {
+    setupReturnSurface.current = 'overview';
     setWorkspaceOverrides((previous) => ({ ...previous, [next.id]: next })); setSelectedId(next.id); setSetupTarget(next); setSurface('settings'); workspaces.retry();
   }, [workspaces.retry]);
-  const rememberTest = useCallback((id: string | null) => { if (workspace) selectedTests.current[workspace.id] = id; }, [workspace?.id]);
   function openSetup(create = false) {
-    if (surface === 'tests' && !confirmTestNavigation()) return;
+    if (surface !== 'settings' && !confirmTestNavigation()) return;
     const target = create ? 'create' : workspace;
     if (!target) return;
     const same = target === 'create' ? setupTarget === 'create' : setupTarget !== 'create' && setupTarget?.id === target.id;
     if (!same && setupDirty.current && !window.confirm('切換設定對話會放棄尚未送出的 Workspace 帳密內容，確定繼續？')) return;
     if (!same) setSetupTarget(target);
+    if (surface !== 'settings') setupReturnSurface.current = surface;
     setSurface('settings');
   }
-  const switchWorkspace = (id: string) => { if (id === workspace?.id || !confirmNavigation()) return; setSelectedId(id); setSetupTarget(undefined); setSurface('tests'); };
+  const switchWorkspace = (id: string) => { if (id === workspace?.id || !confirmNavigation()) return; setSelectedId(id); setSetupTarget(undefined); setSurface('overview'); };
+  function openSurface(next: 'overview' | 'catalog') {
+    if (surface !== next && confirmNavigation()) setSurface(next);
+  }
 
-  const setupView = setupTarget ? <div className="workspace-setup-view" hidden={surface !== 'settings'} data-surface="workspace"><WorkspaceConversation key={setupTarget === 'create' ? 'create' : setupTarget.id} api={api} apiBase={apiBase} active={surface === 'settings'} workspace={setupTarget === 'create' ? undefined : setupTarget} onReturn={() => setSurface('tests')} onDirtyChange={reportSetupGuard} onCreated={createdWorkspace} onWorkspaceUpdated={updateWorkspace} onRefreshList={workspaces.retry} /></div> : null;
+  const setupView = setupTarget ? <div className="workspace-setup-view" hidden={surface !== 'settings'} data-surface="workspace"><WorkspaceConversation key={setupTarget === 'create' ? 'create' : setupTarget.id} api={api} apiBase={apiBase} active={surface === 'settings'} workspace={setupTarget === 'create' ? undefined : setupTarget} onReturn={() => setSurface(setupReturnSurface.current)} onDirtyChange={reportSetupGuard} onCreated={createdWorkspace} onWorkspaceUpdated={updateWorkspace} onRefreshList={workspaces.retry} /></div> : null;
 
   if (!workspace) {
     return <div className="app-shell">
@@ -147,11 +152,11 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onDirtyChange, conf
         {workspaces.loading ? <Loading text="正在載入 Workspace…" /> : null}
         {workspaces.error ? <Notice message={workspaces.error} retry={workspaces.retry} /> : null}
         {setupView}
-        {surface === 'tests' && !workspaces.loading && !workspaces.error ? <Empty title="尚無 Workspace" text="先建立 Workspace，透過對話整理驗測目的與網站範圍，再開始建立測試。" action={<button className="button primary" onClick={() => openSetup(true)}>建立 Workspace</button>} /> : null}
+        {surface === 'overview' && !workspaces.loading && !workspaces.error ? <Empty title="尚無 Workspace" text="先建立 Workspace，透過對話整理驗測目的與網站範圍，再開始建立測試。" action={<button className="button primary" onClick={() => openSetup(true)}>建立 Workspace</button>} /> : null}
       </main>
     </div>;
   }
-  return <TestBrowser key={workspace.id} api={api} apiBase={apiBase} mock={mock} user={user} onLogout={onLogout} workspace={workspace} workspaces={allWorkspaces} switchWorkspace={switchWorkspace} openSetup={openSetup} surface={surface} setSurface={setSurface} setupTarget={setupTarget} onDirtyChange={onDirtyChange} confirmNavigation={confirmTestNavigation} initialSelectedId={selectedTests.current[workspace.id]} onSelected={rememberTest} setupView={setupView} onOpenCatalog={() => { if (confirmNavigation()) setSurface('catalog'); }} />;
+  return <TestBrowser key={workspace.id} api={api} apiBase={apiBase} mock={mock} user={user} onLogout={onLogout} workspace={workspace} workspaces={allWorkspaces} switchWorkspace={switchWorkspace} openSetup={openSetup} surface={surface} setSurface={setSurface} setupTarget={setupTarget} onDirtyChange={onDirtyChange} confirmNavigation={confirmTestNavigation} setupView={setupView} onOpenSurface={openSurface} />;
 }
 
 function RailHead({ user, onLogout, onCollapse }: { user: DevUser; onLogout: () => void; onCollapse?: () => void }) {
@@ -168,13 +173,13 @@ interface BrowserProps extends Pick<AppProps, 'api' | 'apiBase' | 'mock'>, Editi
   user: DevUser; onLogout: () => void; workspace: WorkspaceDetail; workspaces: WorkspaceDetail[];
   switchWorkspace: (id: string) => void; openSetup: (create?: boolean) => void;
   surface: Surface; setSurface: (surface: Surface) => void; setupTarget?: WorkspaceDetail | 'create';
-  initialSelectedId?: string | null; onSelected: (id: string | null) => void; setupView: ReactNode; onOpenCatalog: () => void;
+  setupView: ReactNode; onOpenSurface: (surface: 'overview' | 'catalog') => void;
 }
 
-function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout, switchWorkspace, openSetup, surface, setSurface, setupTarget, onDirtyChange, confirmNavigation, initialSelectedId, onSelected, setupView, onOpenCatalog }: BrowserProps) {
+function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout, switchWorkspace, openSetup, surface, setSurface, setupTarget, onDirtyChange, confirmNavigation, setupView, onOpenSurface }: BrowserProps) {
   const loadTests = useCallback((signal: AbortSignal) => api.listTests(workspace.id, signal), [api, workspace.id]);
   const tests = useResource(loadTests);
-  const [selectedId, setSelectedId] = useState(initialSelectedId);
+  const [selectedId, setSelectedId] = useState<string>();
   const [search, setSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>();
   const [railOpen, setRailOpen] = useState(false);
@@ -211,14 +216,12 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
   const createController = useRef<AbortController | null>(null);
   useEffect(() => () => createController.current?.abort(), []);
   const [overrides, setOverrides] = useState<Record<string, Test | null>>({});
-  const allTests = [...new Map<string, Test | null>([
+  const allTests = useMemo(() => [...new Map<string, Test | null>([
     ...(tests.data ?? []).map((test) => [test.id, test] as const),
     ...Object.entries(overrides),
-  ]).values()].filter((test) => test !== null);
-  const selected = selectedId === null ? undefined : allTests.find((item) => item.id === selectedId) ?? allTests[0];
-  useEffect(() => {
-    if (selectedId === null && surface === 'tests') document.getElementById('main')?.focus();
-  }, [selectedId, surface]);
+  ]).values()].filter((test) => test !== null), [tests.data, overrides]);
+  const selected = allTests.find((item) => item.id === selectedId);
+  const showOverview = surface === 'overview' || (surface === 'tests' && !selected && !tests.loading);
   const workspaceTags = useMemo(() => {
     const set = new Set<string>();
     for (const item of allTests) {
@@ -240,11 +243,11 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
   const updateTest = useCallback((test: Test) => setOverrides((current) => current[test.id] === null ? current : { ...current, [test.id]: test }), []);
   const removeTest = useCallback((id: string) => {
     setOverrides((current) => ({ ...current, [id]: null }));
-    setSelectedId(null);
+    setSelectedId(undefined);
     setAutoEditId(undefined);
-    onSelected(null);
-  }, [onSelected]);
-  const { activity, running, unread, permission, enableNotifications } = useActivity(api, allTests, surface === 'tests' ? selected?.id : undefined);
+    setSurface('overview');
+  }, [setSurface]);
+  const { activity, running, unread, permission, enableNotifications, runHistory } = useActivity(api, allTests, surface === 'tests' ? selected?.id : undefined);
   const selectedTestId = selected?.id;
   // Session closure effects depend on this callback; keep its identity stable
   // across Test refreshes so switching to general mode cannot trigger a retry loop.
@@ -256,7 +259,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
   function openCreatedTest(test: Test, edit = true) {
     setSimilarEdit(undefined);
     setModuleForm(false); setModuleInput({ slug: '', name: '', description: '' });
-    updateTest(test); setSelectedId(test.id); onSelected(test.id); setAutoEditId(edit ? test.id : undefined);
+    updateTest(test); setSelectedId(test.id); setAutoEditId(edit ? test.id : undefined);
     setTestModes((current) => ({ ...current, [test.id]: edit ? 'editing' : 'general' }));
     setSearch(''); setSelectedTag(undefined); setSurface('tests'); setRailOpen(false);
   }
@@ -288,7 +291,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
     if (hasActiveConversation && info?.running && test.activeEditingSession) {
       setTestModes((current) => ({ ...current, [test.id]: 'editing' }));
     }
-    setSelectedId(test.id); onSelected(test.id);
+    setSelectedId(test.id);
     setAutoEditId(hasActiveConversation && testModes[test.id] !== 'general' ? test.id : undefined);
     setSurface('tests'); setRailOpen(false);
   }
@@ -321,8 +324,9 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
           </label>
           <button className="rail-icon-button" aria-label="Workspace 設定" title="Workspace 設定" aria-pressed={surface === 'settings' && setupTarget !== 'create'} onClick={() => { openSetup(); setRailOpen(false); }}><GearIcon /></button>
         </div>
+        <button type="button" className="rail-link wide rail-overview" aria-current={showOverview ? 'page' : undefined} onClick={() => { onOpenSurface('overview'); setRailOpen(false); }}><HomeIcon />Workspace 概覽</button>
         <button className="button rail-primary" disabled={creating} onClick={() => { void createTest(); }}><PlusIcon />{creating ? '正在建立測試…' : '新增測試'}</button>
-        {createError && surface !== 'catalog' ? <Notice message={createError} /> : null}
+        {createError && !showOverview && surface !== 'catalog' ? <Notice message={createError} /> : null}
         <label className="search-label"><span className="sr-only">搜尋測試</span>
           <SearchIcon /><input type="search" value={search} placeholder="搜尋測試名稱或 #標籤" onChange={(event) => setSearch(event.target.value)} />
         </label>
@@ -360,7 +364,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
           </ul>
         </div>
         <div className="rail-foot">
-          <button className="rail-link wide" aria-pressed={surface === 'catalog'} onClick={() => { onOpenCatalog(); setRailOpen(false); }}>Module 模組庫</button>
+          <button className="rail-link wide" aria-pressed={surface === 'catalog'} onClick={() => { onOpenSurface('catalog'); setRailOpen(false); }}>Module 模組庫</button>
           <a className="rail-link wide" href="?preview=m10" onClick={(event) => { if (!confirmNavigation()) event.preventDefault(); }}>Module / Use Case 合成預覽</a>
           <details className="rail-caps"><summary>Workspace 能力</summary><WorkspaceAvailability workspace={workspace} /></details>
           {permission === 'default' ? <button className="rail-link wide" onClick={() => { void enableNotifications(); }}><BellIcon />背景完成時通知我</button> : permission === 'granted' ? <p className="rail-note"><BellIcon />背景完成通知已開啟</p> : null}
@@ -383,6 +387,20 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
         ) : null}
         {mock ? <div className="mock-banner" role="status">示範模式：使用本機 mock 資料，不會啟動 Playwright；重新整理後資料會清除。</div> : null}
         {setupView}
+        {showOverview ? <WorkspaceOverview
+          workspace={workspace}
+          tests={allTests}
+          testsLoading={tests.loading}
+          testsError={tests.error}
+          onRefreshTests={tests.retry}
+          runHistory={runHistory}
+          apiBase={apiBase}
+          creating={creating}
+          createError={createError}
+          onCreate={() => { void createTest(); }}
+          onSettings={() => openSetup()}
+          onOpenTest={pick}
+        /> : null}
         {surface === 'catalog' ? <ModuleCatalog key={workspace.id} api={api} workspaceId={workspace.id}>
           <button className="button secondary" disabled={creating} aria-expanded={moduleForm} onClick={() => setModuleForm(value => !value)}>手動建立模組</button>
           {moduleForm ? <form className="module-create" onSubmit={event => { event.preventDefault(); void createTest('module'); }}>
@@ -399,8 +417,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
           </form> : null}
           {createError ? <Notice message={createError} /> : null}
         </ModuleCatalog> : null}
-        {surface === 'tests' ? (selected
-          ? <TestWorkspace
+        {surface === 'tests' && selected ? <TestWorkspace
               key={selected.id}
               testId={selected.id}
               api={api}
@@ -422,8 +439,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
               workspaceTags={workspaceTags}
               capabilities={workspace.capabilities}
               authorEngine={workspace.authorEngine}
-            />
-          : tests.loading ? null : <Empty title="選一個測試，或新增測試" text="從左側選擇測試查看版本與報告，或按「新增測試」，用對話描述要驗證的流程。" action={<button className="button primary" disabled={creating} onClick={() => { void createTest(); }}><PlusIcon />新增測試</button>} />) : null}
+            /> : null}
       </main>
     </div>
   );
