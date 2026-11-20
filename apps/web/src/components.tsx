@@ -1,4 +1,7 @@
+import { useEffect } from 'react';
+import type { BackgroundCompletion } from './activity';
 import { resolveReportUrl } from './api';
+import { BellIcon } from './icons';
 import { STATUS_LABELS } from './types';
 import type { Run, RunStatus } from './types';
 
@@ -8,6 +11,30 @@ export function Notice({ message, retry, retryLabel = '重試' }: { message: str
 
 export function Loading({ text }: { text: string }) {
   return <div className="loading-state" role="status"><p>{text}</p><div className="loading-line" /><div className="loading-line short" /></div>;
+}
+
+export function BackgroundNotices({ completions, onExpire }: { completions: BackgroundCompletion[]; onExpire: (id: string) => void }) {
+  return <div className="background-notices" aria-live="polite" aria-relevant="additions">
+    {completions.slice(0, 3).map(completion => <BackgroundNotice key={completion.id} completion={completion} onExpire={onExpire} />)}
+  </div>;
+}
+
+function BackgroundNotice({ completion, onExpire }: { completion: BackgroundCompletion; onExpire: (id: string) => void }) {
+  useEffect(() => {
+    let timer: number | undefined;
+    function startTimer() {
+      if (document.hidden || timer !== undefined) return;
+      timer = window.setTimeout(() => onExpire(completion.id), 5_000);
+    }
+    startTimer();
+    document.addEventListener('visibilitychange', startTimer);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', startTimer);
+    };
+  }, [completion.id, onExpire]);
+
+  return <div className="background-notice"><BellIcon /><div><strong>{completion.message}</strong><p>{completion.testName}</p></div></div>;
 }
 
 export function SuggestedTags({ tags }: { tags?: string[] }) {

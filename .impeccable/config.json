@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "apps/web/src/styles.css"
+        ],
+        "createdAt": "2026-11-19T22:40:21.022Z",
+        "reason": "專案設計規格: DESIGN.md 的 Three-Slip Top Edge Rule 指定以 3px 上緣色線區分對話產物類型。"
+      }
+    ]
+  }
+}

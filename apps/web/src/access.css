@@ -1,10 +1,6 @@
 .login-form { display: grid; gap: 14px; margin-block: 20px 4px; }
 .login-panel .login-form .login-button { margin-top: 2px; }
 .login-form select { min-height: 44px; }
-.rail-identity { color: var(--rail-muted); padding-inline: 4px; font-size: .78rem; }
-.rail-foot { max-height: 48svh; flex-shrink: 0; overflow-y: auto; }
-.rail-foot [aria-current="page"] { background: var(--rail-2); color: #fff; }
-
 .access-view {
   width: min(100%, 980px);
   margin-inline: auto;

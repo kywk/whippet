@@ -15,7 +15,7 @@ export function createMockApi(): WhippetApi {
     if (!identity) throw new ApiError('請先選擇身分登入。', 'UNAUTHORIZED', 401);
     const role = siteRoles.get(identity.id) ?? 'none';
     return {
-      ...identity, role,
+      id: identity.id, name: identity.name, role,
       permissions: { createWorkspace: role !== 'none', manageUsers: role !== 'none', manageSuperAdmins: role === 'superadmin' },
     };
   }

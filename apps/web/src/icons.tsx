@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import whippetIcon from './assets/whippet-icon.png';
 
 // 單一線寬（1.6）、20px 格線的自繪圖示；全站共用。
 function Icon({ children }: { children: ReactNode }) {
@@ -8,6 +7,7 @@ function Icon({ children }: { children: ReactNode }) {
 
 export const PlusIcon = () => <Icon><path d="M10 4v12M4 10h12" /></Icon>;
 export const SearchIcon = () => <Icon><circle cx="9" cy="9" r="5" /><path d="m13 13 3.5 3.5" /></Icon>;
+export const FilterIcon = () => <Icon><path d="M3.5 5.5h13M6 10h8m-5.5 4.5h3" /></Icon>;
 export const ChevronDownIcon = () => <Icon><path d="m5 8 5 5 5-5" /></Icon>;
 export const ChevronRightIcon = () => <Icon><path d="m8 5 5 5-5 5" /></Icon>;
 export const ArrowRightIcon = () => <Icon><path d="M4 10h12m-5-5 5 5-5 5" /></Icon>;
@@ -35,7 +35,3 @@ export const ExpandIcon = () => <Icon><path d="M12.5 3.5h4v4M16.5 3.5l-4.8 4.8M7
 export const CollapseIcon = () => <Icon><path d="M16.5 8h-4.5V3.5M12 8l4.5-4.5M3.5 12H8v4.5M8 12l-4.5 4.5" /></Icon>;
 export const MenuIcon = () => <Icon><path d="M3.5 6h13M3.5 10h13M3.5 14h13" /></Icon>;
 export const HomeIcon = () => <Icon><path d="m2.5 9 7.5-6 7.5 6M4.5 8v8.5H8v-5h4v5h3.5V8" /></Icon>;
-
-export function BrandMark({ className = 'brand-mark' }: { className?: string }) {
-  return <img className={className} src={whippetIcon} width={30} height={30} alt="" />;
-}

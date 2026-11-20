@@ -1,11 +1,11 @@
 import type { SiteRole, WorkspaceMemberRole } from './types';
 
-export const DEV_IDENTITIES = [
+export const DEV_IDENTITIES: readonly { id: string; name: string; loginLabel?: string }[] = [
   { id: 'dev-admin', name: 'Super Admin' },
-  { id: 'dev-site-admin', name: 'Site Admin' },
+  { id: 'dev-site-admin', name: 'Site Admin', loginLabel: 'Admin' },
   { id: 'dev-workspace-admin', name: 'Workspace Admin' },
   { id: 'dev-qa', name: 'QA User' },
-] as const;
+];
 export const DEFAULT_DEV_USER = 'dev-qa';
 
 export const siteRoleNames: Record<SiteRole, string> = {

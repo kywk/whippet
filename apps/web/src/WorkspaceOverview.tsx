@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { useActivity } from './activity';
 import { Loading, Notice, ReportLink, RunStatusBadge } from './components';
 import { BookIcon, CheckIcon, ChevronRightIcon, GearIcon, HomeIcon, PlayIcon, PlusIcon, RefreshIcon, ReportIcon } from './icons';
+import { WorkspaceAvailability } from './WorkspaceSettings';
 import type { Run, Test, WorkspaceDetail } from './types';
 import './workspace-overview.css';
 
@@ -123,7 +124,10 @@ export function WorkspaceOverview({ workspace, tests, testsLoading, testsError, 
           </ol> : null}
         </section>
 
-        <WorkspaceScope workspace={workspace} />
+        <div className="workspace-overview-context">
+          <WorkspaceScope workspace={workspace} />
+          <WorkspaceAvailability workspace={workspace} heading="h2" />
+        </div>
       </div>
     </div>
   </section>;

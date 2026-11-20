@@ -8,7 +8,7 @@ import { DraftEditor } from './DraftEditor';
 import { LiveView } from './LiveView';
 import { RunHistory } from './RunHistory';
 import { DiscardSessionDialog } from './DiscardSessionDialog';
-import { PlayIcon, ScriptIcon, SidebarIcon } from './icons';
+import { BellIcon, PlayIcon, ScriptIcon, SidebarIcon } from './icons';
 import { TestOverview } from './TestOverview';
 import { VersionHistory } from './VersionHistory';
 import { useResource, useRuns } from './hooks';
@@ -22,6 +22,8 @@ interface Props {
   editHandoff?: { sessionId: string; content: string };
   preferredMode?: 'general' | 'editing';
   onModeChange?: (mode: 'general' | 'editing') => void;
+  onConversationVisibilityChange?: (visible: boolean) => void;
+  unreadAuthor?: string;
   railCollapsed?: boolean;
   onExpandRail?: () => void;
   unreadCount?: number;
@@ -38,7 +40,7 @@ interface Props {
   onEditSimilarTest: (test: Test, content: string) => void;
 }
 
-export function TestWorkspace({ testId, api, apiBase, initialEditing, editHandoff, preferredMode, onModeChange, railCollapsed, onExpandRail, unreadCount, tags, workspaceTags, capabilities, authorEngine, settingsRefresh, onDirtyChange, onTestUpdated, onTestRemoved, onArchived, onTestCreated, onEditSimilarTest }: Props) {
+export function TestWorkspace({ testId, api, apiBase, initialEditing, editHandoff, preferredMode, onModeChange, onConversationVisibilityChange, unreadAuthor, railCollapsed, onExpandRail, unreadCount, tags, workspaceTags, capabilities, authorEngine, settingsRefresh, onDirtyChange, onTestUpdated, onTestRemoved, onArchived, onTestCreated, onEditSimilarTest }: Props) {
   const loadTest = useCallback((signal: AbortSignal) => api.getTest(testId, signal), [api, testId]);
   const loadVersions = useCallback((signal: AbortSignal) => api.listVersions(testId, signal), [api, testId]);
   const test = useResource(loadTest);
@@ -72,6 +74,11 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, editHandof
   const userChoseMode = useRef<'general' | 'editing' | undefined>(preferredMode);
   const submitLock = useRef(false);
   const submitController = useRef<AbortController | null>(null);
+  const conversationVisible = mode === 'editing' && session?.status === 'active';
+  useEffect(() => {
+    onConversationVisibilityChange?.(conversationVisible);
+    return () => { if (conversationVisible) onConversationVisibilityChange?.(false); };
+  }, [conversationVisible, onConversationVisibilityChange]);
   useEffect(() => () => submitController.current?.abort(), []);
   useEffect(() => () => { for (const controller of sessionControllers.current) controller.abort(); }, []);
   useEffect(() => { if (test.data) onTestUpdated(test.data); }, [test.data, onTestUpdated]);
@@ -327,7 +334,9 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, editHandof
       <div className="mode-tabs" role="tablist" aria-label="檢視">
         <button role="tab" aria-selected={mode === 'general'} className={mode === 'general' ? 'on' : ''} onClick={() => changeMode('general')}>概覽</button>
         <button role="tab" aria-selected={mode === 'editing'} aria-haspopup={publishedId && mode === 'general' && activeInfo?.status !== 'discarding' ? 'dialog' : undefined} className={mode === 'editing' ? 'on' : ''} disabled={sessionBusy || !test.data} onClick={requestEdit}>
-          <ScriptIcon />{tabBusy ? '處理中…' : publishedId ? '調整測試腳本' : '對話編輯'}{activeInfo && mode !== 'editing' ? <span className="tab-dot" role="img" aria-label="有進行中的草稿" /> : null}
+          <ScriptIcon />{tabBusy ? '處理中…' : publishedId ? '調整測試腳本' : '對話編輯'}
+          {mode === 'general' && unreadAuthor ? <span className="case-result-bell" role="img" aria-label={`${unreadAuthor}，尚未查看`} title={unreadAuthor}><BellIcon /></span>
+            : activeInfo && mode !== 'editing' ? <span className="tab-dot" role="img" aria-label="有進行中的草稿" /> : null}
         </button>
       </div>
       <div className="test-actions">

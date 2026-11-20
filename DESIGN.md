@@ -234,7 +234,9 @@ Clean rectangular text inputs and expandable composer dock with explicit contras
 - **Focus:** Smooth `140ms ease-out` border shift to `primary` (`#1f3fae`) plus `2px` focus-visible ring on interactive elements.
 
 ### Navigation
-High-contrast `288px` Deep Indigo rail listing workspaces, test search, test items with live 4-segment mini progress bars and unread yellow indicator dots, and collapsed workspace capability drawer; switches cleanly to an overlay drawer below `960px`.
+The `288px` Deep Indigo rail pairs the Whippet logo with the current Workspace name in a button that opens the Workspace overview. Search, tag filtering, and refresh share the toolbar above the independently scrolling list. Case rows show four-segment progress and a yellow bell for unread AI results. The `新增測試` button stays at the lower right of the rail, alongside the footer menu for Workspace switching and secondary controls. Workspace capabilities appear beside the test scope on the overview. Below `960px`, the rail opens as an overlay drawer.
+
+Background AI results also appear in a compact paper notification at the lower right for five seconds. The notification shows the outcome and case name. An open mobile rail places the notification above the footer so `新增測試` stays visible. The case bell stays visible until the result is viewed.
 - **Selected Item State:** Elevated `rail-selected` fill (`#223585`) with full-perimeter `1px` inset border (`#4b62b8`) — no colored side stripe.
 
 ### Triplicate Slip Artifacts & Tracking Trail

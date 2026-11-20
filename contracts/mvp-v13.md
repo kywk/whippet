@@ -4,10 +4,10 @@
 
 登入頁提供四個固定身分，預選 **QA User**。
 
-| `userId` | 顯示名稱 | 初始全站角色 | Workspace 初始成員角色 |
+| `userId` | 登入選項 | 初始全站角色 | Workspace 初始成員角色 |
 | --- | --- | --- | --- |
 | `dev-admin` | Super Admin | `superadmin` | — |
-| `dev-site-admin` | Site Admin | `site_admin` | — |
+| `dev-site-admin` | Admin | `site_admin` | — |
 | `dev-workspace-admin` | Workspace Admin | `none` | `workspace_admin` |
 | `dev-qa` | QA User | `none` | `qa` |
 

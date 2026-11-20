@@ -1,20 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent, ReactNode, RefObject } from 'react';
 import { DEFAULT_DEV_USER, DEV_IDENTITIES, siteRoleNames } from './access';
 import { ApiError, errorMessage } from './api';
 import { ArchivedTestDetail, ArchivedTests } from './ArchivedTests';
 import { ModuleCatalog } from './ModuleCatalog';
-import { Loading, Notice } from './components';
+import { BackgroundNotices, Loading, Notice } from './components';
 import { WorkspaceConversation } from './WorkspaceConversation';
 import { WorkspaceOverview } from './WorkspaceOverview';
-import { WorkspaceAvailability } from './WorkspaceSettings';
 import { TestWorkspace } from './TestWorkspace';
 import { SiteUsers, WorkspaceMembers } from './UserAccess';
 import { useActivity } from './activity';
+import type { BackgroundCompletion } from './activity';
 import { useLegacyTestTags } from './tags';
 import { MiniTrail } from './trail';
 import { useResource } from './hooks';
-import { ArrowRightIcon, BellIcon, BrandMark, ChevronDownIcon, CloseIcon, GearIcon, HomeIcon, MenuIcon, PlusIcon, RefreshIcon, SearchIcon, SidebarIcon } from './icons';
+import { ArrowRightIcon, BellIcon, CheckIcon, ChevronDownIcon, CloseIcon, FilterIcon, GearIcon, MenuIcon, PlusIcon, RefreshIcon, SearchIcon, SidebarIcon } from './icons';
+import whippetIcon from './assets/whippet-icon.png';
 import whippetIllustration from './assets/whippet-illustration.webp';
 import type { DevUser, Test, WhippetApi, WorkspaceDetail } from './types';
 
@@ -33,7 +34,7 @@ type Surface = 'overview' | 'tests' | 'settings' | 'catalog' | 'users' | 'member
 type NavigationSurface = Exclude<Surface, 'tests' | 'settings'>;
 
 export function App({ api, apiBase, mock }: AppProps) {
-  const [user, setUser] = useState<DevUser>();
+  const [user, setUser] = useState<DevUser | null>();
   const [identity, setIdentity] = useState<string>(DEFAULT_DEV_USER);
   const [loggingIn, setLoggingIn] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -49,6 +50,18 @@ export function App({ api, apiBase, mock }: AppProps) {
   const confirmTestNavigation = useCallback(() => !draftDirty.current || window.confirm('有未儲存的腳本修改或尚未送達的操作。確定離開？未儲存的內容會遺失；AI 任務與已送出的請求會在背景繼續。'), []);
   const confirmNavigation = useCallback(() => (!draftDirty.current && !settingsDirty.current) || window.confirm('有未儲存的腳本修改、帳密或尚未送達的操作。確定離開？未儲存的內容會遺失；AI 任務與已送出的請求會在背景繼續。'), []);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    void api.getMe(controller.signal).then((current) => {
+      if (!controller.signal.aborted) setUser(current);
+    }, (cause) => {
+      if (controller.signal.aborted) return;
+      setUser(null);
+      if (!(cause instanceof ApiError && cause.status === 401)) setLoginError(errorMessage(cause));
+    });
+    return () => controller.abort();
+  }, [api]);
+
   async function login() {
     if (loginLock.current) return;
     loginLock.current = true;
@@ -63,14 +76,14 @@ export function App({ api, apiBase, mock }: AppProps) {
   }
 
   const sessionChanged = useCallback(() => {
-    setUser(undefined);
+    setUser(null);
     setIdentity(DEFAULT_DEV_USER);
     setLoginError('登入身分已變更或過期。請重新選擇開發身分登入。');
   }, []);
 
   async function logout() {
     if (!confirmNavigation()) return;
-    setUser(undefined);
+    setUser(null);
     setIdentity(DEFAULT_DEV_USER);
     setAdminKeyInput('');
     api.setAdminToken?.('');
@@ -84,7 +97,7 @@ export function App({ api, apiBase, mock }: AppProps) {
   return (
     <>
       <a className="skip-link" href="#main">跳至主要內容</a>
-      {!user ? (
+      {user === undefined ? <main id="main" tabIndex={-1}><Loading text="正在確認登入狀態…" /></main> : !user ? (
         <main id="main" className="login-layout">
           <section className="login-brand" aria-hidden="true">
             <img className="login-illustration" src={whippetIllustration} width={640} height={640} alt="" />
@@ -100,7 +113,7 @@ export function App({ api, apiBase, mock }: AppProps) {
               <div className="settings-field">
                 <label htmlFor="dev-identity">開發身分</label>
                 <select id="dev-identity" className="text-input" value={identity} disabled={loggingIn || loggingOut} onChange={(event) => setIdentity(event.target.value)}>
-                  {DEV_IDENTITIES.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
+                  {DEV_IDENTITIES.map(({ id, name, loginLabel }) => <option key={id} value={id}>{loginLabel ?? name}</option>)}
                 </select>
               </div>
               {!mock ? <label className="settings-field">管理 key（管理 gate 啟用時必填）
@@ -153,7 +166,10 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onUserUpdated, onSe
   const [selectedId, setSelectedId] = useState('');
   const [surface, setSurface] = useState<Surface>('overview');
   const [setupTarget, setSetupTarget] = useState<string>();
-  const [emptyRailOpen, setEmptyRailOpen] = useState(false);
+  const [completions, setCompletions] = useState<BackgroundCompletion[]>([]);
+  const addCompletions = useCallback((batch: BackgroundCompletion[]) => setCompletions(current => [...current, ...batch]), []);
+  const expireCompletion = useCallback((id: string) => setCompletions(current => current.filter(item => item.id !== id)), []);
+  const rail = useRailDrawer();
   const setupReturnSurface = useRef<Exclude<Surface, 'settings'>>('overview');
   const setupDirty = useRef(false);
   const reportSetupGuard = useCallback((dirty: boolean) => { setupDirty.current = dirty; onSettingsDirtyChange(dirty); }, [onSettingsDirtyChange]);
@@ -194,13 +210,18 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onUserUpdated, onSe
     if (!same && setupDirty.current && !window.confirm('切換設定對話會放棄尚未送出的 Workspace 帳密內容，確定繼續？')) return;
     if (!same) setSetupTarget(target);
     if (visibleSurface !== 'settings') setupReturnSurface.current = visibleSurface;
-    setEmptyRailOpen(false);
     setSurface('settings');
   }
-  const switchWorkspace = (id: string) => { if (id === workspace?.id || !confirmNavigation()) return; setSelectedId(id); setSetupTarget(undefined); setSurface('overview'); };
+  function switchWorkspace(id: string) {
+    if (id === workspace?.id) { rail.close(); return; }
+    if (!confirmNavigation()) return;
+    rail.close();
+    setSelectedId(id);
+    setSetupTarget(undefined);
+    setSurface('overview');
+  }
   function openSurface(next: NavigationSurface) {
     if (visibleSurface !== next && confirmNavigation()) setSurface(next);
-    setEmptyRailOpen(false);
   }
 
   const setupView = canShowSetup ? <div className="workspace-setup-view" hidden={visibleSurface !== 'settings'} data-surface="workspace">
@@ -211,16 +232,21 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onUserUpdated, onSe
   const membersView = visibleSurface === 'members' && workspace ? <WorkspaceMembers key={workspace.id} api={api} workspace={workspace} userId={user.id} onAccessChanged={workspaces.retry} /> : null;
 
   if (!workspace) {
-    return <div className={`app-shell${emptyRailOpen ? ' rail-open' : ''}`}>
-      {emptyRailOpen ? <div className="rail-backdrop" aria-hidden="true" onClick={() => setEmptyRailOpen(false)} /> : null}
-      <nav id="app-rail" className="rail" aria-label="導覽">
-        <div className="rail-mobile-close"><button className="rail-icon-button" aria-label="關閉選單" onClick={() => setEmptyRailOpen(false)}><CloseIcon /></button></div>
-        <RailHead user={user} onLogout={onLogout} />
-        {user.permissions.createWorkspace ? <button className="button rail-primary" onClick={() => openSetup(true)}><PlusIcon />建立 Workspace</button> : null}
-        {canManageUsers ? <button className="rail-link wide" aria-current={visibleSurface === 'users' ? 'page' : undefined} onClick={() => openSurface('users')}>全站使用者管理</button> : null}
+    return <div className={`app-shell${rail.open ? ' rail-open' : ''}`}>
+      {rail.open ? <div className="rail-backdrop" aria-hidden="true" onClick={rail.close} /> : null}
+      <nav id="app-rail" className="rail" aria-label="導覽" onKeyDown={rail.onKeyDown}>
+        <RailHead name="工作區" onHome={() => { openSurface('overview'); rail.close(); }}>
+          <button type="button" ref={rail.dismiss} className="rail-icon-button small rail-mobile-close" aria-label="關閉選單" onClick={rail.close}><CloseIcon /></button>
+        </RailHead>
+        {user.permissions.createWorkspace ? <button type="button" className="button rail-primary" onClick={() => { openSetup(true); rail.close(); }}><PlusIcon />建立 Workspace</button> : null}
+        <div className="rail-foot">
+          <RailTools user={user} onLogout={onLogout} panel={rail.tools}>
+            {canManageUsers ? <button type="button" className="rail-link wide" aria-current={visibleSurface === 'users' ? 'page' : undefined} onClick={() => { openSurface('users'); rail.close(); }}>全站使用者管理</button> : null}
+          </RailTools>
+        </div>
       </nav>
-      <main id="main" className="main-pane" tabIndex={-1}>
-        <div className="mobile-bar"><button className="button quiet compact" aria-expanded={emptyRailOpen} aria-controls="app-rail" onClick={() => setEmptyRailOpen(true)}><MenuIcon />選單</button><span>{user.name}</span></div>
+      <main id="main" className="main-pane" tabIndex={-1} inert={rail.open}>
+        <div className="mobile-bar"><button type="button" ref={rail.trigger} className="button quiet compact" aria-expanded={rail.open} aria-controls="app-rail" onClick={rail.show}><MenuIcon />選單</button><span>{user.name}</span></div>
         {mock ? <div className="mock-banner" role="status">示範模式：使用本機 mock 資料，不會啟動 Playwright；重新整理後資料會清除。</div> : null}
         {workspaces.loading ? <Loading text="正在載入 Workspace…" /> : null}
         {workspaces.error ? <Notice message={workspaces.error} retry={workspaces.retry} /> : null}
@@ -232,23 +258,68 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onUserUpdated, onSe
       </main>
     </div>;
   }
-  return <TestBrowser key={workspace.id} api={api} apiBase={apiBase} mock={mock} user={user} onLogout={onLogout}
-    workspace={workspace} workspaces={allWorkspaces} switchWorkspace={switchWorkspace} openSetup={openSetup}
-    surface={visibleSurface} setSurface={setSurface} setupTarget={setupTarget} onDirtyChange={onDirtyChange} confirmNavigation={confirmTestNavigation}
-    administration={<>{setupView}{usersView}{membersView}</>} onOpenSurface={openSurface} />;
+  return <>
+    <TestBrowser key={workspace.id} api={api} apiBase={apiBase} mock={mock} user={user} onLogout={onLogout}
+      workspace={workspace} workspaces={allWorkspaces} switchWorkspace={switchWorkspace} openSetup={openSetup} rail={rail}
+      surface={visibleSurface} setSurface={setSurface} setupTarget={setupTarget} onDirtyChange={onDirtyChange} confirmNavigation={confirmTestNavigation}
+      administration={<>{setupView}{usersView}{membersView}</>} onOpenSurface={openSurface} onBackgroundCompletion={addCompletions} />
+    <BackgroundNotices completions={completions} onExpire={expireCompletion} />
+  </>;
 }
 
-function RailHead({ user, onLogout, onCollapse }: { user: DevUser; onLogout: () => void; onCollapse?: () => void }) {
-  return <div>
-    <div className="rail-head">
-      <a className="brand" href="/" aria-label="Whippet 首頁"><BrandMark />Whippet</a>
-      <div className="rail-head-actions">
-        <button className="rail-link" onClick={onLogout}>登出</button>
-        {onCollapse ? <button type="button" className="rail-icon-button small rail-collapse-btn" aria-label="收合左側欄" title="收合左側欄" onClick={onCollapse}><SidebarIcon /></button> : null}
+function useRailDrawer() {
+  const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const dismiss = useRef<HTMLButtonElement>(null);
+  const tools = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => {
+    tools.current?.hidePopover();
+    setOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const narrow = window.matchMedia('(max-width: 960px)');
+    const closeOnDesktop = (event: MediaQueryListEvent) => { if (!event.matches) close(); };
+    dismiss.current?.focus();
+    narrow.addEventListener('change', closeOnDesktop);
+    return () => {
+      narrow.removeEventListener('change', closeOnDesktop);
+      if (narrow.matches) trigger.current?.focus();
+    };
+  }, [open, close]);
+
+  function onKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (open && event.key === 'Escape' && !event.defaultPrevented && !tools.current?.matches(':popover-open')) {
+      event.preventDefault();
+      close();
+    }
+  }
+
+  return { open, trigger, dismiss, tools, show: () => setOpen(true), close, onKeyDown };
+}
+
+function RailHead({ name, children, onHome }: { name: string; children: ReactNode; onHome: () => void }) {
+  return <div className="rail-head">
+    <button type="button" className="rail-home" aria-label={`${name} · Workspace 首頁`} title={`${name} · Workspace 首頁`} onClick={onHome}>
+      <img className="rail-logo" src={whippetIcon} width={24} height={24} alt="" />
+      <span>{name}</span>
+    </button>
+    {children}
+  </div>;
+}
+
+function RailTools({ user, onLogout, panel, children }: { user: DevUser; onLogout: () => void; panel: RefObject<HTMLDivElement | null>; children: ReactNode }) {
+  return <>
+    <button type="button" className="rail-link rail-tools-trigger" popoverTarget="rail-tools">更多功能<ChevronDownIcon /></button>
+    <div id="rail-tools" className="rail-tools-panel" role="group" aria-label="更多功能" popover="auto" ref={panel}>
+      {children}
+      <div className="rail-tools-account">
+        <p className="rail-identity"><span className="sr-only">登入身分 </span>{user.name}{user.role !== 'none' && siteRoleNames[user.role] !== user.name ? ` · ${siteRoleNames[user.role]}` : ''}</p>
+        <button type="button" className="rail-link" onClick={onLogout}>登出</button>
       </div>
     </div>
-    <p className="rail-identity"><span className="sr-only">登入身分 </span>{user.name}{user.role !== 'none' && siteRoleNames[user.role] !== user.name ? ` · ${siteRoleNames[user.role]}` : ''}</p>
-  </div>;
+  </>;
 }
 
 interface BrowserProps extends Pick<AppProps, 'api' | 'apiBase' | 'mock'>, EditingGuard {
@@ -256,17 +327,18 @@ interface BrowserProps extends Pick<AppProps, 'api' | 'apiBase' | 'mock'>, Editi
   switchWorkspace: (id: string) => void; openSetup: (create?: boolean) => void;
   surface: Surface; setSurface: (surface: Surface) => void; setupTarget?: string;
   administration: ReactNode; onOpenSurface: (surface: NavigationSurface) => void;
+  rail: ReturnType<typeof useRailDrawer>;
+  onBackgroundCompletion: (batch: BackgroundCompletion[]) => void;
 }
 
-function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout, switchWorkspace, openSetup, surface, setSurface, setupTarget, onDirtyChange, confirmNavigation, administration, onOpenSurface }: BrowserProps) {
+function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout, switchWorkspace, openSetup, surface, setSurface, setupTarget, onDirtyChange, confirmNavigation, administration, onOpenSurface, rail, onBackgroundCompletion }: BrowserProps) {
   const { manageTests, manageSettings, manageMembers } = workspace.permissions;
   const loadTests = useCallback((signal: AbortSignal) => manageTests ? api.listTests(workspace.id, signal) : Promise.resolve([]), [api, workspace.id, manageTests]);
-  const tests = useResource(loadTests);
+  const tests = useResource(loadTests, true);
   const [selectedId, setSelectedId] = useState<string>();
   const [archivedTest, setArchivedTest] = useState<Test>();
   const [search, setSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>();
-  const [railOpen, setRailOpen] = useState(false);
   const [railCollapsed, setRailCollapsed] = useState(() => {
     try { return localStorage.getItem('whippet.railCollapsed.v1') === '1'; } catch { return false; }
   });
@@ -284,6 +356,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
   const [autoEditId, setAutoEditId] = useState<string>();
   const [similarEdit, setSimilarEdit] = useState<{ testId: string; sessionId: string; content: string }>();
   const [testModes, setTestModes] = useState<Record<string, 'general' | 'editing'>>({});
+  const [visibleConversationTestId, setVisibleConversationTestId] = useState<string>();
   const legacyTagsByTest = useLegacyTestTags();
   const editorDirty = useRef(false);
   const creationPending = useRef(false);
@@ -340,8 +413,15 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
     setArchivedTest({ ...test, archived: true });
     setSurface('archive');
   }, [setSurface]);
-  const { activity, running, unread, permission, enableNotifications, runHistory } = useActivity(api, allTests, surface === 'tests' ? selected?.id : undefined);
   const selectedTestId = selected?.id;
+  const viewedTestId = surface === 'tests' ? selectedTestId : undefined;
+  const viewedAuthorTestId = viewedTestId && (viewedTestId === visibleConversationTestId || !selected?.activeEditingSession) ? viewedTestId : undefined;
+  const { activity, running, unread, permission, enableNotifications, runHistory } = useActivity(
+    api, allTests, { testId: viewedTestId, authorTestId: viewedAuthorTestId }, user.id, onBackgroundCompletion,
+  );
+  const reportConversationVisibility = useCallback((visible: boolean) => {
+    setVisibleConversationTestId(visible ? selectedTestId : undefined);
+  }, [selectedTestId]);
   // Session closure effects depend on this callback; keep its identity stable
   // across Test refreshes so switching to general mode cannot trigger a retry loop.
   const handleModeChange = useCallback((mode: 'general' | 'editing') => {
@@ -354,7 +434,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
     setModuleForm(false); setModuleInput({ slug: '', name: '', description: '' });
     updateTest(test); setSelectedId(test.id); setAutoEditId(edit ? test.id : undefined);
     setTestModes((current) => ({ ...current, [test.id]: edit ? 'editing' : 'general' }));
-    setSearch(''); setSelectedTag(undefined); setSurface('tests'); setRailOpen(false);
+    setSearch(''); setSelectedTag(undefined); setSurface('tests'); rail.close();
   }
 
   function openSimilarTest(test: Test, content: string) {
@@ -377,7 +457,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
   }
   function pick(test: Test) {
     if (!manageTests) return;
-    if (surface === 'tests' && selected?.id === test.id) { setRailOpen(false); return; }
+    if (surface === 'tests' && selected?.id === test.id) { rail.close(); return; }
     if (!confirmNavigation()) return;
     setSimilarEdit(undefined);
     const info = activity[test.id];
@@ -387,7 +467,13 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
     }
     setSelectedId(test.id);
     setAutoEditId(hasActiveConversation && testModes[test.id] !== 'general' ? test.id : undefined);
-    setSurface('tests'); setRailOpen(false);
+    setSurface('tests'); rail.close();
+  }
+
+  function openRailSurface(next: NavigationSurface) {
+    if (next === 'archive') setArchivedTest(undefined);
+    onOpenSurface(next);
+    rail.close();
   }
 
   const selectedInfo = selected ? activity[selected.id] : undefined;
@@ -405,78 +491,90 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
   );
 
   return (
-    <div className={`app-shell${railOpen ? ' rail-open' : ''}${railCollapsed ? ' rail-collapsed' : ''}`}>
-      {railOpen ? <div className="rail-backdrop" aria-hidden="true" onClick={() => setRailOpen(false)} /> : null}
-      <nav id="app-rail" className="rail" aria-label="Workspace 與測試">
-        <div className="rail-mobile-close"><button className="rail-icon-button" aria-label="關閉測試選單" onClick={() => setRailOpen(false)}><CloseIcon /></button></div>
-        <RailHead user={user} onLogout={onLogout} onCollapse={() => toggleRailCollapsed(true)} />
-        <div className="rail-workspace">
-          <label className="workspace-select"><span className="sr-only">Workspace</span>
-            <select value={workspace.id} onChange={(event) => { switchWorkspace(event.target.value); setRailOpen(false); }}>
-              {workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select><ChevronDownIcon />
-          </label>
-          {manageSettings ? <button className="rail-icon-button" aria-label="Workspace 設定" title="Workspace 設定" aria-pressed={surface === 'settings' && setupTarget !== 'create'} onClick={() => { openSetup(); setRailOpen(false); }}><GearIcon /></button> : null}
-        </div>
-        <button type="button" className="rail-link wide rail-overview" aria-current={showOverview ? 'page' : undefined} onClick={() => { onOpenSurface('overview'); setRailOpen(false); }}><HomeIcon />Workspace 概覽</button>
+    <div className={`app-shell${rail.open ? ' rail-open' : ''}${railCollapsed ? ' rail-collapsed' : ''}`}>
+      {rail.open ? <div className="rail-backdrop" aria-hidden="true" onClick={rail.close} /> : null}
+      <nav id="app-rail" className="rail" aria-label="Workspace 與測試" onKeyDown={rail.onKeyDown}>
+        <RailHead name={workspace.name} onHome={() => openRailSurface('overview')}>
+          <button type="button" className="rail-icon-button small rail-collapse-btn" aria-label="收合左側欄" title="收合左側欄" onClick={() => toggleRailCollapsed(true)}><SidebarIcon /></button>
+          <button type="button" ref={rail.dismiss} className="rail-icon-button small rail-mobile-close" aria-label="關閉測試選單" onClick={rail.close}><CloseIcon /></button>
+        </RailHead>
         {manageTests ? <>
-          <button className="button rail-primary" disabled={creating} onClick={() => { void createTest(); }}><PlusIcon />{creating ? '正在建立測試…' : '新增測試'}</button>
-        {createError && !showOverview && surface !== 'catalog' ? <Notice message={createError} /> : null}
-        <label className="search-label"><span className="sr-only">搜尋測試</span>
-          <SearchIcon /><input type="search" value={search} placeholder="搜尋測試名稱或 #標籤" onChange={(event) => setSearch(event.target.value)} />
-        </label>
-        {workspaceTags.length > 0 ? (
-          <div className="rail-tags" role="group" aria-label="依標籤篩選測試">
-            <button type="button" className={`rail-tag-filter${!selectedTag ? ' active' : ''}`} onClick={() => setSelectedTag(undefined)}>全部</button>
-            {workspaceTags.map((tag) => (
-              <button key={tag} type="button" className={`rail-tag-filter${selectedTag === tag ? ' active' : ''}`} onClick={() => setSelectedTag((current) => current === tag ? undefined : tag)}>#{tag}</button>
-            ))}
+          <div className="rail-test-controls">
+            <h2 id="rail-test-title" className="sr-only">測試案例</h2>
+            <div className="rail-filters">
+              <label className="search-label"><span className="sr-only">搜尋測試</span>
+                <SearchIcon /><input type="search" value={search} placeholder="搜尋測試" onChange={(event) => setSearch(event.target.value)} />
+              </label>
+              {workspaceTags.length > 0 ? <label className={`rail-tag-select${selectedTag ? ' active' : ''}`} title={selectedTag ? `#${selectedTag}` : '依標籤篩選'}>
+                <span className="sr-only">依標籤篩選測試</span>
+                <FilterIcon />
+                <select value={selectedTag ?? ''} onChange={(event) => setSelectedTag(event.target.value || undefined)}>
+                  <option value="">全部標籤</option>
+                  {workspaceTags.map((tag) => <option key={tag} value={tag}>#{tag}</option>)}
+                </select>
+              </label> : null}
+              <button type="button" className="rail-link rail-refresh" aria-label="重整測試列表" title="重整測試列表" disabled={tests.loading || creating} onClick={() => { if (confirmNavigation()) tests.retry(); }}><RefreshIcon />重整</button>
+            </div>
+            {query || selectedTag ? <p className="rail-filter-summary" role="status">{selectedTag ? `#${selectedTag} · ` : ''}{filtered.length}／{allTests.length} 筆</p> : null}
           </div>
-        ) : null}
-        <div className="rail-section">
-          <h2>測試 <span className="count">{filtered.length !== allTests.length ? `${filtered.length}/${allTests.length}` : allTests.length}</span></h2>
-          <button className="rail-icon-button small" aria-label="重新載入測試列表" title="重新載入測試列表" disabled={tests.loading || creating} onClick={() => { if (confirmNavigation()) tests.retry(); }}><RefreshIcon /></button>
-        </div>
-        <div className="rail-scroll">
-          {tests.loading ? <Loading text="正在載入測試…" /> : null}
-          {tests.error ? <Notice message={tests.error} retry={tests.retry} /> : null}
-          {tests.data && allTests.length === 0 ? <p className="rail-empty">還沒有測試。按「新增測試」，用一句話開始。</p> : null}
-          {allTests.length > 0 && filtered.length === 0 ? <p className="rail-empty">找不到符合的測試。</p> : null}
-          <ul className="test-list">
-            {filtered.map((test) => {
-              const info = activity[test.id];
-              const testTags = test.tags ?? legacyTagsByTest[test.id] ?? [];
-              const isSelected = surface === 'tests' && selected?.id === test.id;
-              return <li key={test.id}>
-                <button className={`test-item${isSelected ? ' selected' : ''}${info?.running ? ' running' : ''}${info?.unread ? ' unread' : ''}`} disabled={creating} aria-current={isSelected ? 'true' : undefined} onClick={() => pick(test)}>
-                  <span className="test-name"><span>{test.name}</span>{info?.unread ? <span className="unread-light" role="img" aria-label="有新的結果" /> : null}</span>
-                  {testTags.length > 0 ? <span className="test-item-tags">{testTags.map((tag) => <span key={tag} className="test-item-tag">#{tag}</span>)}</span> : null}
-                  {info ? <MiniTrail stages={info.stages} bad={info.bad} /> : null}
-                  <span className={`test-state${info?.bad ? ' bad' : ''}`}>{info?.label ?? (test.publishedVersionId ? '已發佈' : '尚未發佈')}</span>
-                </button>
-              </li>;
-            })}
-          </ul>
-        </div>
+          <div className="rail-scroll">
+            {createError && !showOverview && surface !== 'catalog' ? <Notice message={createError} /> : null}
+            {tests.loading && !tests.data ? <Loading text="正在載入測試…" /> : null}
+            {tests.error ? <Notice message={tests.error} retry={tests.retry} /> : null}
+            {tests.data && allTests.length === 0 ? <p className="rail-empty">還沒有測試。按「新增測試」，用一句話開始。</p> : null}
+            {allTests.length > 0 && filtered.length === 0 ? <p className="rail-empty">找不到符合的測試。</p> : null}
+            <ul className="test-list" aria-labelledby="rail-test-title">
+              {filtered.map((test) => {
+                const info = activity[test.id];
+                const isSelected = surface === 'tests' && selected?.id === test.id;
+                return <li key={test.id}>
+                  <button type="button" className={`test-item${isSelected ? ' selected' : ''}${info?.running ? ' running' : ''}${info?.unread ? ' unread' : ''}`} disabled={creating} aria-current={isSelected ? 'true' : undefined} onClick={() => pick(test)}>
+                    <span className="test-name"><span title={test.name}>{test.name}</span>
+                      {info?.unreadAuthor ? <span className="case-result-bell" role="img" aria-label={`${info.unreadAuthor}，尚未查看`} title={`${info.unreadAuthor}，尚未查看`}><BellIcon /></span>
+                        : info?.unread ? <span className="unread-light" role="img" aria-label="有新的結果" /> : null}
+                    </span>
+                    <span className="test-meta">
+                      <span className={`test-state${info?.bad ? ' bad' : ''}`}>{info?.label ?? (test.publishedVersionId ? '已發佈' : '尚未發佈')}</span>
+                      {info?.stages.length ? <MiniTrail stages={info.stages} bad={info.bad} /> : null}
+                    </span>
+                  </button>
+                </li>;
+              })}
+            </ul>
+          </div>
         </> : null}
         <div className="rail-foot">
-          {manageTests ? <>
-            <button className="rail-link wide" aria-pressed={surface === 'catalog'} onClick={() => { onOpenSurface('catalog'); setRailOpen(false); }}>Module 模組庫</button>
-            <button className="rail-link wide" aria-current={surface === 'archive' ? 'page' : undefined} onClick={() => { setArchivedTest(undefined); onOpenSurface('archive'); setRailOpen(false); }}>已封存測試</button>
-            <a className="rail-link wide" href="?preview=m10" onClick={(event) => { if (!confirmNavigation()) event.preventDefault(); }}>Module / Use Case 合成預覽</a>
-          </> : null}
-          {manageMembers ? <button className="rail-link wide" aria-current={surface === 'members' ? 'page' : undefined} onClick={() => { onOpenSurface('members'); setRailOpen(false); }}>Workspace 成員管理</button> : null}
-          {user.permissions.manageUsers ? <button className="rail-link wide" aria-current={surface === 'users' ? 'page' : undefined} onClick={() => { onOpenSurface('users'); setRailOpen(false); }}>全站使用者管理</button> : null}
-          <details className="rail-caps"><summary>Workspace 能力</summary><WorkspaceAvailability workspace={workspace} /></details>
-          {permission === 'default' ? <button className="rail-link wide" onClick={() => { void enableNotifications(); }}><BellIcon />背景完成時通知我</button> : permission === 'granted' ? <p className="rail-note"><BellIcon />背景完成通知已開啟</p> : null}
-          {user.permissions.createWorkspace ? <button className="rail-link wide" onClick={() => { openSetup(true); setRailOpen(false); }}><PlusIcon />建立 Workspace</button> : null}
-          <p className="rail-note" aria-live="polite">{running ? `${running} 項任務在背景進行` : '沒有背景任務'}{unread ? ` · ${unread} 項新結果` : ''}</p>
+          <RailTools user={user} onLogout={onLogout} panel={rail.tools}>
+            <div className="rail-workspace-switch" role="group" aria-label="切換 Workspace">
+              <p>切換 Workspace</p>
+              <ul>{workspaces.map((item) => <li key={item.id}>
+                <button type="button" className="rail-link wide rail-workspace-option" aria-current={item.id === workspace.id ? 'true' : undefined} title={item.name} onClick={() => switchWorkspace(item.id)}>
+                  <span>{item.name}</span>{item.id === workspace.id ? <CheckIcon /> : null}
+                </button>
+              </li>)}</ul>
+            </div>
+            {manageTests ? <>
+              <button type="button" className="rail-link wide" aria-current={surface === 'catalog' ? 'page' : undefined} onClick={() => openRailSurface('catalog')}>Module 模組庫</button>
+              <button type="button" className="rail-link wide" aria-current={surface === 'archive' ? 'page' : undefined} onClick={() => openRailSurface('archive')}>已封存測試</button>
+              <a className="rail-link wide" href="?preview=m10" onClick={(event) => { if (!confirmNavigation()) event.preventDefault(); }}>Module / Use Case 合成預覽</a>
+            </> : null}
+            {manageSettings ? <button type="button" className="rail-link wide" aria-current={surface === 'settings' && setupTarget !== 'create' ? 'page' : undefined} onClick={() => { openSetup(); rail.close(); }}><GearIcon />Workspace 設定</button> : null}
+            {manageMembers ? <button type="button" className="rail-link wide" aria-current={surface === 'members' ? 'page' : undefined} onClick={() => openRailSurface('members')}>Workspace 成員管理</button> : null}
+            {user.permissions.manageUsers ? <button type="button" className="rail-link wide" aria-current={surface === 'users' ? 'page' : undefined} onClick={() => openRailSurface('users')}>全站使用者管理</button> : null}
+            {user.permissions.createWorkspace ? <button type="button" className="rail-link wide" onClick={() => { openSetup(true); rail.close(); }}><PlusIcon />建立 Workspace</button> : null}
+            {permission === 'default' ? <button type="button" className="rail-link wide" onClick={() => { void enableNotifications(); }}><BellIcon />啟用瀏覽器通知</button> : permission === 'granted' ? <p className="rail-note"><BellIcon />瀏覽器通知已開啟</p> : null}
+          </RailTools>
+          <p className="rail-activity" aria-live="polite">
+            {running ? <span>{running} 項進行中</span> : null}
+            {unread ? <span className="rail-new-results">{unread} 項新結果</span> : null}
+          </p>
+          {manageTests ? <button type="button" className="button rail-primary" disabled={creating} onClick={() => { void createTest(); }}><PlusIcon />{creating ? '建立中…' : '新增測試'}</button> : null}
         </div>
       </nav>
-      <main id="main" className="main-pane" tabIndex={-1}>
+      <main id="main" className="main-pane" tabIndex={-1} inert={rail.open}>
         <div className="mobile-bar">
-          <button className="button quiet compact" aria-expanded={railOpen} aria-controls="app-rail" onClick={() => setRailOpen(true)}><MenuIcon />測試列表{unread ? <span className="unread-light inline" aria-label={`${unread} 項新結果`} /> : null}</button>
-          <span className="mobile-workspace">{workspace.name}</span>
+          <button type="button" ref={rail.trigger} className="button quiet compact" aria-expanded={rail.open} aria-controls="app-rail" onClick={rail.show}><MenuIcon />測試列表{unread ? <span className="unread-light inline" aria-label={`${unread} 項新結果`} /> : null}</button>
+          <button type="button" className="mobile-workspace" aria-label={`${workspace.name} · Workspace 首頁`} title={workspace.name} onClick={() => openRailSurface('overview')}>{workspace.name}</button>
         </div>
         {railCollapsed && (surface !== 'tests' || !selected) ? (
           <div className="rail-collapsed-bar">
@@ -537,6 +635,8 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
               editHandoff={similarEdit?.testId === selected.id ? similarEdit : undefined}
               preferredMode={selectedPreferredMode}
               onModeChange={handleModeChange}
+              onConversationVisibilityChange={reportConversationVisibility}
+              unreadAuthor={selectedInfo?.unreadAuthor}
               railCollapsed={railCollapsed}
               onExpandRail={() => toggleRailCollapsed(false)}
               unreadCount={unread}

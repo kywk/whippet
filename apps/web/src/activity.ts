@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { isActiveRun } from './types';
+import { isActiveRun, STATUS_LABELS } from './types';
 import { publishedTrail, trailFromRuns } from './trail';
 import type { Stage } from './trail';
 import type { Run, Test, WhippetApi } from './types';
@@ -13,38 +13,93 @@ export interface TestActivity {
   bad: boolean;
   /** 有尚未看過的結果 */
   unread: boolean;
+  /** 尚未看過的 AI 對話結果 */
+  unreadAuthor?: string;
+}
+
+export interface BackgroundCompletion {
+  id: string;
+  testName: string;
+  message: string;
 }
 
 const SEEN_KEY = 'whippet.seen.v1';
+const AUTHOR_SEEN_KEY = 'whippet.author-seen.v1';
 const FAST_MS = 3_000;
 const SLOW_EVERY = 7; // 每 7 個快速週期（約 21 秒）輪詢全部測試
 
-function readSeen(): Record<string, string> {
-  try { return JSON.parse(localStorage.getItem(SEEN_KEY) ?? '{}') as Record<string, string>; } catch { return {}; }
+function readSeen(key: string): Record<string, string> {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(key) ?? '{}');
+    return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved as Record<string, string> : {};
+  } catch { return {}; }
 }
-function writeSeen(value: Record<string, string>) {
-  try { localStorage.setItem(SEEN_KEY, JSON.stringify(value)); } catch { /* 無法保存時只失去「未讀」記憶，不影響功能。 */ }
+
+function useSeenSignatures(key: string, signatures: Record<string, string>, viewedId?: string) {
+  const [seen, setSeen] = useState(() => readSeen(key));
+  useEffect(() => {
+    function remember() {
+      const visible = !document.hidden;
+      setSeen((current) => {
+        let next = current;
+        for (const [id, signature] of Object.entries(signatures)) {
+          if (current[id] === signature || (current[id] !== undefined && (id !== viewedId || !visible))) continue;
+          if (next === current) next = { ...current };
+          next[id] = signature;
+        }
+        return next;
+      });
+    }
+    remember();
+    document.addEventListener('visibilitychange', remember);
+    return () => document.removeEventListener('visibilitychange', remember);
+  }, [signatures, viewedId]);
+  useEffect(() => {
+    try { localStorage.setItem(key, JSON.stringify(seen)); } catch { /* 儲存不可用時仍可在目前分頁追蹤未讀。 */ }
+  }, [key, seen]);
+  return seen;
 }
+
+const runSignature = (run?: Run) => run ? `${run.id}:${run.status}` : '';
 const signature = (runs: Run[]): string => {
   const latest = [...runs].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
-  return latest && !isActiveRun(latest) ? `${latest.id}:${latest.status}` : '';
+  return latest && !isActiveRun(latest) ? runSignature(latest) : '';
 };
+
+function latestAuthorResult(runs: Run[]) {
+  let latest: Run | undefined;
+  let finished = 0;
+  for (const run of runs) {
+    if (run.kind !== 'author' || isActiveRun(run)) continue;
+    const time = Date.parse(run.finishedAt ?? run.createdAt);
+    if (!latest || time > finished) { latest = run; finished = time; }
+  }
+  return latest;
+}
+
+function authorResultMessage(run: Run) {
+  if (run.authorPartial) return 'AI 部分完成，等待繼續';
+  if (run.status !== 'succeeded') return `AI 任務${STATUS_LABELS[run.status]}`;
+  if (run.authorMode === 'summary') return 'AI 摘要已完成';
+  return run.authorRepliedOnly ? 'AI 已回覆' : 'AI 已完成';
+}
 
 /**
  * 全 Workspace 的背景任務觀察：
  * 離開某個測試後，任務仍在 Server 執行；這裡持續讀取各測試的 Run，
  * 讓左欄顯示目前停在哪一站，結果完成但還沒看過的測試會亮燈。
  */
-export function useActivity(api: WhippetApi, tests: Test[], selectedId: string | undefined) {
+export function useActivity(api: WhippetApi, tests: Test[], viewing: { testId?: string; authorTestId?: string }, userId: string, notify: (batch: BackgroundCompletion[]) => void) {
+  const { testId: selectedId, authorTestId: viewedAuthorId } = viewing;
   const [{ runsByTest, failedRunLoads }, setHistory] = useState({ runsByTest: {} as Record<string, Run[]>, failedRunLoads: new Set<string>() });
   const [refreshingRuns, setRefreshingRuns] = useState(false);
   const [refreshRevision, refreshRuns] = useReducer((revision: number) => revision + 1, 0);
-  const [seen, setSeen] = useState<Record<string, string>>(readSeen);
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
   const testsRef = useRef(tests); testsRef.current = tests;
   const runsRef = useRef(runsByTest); runsRef.current = runsByTest;
   const selectedRef = useRef(selectedId); selectedRef.current = selectedId;
-  const previous = useRef(new Map<string, string>());
+  const viewedAuthorRef = useRef(viewedAuthorId); viewedAuthorRef.current = viewedAuthorId;
+  const previous = useRef(new Map<string, Map<string, boolean>>());
   const ids = tests.map((test) => test.id).join(',');
 
   useEffect(() => {
@@ -86,56 +141,47 @@ export function useActivity(api: WhippetApi, tests: Test[], selectedId: string |
     return () => { stopped = true; controller.abort(); clearTimeout(timer); };
   }, [api, ids, refreshRevision]);
 
-  // 首次看到某測試時，以目前結果為已讀基準，避免第一次開啟就全部亮燈。
-  useEffect(() => {
-    setSeen((current) => {
-      let changed = false;
-      const next = { ...current };
-      for (const test of testsRef.current) {
-        const runs = runsByTest[test.id];
-        if (runs && next[test.id] === undefined) { next[test.id] = signature(runs); changed = true; }
-      }
-      if (changed) writeSeen(next);
-      return changed ? next : current;
-    });
+  // AI 未讀獨立保存，後續正式執行或驗證不會蓋掉對話結果。
+  const { runKeys, authorKeys, authors } = useMemo(() => {
+    const runKeys: Record<string, string> = {};
+    const authorKeys: Record<string, string> = {};
+    const authors: Record<string, Run | undefined> = {};
+    for (const [id, runs] of Object.entries(runsByTest)) {
+      runKeys[id] = signature(runs);
+      authors[id] = latestAuthorResult(runs);
+      authorKeys[id] = runSignature(authors[id]);
+    }
+    return { runKeys, authorKeys, authors };
   }, [runsByTest]);
+  const seen = useSeenSignatures(SEEN_KEY, runKeys, selectedId);
+  const seenAuthors = useSeenSignatures(`${AUTHOR_SEEN_KEY}.${userId}`, authorKeys, viewedAuthorId);
 
-  const markSeen = useCallback((testId: string) => {
-    setSeen((current) => {
-      const sig = signature(runsRef.current[testId] ?? []);
-      if (current[testId] === sig) return current;
-      const next = { ...current, [testId]: sig };
-      writeSeen(next);
-      return next;
-    });
-  }, []);
-
-  // 正在檢視的測試，結果出現時視為已讀。
-  const selectedSig = selectedId ? signature(runsByTest[selectedId] ?? []) : '';
+  // 首次讀取僅建立基準。之後也處理在兩次輪詢之間已完成的 AI Run。
   useEffect(() => {
-    if (!selectedId || document.hidden) return;
-    markSeen(selectedId);
-  }, [selectedId, selectedSig, markSeen]);
-  useEffect(() => {
-    function visible() { if (!document.hidden && selectedRef.current) markSeen(selectedRef.current); }
-    document.addEventListener('visibilitychange', visible);
-    return () => document.removeEventListener('visibilitychange', visible);
-  }, [markSeen]);
-
-  // 背景完成通知：Run 由進行中轉為結束，且使用者不在該測試畫面時提醒。
-  useEffect(() => {
+    const batch: BackgroundCompletion[] = [];
     for (const test of testsRef.current) {
-      for (const run of runsByTest[test.id] ?? []) {
-        const before = previous.current.get(run.id);
-        previous.current.set(run.id, run.status);
-        if (before && ['queued', 'dispatched', 'running', 'collecting', 'cancelling'].includes(before) && !isActiveRun(run)
-          && permission === 'granted' && (document.hidden || selectedRef.current !== test.id)) {
-          const label = run.kind === 'author' ? (run.authorMode === 'summary' ? '驗收摘要' : 'AI 撰寫') : run.kind === 'validation' ? '草稿驗證' : '正式執行';
-          try { new Notification(`${test.name}`, { body: `${label}${run.authorPartial ? '部分完成，等待繼續' : run.status === 'succeeded' ? '已完成' : '未成功'}`, tag: run.id }); } catch { /* 通知失敗不影響任務。 */ }
+      const runs = runsByTest[test.id];
+      if (!runs) continue;
+      const before = previous.current.get(test.id);
+      const known = before ?? new Map<string, boolean>();
+      previous.current.set(test.id, known);
+      for (const run of runs) {
+        const active = isActiveRun(run);
+        const wasActive = known.get(run.id);
+        known.set(run.id, active);
+        if (!before || active || wasActive === false) continue;
+        const author = run.kind === 'author';
+        const viewed = author ? viewedAuthorRef.current : selectedRef.current;
+        if ((viewed === test.id && !document.hidden) || (!author && !wasActive)) continue;
+        const message = author ? authorResultMessage(run) : `${run.kind === 'validation' ? '草稿驗證' : '正式執行'}${run.status === 'succeeded' ? '已完成' : '未成功'}`;
+        if (author) batch.push({ id: run.id, testName: test.name, message });
+        if (permission === 'granted' && (!author || document.hidden)) {
+          try { new Notification(test.name, { body: message, tag: run.id }); } catch { /* 通知失敗不影響任務。 */ }
         }
       }
     }
-  }, [runsByTest, permission]);
+    if (batch.length) notify(batch);
+  }, [runsByTest, permission, notify]);
 
   const activity = useMemo(() => {
     const map: Record<string, TestActivity> = {};
@@ -164,11 +210,15 @@ export function useActivity(api: WhippetApi, tests: Test[], selectedId: string |
         stages = publishedTrail.map((stage) => ({ ...stage, state: 'todo' as const }));
         label = '尚未開始編輯';
       }
-      const sig = signature(runs);
-      map[test.id] = { stages, label, running, bad, unread: Boolean(sig) && seen[test.id] !== undefined && seen[test.id] !== sig && !(test.id === selectedId && !document.hidden) };
+      const sig = runKeys[test.id];
+      const author = authors[test.id];
+      const unreadAuthor = author && seenAuthors[test.id] !== undefined && seenAuthors[test.id] !== authorKeys[test.id] && (test.id !== viewedAuthorId || document.hidden)
+        ? authorResultMessage(author) : undefined;
+      const unread = Boolean(sig) && seen[test.id] !== undefined && seen[test.id] !== sig && (test.id !== selectedId || document.hidden);
+      map[test.id] = { stages, label, running, bad, unread: unread || Boolean(unreadAuthor), unreadAuthor };
     }
     return map;
-  }, [tests, runsByTest, seen, selectedId]);
+  }, [tests, runsByTest, runKeys, authors, authorKeys, seen, seenAuthors, selectedId, viewedAuthorId]);
 
   const running = Object.values(activity).filter((item) => item.running).length;
   const unread = Object.values(activity).filter((item) => item.unread).length;

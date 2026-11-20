@@ -5,9 +5,9 @@ export function CapabilityStatus({ label, capability }: { label: string; capabil
   return <p className="capability-state"><strong>{label}：{capability ? capability.available ? '可用' : '尚未就緒' : '未知'}</strong><span className="inline-hint">{capabilityReason(capability)}</span></p>;
 }
 
-export function WorkspaceAvailability({ workspace }: { workspace: WorkspaceDetail }) {
+export function WorkspaceAvailability({ workspace, heading: Heading = 'h3' }: { workspace: WorkspaceDetail; heading?: 'h2' | 'h3' }) {
   return <section className="workspace-capability" aria-label="Workspace 能力狀態">
-    <h3>Workspace 能力</h3>
+    <Heading>Workspace 能力</Heading>
     <CapabilityStatus label="AI 探索" capability={workspace.capabilities?.aiExploration} />
     <CapabilityStatus label="AI 腳本執行" capability={workspace.capabilities?.aiExecution} />
     <CapabilityStatus label="工程師腳本執行" capability={workspace.capabilities?.manualExecution} />
