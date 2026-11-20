@@ -16,16 +16,18 @@ const candidate = "import {test,expect} from '@playwright/test';test('goal',asyn
 const metadata = { slug: "search", moduleKind: "step" as const, exportName: "search", signature: "search(page)", inputs: "page", returns: "void", preconditions: "original constraints", postconditions: "run/fixed" };
 const textOf = (item: Wire) => typeof item.content === "string" ? item.content : item.content.map((p: Wire) => p.text).join("");
 function task(engine: "builtin" | "vercel", module = false): AuthorInput {
+  // Keep both parts large enough to page within the fixed 22,000-token budget.
+  const modulePadding = 6200;
   const skillId = module ? "module-authoring" : "test-author", root = new URL(`../../skills/${skillId}/`, import.meta.url);
   const bytes = readFileSync(new URL("manifest.json", root)), manifest = JSON.parse(bytes.toString()), registry = loadToolRegistry();
   const runtime: AuthorRuntime = JSON.parse(readFileSync(new URL("../../../../contracts/testdata/agent-runtime.json", import.meta.url), "utf8"));
   Object.assign(runtime, { engine, profileId: engine, contextInputTokens: module ? 22000 : 28000 }); runtime.sha256 = runtimeDigest(runtime);
-  return { kind: "author", runId: id, attemptId: id, timeoutMs: 180000, script: module ? "export function search(){return 1;}\n//" + "x".repeat(6800) : candidate + "\n//" + "x".repeat(24000), author: {
+  return { kind: "author", runId: id, attemptId: id, timeoutMs: 180000, script: module ? "export function search(){return 1;}\n//" + "x".repeat(modulePadding) : candidate + "\n//" + "x".repeat(24000), author: {
     skillId, skillVersion: "1", baseRevision: 7, contextRevision: 0, conversationId: id, editingSessionId: id, sourceVersion: null, conversationSummary: "goal=保留所有斷言;constraints=原範圍;evidence=run/fixed",
     messages: [{ role: "user", content: "修復原目標，保留限制、Stage args與run/fixed證據；不可刪除斷言" },
       ...(module ? [{ role: "user" as const, content: "Stage author context (DATA): " + JSON.stringify({ stageId: "s1", args: { query: "must-retain" }, bindings: { source: "upstream/fixed" }, evidence: "run/fixed" }) }] : [])],
     allowedTools: module ? ["read_author_snapshot", "stage_module_candidate_part", "commit_module_candidate"] : ["read_author_snapshot", "update_draft"],
-    ...(module ? { platform: { planId: id, stageId: "s1", module: { ...metadata, harness: candidate + "\n//" + "y".repeat(6800) } } } : {}),
+    ...(module ? { platform: { planId: id, stageId: "s1", module: { ...metadata, harness: candidate + "\n//" + "y".repeat(modulePadding) } } } : {}),
     skills: [{ id: skillId, version: "1", sha256: sha256(readFileSync(new URL("SKILL.md", root))), manifestSha256: sha256(bytes), referenceHashes: Object.fromEntries(manifest.references.map((r: { id: string; sha256: string }) => [r.id, r.sha256])) }],
     budget: manifest.budget, model: manifest.model, toolRegistryVersion: registry.version, toolRegistrySha256: registry.sha256, runtime,
   } };

@@ -56,7 +56,8 @@ func TestM109OutputBudgetRetrySnapshot(t *testing.T) {
 	if validateToolSnapshot(fresh, registry, "update_module_candidate") == nil {
 		t.Fatal("fresh retry exposes full candidate tool")
 	}
-	if len(fresh.Messages) == 0 || fresh.Messages[len(fresh.Messages)-1].Content != body.Content {
+	// The retry request precedes the generated context for the plan stage.
+	if len(fresh.Messages) == 0 || fresh.Messages[0].Role != "user" || fresh.Messages[0].Content != body.Content {
 		t.Fatal("retry content changed")
 	}
 	replay, err := p.RetryPlanStage(ctx, plan.ID, "repair", body)
