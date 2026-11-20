@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import { useState } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import type { useActivity } from './activity';
 import { Loading, Notice, ReportLink, RunStatusBadge } from './components';
 import { BookIcon, CheckIcon, ChevronRightIcon, GearIcon, HomeIcon, PlayIcon, PlusIcon, RefreshIcon, ReportIcon } from './icons';
@@ -9,6 +9,7 @@ import './workspace-overview.css';
 
 interface Props {
   workspace: WorkspaceDetail;
+  titleRef: RefObject<HTMLHeadingElement | null>;
   tests: Test[];
   testsLoading: boolean;
   testsError?: string;
@@ -28,10 +29,8 @@ const runDate = new Intl.DateTimeFormat('zh-TW', { dateStyle: 'short', timeStyle
 const number = new Intl.NumberFormat('zh-TW');
 const scopeLabels = { confirmed: '範圍已確認', unconfirmed: '範圍待確認', revoking: '正在撤回範圍' };
 
-export function WorkspaceOverview({ workspace, tests, testsLoading, testsError, onRefreshTests, runHistory, apiBase, creating, createError, onCreate, onSettings, onOpenTest }: Props) {
-  const title = useRef<HTMLHeadingElement>(null);
+export function WorkspaceOverview({ workspace, titleRef, tests, testsLoading, testsError, onRefreshTests, runHistory, apiBase, creating, createError, onCreate, onSettings, onOpenTest }: Props) {
   const [runPage, setRunPage] = useState(1);
-  useEffect(() => { title.current?.focus(); }, []);
 
   const { runsByTest, failedRunLoads, refreshingRuns, refreshRuns } = runHistory;
   const testsReady = !testsLoading && !testsError;
@@ -80,7 +79,7 @@ export function WorkspaceOverview({ workspace, tests, testsLoading, testsError, 
       <header className="workspace-masthead">
         <div className="workspace-masthead-identity">
           <div className="workspace-masthead-context"><HomeIcon /><span>Workspace 概覽</span><span className={`chip ${setupNeeded ? 'warm' : 'ok'}`}>{scopeLabels[workspace.scopeStatus]}</span></div>
-          <h1 id="workspace-overview-title" ref={title} tabIndex={-1}>{workspace.name}</h1>
+          <h1 id="workspace-overview-title" ref={titleRef} tabIndex={-1}>{workspace.name}</h1>
           <p>{workspace.settings?.purpose.trim() || '尚未設定驗測目的。'}</p>
         </div>
         {onCreate || onSettings ? <div className="workspace-masthead-actions">

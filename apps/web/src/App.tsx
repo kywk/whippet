@@ -10,7 +10,7 @@ import type { BackgroundCompletion } from './activity';
 import { useLegacyTestTags } from './tags';
 import { MiniTrail } from './trail';
 import { useResource } from './hooks';
-import { ArrowRightIcon, BellIcon, CheckIcon, ChevronDownIcon, CloseIcon, FilterIcon, GearIcon, MenuIcon, PlusIcon, RefreshIcon, SearchIcon, SidebarIcon } from './icons';
+import { ArchiveIcon, ArrowRightIcon, BellIcon, BookIcon, CheckIcon, ChevronDownIcon, CloseIcon, FilterIcon, GearIcon, LogOutIcon, MenuIcon, PlusIcon, RefreshIcon, SearchIcon, SidebarIcon, UsersIcon } from './icons';
 import whippetIcon from './assets/whippet-icon.png';
 import whippetIllustration from './assets/whippet-illustration.webp';
 import type { DevUser, Test, WhippetApi, WorkspaceDetail } from './types';
@@ -188,6 +188,18 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onUserUpdated, onSe
     tests: canManageTests, catalog: canManageTests, archive: canManageTests,
   }[surface];
   const visibleSurface = surfaceAllowed ? surface : 'overview';
+  const overviewTitle = useRef<HTMLHeadingElement>(null);
+  const previousView = useRef<{ workspaceId?: string; surface: Surface }>({ surface: 'overview' });
+  const workspaceId = workspace?.id;
+  useEffect(() => {
+    const previous = previousView.current;
+    previousView.current = { workspaceId, surface: visibleSurface };
+    // Keep the browser's focus order on arrival. Announce subsequent overview navigation.
+    if (previous.workspaceId && visibleSurface === 'overview' &&
+        (previous.workspaceId !== workspaceId || previous.surface !== visibleSurface)) {
+      overviewTitle.current?.focus({ preventScroll: true });
+    }
+  }, [workspaceId, visibleSurface]);
   useEffect(() => {
     if (!workspaces.data) return;
     if (!surfaceAllowed) setSurface('overview');
@@ -250,7 +262,9 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onUserUpdated, onSe
         {user.permissions.createWorkspace ? <button type="button" className="button rail-primary" onClick={() => { openSetup(true); rail.close(); }}><PlusIcon />建立 Workspace</button> : null}
         <div className="rail-foot">
           <RailTools user={user} onLogout={onLogout} panel={rail.tools}>
-            {canManageUsers ? <button type="button" className="rail-link wide" aria-current={visibleSurface === 'users' ? 'page' : undefined} onClick={() => { openSurface('users'); rail.close(); }}>全站使用者管理</button> : null}
+            {canManageUsers ? <div className="rail-tools-section">
+              <button type="button" className="rail-link wide" aria-current={visibleSurface === 'users' ? 'page' : undefined} onClick={() => { openSurface('users'); rail.close(); }}>全站使用者管理</button>
+            </div> : null}
           </RailTools>
         </div>
       </nav>
@@ -269,7 +283,7 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onUserUpdated, onSe
   }
   return <>
     <TestBrowser key={workspace.id} api={api} apiBase={apiBase} mock={mock} user={user} onLogout={onLogout}
-      workspace={workspace} workspaces={allWorkspaces} switchWorkspace={switchWorkspace} openSetup={openSetup} rail={rail}
+      workspace={workspace} workspaces={allWorkspaces} overviewTitle={overviewTitle} switchWorkspace={switchWorkspace} openSetup={openSetup} rail={rail}
       surface={visibleSurface} setSurface={setSurface} setupTarget={setupTarget} onDirtyChange={onDirtyChange} confirmNavigation={confirmTestNavigation} confirmReload={confirmNavigation}
       administration={<>{setupView}{usersView}{membersView}</>} onOpenSurface={openSurface} onBackgroundCompletion={addCompletions} />
     <BackgroundNotices completions={completions} onExpire={expireCompletion} />
@@ -323,9 +337,9 @@ function RailTools({ user, onLogout, panel, children }: { user: DevUser; onLogou
     <button type="button" className="rail-link rail-tools-trigger" popoverTarget="rail-tools">更多功能<ChevronDownIcon /></button>
     <div id="rail-tools" className="rail-tools-panel" role="group" aria-label="更多功能" popover="auto" ref={panel}>
       {children}
-      <div className="rail-tools-account">
+      <div className="rail-tools-section rail-tools-account">
         <p className="rail-identity"><span className="sr-only">登入身分 </span>{user.name}{user.role !== 'none' && siteRoleNames[user.role] !== user.name ? ` · ${siteRoleNames[user.role]}` : ''}</p>
-        <button type="button" className="rail-link" onClick={onLogout}>登出</button>
+        <button type="button" className="rail-link" onClick={onLogout}><LogOutIcon />登出</button>
       </div>
     </div>
   </>;
@@ -333,6 +347,7 @@ function RailTools({ user, onLogout, panel, children }: { user: DevUser; onLogou
 
 interface BrowserProps extends Pick<AppProps, 'api' | 'apiBase' | 'mock'>, EditingGuard {
   user: DevUser; onLogout: () => void; workspace: WorkspaceDetail; workspaces: WorkspaceDetail[];
+  overviewTitle: RefObject<HTMLHeadingElement | null>;
   switchWorkspace: (id: string) => void; openSetup: (create?: boolean) => void;
   surface: Surface; setSurface: (surface: Surface) => void; setupTarget?: string;
   confirmReload: () => boolean;
@@ -341,7 +356,7 @@ interface BrowserProps extends Pick<AppProps, 'api' | 'apiBase' | 'mock'>, Editi
   onBackgroundCompletion: (batch: BackgroundCompletion[]) => void;
 }
 
-function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout, switchWorkspace, openSetup, surface, setSurface, setupTarget, onDirtyChange, confirmNavigation, confirmReload, administration, onOpenSurface, rail, onBackgroundCompletion }: BrowserProps) {
+function TestBrowser({ workspace, workspaces, overviewTitle, api, apiBase, mock, user, onLogout, switchWorkspace, openSetup, surface, setSurface, setupTarget, onDirtyChange, confirmNavigation, confirmReload, administration, onOpenSurface, rail, onBackgroundCompletion }: BrowserProps) {
   const { manageTests, manageSettings, manageMembers } = workspace.permissions;
   const loadTests = useCallback((signal: AbortSignal) => manageTests ? api.listTests(workspace.id, signal) : Promise.resolve([]), [api, workspace.id, manageTests]);
   const tests = useResource(loadTests, true);
@@ -555,7 +570,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
         </> : null}
         <div className="rail-foot">
           <RailTools user={user} onLogout={onLogout} panel={rail.tools}>
-            <div className="rail-workspace-switch" role="group" aria-label="切換 Workspace">
+            <div className="rail-tools-section rail-workspace-switch" role="group" aria-label="切換 Workspace">
               <p>切換 Workspace</p>
               <ul>{workspaces.map((item) => <li key={item.id}>
                 <button type="button" className="rail-link wide rail-workspace-option" aria-current={item.id === workspace.id ? 'true' : undefined} title={item.name} onClick={() => switchWorkspace(item.id)}>
@@ -563,16 +578,21 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
                 </button>
               </li>)}</ul>
             </div>
-            {manageTests ? <>
-              <button type="button" className="rail-link wide" aria-current={surface === 'catalog' ? 'page' : undefined} onClick={() => openRailSurface('catalog')}>Module 模組庫</button>
-              <button type="button" className="rail-link wide" aria-current={surface === 'archive' ? 'page' : undefined} onClick={() => openRailSurface('archive')}>已封存測試</button>
-              <a className="rail-link wide" href="?preview=m10" onClick={(event) => { if (!confirmNavigation()) event.preventDefault(); }}>Module / Use Case 合成預覽</a>
-            </> : null}
-            {manageSettings ? <button type="button" className="rail-link wide" aria-current={surface === 'settings' && setupTarget !== 'create' ? 'page' : undefined} onClick={() => { openSetup(); rail.close(); }}><GearIcon />Workspace 設定</button> : null}
-            {manageMembers ? <button type="button" className="rail-link wide" aria-current={surface === 'members' ? 'page' : undefined} onClick={() => openRailSurface('members')}>Workspace 成員管理</button> : null}
-            {user.permissions.manageUsers ? <button type="button" className="rail-link wide" aria-current={surface === 'users' ? 'page' : undefined} onClick={() => openRailSurface('users')}>全站使用者管理</button> : null}
-            {user.permissions.createWorkspace ? <button type="button" className="rail-link wide" onClick={() => { openSetup(true); rail.close(); }}><PlusIcon />建立 Workspace</button> : null}
-            {permission === 'default' ? <button type="button" className="rail-link wide" onClick={() => { void enableNotifications(); }}><BellIcon />啟用瀏覽器通知</button> : permission === 'granted' ? <p className="rail-note"><BellIcon />瀏覽器通知已開啟</p> : null}
+            {manageTests ? <div className="rail-tools-section" role="group" aria-label="測試資產">
+              <button type="button" className="rail-link wide" aria-current={surface === 'catalog' ? 'page' : undefined} onClick={() => openRailSurface('catalog')}><BookIcon />Module 模組庫</button>
+              <button type="button" className="rail-link wide" aria-current={surface === 'archive' ? 'page' : undefined} onClick={() => openRailSurface('archive')}><ArchiveIcon />已封存測試</button>
+              <a className="rail-link wide rail-tools-text-link" href="?preview=m10" onClick={(event) => { if (!confirmNavigation()) event.preventDefault(); }}>Module / Use Case 合成預覽</a>
+            </div> : null}
+            {manageSettings || manageMembers || user.permissions.manageUsers || user.permissions.createWorkspace ? <div className="rail-tools-section" role="group" aria-label="管理">
+              {manageSettings ? <button type="button" className="rail-link wide" aria-current={surface === 'settings' && setupTarget !== 'create' ? 'page' : undefined} onClick={() => { openSetup(); rail.close(); }}><GearIcon />Workspace 設定</button> : null}
+              {manageMembers ? <button type="button" className="rail-link wide" aria-current={surface === 'members' ? 'page' : undefined} onClick={() => openRailSurface('members')}><UsersIcon />Workspace 成員管理</button> : null}
+              {user.permissions.manageUsers ? <button type="button" className="rail-link wide rail-tools-text-link" aria-current={surface === 'users' ? 'page' : undefined} onClick={() => openRailSurface('users')}>全站使用者管理</button> : null}
+              {user.permissions.createWorkspace ? <button type="button" className="rail-link wide" onClick={() => { openSetup(true); rail.close(); }}><PlusIcon />建立 Workspace</button> : null}
+            </div> : null}
+            {permission === 'default' || permission === 'granted' ? <div className="rail-tools-section">
+              {permission === 'default' ? <button type="button" className="rail-link wide" onClick={() => { void enableNotifications(); }}><BellIcon />啟用瀏覽器通知</button>
+                : <p className="rail-note"><BellIcon />瀏覽器通知已開啟</p>}
+            </div> : null}
           </RailTools>
           <p className="rail-activity" aria-live="polite">
             {running ? <span>{running} 項進行中</span> : null}
@@ -598,6 +618,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
         {administration}
         {showOverview ? <WorkspaceOverview
           workspace={workspace}
+          titleRef={overviewTitle}
           tests={allTests}
           testsLoading={tests.loading}
           testsError={tests.error}

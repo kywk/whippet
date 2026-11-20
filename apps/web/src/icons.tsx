@@ -18,6 +18,7 @@ export const ScriptIcon = () => <Icon><path d="m7 6-4 4 4 4m6-8 4 4-4 4M11 4 9 1
 export const ReportIcon = () => <Icon><path d="M5 3h7l3 3v11H5z" /><path d="M12 3v3h3M8 10h4M8 13h4" /></Icon>;
 export const EyeIcon = () => <Icon><path d="M2 10s3-5.5 8-5.5S18 10 18 10s-3 5.5-8 5.5S2 10 2 10Z" /><circle cx="10" cy="10" r="2.2" /></Icon>;
 export const BookIcon = () => <Icon><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H16v12H5.5A1.5 1.5 0 0 0 4 16.5z" /><path d="M4 16.5A1.5 1.5 0 0 0 5.5 18H16" /></Icon>;
+export const ArchiveIcon = () => <Icon><rect x="3" y="4" width="14" height="4" rx="1" /><path d="M4.5 8v7.5A1.5 1.5 0 0 0 6 17h8a1.5 1.5 0 0 0 1.5-1.5V8M8 11h4" /></Icon>;
 export const TrashIcon = () => <Icon><path d="M4 6h12M8 6V4h4v2m-6 0 .6 10h6.8L14 6" /></Icon>;
 export const RefreshIcon = () => <Icon><path d="M16 10a6 6 0 1 1-1.8-4.3M16 3.5v3h-3" /></Icon>;
 export const ExternalIcon = () => <Icon><path d="M11 4h5v5m0-5-8 8M8 4H4v12h12v-4" /></Icon>;
@@ -29,6 +30,8 @@ export const GearIcon = () => <Icon><circle cx="10" cy="10" r="2.5" /><path d="M
 export const AlertIcon = () => <Icon><path d="M10 3 2.5 16.5h15z" /><path d="M10 8v4m0 2.5v.01" /></Icon>;
 export const InfoIcon = () => <Icon><circle cx="10" cy="10" r="7" /><path d="M10 9v4.5m0-7v.01" /></Icon>;
 export const LockIcon = () => <Icon><rect x="4.5" y="9" width="11" height="8" rx="1.5" /><path d="M7 9V6.5a3 3 0 0 1 6 0V9" /></Icon>;
+export const UsersIcon = () => <Icon><circle cx="7.5" cy="6.5" r="2.5" /><path d="M2.5 16v-1a3.5 3.5 0 0 1 3.5-3.5h3a3.5 3.5 0 0 1 3.5 3.5v1m.5-11.9a2.5 2.5 0 0 1 0 4.8m1.5 2.6a3.5 3.5 0 0 1 3 3.5v1" /></Icon>;
+export const LogOutIcon = () => <Icon><path d="M9 4H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h4m-1-6h9m-3.5-3.5L17 10l-3.5 3.5" /></Icon>;
 export const PanelIcon = () => <Icon><rect x="3" y="4" width="14" height="12" rx="2" /><path d="M12.5 4v12" /></Icon>;
 export const SidebarIcon = () => <Icon><rect x="3" y="4" width="14" height="12" rx="2" /><path d="M7.5 4v12" /></Icon>;
 export const ExpandIcon = () => <Icon><path d="M12.5 3.5h4v4M16.5 3.5l-4.8 4.8M7.5 16.5h-4v-4M3.5 16.5l4.8-4.8" /></Icon>;
