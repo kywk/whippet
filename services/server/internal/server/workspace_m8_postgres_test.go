@@ -232,6 +232,37 @@ func TestM8WorkspaceSliceA(t *testing.T) {
 	if err != nil || opened != values || bytes.Contains(sealed, []byte(values.Password)) {
 		t.Fatal("AEAD persisted values invalid")
 	}
+	// Listing must preserve current proposals and the role-derived capabilities
+	// while still applying each member's projection after capability evaluation.
+	p.CredentialTLS = true
+	detail, err := p.Workspace(ctx, w1.ID)
+	if err != nil || !detail.Capabilities.CredentialLogin.Available {
+		t.Fatal("expected configured credential capability", err)
+	}
+	checkList := func(items []Workspace, expected Workspace) {
+		t.Helper()
+		if len(items) != 3 || items[0].ID >= items[1].ID || items[1].ID >= items[2].ID {
+			t.Fatal("expected three workspaces in ascending ID order")
+		}
+		for _, item := range items {
+			if item.ID == w2.ID && (item.CurrentProposal != nil || len(item.Roles) != 0) {
+				t.Fatal("proposal or role crossed workspace")
+			}
+			if item.ID == w1.ID && jsonText(item) != jsonText(expected) {
+				t.Fatal("list and detail disagree for workspace with proposal and credentials")
+			}
+		}
+	}
+	items, err := p.Workspaces(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkList(items, detail)
+	items, err = p.memberWorkspaces(ctx, developmentQA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkList(items, presentWorkspace(detail, permissionsForWorkspace(noSiteRole, workspaceQA)))
 	p.Secrets = nil
 	if _, err := p.SaveWorkspaceCredentials(ctx, w1.ID, role, 2, values); !errors.Is(err, ErrSecretsUnavailable) {
 		t.Fatal("missing key fallback")

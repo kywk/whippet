@@ -132,32 +132,13 @@ func (m *Manager) saveSessionLocked(r sessionRecord) error {
 		return err
 	}
 	m.sessions[r.SessionID] = r
+	m.sessionSlots.update(r.SessionID, !r.Reclaimed)
 	return nil
-}
-func (m *Manager) sessionSlotCountLocked() int {
-	n := 0
-	for _, r := range m.sessions {
-		if !r.Reclaimed {
-			n++
-		}
-	}
-	return n
 }
 func (m *Manager) sessionSlotCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.sessionSlotCountLocked()
-}
-func (m *Manager) sessionStates() []map[string]string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	states := make([]map[string]string, 0)
-	for _, r := range m.sessions {
-		if !r.Reclaimed {
-			states = append(states, map[string]string{"sessionId": r.SessionID, "leaseId": r.LeaseID, "state": r.State})
-		}
-	}
-	return states
+	return len(m.sessionSlots)
 }
 func (m *Manager) validateSessionEnvelope(env Envelope) error {
 	if env.ProtocolVersion != 1 || env.ManagerID != m.cfg.ManagerID || !uuidPattern.MatchString(env.MessageID) || env.RunID != "" || env.AttemptID != "" {
@@ -232,13 +213,7 @@ func (m *Manager) openSession(ctx context.Context, env Envelope) error {
 		}
 		return nil
 	}
-	active := m.sessionSlotCountLocked()
-	for _, r := range m.records {
-		if r.holdsSlot() {
-			active++
-		}
-	}
-	if active >= m.cfg.MaxWorkers {
+	if m.occupiedSlotsLocked() >= m.cfg.MaxWorkers {
 		m.mu.Unlock()
 		return sessionWireError("capacity_full")
 	}

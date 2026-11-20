@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, errorMessage } from './api';
-import { ArchiveTestDialog } from './ArchivedTests';
+import { ArchiveTestDialog } from './ArchiveTestDialog';
 import { executionCapabilityForScript } from './capabilities';
-import { Loading, Notice } from './components';
+import { Loading, Notice, SurfaceBoundary } from './components';
 import { ConfirmScriptEditDialog } from './ConfirmScriptEditDialog';
-import { DraftEditor } from './DraftEditor';
 import { LiveView } from './LiveView';
 import { RunHistory } from './RunHistory';
 import { DiscardSessionDialog } from './DiscardSessionDialog';
@@ -13,6 +12,8 @@ import { TestOverview } from './TestOverview';
 import { VersionHistory } from './VersionHistory';
 import { useResource, useRuns } from './hooks';
 import type { ActiveEditingSession, AuthorEngine, Draft, EditingSession, Run, Test, TestMetadataPatch, Version, WhippetApi, WorkspaceCapabilities } from './types';
+
+const DraftEditor = lazy(() => import('./DraftEditor').then(({ DraftEditor }) => ({ default: DraftEditor })));
 
 interface Props {
   testId: string;
@@ -33,6 +34,7 @@ interface Props {
   authorEngine: AuthorEngine;
   settingsRefresh: number;
   onDirtyChange: (dirty: boolean) => void;
+  confirmReload: () => boolean;
   onTestUpdated: (test: Test) => void;
   onTestRemoved: (testId: string) => void;
   onArchived: (test: Test) => void;
@@ -40,7 +42,7 @@ interface Props {
   onEditSimilarTest: (test: Test, content: string) => void;
 }
 
-export function TestWorkspace({ testId, api, apiBase, initialEditing, editHandoff, preferredMode, onModeChange, onConversationVisibilityChange, unreadAuthor, railCollapsed, onExpandRail, unreadCount, tags, workspaceTags, capabilities, authorEngine, settingsRefresh, onDirtyChange, onTestUpdated, onTestRemoved, onArchived, onTestCreated, onEditSimilarTest }: Props) {
+export function TestWorkspace({ testId, api, apiBase, initialEditing, editHandoff, preferredMode, onModeChange, onConversationVisibilityChange, unreadAuthor, railCollapsed, onExpandRail, unreadCount, tags, workspaceTags, capabilities, authorEngine, settingsRefresh, onDirtyChange, confirmReload, onTestUpdated, onTestRemoved, onArchived, onTestCreated, onEditSimilarTest }: Props) {
   const loadTest = useCallback((signal: AbortSignal) => api.getTest(testId, signal), [api, testId]);
   const loadVersions = useCallback((signal: AbortSignal) => api.listVersions(testId, signal), [api, testId]);
   const test = useResource(loadTest);
@@ -359,12 +361,14 @@ export function TestWorkspace({ testId, api, apiBase, initialEditing, editHandof
         <p className="inline-hint">{session.reclaimPending ? '等待執行節點確認回收，尚未完成放棄。' : '正在確認本週期所有任務已終止。'}待確認任務：{session.pendingRunIds.length}；正式執行不受影響。</p>
         <div className="action-row"><button className="button quiet compact" disabled={sessionRefreshing} onClick={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }}>重新載入週期</button></div></section> : null)
         : sessionBusy ? <Loading text="正在開始或接續編輯週期…" /> : <div className="mode-empty"><p>尚未載入編輯週期。請重試開始或接續修改。</p><button className="button secondary" onClick={requestEdit}>開始或接續修改</button></div>}
-      {session && session.draft && (session.status === 'active' || session.status === 'discarding') ? <DraftEditor key={session.id} api={api} apiBase={apiBase} testId={testId} capabilities={capabilities} authorEngine={authorEngine} session={session} sessionRefreshing={sessionRefreshing} onRefreshSession={refreshSession} runs={editingRuns} onRun={history.addRun} onPublished={published} onDirtyChange={handleEditorGuard} onRefreshRuns={history.refresh} settingsRefresh={settingsRefresh} onDraftChange={setKnownDraft} onDiscard={session.status === 'active' ? () => { void askDiscard(); } : undefined} discardBusy={sessionBusy} onReloadSession={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }} testName={loadedTest.current?.name} testKind={loadedTest.current?.kind} testSlug={loadedTest.current?.slug}
-        onReplaceDraft={session.status === 'active' ? (id, revision) => { void askDiscard({ id, revision }); } : undefined} deletesTest={deletesUnpublishedTest}
-        onEditSimilarTest={onEditSimilarTest} handoffContent={editHandoff?.sessionId === session.id ? editHandoff.content : undefined}
-        onWatch={startLive} liveView={mode === 'editing' && liveRun?.editingSessionId === session.id ? liveView : null}
-        renderRunHistory={(onWatch) => <RunHistory {...runHistoryProps} runs={editingRuns} group="editing" onWatch={onWatch} />}
-      /> : null}
+      {session && session.draft && (session.status === 'active' || session.status === 'discarding') ? <SurfaceBoundary key={session.id} loadingText="正在開啟草稿編輯器…" confirmReload={confirmReload}>
+        <DraftEditor api={api} apiBase={apiBase} testId={testId} capabilities={capabilities} authorEngine={authorEngine} session={session} sessionRefreshing={sessionRefreshing} onRefreshSession={refreshSession} runs={editingRuns} onRun={history.addRun} onPublished={published} onDirtyChange={handleEditorGuard} onRefreshRuns={history.refresh} settingsRefresh={settingsRefresh} onDraftChange={setKnownDraft} onDiscard={session.status === 'active' ? () => { void askDiscard(); } : undefined} discardBusy={sessionBusy} onReloadSession={() => { void refreshSession().catch((cause: unknown) => setSessionError(errorMessage(cause))); }} testName={loadedTest.current?.name} testKind={loadedTest.current?.kind} testSlug={loadedTest.current?.slug}
+          onReplaceDraft={session.status === 'active' ? (id, revision) => { void askDiscard({ id, revision }); } : undefined} deletesTest={deletesUnpublishedTest}
+          onEditSimilarTest={onEditSimilarTest} handoffContent={editHandoff?.sessionId === session.id ? editHandoff.content : undefined}
+          onWatch={startLive} liveView={mode === 'editing' && liveRun?.editingSessionId === session.id ? liveView : null}
+          renderRunHistory={(onWatch) => <RunHistory {...runHistoryProps} runs={editingRuns} group="editing" onWatch={onWatch} />}
+        />
+      </SurfaceBoundary> : null}
     </div> : null}
     {confirmingEdit ? <ConfirmScriptEditDialog hasDraft={activeInfo?.status === 'active'} onCancel={() => setConfirmingEdit(false)} onConfirm={() => { setConfirmingEdit(false); void edit(); }} /> : null}
     {archiveTarget ? <ArchiveTestDialog api={api} test={archiveTarget} activeEditing={Boolean(activeInfo)} onCancel={() => setArchiveTarget(undefined)} onArchived={onArchived} /> : null}

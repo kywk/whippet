@@ -32,11 +32,10 @@ func (m *Manager) cancelAttempt(ctx context.Context, env Envelope) error {
 	}
 	if !r.CancelRequested {
 		r.CancelRequested = true
-		if err := atomicJSON(m.journalPath(r), r); err != nil {
+		if err := m.saveRecordLocked(r); err != nil {
 			m.mu.Unlock()
 			return fmt.Errorf("persist cancellation before stopping Worker: %w", err)
 		}
-		m.records[r.AttemptID] = r
 	}
 	if cancel := m.controls[r.AttemptID]; cancel != nil {
 		cancel()

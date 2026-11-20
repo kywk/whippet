@@ -10,19 +10,24 @@ import (
 
 func jsonText(value any) string { data, _ := json.Marshal(value); return string(data) }
 
-func readWorkspaceCore(ctx context.Context, q queryDB, id string, lock bool) (Workspace, *string, error) {
-	var w Workspace
-	var legacy, config []byte
-	var proposalID *string
-	stmt := `SELECT w.id,w.name,w.settings,w.lifecycle,w.canonical_config,w.authorization_revision,w.scope_status,
+const workspaceCoreColumns = `w.id,w.name,w.settings,w.lifecycle,w.canonical_config,w.authorization_revision,w.scope_status,
  (SELECT c.id FROM conversations c WHERE c.workspace_id=w.id AND c.owner_type='workspace'),
- (SELECT r.id FROM runs r WHERE r.workspace_id=w.id AND r.test_id IS NULL AND r.kind='author' AND r.status IN ('queued','dispatched','running','collecting','cancelling')),w.current_proposal_id,w.author_engine
- FROM workspaces w WHERE w.id=$1`
+ (SELECT r.id FROM runs r WHERE r.workspace_id=w.id AND r.test_id IS NULL AND r.kind='author' AND r.status IN ('queued','dispatched','running','collecting','cancelling')),w.current_proposal_id,w.author_engine`
+
+func readWorkspaceCore(ctx context.Context, q queryDB, id string, lock bool) (Workspace, *string, error) {
+	stmt := `SELECT ` + workspaceCoreColumns + ` FROM workspaces w WHERE w.id=$1`
 	if lock {
 		stmt += " FOR UPDATE OF w"
 	}
-	err := q.QueryRowContext(ctx, stmt, id).Scan(&w.ID, &w.Name, &legacy, &w.Lifecycle, &config, &w.AuthorizationRevision, &w.ScopeStatus, &w.ConversationID, &w.ActiveRunID, &proposalID, &w.AuthorEngine)
-	if err != nil {
+	return scanWorkspaceCore(q.QueryRowContext(ctx, stmt, id))
+}
+
+func scanWorkspaceCore(row scanner, extra ...any) (Workspace, *string, error) {
+	var w Workspace
+	var legacy, config []byte
+	var proposalID *string
+	fields := []any{&w.ID, &w.Name, &legacy, &w.Lifecycle, &config, &w.AuthorizationRevision, &w.ScopeStatus, &w.ConversationID, &w.ActiveRunID, &proposalID, &w.AuthorEngine}
+	if err := row.Scan(append(fields, extra...)...); err != nil {
 		return w, nil, dbError(err)
 	}
 	s, err := decodeSettings(legacy)
@@ -38,16 +43,20 @@ func readWorkspaceCore(ctx context.Context, q queryDB, id string, lock bool) (Wo
 	return w, proposalID, nil
 }
 
+const workspaceProposalColumns = `id,workspace_id,conversation_id,source_run_id,base_revision,context_revision,status,content,scope_hash,scope_confirmed,invalidation_reason,applied_revision,created_at`
+
 func readProposal(ctx context.Context, q queryDB, workspaceID, id string, lock bool) (WorkspaceProposal, error) {
-	var p WorkspaceProposal
-	var raw []byte
-	stmt := `SELECT id,workspace_id,conversation_id,source_run_id,base_revision,context_revision,status,content,scope_hash,scope_confirmed,invalidation_reason,applied_revision,created_at
- FROM workspace_proposals WHERE id=$1 AND workspace_id=$2`
+	stmt := `SELECT ` + workspaceProposalColumns + ` FROM workspace_proposals WHERE id=$1 AND workspace_id=$2`
 	if lock {
 		stmt += " FOR UPDATE"
 	}
-	err := q.QueryRowContext(ctx, stmt, id, workspaceID).Scan(&p.ID, &p.WorkspaceID, &p.ConversationID, &p.SourceRunID, &p.BaseRevision, &p.ContextRevision, &p.Status, &raw, &p.ScopeHash, &p.ScopeConfirmed, &p.InvalidationReason, &p.AppliedRevision, &p.CreatedAt)
-	if err != nil {
+	return scanWorkspaceProposal(q.QueryRowContext(ctx, stmt, id, workspaceID))
+}
+
+func scanWorkspaceProposal(row scanner) (WorkspaceProposal, error) {
+	var p WorkspaceProposal
+	var raw []byte
+	if err := row.Scan(&p.ID, &p.WorkspaceID, &p.ConversationID, &p.SourceRunID, &p.BaseRevision, &p.ContextRevision, &p.Status, &raw, &p.ScopeHash, &p.ScopeConfirmed, &p.InvalidationReason, &p.AppliedRevision, &p.CreatedAt); err != nil {
 		return p, dbError(err)
 	}
 	if json.Unmarshal(raw, &p.Content) != nil {
@@ -66,6 +75,29 @@ func fillWorkspace(ctx context.Context, q queryDB, w Workspace, proposalID *stri
 		}
 		w.CurrentProposal = &p
 	}
+	ids := workspaceRoleIDs(w)
+	rows, err := q.QueryContext(ctx, `SELECT `+workspaceRoleColumns+` FROM workspace_roles WHERE workspace_id=$1 ORDER BY id`, w.ID)
+	if err != nil {
+		return w, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		ref, err := scanWorkspaceRole(rows)
+		if err != nil {
+			return w, err
+		}
+		if ids[ref.RoleID] {
+			w.Roles = append(w.Roles, ref)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return w, err
+	}
+	setWorkspaceAvailability(&w, secrets, len(tls) > 0 && tls[0])
+	return w, nil
+}
+
+func workspaceRoleIDs(w Workspace) map[string]bool {
 	ids := map[string]bool{}
 	if w.Settings != nil {
 		for _, role := range w.Settings.LoginRoles {
@@ -81,29 +113,25 @@ func fillWorkspace(ctx context.Context, q queryDB, w Workspace, proposalID *stri
 			}
 		}
 	}
-	rows, err := q.QueryContext(ctx, `SELECT id,secret_ref,secret_version,configured FROM workspace_roles WHERE workspace_id=$1 ORDER BY id`, w.ID)
-	if err != nil {
-		return w, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var ref RoleRef
-		if err := rows.Scan(&ref.RoleID, &ref.SecretRef, &ref.SecretVersion, &ref.Configured); err != nil {
-			return w, err
-		}
-		if ids[ref.RoleID] {
-			w.Roles = append(w.Roles, ref)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return w, err
-	}
-	w.Capabilities = workspaceCapabilities(w, secrets, len(tls) > 0 && tls[0])
+	return ids
+}
+
+const workspaceRoleColumns = `id,secret_ref,secret_version,configured`
+
+func scanWorkspaceRole(row scanner, extra ...any) (RoleRef, error) {
+	var ref RoleRef
+	fields := []any{&ref.RoleID, &ref.SecretRef, &ref.SecretVersion, &ref.Configured}
+	err := row.Scan(append(fields, extra...)...)
+	return ref, err
+}
+
+func setWorkspaceAvailability(w *Workspace, secrets, tls bool) {
+	w.SecretsAvailable = secrets
+	w.Capabilities = workspaceCapabilities(*w, secrets, tls)
 	w.ExecutionAvailable = w.Capabilities.AIExecution.Available || w.Capabilities.ManualExecution.Available
 	if !w.ExecutionAvailable {
 		w.UnavailableReason = stringPointer("security_unavailable")
 	}
-	return w, nil
 }
 
 func workspaceContext(w Workspace) *WorkspaceContext {

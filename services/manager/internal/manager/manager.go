@@ -29,8 +29,10 @@ type Manager struct {
 	lock                       *os.File
 	mu                         sync.Mutex // records and admission
 	records                    map[string]record
+	attemptSlots               slotIndex
 	controls                   map[string]context.CancelFunc // execution only; collection uses service context
 	sessions                   map[string]sessionRecord
+	sessionSlots               slotIndex
 	sessionControls            map[string]context.CancelFunc
 	sessionsRuntime            sessionRuntime
 	sessionWorking             map[string]*sessionWorkingState
@@ -70,6 +72,14 @@ func New(cfg Config) (*Manager, error) {
 		return nil, err
 	}
 	m := &Manager{cfg: cfg, http: newHTTPClientWithTLS(tlsConfig), tlsConfig: tlsConfig, lock: lock, records: records, controls: make(map[string]context.CancelFunc), sessions: sessions, sessionControls: make(map[string]context.CancelFunc), sessionWorking: make(map[string]*sessionWorkingState), sessionIdleTimeout: 10 * time.Minute, events: make(chan Envelope, 64), secrets: make(map[string][]string)}
+	m.attemptSlots = make(slotIndex)
+	for id, r := range records {
+		m.attemptSlots.update(id, r.holdsSlot())
+	}
+	m.sessionSlots = make(slotIndex)
+	for id, r := range sessions {
+		m.sessionSlots.update(id, !r.Reclaimed)
+	}
 	if m109Enabled() {
 		m.transport = newManagerTransportDiagnostic(cfg.WorkDir)
 	}
@@ -285,13 +295,19 @@ func (m *Manager) hello() Envelope {
 }
 
 func (m *Manager) heartbeatMessage() Envelope {
-	active := make([]map[string]string, 0)
-	for _, r := range m.snapshot() {
-		if r.holdsSlot() {
-			active = append(active, map[string]string{"runId": r.RunID, "attemptId": r.AttemptID})
-		}
+	m.mu.Lock()
+	active := make([]map[string]string, 0, len(m.attemptSlots))
+	for id := range m.attemptSlots {
+		r := m.records[id]
+		active = append(active, map[string]string{"runId": r.RunID, "attemptId": r.AttemptID})
 	}
-	return message(m.cfg.ManagerID, "heartbeat", "", "", map[string]any{"active": active, "sessions": m.sessionStates()})
+	sessions := make([]map[string]string, 0, len(m.sessionSlots))
+	for id := range m.sessionSlots {
+		r := m.sessions[id]
+		sessions = append(sessions, map[string]string{"sessionId": r.SessionID, "leaseId": r.LeaseID, "state": r.State})
+	}
+	m.mu.Unlock()
+	return message(m.cfg.ManagerID, "heartbeat", "", "", map[string]any{"active": active, "sessions": sessions})
 }
 
 func (m *Manager) validateCommand(env Envelope) error {
@@ -326,23 +342,13 @@ func (m *Manager) accept(ctx context.Context, env Envelope) error {
 		}
 		return nil
 	}
-	active := 0
-	for _, existing := range m.records {
-		if existing.holdsSlot() {
-			active++
-		}
-	}
-	active += m.sessionSlotCountLocked()
-	if active >= m.cfg.MaxWorkers {
+	if m.occupiedSlotsLocked() >= m.cfg.MaxWorkers {
 		m.mu.Unlock()
 		return errors.New("Worker slot is occupied; MAX_WORKERS reached, including cleanup")
 	}
 	r := record{RunID: env.RunID, AttemptID: env.AttemptID, Phase: "accepted", TimeoutMS: dispatch.TimeoutMS, ResultMessageID: newID(), Kind: dispatch.Kind, Author: dispatch.Author, ScriptOrigin: normalizedScriptOrigin(dispatch.ScriptOrigin),
 		WorkspaceID: dispatch.WorkspaceID, TestID: dispatch.TestID, WorkspaceContext: dispatch.WorkspaceContext}
-	err := atomicJSON(m.journalPath(r), r)
-	if err == nil {
-		m.records[r.AttemptID] = r
-	}
+	err := m.saveRecordLocked(r)
 	m.mu.Unlock()
 	if err != nil {
 		return fmt.Errorf("persist dispatch before ACK: %w", err)
@@ -586,11 +592,7 @@ func (m *Manager) store(r record) error {
 		result := Result{Status: "cancelled", Error: "Server requested cancellation of this attempt"}
 		r.Result = &result
 	}
-	if err := atomicJSON(m.journalPath(r), r); err != nil {
-		return err
-	}
-	m.records[r.AttemptID] = r
-	return nil
+	return m.saveRecordLocked(r)
 }
 
 func (m *Manager) storeUntil(ctx context.Context, r record) bool {

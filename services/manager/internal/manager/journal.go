@@ -33,6 +33,31 @@ type record struct {
 
 func (r record) holdsSlot() bool { return r.Phase != "complete" && !r.Reclaimed }
 
+// The slot indexes contain only journal entries still occupying worker capacity.
+// The full records remain available for duplicate dispatches and result replay.
+type slotIndex map[string]struct{}
+
+func (s slotIndex) update(id string, occupied bool) {
+	if occupied {
+		s[id] = struct{}{}
+	} else {
+		delete(s, id)
+	}
+}
+
+func (m *Manager) occupiedSlotsLocked() int {
+	return len(m.attemptSlots) + len(m.sessionSlots)
+}
+
+func (m *Manager) saveRecordLocked(r record) error {
+	if err := atomicJSON(m.journalPath(r), r); err != nil {
+		return err
+	}
+	m.records[r.AttemptID] = r
+	m.attemptSlots.update(r.AttemptID, r.holdsSlot())
+	return nil
+}
+
 func atomicJSON(path string, value any) error {
 	data, err := json.Marshal(value)
 	if err != nil {

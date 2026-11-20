@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -159,6 +160,81 @@ func activeCount(t *testing.T, m *Manager) int {
 		t.Fatal(err)
 	}
 	return len(body.Active)
+}
+
+func TestHeartbeatCapacityTracksPersistedSlotsAcrossRestart(t *testing.T) {
+	cfg := Config{ServerURL: "http://server.invalid", ManagerID: "manager-test", WorkDir: t.TempDir(), MaxWorkers: 2}
+	m, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = m.Close() })
+	saveSession := func(r sessionRecord) error {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return m.saveSessionLocked(r)
+	}
+	assertSlots := func(wantAttempts, wantSessions int) {
+		t.Helper()
+		var heartbeat struct {
+			Active   []struct{ RunID, AttemptID string }          `json:"active"`
+			Sessions []struct{ SessionID, LeaseID, State string } `json:"sessions"`
+		}
+		err := json.Unmarshal(m.heartbeatMessage().Payload, &heartbeat)
+		if err != nil || heartbeat.Active == nil || heartbeat.Sessions == nil ||
+			len(heartbeat.Active) != wantAttempts || len(heartbeat.Sessions) != wantSessions {
+			t.Fatalf("heartbeat slots = %+v, want %d attempts and %d sessions (error: %v)", heartbeat, wantAttempts, wantSessions, err)
+		}
+		m.mu.Lock()
+		occupied := m.occupiedSlotsLocked()
+		m.mu.Unlock()
+		if occupied != wantAttempts+wantSessions {
+			t.Fatalf("occupied slots = %d, want %d", occupied, wantAttempts+wantSessions)
+		}
+	}
+	run := record{RunID: newID(), AttemptID: newID(), ResultMessageID: newID(), Phase: "running"}
+	lease := sessionRecord{SessionID: newID(), LeaseID: newID(), WorkspaceID: newID(), DeadlineAt: time.Now().Add(time.Minute).UnixMilli(), State: "ready"}
+	if err := m.store(run); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveSession(lease); err != nil {
+		t.Fatal(err)
+	}
+	history := record{RunID: newID(), AttemptID: newID(), ResultMessageID: newID(), Phase: "complete", Reclaimed: true, Result: &Result{Status: "failed"}}
+	if err := m.store(history); err != nil {
+		t.Fatal(err)
+	}
+	assertSlots(1, 1)
+
+	run.Phase = "collecting"
+	run.Result = &Result{Status: "failed"}
+	run.Reclaimed = true
+	lease.State = "reclaim_pending"
+	lease.Reclaimed = true
+	m.cfg.WorkDir = filepath.Join(cfg.WorkDir, "missing")
+	runErr, sessionErr := m.store(run), saveSession(lease)
+	m.cfg.WorkDir = cfg.WorkDir
+	if runErr == nil || sessionErr == nil {
+		t.Fatal("expected both journal writes to fail")
+	}
+	assertSlots(1, 1)
+
+	if err := m.Close(); err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = restarted
+	assertSlots(1, 1)
+	if err := m.store(run); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveSession(lease); err != nil {
+		t.Fatal(err)
+	}
+	assertSlots(0, 0)
 }
 
 func TestM2CapacityDedupAndAbnormalCleanup(t *testing.T) {

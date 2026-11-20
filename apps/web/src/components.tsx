@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { Component, Suspense, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import type { BackgroundCompletion } from './activity';
 import { resolveReportUrl } from './api';
 import { BellIcon } from './icons';
@@ -11,6 +12,25 @@ export function Notice({ message, retry, retryLabel = '重試' }: { message: str
 
 export function Loading({ text }: { text: string }) {
   return <div className="loading-state" role="status"><p>{text}</p><div className="loading-line" /><div className="loading-line short" /></div>;
+}
+
+interface SurfaceBoundaryProps {
+  children: ReactNode;
+  loadingText: string;
+  confirmReload?: () => boolean;
+}
+
+export class SurfaceBoundary extends Component<SurfaceBoundaryProps, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() { return { failed: true }; }
+
+  render() {
+    const { children, confirmReload, loadingText } = this.props;
+    if (this.state.failed) return <Notice message="無法開啟此頁面。請重新整理後再試。" retryLabel="重新整理頁面"
+      retry={() => { if (!confirmReload || confirmReload()) window.location.reload(); }} />;
+    return <Suspense fallback={<Loading text={loadingText} />}>{children}</Suspense>;
+  }
 }
 
 export function BackgroundNotices({ completions, onExpire }: { completions: BackgroundCompletion[]; onExpire: (id: string) => void }) {

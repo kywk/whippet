@@ -177,40 +177,6 @@ func readMemberRole(ctx context.Context, q queryDB, workspaceID, userID string) 
 	return role, err
 }
 
-func (p *Postgres) memberWorkspaces(ctx context.Context, userID string) ([]Workspace, error) {
-	rows, err := p.DB.QueryContext(ctx, `SELECT workspace_id,role FROM workspace_memberships WHERE user_id=$1 ORDER BY workspace_id`, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	type membership struct {
-		workspaceID string
-		role        memberRole
-	}
-	var memberships []membership
-	for rows.Next() {
-		var m membership
-		if err := rows.Scan(&m.workspaceID, &m.role); err != nil {
-			return nil, err
-		}
-		memberships = append(memberships, m)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	rows.Close()
-
-	workspaces := make([]Workspace, 0, len(memberships))
-	for _, member := range memberships {
-		workspace, err := p.Workspace(ctx, member.workspaceID)
-		if err != nil {
-			return nil, err
-		}
-		workspaces = append(workspaces, presentWorkspace(workspace, permissionsForWorkspace(noSiteRole, member.role)))
-	}
-	return workspaces, nil
-}
-
 func (p *Postgres) workspaceMembers(ctx context.Context, workspaceID string) ([]workspaceMember, error) {
 	rows, err := p.DB.QueryContext(ctx, `SELECT u.id,u.display_name,COALESCE(m.role,'none')
 FROM platform_users u LEFT JOIN workspace_memberships m ON m.user_id=u.id AND m.workspace_id=$1

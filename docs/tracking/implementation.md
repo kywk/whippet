@@ -2,6 +2,14 @@
 
 規格已寫入；M1 三個模組首批程式已交付；M1 已完成本機真實端到端驗收：成功、斷言失敗及兩份 HTML 報告顯示皆通過。M2、M3 已完成本機驗收；M4 已完成本機驗收；M5／M6 本機功能已通過，部署與開源缺口獨立追蹤；M7–M9 對話工作區已完成本機驗收；目前優先 M10–M12 Use Case 與 Agent 平台化（見文末章節）。需求以 [MVP 規格](../requirements/mvp.md) 為準，技術邊界見 [架構設計](../architecture/design.md)，負責範圍見 [分工計畫](delegation.md)。
 
+## 前後端效能盤點（2026-11-20）
+
+- Server 完成。Workspace 清單在同一個唯讀交易中批次取得可見工作區、提案及角色。隔離 PostgreSQL 16.11、30 次暖機後請求，500 個 Workspace 的管理員清單從 2,101 道 SQL 命令降至 6 道（含登入查核與交易），p95 從 408 ms 降至 11 ms。1、100、500 個 Workspace 的管理員與 QA 共六組回應逐位元組一致。
+- Manager 完成。以持久化成功的 Run 與 session 狀態維護名額索引。各有 10,000 筆歷史及一筆占用時，單次心跳配置量從 2.25 MB 降至 1.82 KB。Manager 競態測試通過，涵蓋回收、寫入失敗及重啟。
+- Web 完成。案例詳情維持同步載入，草稿編輯器、管理頁與合成預覽按需載入。正式建置入口 JS 從 498,379 降至 368,831 bytes，gzip 從 152,567 降至 120,014 bytes。Chromium 五次中位數，首次開啟詳情前後皆為 28 ms。每個請求加 80 ms 時，登入後進概覽從 814 變為 833 ms。鍵盤操作、編輯狀態保留與分包載入錯誤後復原通過。
+- 內建、Vercel、Pi adapter 32 項，MCP 接單 10 項及隔離資料庫的 MCP 互動測試通過。原始版本同樣失敗的兩項為 Server 的 `TestM109OutputBudgetRetrySnapshot` 與 Web `check-m11-author-ui.mjs` 的 WebP 載入。本輪採本機資料、合成服務與瀏覽器測試。
+- 後續優先量測每個 Workspace 的案例數、歷史筆數及輪詢回應大小，再決定執行紀錄摘要與伺服器端分頁的範圍。現有每案歷史同時供側欄通知、七日指標及近期執行分頁使用。
+
 ## 平台角色與 Workspace 權限（2026-11-20）
 
 完成（Codex 整合、Server、Web）。登入預選 QA User。全站與 Workspace 角色可指派及撤銷，Server 對 API、即時監看及附件查核權限。測試封存保留版本、報告及固定 Module 引用。 [v13 契約](../../contracts/mvp-v13.md)

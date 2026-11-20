@@ -11,6 +11,15 @@
         ],
         "createdAt": "2026-11-19T22:40:21.022Z",
         "reason": "專案設計規格: DESIGN.md 的 Three-Slip Top Edge Rule 指定以 3px 上緣色線區分對話產物類型。"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "apps/web/src/styles.css"
+        ],
+        "createdAt": "2026-11-20T03:12:53.801Z",
+        "reason": "Codex 核對：此檔剩餘命中為 .version-markdown blockquote，灰色起始線用於區分 Markdown 引文。"
       }
     ]
   }

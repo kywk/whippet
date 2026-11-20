@@ -25,10 +25,9 @@ func (m *Manager) rememberCredentials(r record, v credentialValues) error {
 		return errCredentials
 	}
 	current.CredentialsUsed = true
-	if err := atomicJSON(m.journalPath(current), current); err != nil {
+	if err := m.saveRecordLocked(current); err != nil {
 		return errCredentials
 	}
-	m.records[r.AttemptID] = current
 	if m.secrets == nil {
 		m.secrets = make(map[string][]string)
 	}

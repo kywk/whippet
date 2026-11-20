@@ -494,9 +494,9 @@ func TestSessionOpenRejectionWireUsesFixedErrorsAndValidIdentifiers(t *testing.T
 	}
 
 	occupied := sessionOpenEnvelope(newID(), newID(), newID())
-	m.mu.Lock()
-	m.records[newID()] = record{RunID: newID(), AttemptID: newID(), Phase: "running"}
-	m.mu.Unlock()
+	if err := m.store(record{RunID: newID(), AttemptID: newID(), ResultMessageID: newID(), Phase: "running"}); err != nil {
+		t.Fatal(err)
+	}
 	m.handleSessionOpen(context.Background(), occupied)
 	assertReject(read(), openSessionID(occupied), openLeaseID(occupied), "capacity_full")
 

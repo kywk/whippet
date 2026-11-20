@@ -66,36 +66,6 @@ func (p *Postgres) Migrate(ctx context.Context) error {
 
 func (p *Postgres) Ping(ctx context.Context) error { return p.DB.PingContext(ctx) }
 
-func (p *Postgres) Workspaces(ctx context.Context) ([]Workspace, error) {
-	rows, err := p.DB.QueryContext(ctx, `SELECT id FROM workspaces ORDER BY id`)
-	if err != nil {
-		return nil, err
-	}
-	ids := []string{}
-	for rows.Next() {
-		var id string
-		if err = rows.Scan(&id); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return nil, err
-	}
-	items := []Workspace{}
-	for _, id := range ids {
-		w, err := p.Workspace(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, w)
-	}
-	return items, nil
-}
-
 const testColumns = `id,workspace_id,name,
  COALESCE((SELECT n.description_override FROM test_version_notes n WHERE n.version_id=tests.published_version_id),description),
  published_version_id,kind,slug,deleted_at IS NOT NULL AND archived_at IS NULL,archived_at IS NOT NULL,

@@ -1,14 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode, RefObject } from 'react';
 import { DEFAULT_DEV_USER, DEV_IDENTITIES, siteRoleNames } from './access';
 import { ApiError, errorMessage } from './api';
-import { ArchivedTestDetail, ArchivedTests } from './ArchivedTests';
-import { ModuleCatalog } from './ModuleCatalog';
-import { BackgroundNotices, Loading, Notice } from './components';
-import { WorkspaceConversation } from './WorkspaceConversation';
+import { BackgroundNotices, Loading, Notice, SurfaceBoundary } from './components';
 import { WorkspaceOverview } from './WorkspaceOverview';
 import { TestWorkspace } from './TestWorkspace';
-import { SiteUsers, WorkspaceMembers } from './UserAccess';
 import { useActivity } from './activity';
 import type { BackgroundCompletion } from './activity';
 import { useLegacyTestTags } from './tags';
@@ -18,6 +14,13 @@ import { ArrowRightIcon, BellIcon, CheckIcon, ChevronDownIcon, CloseIcon, Filter
 import whippetIcon from './assets/whippet-icon.png';
 import whippetIllustration from './assets/whippet-illustration.webp';
 import type { DevUser, Test, WhippetApi, WorkspaceDetail } from './types';
+
+const WorkspaceConversation = lazy(() => import('./WorkspaceConversation').then(({ WorkspaceConversation }) => ({ default: WorkspaceConversation })));
+const SiteUsers = lazy(() => import('./UserAccess').then(({ SiteUsers }) => ({ default: SiteUsers })));
+const WorkspaceMembers = lazy(() => import('./UserAccess').then(({ WorkspaceMembers }) => ({ default: WorkspaceMembers })));
+const ModuleCatalog = lazy(() => import('./ModuleCatalog').then(({ ModuleCatalog }) => ({ default: ModuleCatalog })));
+const ArchivedTests = lazy(() => import('./ArchivedTests').then(({ ArchivedTests }) => ({ default: ArchivedTests })));
+const ArchivedTestDetail = lazy(() => import('./ArchivedTests').then(({ ArchivedTestDetail }) => ({ default: ArchivedTestDetail })));
 
 interface AppProps {
   api: WhippetApi;
@@ -225,11 +228,17 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onUserUpdated, onSe
   }
 
   const setupView = canShowSetup ? <div className="workspace-setup-view" hidden={visibleSurface !== 'settings'} data-surface="workspace">
-    <WorkspaceConversation key={setupTarget} api={api} apiBase={apiBase} active={visibleSurface === 'settings'} workspace={setupWorkspace}
-      onReturn={() => setSurface(setupReturnSurface.current)} onDirtyChange={reportSetupGuard} onCreated={createdWorkspace} onWorkspaceUpdated={updateWorkspace} onRefreshList={workspaces.retry} />
+    <SurfaceBoundary key={setupTarget} loadingText="正在開啟 Workspace 設定…" confirmReload={confirmNavigation}>
+      <WorkspaceConversation api={api} apiBase={apiBase} active={visibleSurface === 'settings'} workspace={setupWorkspace}
+        onReturn={() => setSurface(setupReturnSurface.current)} onDirtyChange={reportSetupGuard} onCreated={createdWorkspace} onWorkspaceUpdated={updateWorkspace} onRefreshList={workspaces.retry} />
+    </SurfaceBoundary>
   </div> : null;
-  const usersView = visibleSurface === 'users' ? <SiteUsers api={api} user={user} onAccessChanged={workspaces.retry} /> : null;
-  const membersView = visibleSurface === 'members' && workspace ? <WorkspaceMembers key={workspace.id} api={api} workspace={workspace} userId={user.id} onAccessChanged={workspaces.retry} /> : null;
+  const usersView = visibleSurface === 'users' ? <SurfaceBoundary loadingText="正在開啟全站使用者管理…" confirmReload={confirmNavigation}>
+    <SiteUsers api={api} user={user} onAccessChanged={workspaces.retry} />
+  </SurfaceBoundary> : null;
+  const membersView = visibleSurface === 'members' && workspace ? <SurfaceBoundary key={workspace.id} loadingText="正在開啟 Workspace 成員管理…" confirmReload={confirmNavigation}>
+    <WorkspaceMembers api={api} workspace={workspace} userId={user.id} onAccessChanged={workspaces.retry} />
+  </SurfaceBoundary> : null;
 
   if (!workspace) {
     return <div className={`app-shell${rail.open ? ' rail-open' : ''}`}>
@@ -261,7 +270,7 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onUserUpdated, onSe
   return <>
     <TestBrowser key={workspace.id} api={api} apiBase={apiBase} mock={mock} user={user} onLogout={onLogout}
       workspace={workspace} workspaces={allWorkspaces} switchWorkspace={switchWorkspace} openSetup={openSetup} rail={rail}
-      surface={visibleSurface} setSurface={setSurface} setupTarget={setupTarget} onDirtyChange={onDirtyChange} confirmNavigation={confirmTestNavigation}
+      surface={visibleSurface} setSurface={setSurface} setupTarget={setupTarget} onDirtyChange={onDirtyChange} confirmNavigation={confirmTestNavigation} confirmReload={confirmNavigation}
       administration={<>{setupView}{usersView}{membersView}</>} onOpenSurface={openSurface} onBackgroundCompletion={addCompletions} />
     <BackgroundNotices completions={completions} onExpire={expireCompletion} />
   </>;
@@ -326,12 +335,13 @@ interface BrowserProps extends Pick<AppProps, 'api' | 'apiBase' | 'mock'>, Editi
   user: DevUser; onLogout: () => void; workspace: WorkspaceDetail; workspaces: WorkspaceDetail[];
   switchWorkspace: (id: string) => void; openSetup: (create?: boolean) => void;
   surface: Surface; setSurface: (surface: Surface) => void; setupTarget?: string;
+  confirmReload: () => boolean;
   administration: ReactNode; onOpenSurface: (surface: NavigationSurface) => void;
   rail: ReturnType<typeof useRailDrawer>;
   onBackgroundCompletion: (batch: BackgroundCompletion[]) => void;
 }
 
-function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout, switchWorkspace, openSetup, surface, setSurface, setupTarget, onDirtyChange, confirmNavigation, administration, onOpenSurface, rail, onBackgroundCompletion }: BrowserProps) {
+function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout, switchWorkspace, openSetup, surface, setSurface, setupTarget, onDirtyChange, confirmNavigation, confirmReload, administration, onOpenSurface, rail, onBackgroundCompletion }: BrowserProps) {
   const { manageTests, manageSettings, manageMembers } = workspace.permissions;
   const loadTests = useCallback((signal: AbortSignal) => manageTests ? api.listTests(workspace.id, signal) : Promise.resolve([]), [api, workspace.id, manageTests]);
   const tests = useResource(loadTests, true);
@@ -600,31 +610,35 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
           onSettings={manageSettings ? () => openSetup() : undefined}
           onOpenTest={pick}
         /> : null}
-        {manageTests && surface === 'catalog' ? <ModuleCatalog key={workspace.id} api={api} workspaceId={workspace.id}>
-          <button className="button secondary" disabled={creating} aria-expanded={moduleForm} onClick={() => setModuleForm(value => !value)}>手動建立模組</button>
-          {moduleForm ? <form className="module-create" onSubmit={event => { event.preventDefault(); void createTest('module'); }}>
-            <p>建立真實 Module 草稿，尚未驗證或發佈。</p>
-            <label htmlFor="new-module-slug">slug（不可修改）</label>
-            <input id="new-module-slug" required pattern="[a-z][a-z0-9\-]{0,63}" maxLength={64} value={moduleInput.slug} disabled={creating} onChange={event => setModuleInput({ ...moduleInput, slug: event.target.value })} />
-            <label htmlFor="new-module-name">名稱</label>
-            <input id="new-module-name" required value={moduleInput.name} disabled={creating} onChange={event => setModuleInput({ ...moduleInput, name: event.target.value })} />
-            <label htmlFor="new-module-description">說明</label>
-            <textarea id="new-module-description" value={moduleInput.description} disabled={creating} onChange={event => setModuleInput({ ...moduleInput, description: event.target.value })} />
-            <p>slug 使用小寫英文字母開頭，可含數字與連字號，Workspace 內不可重複。</p>
-            <button className="button secondary" disabled={creating || !moduleInput.name.trim()} type="submit">{creating ? '建立中…' : '建立 Module 草稿'}</button>
-            <button className="button secondary" disabled={creating} type="button" onClick={() => setModuleForm(false)}>取消</button>
-          </form> : null}
-          {createError ? <Notice message={createError} /> : null}
-        </ModuleCatalog> : null}
-        {manageTests && surface === 'archive' ? archivedTest
-          ? <ArchivedTestDetail key={archivedTest.id} api={api} apiBase={apiBase} archivedTest={archivedTest} onReturn={() => setArchivedTest(undefined)} />
-          : <ArchivedTests api={api} workspace={workspace} onOpenTest={setArchivedTest} /> : null}
+        {manageTests && surface === 'catalog' ? <SurfaceBoundary loadingText="正在開啟 Module 模組庫…" confirmReload={confirmReload}>
+          <ModuleCatalog api={api} workspaceId={workspace.id}>
+            <button className="button secondary" disabled={creating} aria-expanded={moduleForm} onClick={() => setModuleForm(value => !value)}>手動建立模組</button>
+            {moduleForm ? <form className="module-create" onSubmit={event => { event.preventDefault(); void createTest('module'); }}>
+              <p>建立真實 Module 草稿，尚未驗證或發佈。</p>
+              <label htmlFor="new-module-slug">slug（不可修改）</label>
+              <input id="new-module-slug" required pattern="[a-z][a-z0-9\-]{0,63}" maxLength={64} value={moduleInput.slug} disabled={creating} onChange={event => setModuleInput({ ...moduleInput, slug: event.target.value })} />
+              <label htmlFor="new-module-name">名稱</label>
+              <input id="new-module-name" required value={moduleInput.name} disabled={creating} onChange={event => setModuleInput({ ...moduleInput, name: event.target.value })} />
+              <label htmlFor="new-module-description">說明</label>
+              <textarea id="new-module-description" value={moduleInput.description} disabled={creating} onChange={event => setModuleInput({ ...moduleInput, description: event.target.value })} />
+              <p>slug 使用小寫英文字母開頭，可含數字與連字號，Workspace 內不可重複。</p>
+              <button className="button secondary" disabled={creating || !moduleInput.name.trim()} type="submit">{creating ? '建立中…' : '建立 Module 草稿'}</button>
+              <button className="button secondary" disabled={creating} type="button" onClick={() => setModuleForm(false)}>取消</button>
+            </form> : null}
+            {createError ? <Notice message={createError} /> : null}
+          </ModuleCatalog>
+        </SurfaceBoundary> : null}
+        {manageTests && surface === 'archive' ? <SurfaceBoundary key={archivedTest?.id} loadingText="正在開啟已封存測試…" confirmReload={confirmReload}>
+          {archivedTest ? <ArchivedTestDetail api={api} apiBase={apiBase} archivedTest={archivedTest} onReturn={() => setArchivedTest(undefined)} />
+            : <ArchivedTests api={api} workspace={workspace} onOpenTest={setArchivedTest} />}
+        </SurfaceBoundary> : null}
         {manageTests && surface === 'tests' && selected ? <TestWorkspace
               key={selected.id}
               testId={selected.id}
               api={api}
               apiBase={apiBase}
               onDirtyChange={reportEditorGuard}
+              confirmReload={confirmReload}
               onTestUpdated={updateTest}
               onTestRemoved={removeTest}
               onArchived={onArchive}
