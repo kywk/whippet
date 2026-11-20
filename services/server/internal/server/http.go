@@ -96,6 +96,8 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 		handle("POST /api/inspections/workspaces/{workspaceId}/runs", a.inspectionHTTP)
 		handle("GET /api/inspections/workspaces/{workspaceId}/runs/{runId}", a.inspectionHTTP)
 		handle("POST /api/inspections/workspaces/{workspaceId}/runs/{runId}/links", a.inspectionHTTP)
+		handle("POST /api/retests/workspaces/{workspaceId}/runs", a.retestHTTP)
+		handle("GET /api/retests/workspaces/{workspaceId}/runs/{runId}", a.retestHTTP)
 	}
 	handle("POST /api/dev-login", a.devLogin)
 	handle("POST /api/dev-logout", a.devLogout)

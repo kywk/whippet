@@ -25,6 +25,7 @@ type Envelope struct {
 }
 
 type Dispatch struct {
+	Retest            json.RawMessage `json:"retest,omitempty"`
 	Files             []RunFile       `json:"files,omitempty"`
 	ModuleABI         *ModuleABI      `json:"moduleAbi,omitempty"`
 	ScriptOrigin      string          `json:"scriptOrigin,omitempty"`
@@ -226,6 +227,7 @@ type AuthorValidation struct {
 }
 
 type WorkerInput struct {
+	Retest            json.RawMessage `json:"retest,omitempty"`
 	Files             []RunFile       `json:"files,omitempty"`
 	ModuleABI         *ModuleABI      `json:"moduleAbi,omitempty"`
 	ScriptOrigin      string          `json:"scriptOrigin,omitempty"`
@@ -242,14 +244,15 @@ type WorkerInput struct {
 }
 
 type Result struct {
-	TargetOrigin string `json:"targetOrigin,omitempty"`
-	Assertion    string `json:"assertion,omitempty"`
-	Status       string `json:"status"`
-	Error        string `json:"error,omitempty"`
+	Retest       json.RawMessage `json:"retest,omitempty"`
+	TargetOrigin string          `json:"targetOrigin,omitempty"`
+	Assertion    string          `json:"assertion,omitempty"`
+	Status       string          `json:"status"`
+	Error        string          `json:"error,omitempty"`
 }
 
 func (r Result) valid() bool {
-	return r.Status == "succeeded" || r.Status == "failed" || r.Status == "timed_out" || r.Status == "cancelled"
+	return len(r.Retest) <= 16<<10 && (r.Status == "succeeded" || r.Status == "failed" || r.Status == "timed_out" || r.Status == "cancelled")
 }
 
 func newID() string {

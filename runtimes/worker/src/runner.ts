@@ -18,6 +18,7 @@ import {sanitizeLoginOutputs} from './login/artifacts.js';
 import {unconfirmedBrowserScope} from './author/scope.js';
 import { installModuleABI, validModuleABI, type ModuleABI } from './module-abi.js';
 import { startTestHarness, type TestHarness } from "./test-harness.js";
+import { deploymentObservation, validateRetestTarget, watchDeployment, type RetestTarget } from "./deployment-retest.js";
 import { boundedRead, mediaEnvironment } from "./live/files.js";
 
 interface Input {
@@ -29,6 +30,7 @@ interface Input {
   moduleAbi?: ModuleABI;
   timeoutMs: number;
   workspaceSettings?: WorkspaceSettings;
+  retest?: RetestTarget;
 }
 
 const workDir = resolve(process.env.WHIPPET_WORK_DIR ?? "/work");
@@ -78,6 +80,7 @@ function validateInput(value: unknown): Input {
     validateWorkspaceContext(input.workspaceContext,input.workspaceId);
     if(bundle.origin!=='manual'&&!input.workspaceContext?.config?.targets.length)throw new Error('scope_confirmation_required');
   }
+  if (input.retest !== undefined) validateRetestTarget(input.retest, input.workspaceContext);
   return {...input,script:bundle.script,files:bundle.files,scriptOrigin:bundle.origin} as Input;
 }
 
@@ -151,7 +154,7 @@ async function execute(input: Input, taskDir: string, harness: TestHarness): Pro
     timeout: input.timeoutMs,
     globalTimeout: input.timeoutMs,
     reporter: [
-      [reporterPath, { summaryPath }],
+      [reporterPath, { summaryPath, retest: !!input.retest }],
       ["html", { outputFolder: htmlDir, open: "never", attachmentsBaseURL: "data/", noCopyPrompt: true }],
       ["json", { outputFile: resultsPath }],
     ],
@@ -217,12 +220,17 @@ async function execute(input: Input, taskDir: string, harness: TestHarness): Pro
     exitCode, cancelled, watchdogExpired, reportReady: await regularFile(join(outputDir, "report.html")), json, summary, launchError,
   });
   const targetOrigin = harness.networkIsolated ? harness.reachedTargetOrigin() : undefined;
+  if (input.retest) {
+    result.retest = deploymentObservation(input.retest, false);
+    if (summary?.retestChecks) result.retest.checks = summary.retestChecks;
+  }
   return targetOrigin ? { ...result, targetOrigin } : result;
 }
 
 async function main(): Promise<void> {
   let taskRoot: string | undefined;
   let harness: TestHarness | undefined;
+  let deploymentWatch: Awaited<ReturnType<typeof watchDeployment>> | undefined;
   let result: WorkerResult;
   try {
     // Exclusive mkdir prevents stale outputs from making a reused work
@@ -231,7 +239,7 @@ async function main(): Promise<void> {
     const info = await lstat(join(workDir, "input.json"));
     if (!info.isFile() || info.size > MAX_INPUT_BYTES) throw new Error("input.json is not a regular file <=64MiB");
     const input = validateInput(await readJSON(join(workDir, "input.json")));
-    harness = await startTestHarness(input.workspaceContext?.config ?? unconfirmedBrowserScope());
+    harness = await startTestHarness(input.workspaceContext?.config ?? unconfirmedBrowserScope(), input.retest);
     if (input.workspaceId) {
       credentials = new CredentialClient(input);
       broker = await loginBroker(credentials, harness.credentialUID);
@@ -244,11 +252,25 @@ async function main(): Promise<void> {
     const taskDir = join(taskRoot, "test");
     await mkdir(taskDir, { mode: 0o700 });
     await harness.configureTask(taskRoot, taskDir);
-    result = await execute(input, taskDir, harness);
+    if (input.retest) {
+      deploymentWatch = await watchDeployment(input.retest);
+      if (deploymentWatch.ready) {
+        result = await execute(input, taskDir, harness);
+        const stable = await deploymentWatch.finish();
+        result.retest = deploymentObservation(input.retest,
+          stable && harness.networkIsolated && harness.verifiedDeploymentTraffic(), result.retest?.checks);
+      } else {
+        result = { status: "failed", error: "Target deployment could not be verified",
+          retest: deploymentObservation(input.retest, false) };
+      }
+    } else {
+      result = await execute(input, taskDir, harness);
+    }
   } catch (error) {
     result = { status: cancelled ? "cancelled" : "failed", error: (error instanceof Error ? error.message : String(error)).slice(0, 8192) };
     log(`Worker infrastructure error: ${result.error}`);
   }
+  deploymentWatch?.close();
   await harness?.close();
   credentials?.close();if(broker)await broker.close();
   if(credentials){try{await sanitizeLoginOutputs(outputDir,credentials.secrets,log);}catch{result={status:cancelled?'cancelled':'failed',error:'Credential evidence could not be safely retained'};for(const name of ['report.html','results.json','data'])await rm(join(outputDir,name),{recursive:true,force:true});}}

@@ -51,3 +51,15 @@ Whippet 以已發佈版本執行巡檢，保存每筆 Run 的終態。內網橋�
 `assertion_failed` 表示受隔離的執行已到達核准目標，且確認同一 attempt 的具名斷言失敗及已保存報告。此結果附 `checkKey`、`failureSignature` 及 `reportUrl`。橋接可使用該結果建立工單。其他結果包括 `passed`、`infrastructure`、`cancelled`、`timed_out` 與 `unverified`。橋接僅在自身處理紀錄保存這些結果，供團隊追蹤。
 
 `reportUrl` 指向 Whippet 的人員登入端點。工單關聯從受管的 Feedback Desk origin 及工單識別組成，開啟時由 Feedback Desk 驗證工單存取權。相同關聯重送回原收據，嘗試更換已連結的工單時回衝突。
+
+## 部署後重測
+
+在同一來源增設 `deploymentProofPath`，例如 `/.well-known/deployment.json`。已確認的 Workspace 與已發佈版本快照須指向同一個核准目標。範例測試的 `checkKey` 可直接用於重測。要覆蓋其他檢查，可在同一測試設定的 `retestChecks` 陣列新增 `checkKey`、`testTitle`、`assertionTitle`。每項檢查對應不同的原生 Playwright `expect`，測試名稱與自訂斷言訊息須與已審查腳本一致。
+
+目標站以同一份部署快照供應頁面、資產及部署證明。部署證明以 JSON 回傳 `projectSlug`、`environment`、`deploymentId`、`artifactRevision`。該 origin 實際供應的 HTTP 回應都須帶相同的 `X-Whippet-Deployment-Id` 及 `X-Whippet-Artifact-Revision`，包含證明端點、頁面、JS 與 API。部署工具每次啟用快照時使用新的部署 ID，還原舊 artifact 時也使用新 ID。
+
+目前可採信的目標是由隔離 Runner 經範圍代理可觀察回應的 HTTP 測試站。HTTPS CONNECT 流量保留待查。Runner 在執行前、期間及完成後查驗部署證明，並核對測試實際讀取的目標回應。缺少對應回應、服務錯誤、混合版本或未執行指定斷言時，回傳待查。Whippet 的服務介面可獨立使用 HTTPS。
+
+- 排程使用既有 schedule bearer，發送 `POST /api/retests/workspaces/{workspaceId}/runs`。送出 `testId`、`versionId`、`environment`、`deploymentId`、`artifactRevision` 及已排序去重的 `checkKeys`。回傳 `202` 與 `runId`。同一專案、環境、部署、測試及版本重送使用相同 Run，已排程的資料改變會回衝突。新排程要求當下的正式版本。
+- 回查使用既有 bridge bearer，發送 `GET /api/retests/workspaces/{workspaceId}/runs/{runId}`。執行中回 `409`。終態的 `purpose` 為 `deployment_retest`，另回 `deploymentId`、`artifactRevision`、`checks` 和已有的 `attemptGeneration`。每個檢查回 `passed`、`failed` 或 `skipped`。通過須覆蓋全部請求的檢查。可查驗的斷言失敗會附 `failureSignature`。只在證明完整的通過或斷言失敗提供受保護的 `reportUrl`。
+- Feedback Desk 以重測 Run ID 連結部署、測試版本與受影響的回饋單。重測保留在此專用介面，日常巡檢終態拉取只提供巡檢。

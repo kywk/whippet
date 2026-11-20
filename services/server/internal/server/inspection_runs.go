@@ -157,23 +157,13 @@ func (p *Postgres) inspectionEvidence(ctx context.Context, tx *sql.Tx, item insp
 	if run.Status == "failed" && item.assertion != scriptHash(test.TestTitle+"\x00"+test.AssertionTitle) {
 		return run
 	}
-	data, err := p.readArtifactBytes(ctx, tx, run.RunID, *run.AttemptID, "results.json", 4<<20)
-	if err != nil {
+	stats := p.verifiedRunStats(ctx, tx, run.RunID, *run.AttemptID)
+	if stats == nil {
 		return run
 	}
-	var report struct {
-		Stats *struct {
-			Expected   int `json:"expected"`
-			Unexpected int `json:"unexpected"`
-		} `json:"stats"`
-		Errors []json.RawMessage `json:"errors"`
-	}
-	if json.Unmarshal(data, &report) != nil || report.Stats == nil || report.Errors == nil || len(report.Errors) != 0 {
-		return run
-	}
-	if run.Status == "succeeded" && report.Stats.Expected > 0 && report.Stats.Unexpected == 0 {
+	if run.Status == "succeeded" && stats.Expected > 0 && stats.Unexpected == 0 {
 		run.Outcome = "passed"
-	} else if run.Status == "failed" && report.Stats.Unexpected == 1 {
+	} else if run.Status == "failed" && stats.Unexpected == 1 {
 		run.Outcome = "assertion_failed"
 		run.CheckKey = item.checkKey
 		run.FailureSignature = scriptHash("whippet.assertion.v1\x00" + run.CheckKey)
@@ -182,6 +172,26 @@ func (p *Postgres) inspectionEvidence(ctx context.Context, tx *sql.Tx, item insp
 		run.ReportURL = "/api/runs/" + run.RunID + "/artifacts/report.html"
 	}
 	return run
+}
+
+type verifiedPlaywrightStats struct {
+	Expected   int `json:"expected"`
+	Unexpected int `json:"unexpected"`
+}
+
+func (p *Postgres) verifiedRunStats(ctx context.Context, tx *sql.Tx, runID, attemptID string) *verifiedPlaywrightStats {
+	data, err := p.readArtifactBytes(ctx, tx, runID, attemptID, "results.json", 4<<20)
+	if err != nil {
+		return nil
+	}
+	var report struct {
+		Stats  *verifiedPlaywrightStats `json:"stats"`
+		Errors []json.RawMessage        `json:"errors"`
+	}
+	if json.Unmarshal(data, &report) != nil || report.Stats == nil || report.Errors == nil || len(report.Errors) != 0 {
+		return nil
+	}
+	return report.Stats
 }
 
 type inspectionPage struct {

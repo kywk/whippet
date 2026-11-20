@@ -2,6 +2,7 @@ import { Agent, createServer, request, type IncomingHttpHeaders, type IncomingMe
 import { connect, type AddressInfo, type Socket } from "node:net";
 import type { Duplex } from "node:stream";
 import { AIOriginGate } from "./author/scope.js";
+import { deploymentHeadersMatch, type RetestTarget } from "./deployment-retest.js";
 import type { WorkspaceConfig } from "./workspace-context.js";
 
 const loopback = "127.0.0.1";
@@ -27,13 +28,15 @@ function endSocket(socket: Duplex, status: number, reason: string): void {
 // Only this process can open an upstream socket. Absolute URLs and CONNECT
 // authorities are validated before lookup, and redirects are returned to the
 // client so each subsequent destination goes through the same checks.
-export async function startScopeProxy(scope: WorkspaceConfig) {
+export async function startScopeProxy(scope: WorkspaceConfig, retest?: RetestTarget) {
   const gate = new AIOriginGate(scope);
   const agent = new Agent({ maxSockets: 32 });
   const sockets = new Set<Socket>();
   const tunnels = new WeakMap<Duplex, URL>();
   const targetOrigin = scope.targets.length === 1 ? scope.targets[0]?.origin : undefined;
   let reachedTarget = false;
+  let consistentDeployment = true;
+  let receivedDeploymentTraffic = false;
   function track(socket: Socket) {
     if (sockets.has(socket)) return;
     sockets.add(socket);
@@ -62,6 +65,11 @@ export async function startScopeProxy(scope: WorkspaceConfig) {
     const headers = forwardHeaders(incoming.headers);
     headers.host = target.host;
     const upstream = request(target, { agent, method: incoming.method, headers }, response => {
+      if (target.origin === retest?.origin) {
+        receivedDeploymentTraffic = true;
+        consistentDeployment &&= response.statusCode !== undefined && response.statusCode < 500 &&
+          deploymentHeadersMatch(retest, response.headers["x-whippet-deployment-id"], response.headers["x-whippet-artifact-revision"]);
+      }
       if (target.origin === targetOrigin && response.statusCode && response.statusCode < 500) reachedTarget = true;
       outgoing.writeHead(response.statusCode ?? 502, forwardHeaders(response.headers));
       response.on("error", () => outgoing.destroy());
@@ -69,6 +77,7 @@ export async function startScopeProxy(scope: WorkspaceConfig) {
     });
     upstream.setTimeout(idleTimeout, () => upstream.destroy());
     upstream.on("error", () => {
+      if (target.origin === retest?.origin) consistentDeployment = false;
       if (outgoing.headersSent) outgoing.destroy();
       else outgoing.writeHead(502, { connection: "close" }).end();
     });
@@ -83,6 +92,7 @@ export async function startScopeProxy(scope: WorkspaceConfig) {
       endSocket(socket, 403, "Forbidden");
       return;
     }
+    if (target.origin === retest?.origin) consistentDeployment = false;
     const headers = { ...forwardHeaders(incoming.headers), host: target.host, connection: "Upgrade", upgrade: "websocket" };
     const upstream = request(target, { agent, headers });
     upstream.on("upgrade", (response, peer, pending) => {
@@ -159,6 +169,7 @@ export async function startScopeProxy(scope: WorkspaceConfig) {
   return {
     port,
     url: `http://${loopback}:${port}`,
+    verifiedDeploymentTraffic: () => receivedDeploymentTraffic && consistentDeployment,
     reachedTargetOrigin: () => reachedTarget ? targetOrigin : undefined,
     async close() {
       agent.destroy();

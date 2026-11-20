@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -18,28 +19,31 @@ type InspectionConfig struct {
 }
 
 type inspectionSource struct {
-	WorkspaceID       string           `json:"workspaceId"`
-	Environment       string           `json:"environment"`
-	ProjectSlug       string           `json:"projectSlug"`
-	TargetOrigin      string           `json:"targetOrigin"`
-	FeedbackOrigin    string           `json:"feedbackDeskOrigin"`
-	BridgeTokenHash   string           `json:"bridgeTokenSha256"`
-	ScheduleTokenHash string           `json:"scheduleTokenSha256"`
-	Tests             []inspectionTest `json:"tests"`
+	WorkspaceID         string           `json:"workspaceId"`
+	Environment         string           `json:"environment"`
+	ProjectSlug         string           `json:"projectSlug"`
+	DeploymentProofPath string           `json:"deploymentProofPath,omitempty"`
+	TargetOrigin        string           `json:"targetOrigin"`
+	FeedbackOrigin      string           `json:"feedbackDeskOrigin"`
+	BridgeTokenHash     string           `json:"bridgeTokenSha256"`
+	ScheduleTokenHash   string           `json:"scheduleTokenSha256"`
+	Tests               []inspectionTest `json:"tests"`
 }
 
 type inspectionTest struct {
-	TestID         string   `json:"testId"`
-	VersionIDs     []string `json:"versionIds"`
-	CheckKey       string   `json:"checkKey"`
-	TestTitle      string   `json:"testTitle"`
-	AssertionTitle string   `json:"assertionTitle"`
+	TestID         string              `json:"testId"`
+	VersionIDs     []string            `json:"versionIds"`
+	CheckKey       string              `json:"checkKey"`
+	TestTitle      string              `json:"testTitle"`
+	AssertionTitle string              `json:"assertionTitle"`
+	RetestChecks   []retestCheckConfig `json:"retestChecks,omitempty"`
 }
 
 var (
 	inspectionIdentifier  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$`)
 	inspectionProjectSlug = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,79}$`)
 	inspectionDigest      = regexp.MustCompile(`^[a-f0-9]{64}$`)
+	inspectionProofPath   = regexp.MustCompile(`^/[A-Za-z0-9._/-]{1,255}$`)
 	inspectionBearer      = regexp.MustCompile(`^[A-Za-z0-9_-]{43,128}$`)
 )
 
@@ -87,6 +91,7 @@ func (c *InspectionConfig) valid() bool {
 		if !inspectionID(source.WorkspaceID) || !inspectionIdentifier.MatchString(source.Environment) ||
 			!inspectionProjectSlug.MatchString(source.ProjectSlug) || targetErr != nil || target != source.TargetOrigin ||
 			feedbackErr != nil || feedback != source.FeedbackOrigin || sourceKeys[key] ||
+			source.DeploymentProofPath != "" && !validInspectionProofPath(source.DeploymentProofPath) ||
 			len(source.Tests) == 0 || len(source.Tests) > 100 {
 			return false
 		}
@@ -101,7 +106,7 @@ func (c *InspectionConfig) valid() bool {
 		for _, test := range source.Tests {
 			if !inspectionID(test.TestID) || tests[test.TestID] || !inspectionIdentifier.MatchString(test.CheckKey) ||
 				!inspectionTitle(test.TestTitle) || !inspectionTitle(test.AssertionTitle) ||
-				len(test.VersionIDs) == 0 || len(test.VersionIDs) > 100 {
+				!validRetestChecks(test) || len(test.VersionIDs) == 0 || len(test.VersionIDs) > 100 {
 				return false
 			}
 			tests[test.TestID] = true
@@ -143,4 +148,44 @@ func (s *inspectionSource) test(id string) (inspectionTest, bool) {
 		}
 	}
 	return inspectionTest{}, false
+}
+
+type retestCheckConfig struct {
+	CheckKey       string `json:"checkKey"`
+	TestTitle      string `json:"testTitle"`
+	AssertionTitle string `json:"assertionTitle"`
+}
+
+func validInspectionProofPath(value string) bool {
+	return inspectionProofPath.MatchString(value) && path.Clean(value) == value
+}
+
+func (t inspectionTest) checks() map[string]string {
+	checks := map[string]string{t.CheckKey: scriptHash(t.TestTitle + "\x00" + t.AssertionTitle)}
+	for _, check := range t.RetestChecks {
+		checks[check.CheckKey] = scriptHash(check.TestTitle + "\x00" + check.AssertionTitle)
+	}
+	return checks
+}
+
+func validRetestChecks(t inspectionTest) bool {
+	if len(t.RetestChecks) > maxRetestChecks-1 {
+		return false
+	}
+	keys := map[string]bool{t.CheckKey: true}
+	for _, check := range t.RetestChecks {
+		if !inspectionIdentifier.MatchString(check.CheckKey) || keys[check.CheckKey] ||
+			!inspectionTitle(check.TestTitle) || !inspectionTitle(check.AssertionTitle) {
+			return false
+		}
+		keys[check.CheckKey] = true
+	}
+	digests := make(map[string]bool)
+	for _, digest := range t.checks() {
+		if digests[digest] {
+			return false
+		}
+		digests[digest] = true
+	}
+	return true
 }

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { assertionDigest, RetestChecks } from "./deployment-retest.js";
 import { writeFile } from "node:fs/promises";
 import type { FullConfig, FullResult, Reporter, Suite, TestCase, TestError, TestResult, TestStep } from "@playwright/test/reporter";
 import type { RuntimeSummary } from "./result.js";
@@ -22,10 +22,12 @@ export default class NDJSONReporter implements Reporter {
   private failedAssertion: { test: TestCase; title: string } | undefined;
   private otherFailedStep = false;
   private assertionDigest: string | undefined;
+  private readonly retestChecks?: RetestChecks;
 
-  constructor(options: { summaryPath: string; diagnostics?: boolean }) {
+  constructor(options: { summaryPath: string; diagnostics?: boolean; retest?: boolean }) {
     this.summaryPath = options.summaryPath;
     this.diagnostics = options.diagnostics === true;
+    if (options.retest === true) this.retestChecks = new RetestChecks();
   }
 
   printsToStdio(): boolean { return true; }
@@ -48,14 +50,16 @@ export default class NDJSONReporter implements Reporter {
     if (result.status === "timedOut") this.summary.timedOut += 1;
     if (result.status === "interrupted") this.summary.interrupted += 1;
     for (const error of result.errors) this.addError(error);
+    this.retestChecks?.finishTest(test, result);
     if (this.caseCount === 1 && result.status === "failed" && result.errors.length === 1 &&
         test.expectedStatus === "passed" && this.failedAssertion?.test === test && !this.otherFailedStep) {
-      this.assertionDigest = createHash("sha256").update(test.title).update("\0").update(this.failedAssertion.title).digest("hex");
+      this.assertionDigest = assertionDigest(test.title, this.failedAssertion.title);
     }
     log(`${result.status}: ${test.titlePath().join(" > ")} (${result.duration}ms)`);
   }
 
   onStepEnd(test: TestCase, _result: TestResult, step: TestStep): void {
+    this.retestChecks?.step(test, step);
     if (step.category === "test.step" && step.error) log(`Stage failed: ${step.title}`);
     if (step.error && step.category !== "test.step") {
       if (step.category === "expect" && !this.failedAssertion) this.failedAssertion = { test, title: step.title };
@@ -79,6 +83,9 @@ export default class NDJSONReporter implements Reporter {
     this.summary.status = result.status;
     if (result.status === "failed" && !this.suiteError && this.assertionDigest) {
       this.summary.assertion = this.assertionDigest;
+    }
+    if (!this.suiteError && (result.status === "passed" || result.status === "failed")) {
+      this.summary.retestChecks = this.retestChecks?.observations();
     }
     if (this.diagnostics) this.summary.failedStepCategory = this.ambiguous ? "UNOBSERVED" : this.failedLeaf ?? (this.failedParent ? "TEST_STEP" : "UNOBSERVED");
     await writeFile(this.summaryPath, JSON.stringify(this.summary), "utf8");

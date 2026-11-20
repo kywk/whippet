@@ -519,6 +519,7 @@ func (m *Manager) prepare(r record, dispatch Dispatch) error {
 		return err
 	}
 	input := WorkerInput{
+		Retest:    dispatch.Retest,
 		Files:     dispatch.Files,
 		ModuleABI: dispatch.ModuleABI,
 		RunID:     r.RunID, AttemptID: r.AttemptID, Script: dispatch.Script, TimeoutMS: dispatch.TimeoutMS,

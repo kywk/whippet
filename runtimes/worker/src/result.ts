@@ -1,3 +1,5 @@
+import type { RetestObservation } from "./deployment-retest.js";
+
 export type Status = "succeeded" | "failed" | "timed_out" | "cancelled";
 
 export interface WorkerResult {
@@ -5,6 +7,7 @@ export interface WorkerResult {
   error?: string;
   assertion?: string;
   targetOrigin?: string;
+  retest?: RetestObservation;
 }
 
 export interface RuntimeSummary {
@@ -15,6 +18,7 @@ export interface RuntimeSummary {
   interrupted: number;
   errors: string[];
   assertion?: string;
+  retestChecks?: RetestObservation["checks"];
 }
 
 export interface Evidence {

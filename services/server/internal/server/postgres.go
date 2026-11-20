@@ -180,14 +180,14 @@ func (p *Postgres) CreateRun(ctx context.Context, testID string) (Run, error) {
 	return p.createRun(ctx, testID, nil)
 }
 
-func (p *Postgres) createRun(ctx context.Context, testID string, inspection *inspectionSchedule) (Run, error) {
+func (p *Postgres) createRun(ctx context.Context, testID string, extension publishedRunExtension) (Run, error) {
 	tx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return Run{}, err
 	}
 	defer tx.Rollback()
-	if inspection != nil {
-		prior, err := inspection.prior(ctx, tx)
+	if extension != nil {
+		prior, err := extension.prior(ctx, tx)
 		if err != nil {
 			return Run{}, err
 		}
@@ -237,7 +237,7 @@ func (p *Postgres) createRun(ctx context.Context, testID string, inspection *ins
 	if v.ScriptOrigin == "legacy" && (snapshot == nil || snapshot.Config == nil) {
 		snapshot, _ = selectedContext(w, false)
 	}
-	if inspection != nil && (!confirmedCanonical(w) || !inspection.matches(w.ID, v.ID, v.WorkspaceContext)) {
+	if extension != nil && (!confirmedCanonical(w) || !extension.matches(w.ID, v.ID, v.WorkspaceContext)) {
 		return Run{}, ErrConflict
 	}
 	auth, proposal, err := executionBinding(w, origin, snapshot)
@@ -249,8 +249,8 @@ func (p *Postgres) createRun(ctx context.Context, testID string, inspection *ins
  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`, id, testID, w.ID, v.ID, script, scriptHash(script), v.WorkspaceSettings.TimeoutMS, settingsJSON(v.WorkspaceSettings), jsonText(snapshot), origin, auth, proposal, files, bundleHash, metadata); err != nil {
 		return Run{}, err
 	}
-	if inspection != nil {
-		if err := inspection.record(ctx, tx, id); err != nil {
+	if extension != nil {
+		if err := extension.record(ctx, tx, id); err != nil {
 			return Run{}, err
 		}
 	}
@@ -355,6 +355,12 @@ func (p *Postgres) Assignments(ctx context.Context, managerID string) ([]Assignm
 	}
 	rows.Close()
 	for i := range items {
+		if items[i].Kind == "run" {
+			items[i].Retest, err = lookupRetestTarget(ctx, p.DB, items[i].ID)
+			if err != nil {
+				return nil, err
+			}
+		}
 		if permissionErr := p.assignmentAllowed(ctx, p.DB, items[i]); permissionErr != nil {
 			if permissionErr != ErrScopeConfirmation {
 				return nil, permissionErr
@@ -434,6 +440,12 @@ func (p *Postgres) Claim(ctx context.Context, managerID string, capacity int) (*
 			return nil, err
 		}
 		return nil, tx.Commit()
+	}
+	if a.Kind == "run" {
+		a.Retest, err = lookupRetestTarget(ctx, tx, a.ID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if allowed, err := p.checkQueuedAuthorIntent(ctx, tx, a.ID, a.Author); err != nil {
 		return nil, err
@@ -563,6 +575,13 @@ func (p *Postgres) Complete(ctx context.Context, managerID, runID, attemptID str
 		if _, err := tx.ExecContext(ctx, `UPDATE inspection_runs SET observed_target=true,
 			observed_assertion=CASE WHEN expected_assertion=$3 THEN $3 END
 			WHERE run_id=$1 AND target_origin=$2`, runID, result.TargetOrigin, assertion); err != nil {
+			return err
+		}
+	}
+	if result.Retest != nil && result.Retest.valid() {
+		if _, err := tx.ExecContext(ctx, `UPDATE deployment_retests SET observation=$2
+			WHERE run_id=$1 AND deployment_id=$3 AND artifact_revision=$4`, runID, jsonText(result.Retest),
+			result.Retest.DeploymentID, result.Retest.ArtifactRevision); err != nil {
 			return err
 		}
 	}

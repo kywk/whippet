@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { startScopeProxy } from "./scope-proxy.js";
+import type { RetestTarget } from "./deployment-retest.js";
 import type { WorkspaceConfig } from "./workspace-context.js";
 
 const run = promisify(execFile);
@@ -18,12 +19,12 @@ export class TestHarnessError extends Error {
   constructor() { super("test_harness_unavailable: 無法啟用 Workspace 測試網路隔離，已停止執行腳本。"); }
 }
 
-export async function startTestHarness(scope: WorkspaceConfig) {
+export async function startTestHarness(scope: WorkspaceConfig, retest?: RetestTarget) {
   // Allows known local fixtures to exercise Playwright during development.
   // The production image disables this option and Manager never forwards it.
   const localFixture = process.env.WHIPPET_LOCAL_TEST_FIXTURES === "1";
   if (!localFixture && (process.platform !== "linux" || process.getuid?.() !== 0)) throw new TestHarnessError();
-  const proxy = await startScopeProxy(scope).catch(() => { throw new TestHarnessError(); });
+  const proxy = await startScopeProxy(scope, retest).catch(() => { throw new TestHarnessError(); });
   try {
     if (!localFixture) {
       const dir = await mkdtemp(join(tmpdir(), "whippet-firewall-"));
@@ -56,6 +57,7 @@ table inet whippet_test {
     networkIsolated: !localFixture,
     proxy: { server: proxy.url },
     reachedTargetOrigin: proxy.reachedTargetOrigin,
+    verifiedDeploymentTraffic: proxy.verifiedDeploymentTraffic,
     credentialUID: localFixture ? undefined : scriptUID,
     async grantAccess(path: string) {
       if (!localFixture) await chown(path, scriptUID, scriptUID);

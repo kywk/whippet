@@ -204,6 +204,7 @@ func Terminal(status string) bool {
 }
 
 type Assignment struct {
+	Retest    *retestTarget
 	Files     []RunFile
 	ModuleABI *ModuleABI
 	Run
@@ -251,10 +252,11 @@ type Event struct {
 }
 
 type Result struct {
-	TargetOrigin string `json:"targetOrigin,omitempty"`
-	Assertion    string `json:"assertion,omitempty"`
-	Status       string `json:"status"`
-	Error        string `json:"error,omitempty"`
+	Retest       *retestObservation `json:"retest,omitempty"`
+	TargetOrigin string             `json:"targetOrigin,omitempty"`
+	Assertion    string             `json:"assertion,omitempty"`
+	Status       string             `json:"status"`
+	Error        string             `json:"error,omitempty"`
 }
 
 func (r Result) Valid() bool {
