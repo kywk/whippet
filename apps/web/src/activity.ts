@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { isActiveRun, STATUS_LABELS } from './types';
 import { publishedTrail, trailFromRuns } from './trail';
 import type { Stage } from './trail';
-import type { Run, Test, WhippetApi } from './types';
+import type { Test, WhippetApi, WorkspaceRunActivity } from './types';
 
 export interface TestActivity {
   stages: Stage[];
@@ -27,6 +27,7 @@ const SEEN_KEY = 'whippet.seen.v1';
 const AUTHOR_SEEN_KEY = 'whippet.author-seen.v1';
 const FAST_MS = 3_000;
 const SLOW_EVERY = 7; // 每 7 個快速週期（約 21 秒）輪詢全部測試
+const MAX_ACTIVITY_TEST_IDS = 100;
 
 function readSeen(key: string): Record<string, string> {
   try {
@@ -60,14 +61,14 @@ function useSeenSignatures(key: string, signatures: Record<string, string>, view
   return seen;
 }
 
-const runSignature = (run?: Run) => run ? `${run.id}:${run.status}` : '';
-const signature = (runs: Run[]): string => {
+const runSignature = (run?: WorkspaceRunActivity) => run ? `${run.id}:${run.status}` : '';
+const signature = (runs: WorkspaceRunActivity[]): string => {
   const latest = [...runs].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
   return latest && !isActiveRun(latest) ? runSignature(latest) : '';
 };
 
-function latestAuthorResult(runs: Run[]) {
-  let latest: Run | undefined;
+function latestAuthorResult(runs: WorkspaceRunActivity[]) {
+  let latest: WorkspaceRunActivity | undefined;
   let finished = 0;
   for (const run of runs) {
     if (run.kind !== 'author' || isActiveRun(run)) continue;
@@ -77,7 +78,7 @@ function latestAuthorResult(runs: Run[]) {
   return latest;
 }
 
-function authorResultMessage(run: Run) {
+function authorResultMessage(run: WorkspaceRunActivity) {
   if (run.authorPartial) return 'AI 部分完成，等待繼續';
   if (run.status !== 'succeeded') return `AI 任務${STATUS_LABELS[run.status]}`;
   if (run.authorMode === 'summary') return 'AI 摘要已完成';
@@ -89,9 +90,9 @@ function authorResultMessage(run: Run) {
  * 離開某個測試後，任務仍在 Server 執行；這裡持續讀取各測試的 Run，
  * 讓左欄顯示目前停在哪一站，結果完成但還沒看過的測試會亮燈。
  */
-export function useActivity(api: WhippetApi, tests: Test[], viewing: { testId?: string; authorTestId?: string }, userId: string, notify: (batch: BackgroundCompletion[]) => void) {
+export function useActivity(api: WhippetApi, workspaceId: string, tests: Test[], viewing: { testId?: string; authorTestId?: string }, userId: string, notify: (batch: BackgroundCompletion[]) => void) {
   const { testId: selectedId, authorTestId: viewedAuthorId } = viewing;
-  const [{ runsByTest, failedRunLoads }, setHistory] = useState({ runsByTest: {} as Record<string, Run[]>, failedRunLoads: new Set<string>() });
+  const [{ runsByTest, failedRunLoads }, setHistory] = useState({ runsByTest: {} as Record<string, WorkspaceRunActivity[]>, failedRunLoads: new Set<string>() });
   const [refreshingRuns, setRefreshingRuns] = useState(false);
   const [refreshRevision, refreshRuns] = useReducer((revision: number) => revision + 1, 0);
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
@@ -103,24 +104,42 @@ export function useActivity(api: WhippetApi, tests: Test[], viewing: { testId?: 
   const ids = tests.map((test) => test.id).join(',');
 
   useEffect(() => {
-    let stopped = false;
+    setRefreshingRuns(Boolean(ids));
+    if (!ids) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let cycle = 0;
     const controller = new AbortController();
-    async function load(targets: Test[]) {
-      if (!targets.length) return;
-      const results = await Promise.allSettled(targets.map((test) => api.listRuns(test.id, controller.signal)));
-      if (stopped) return;
+
+    async function load(testIds: string[], full: boolean) {
+      const batches: string[][] = [];
+      if (full) {
+        batches.push(testIds);
+      } else {
+        for (let offset = 0; offset < testIds.length; offset += MAX_ACTIVITY_TEST_IDS) {
+          batches.push(testIds.slice(offset, offset + MAX_ACTIVITY_TEST_IDS));
+        }
+      }
+      if (!batches.length) return;
+
+      const results = await Promise.allSettled(batches.map(async (batch) => {
+        const runs = await api.listWorkspaceRunActivity(workspaceId, full ? undefined : batch, controller.signal);
+        // 回應只列有紀錄的案例。成功的空陣列也要蓋掉上一輪的結果。
+        const grouped = new Map(batch.map((id) => [id, [] as WorkspaceRunActivity[]]));
+        for (const run of runs) grouped.get(run.testId)?.push(run);
+        return grouped;
+      }));
+      if (controller.signal.aborted) return;
       setHistory((current) => {
         const nextRuns = { ...current.runsByTest };
         const nextFailures = new Set(current.failedRunLoads);
         results.forEach((result, index) => {
-          const id = targets[index].id;
-          if (result.status === 'fulfilled') {
-            nextRuns[id] = result.value;
+          if (result.status === 'rejected') {
+            for (const id of batches[index]) nextFailures.add(id);
+            return;
+          }
+          for (const [id, runs] of result.value) {
+            nextRuns[id] = runs;
             nextFailures.delete(id);
-          } else {
-            nextFailures.add(id);
           }
         });
         return { runsByTest: nextRuns, failedRunLoads: nextFailures };
@@ -128,24 +147,24 @@ export function useActivity(api: WhippetApi, tests: Test[], viewing: { testId?: 
     }
     async function tick() {
       const all = testsRef.current;
-      const hot = all.filter((test) => test.activeEditingSession || (runsRef.current[test.id] ?? []).some(isActiveRun));
-      await load(cycle % SLOW_EVERY === 0 ? all : hot);
+      const full = cycle % SLOW_EVERY === 0;
+      const targets = full ? all : all.filter((test) => test.activeEditingSession || runsRef.current[test.id]?.some(isActiveRun));
+      await load(targets.map((test) => test.id), full);
       cycle += 1;
-      if (!stopped) {
+      if (!controller.signal.aborted) {
         if (cycle === 1) setRefreshingRuns(false);
         timer = setTimeout(tick, FAST_MS);
       }
     }
-    setRefreshingRuns(Boolean(ids));
     void tick();
-    return () => { stopped = true; controller.abort(); clearTimeout(timer); };
-  }, [api, ids, refreshRevision]);
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [api, workspaceId, ids, refreshRevision]);
 
   // AI 未讀獨立保存，後續正式執行或驗證不會蓋掉對話結果。
   const { runKeys, authorKeys, authors } = useMemo(() => {
     const runKeys: Record<string, string> = {};
     const authorKeys: Record<string, string> = {};
-    const authors: Record<string, Run | undefined> = {};
+    const authors: Record<string, WorkspaceRunActivity | undefined> = {};
     for (const [id, runs] of Object.entries(runsByTest)) {
       runKeys[id] = signature(runs);
       authors[id] = latestAuthorResult(runs);

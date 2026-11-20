@@ -1,6 +1,6 @@
 import { validRepairContent, editableStage } from './plan';
 import { AGENT_RUNTIME_SKILLS, RUN_STATUSES, SITE_ROLES, WORKSPACE_MEMBER_ROLES } from './types';
-import type { SimilarTestSuggestion, VersionConversationMessage, WorkspaceAgentRuntime, WorkspaceMember } from './types';
+import type { RunActivity, SimilarTestSuggestion, VersionConversationMessage, WorkspaceAgentRuntime, WorkspaceMember, WorkspaceRunActivity } from './types';
 import type { AgentToken, AgentToolAudit, AuthorEngine, BrowserSession, StageRetry, ModuleMetadata, Plan, PlanStage, PlanSummary, StageArgument, JsonValue, AuthorPartial, CatalogItem, AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
 
 export class ApiError extends Error {
@@ -309,28 +309,45 @@ function parseCatalogItem(value: unknown): CatalogItem {
   };
 }
 
-function parseRun(value: unknown): Run {
-  const data = record(value);
+function parseRunActivityFields(data: Record<string, unknown>): Omit<RunActivity, 'testId' | 'authorPartial'> {
   if (data.kind != null && data.kind !== 'run' && data.kind !== 'validation' && data.kind !== 'author') {
     throw new ApiError('API Run kind 格式不符。', 'INVALID_RESPONSE');
   }
   if (data.authorMode != null && data.authorMode !== 'edit' && data.authorMode !== 'summary' && data.authorMode !== 'workspace') throw new ApiError('authorMode 格式不符。', 'INVALID_RESPONSE');
   return {
-    id: string(data.id), testId: nullableString(data.testId), workspaceId: string(data.workspaceId), status: parseStatus(data.status),
+    id: string(data.id), status: parseStatus(data.status),
     createdAt: string(data.createdAt), startedAt: optionalString(data.startedAt),
-    finishedAt: optionalString(data.finishedAt), error: optionalString(data.error),
+    finishedAt: optionalString(data.finishedAt),
     reportUrl: optionalString(data.reportUrl),
-    kind: data.kind as Run['kind'],
+    kind: data.kind as RunActivity['kind'],
     draftRevision: data.draftRevision == null ? undefined : revision(data.draftRevision),
-    versionId: optionalString(data.versionId),
-    workspaceSettings: data.workspaceSettings == null ? undefined : parseWorkspaceSnapshot(data.workspaceSettings),
     editingSessionId: optionalString(data.editingSessionId) ?? null,
-    authorMode: data.authorMode as Run['authorMode'],
+    authorMode: data.authorMode as RunActivity['authorMode'],
     authorRepliedOnly: data.authorRepliedOnly === true,
     authorEngine: parseAuthorEngine(data.authorEngine),
+    progressEvents: data.progressEvents == null ? undefined : array(data.progressEvents, string),
+  };
+}
+
+function parseWorkspaceRunActivity(value: unknown): WorkspaceRunActivity {
+  const data = record(value);
+  const partial = data.authorPartial == null ? undefined : record(data.authorPartial);
+  return {
+    ...parseRunActivityFields(data),
+    testId: string(data.testId),
+    authorPartial: partial && { reason: choice(partial.reason, ['budget_exhausted', 'checkpoint_saved'] as const) },
+  };
+}
+
+function parseRun(value: unknown): Run {
+  const data = record(value);
+  return {
+    ...parseRunActivityFields(data),
+    testId: nullableString(data.testId), workspaceId: string(data.workspaceId), error: optionalString(data.error),
+    versionId: optionalString(data.versionId),
+    workspaceSettings: data.workspaceSettings == null ? undefined : parseWorkspaceSnapshot(data.workspaceSettings),
     scriptOrigin: data.scriptOrigin == null ? undefined : choice(data.scriptOrigin, ['ai', 'manual', 'legacy'] as const),
     authorPartial: data.authorPartial == null ? undefined : parseAuthorPartial(data.authorPartial),
-    progressEvents: data.progressEvents == null ? undefined : array(data.progressEvents, string),
   };
 }
 
@@ -688,6 +705,12 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     },
     async listRuns(testId, signal) {
       return items(await request(`/tests/${id(testId)}/runs`, 'GET', signal), parseRun);
+    },
+    async listWorkspaceRunActivity(workspaceId, testIds, signal) {
+      if (testIds?.length === 0) return [];
+      const query = new URLSearchParams(testIds?.map(testId => ['testId', testId]));
+      const suffix = query.size ? `?${query}` : '';
+      return items(await request(`/workspaces/${id(workspaceId)}/run-activity${suffix}`, 'GET', signal, undefined, false, 200), parseWorkspaceRunActivity);
     },
     async getRun(runId, signal) {
       return parseRun(await request(`/runs/${id(runId)}`, 'GET', signal));

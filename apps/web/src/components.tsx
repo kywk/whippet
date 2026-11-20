@@ -4,7 +4,7 @@ import type { BackgroundCompletion } from './activity';
 import { resolveReportUrl } from './api';
 import { BellIcon } from './icons';
 import { STATUS_LABELS } from './types';
-import type { Run, RunStatus } from './types';
+import type { Run, RunActivity, RunStatus } from './types';
 
 export function Notice({ message, retry, retryLabel = '重試' }: { message: string; retry?: () => void; retryLabel?: string }) {
   return <div className="notice" role="alert"><p>{message}</p>{retry ? <button className="button secondary compact" onClick={retry}>{retryLabel}</button> : null}</div>;
@@ -72,7 +72,7 @@ export function StatusBadge({ status }: { status: RunStatus }) {
   return <span className={`status-badge ${tone}`}><span className="status-dot" aria-hidden="true" />{STATUS_LABELS[status]}</span>;
 }
 
-export function RunStatusBadge({ run }: { run: Run }) {
+export function RunStatusBadge({ run }: { run: RunActivity }) {
   if (run.kind === 'author' && run.authorPartial) return <span className="status-badge active">部分完成 · {run.authorPartial.reason === 'checkpoint_saved' ? '已保存候選' : '預算耗盡'}</span>;
   return run.kind === 'author' && run.status === 'succeeded'
     ? <span className="status-badge success"><span className="status-dot" aria-hidden="true" />{run.authorMode === 'workspace' ? '訪談完成' : run.authorMode === 'summary' ? '摘要完成' : '撰寫完成'}</span>

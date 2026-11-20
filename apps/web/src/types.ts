@@ -301,26 +301,34 @@ export interface PlanSummary {
   candidates: { testId: string; versionId: string; name: string; slug: string; moduleKind: 'setup' | 'step' | 'page'; revision: number; bundleHash: string }[];
 }
 
-export interface Run {
+export interface RunActivity {
   id: string;
   testId: string | null;
-  workspaceId?: string;
   status: RunStatus;
   createdAt: string;
   startedAt?: string;
   finishedAt?: string;
-  error?: string;
   reportUrl?: string;
   kind?: 'run' | 'validation' | 'author';
   draftRevision?: number;
-  versionId?: string;
-  workspaceSettings?: WorkspaceSettingsSnapshot;
   editingSessionId?: string | null;
   authorMode?: 'edit' | 'summary' | 'workspace';
   authorRepliedOnly?: boolean;
   authorEngine?: AuthorEngine;
-  scriptOrigin?: ScriptOrigin;
   progressEvents?: string[];
+  authorPartial?: Pick<AuthorPartial, 'reason'>;
+}
+
+export interface WorkspaceRunActivity extends RunActivity {
+  testId: string;
+}
+
+export interface Run extends RunActivity {
+  workspaceId?: string;
+  error?: string;
+  versionId?: string;
+  workspaceSettings?: WorkspaceSettingsSnapshot;
+  scriptOrigin?: ScriptOrigin;
   authorPartial?: AuthorPartial;
 }
 
@@ -450,7 +458,7 @@ export const STATUS_LABELS: Record<RunStatus, string> = {
   interrupted: '執行中斷',
 };
 
-export function isActiveRun(run: Run): boolean {
+export function isActiveRun(run: Pick<RunActivity, 'status'>): boolean {
   return ['queued', 'dispatched', 'running', 'collecting', 'cancelling'].includes(run.status);
 }
 
@@ -495,6 +503,7 @@ export interface WhippetApi {
   updateTestMetadata(testId: string, patch: TestMetadataPatch, signal?: AbortSignal): Promise<Test>;
   createRun(testId: string, signal?: AbortSignal): Promise<Run>;
   listRuns(testId: string, signal?: AbortSignal): Promise<Run[]>;
+  listWorkspaceRunActivity(workspaceId: string, testIds?: readonly string[], signal?: AbortSignal): Promise<WorkspaceRunActivity[]>;
   getRun(runId: string, signal?: AbortSignal): Promise<Run>;
   createTest(workspaceId: string, input: { name?: string; description?: string; kind?: 'test' | 'module' | 'usecase'; slug?: string }, signal?: AbortSignal): Promise<Test>;
   getDraft(testId: string, editingSessionId: string, signal?: AbortSignal): Promise<Draft>;

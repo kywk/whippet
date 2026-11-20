@@ -1,7 +1,7 @@
 import { ApiError } from './api';
 import { DEFAULT_DEV_USER, DEV_IDENTITIES } from './access';
 import { isActiveRun } from './types';
-import type { DevUser, Draft, Run, SiteRole, Test, Version, WhippetApi, WorkspaceDetail, WorkspaceMemberRole } from './types';
+import type { DevUser, Draft, Run, SiteRole, Test, Version, WhippetApi, WorkspaceDetail, WorkspaceMemberRole, WorkspaceRunActivity } from './types';
 
 // 明確 opt-in 的 UI 示範；不與真實 API 自動互相切換。
 export function createMockApi(): WhippetApi {
@@ -201,6 +201,24 @@ test('本機頁面', async ({ page }) => {
     async listRuns(testId) {
       getTest(testId);
       return [...runs.values()].filter((run) => run.testId === testId).map(progress);
+    },
+    async listWorkspaceRunActivity(workspaceId, testIds, signal) {
+      signal?.throwIfAborted();
+      if (!workspaceAccess(workspaceId).manageTests) forbid();
+      const filter = testIds === undefined ? undefined : new Set(testIds);
+      const visible = new Set(tests.filter((test) => test.workspaceId === workspaceId && !test.archived && (!filter || filter.has(test.id))).map((test) => test.id));
+      const activity: WorkspaceRunActivity[] = [];
+      for (const entry of runs.values()) {
+        const { testId } = entry;
+        if (testId === null || !visible.has(testId)) continue;
+        const run = progress(entry);
+        const { id, status, kind, createdAt, startedAt, finishedAt, editingSessionId, draftRevision, reportUrl, authorMode, authorEngine, authorPartial, authorRepliedOnly } = run;
+        activity.push({ id, testId, status, kind, createdAt, startedAt, finishedAt, editingSessionId, draftRevision, reportUrl, authorMode, authorEngine, authorRepliedOnly,
+          authorPartial: authorPartial && { reason: authorPartial.reason },
+          progressEvents: kind === 'author' && isActiveRun(run) ? run.progressEvents : undefined,
+        });
+      }
+      return activity.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
     },
     async getRun(runId) {
       const run = runs.get(runId);

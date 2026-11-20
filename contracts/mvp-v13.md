@@ -39,3 +39,9 @@
 - `POST /api/tests/{id}/archive` 接受 `{confirmed:true}`，回傳 204。適用 Test、Module、Use Case。編輯中的資產須先完成發佈或放棄草稿，放棄中的資產須等候回收。重送封存請求回傳 204。
 - `GET /api/workspaces/{id}/archived-tests` 回傳 `{items}`。封存資產以 `archived: true` 標記，原版本與 Run 紀錄可讀。一般清單與 Catalog 搜尋隱藏已封存資產。
 - 封存後禁止開新草稿或排入新的獨立 Run。已排入的 Run、歷史報告及 Use Case 已固定的 Module 版本仍可使用。
+
+## Workspace 執行活動
+
+`GET /api/workspaces/{id}/run-activity` 使用與一般測試清單相同的 Workspace 權限。預設讀取該清單中所有資產的執行活動；可重複傳入 `testId` 指定子集合，每次最多 100 個 UUID。查詢結果取指定 ID 與可見資產的交集。沒有符合紀錄時回傳 `{"items":[]}`。
+
+`items` 依排隊序號由新到舊排列。每筆包含 `id`、`testId`、`kind`、`status`、`createdAt` 及 `editingSessionId`。依 Run 狀態提供 `startedAt`、`finishedAt`、`draftRevision`、`reportUrl` 與作者相關欄位。`authorPartial` 只提供 `reason`，`progressEvents` 用於顯示進行中作者任務的進度。單一案例的完整執行紀錄繼續由 `GET /api/tests/{id}/runs` 提供。

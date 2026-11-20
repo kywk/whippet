@@ -4,7 +4,7 @@ import type { useActivity } from './activity';
 import { Loading, Notice, ReportLink, RunStatusBadge } from './components';
 import { BookIcon, CheckIcon, ChevronRightIcon, GearIcon, HomeIcon, PlayIcon, PlusIcon, RefreshIcon, ReportIcon } from './icons';
 import { WorkspaceAvailability } from './WorkspaceSettings';
-import type { Run, Test, WorkspaceDetail } from './types';
+import type { Test, WorkspaceDetail, WorkspaceRunActivity } from './types';
 import './workspace-overview.css';
 
 interface Props {
@@ -48,7 +48,7 @@ export function WorkspaceOverview({ workspace, tests, testsLoading, testsError, 
   let passed = 0;
   let unsuccessful = 0;
   const now = Date.now();
-  const recent: { test: Test; run: Run; timestamp: number }[] = [];
+  const recent: { test: Test; run: WorkspaceRunActivity; timestamp: number }[] = [];
   for (const test of tests) {
     if (test.kind === 'module') {
       modules += 1;

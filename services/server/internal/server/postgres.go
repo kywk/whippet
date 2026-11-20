@@ -137,17 +137,24 @@ func readTest(ctx context.Context, q queryDB, id string) (Test, error) {
 	return scanTest(q.QueryRowContext(ctx, `SELECT `+testColumns+` FROM tests WHERE id=$1`, id))
 }
 
-const runColumns = `r.id,r.test_id,r.status,r.created_at,r.started_at,r.finished_at,r.error,
-    CASE WHEN EXISTS(SELECT 1 FROM artifacts a WHERE a.run_id=r.id AND a.attempt_id=r.attempt_id AND a.name='report.html')
-    THEN '/api/runs/' || r.id::text || '/artifacts/report.html' ELSE '' END,
-    r.kind,r.draft_revision,r.version_id,r.workspace_settings,r.editing_session_id,r.workspace_id,r.workspace_context,
-    CASE WHEN r.kind='author' THEN CASE WHEN r.author_payload->>'skillId'='acceptance-summary' THEN 'summary' WHEN r.author_payload->>'skillId'='workspace-author' THEN 'workspace' ELSE 'edit' END ELSE '' END,r.script_origin,r.authorization_revision,r.scope_proposal_id,
-    CASE WHEN r.kind='author' AND r.attempt_id IS NOT NULL THEN COALESCE((SELECT jsonb_agg(e.message ORDER BY e.created_at) FROM run_events e WHERE e.run_id=r.id AND e.attempt_id=r.attempt_id AND e.kind='log'),'[]'::jsonb) ELSE '[]'::jsonb END,COALESCE(r.author_partial,'null'::jsonb),r.author_engine,
-    CASE WHEN r.kind='author' AND r.status='succeeded' AND r.author_partial IS NULL AND COALESCE(r.author_payload->>'skillId','test-author')='test-author'
+const runReportURL = `CASE WHEN EXISTS(SELECT 1 FROM artifacts a WHERE a.run_id=r.id AND a.attempt_id=r.attempt_id AND a.name='report.html')
+    THEN '/api/runs/' || r.id::text || '/artifacts/report.html' ELSE '' END`
+
+const runAuthorMode = `CASE WHEN r.kind='author' THEN CASE WHEN r.author_payload->>'skillId'='acceptance-summary' THEN 'summary' WHEN r.author_payload->>'skillId'='workspace-author' THEN 'workspace' ELSE 'edit' END ELSE '' END`
+
+const runProgressEvents = `COALESCE((SELECT jsonb_agg(e.message ORDER BY e.created_at) FROM run_events e WHERE e.run_id=r.id AND e.attempt_id=r.attempt_id AND e.kind='log'),'[]'::jsonb)`
+
+const runAuthorRepliedOnly = `CASE WHEN r.kind='author' AND r.status='succeeded' AND r.author_partial IS NULL AND COALESCE(r.author_payload->>'skillId','test-author')='test-author'
     THEN EXISTS(SELECT 1 FROM editing_sessions s JOIN messages m ON m.conversation_id=s.conversation_id
         WHERE s.id=r.editing_session_id AND m.run_id=r.id AND m.role='assistant'
           AND m.applied_revision IS NULL AND m.proposed_script IS NULL AND m.validation_run_id IS NULL)
     ELSE false END`
+
+const runColumns = `r.id,r.test_id,r.status,r.created_at,r.started_at,r.finished_at,r.error,` + runReportURL + `,
+    r.kind,r.draft_revision,r.version_id,r.workspace_settings,r.editing_session_id,r.workspace_id,r.workspace_context,` + runAuthorMode + `,
+    r.script_origin,r.authorization_revision,r.scope_proposal_id,
+    CASE WHEN r.kind='author' AND r.attempt_id IS NOT NULL THEN ` + runProgressEvents + ` ELSE '[]'::jsonb END,
+    COALESCE(r.author_partial,'null'::jsonb),r.author_engine,` + runAuthorRepliedOnly
 
 func scanRun(row scanner) (Run, error) {
 	var r Run

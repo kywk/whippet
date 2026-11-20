@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { isActiveRun } from './types';
-import type { Run } from './types';
+import type { Run, RunActivity } from './types';
 import { CheckIcon, CloseIcon } from './icons';
 import { TypingDots } from './chat';
 
@@ -159,10 +159,10 @@ export function AuthorLiveStatus({ run, mode = 'edit' }: { run?: Run; mode?: 'ed
 }
 
 const BAD = ['failed', 'cancelled', 'timed_out', 'interrupted'];
-const byNewest = (a: Run, b: Run) => Date.parse(b.createdAt) - Date.parse(a.createdAt);
-const stamp = (run?: Run) => run ? run.finishedAt ?? run.startedAt ?? run.createdAt : undefined;
+const byNewest = (a: RunActivity, b: RunActivity) => Date.parse(b.createdAt) - Date.parse(a.createdAt);
+const stamp = (run?: RunActivity) => run ? run.finishedAt ?? run.startedAt ?? run.createdAt : undefined;
 
-function stateOf(run: Run | undefined): StageState {
+function stateOf(run: RunActivity | undefined): StageState {
   if (!run) return 'todo';
   if (isActiveRun(run)) return 'active';
   return run.status === 'succeeded' ? 'done' : 'failed';
@@ -172,7 +172,7 @@ function stateOf(run: Run | undefined): StageState {
  * 由 Run 紀錄推導一次編輯週期目前停在哪一站。只是畫面摘要：
  * 發佈資格仍以 Server 的驗證、報告與摘要判定為準。
  */
-export function trailFromRuns(runs: Run[], session: { id?: string; draftRevision?: number; latestTurnChangedDraft?: boolean }): TrailSummary {
+export function trailFromRuns(runs: RunActivity[], session: { id?: string; draftRevision?: number; latestTurnChangedDraft?: boolean }): TrailSummary {
   const own = runs.filter((run) => !session.id || run.editingSessionId === session.id).sort(byNewest);
   const author = own.find((run) => run.kind === 'author' && run.authorMode !== 'summary');
   const validation = own.find((run) => run.kind === 'validation' && (session.draftRevision == null || run.draftRevision === session.draftRevision));

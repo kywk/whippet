@@ -111,6 +111,7 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	workspace("GET /api/workspaces/{id}/members", manageMembers, a.workspaceMembers)
 	workspace("PUT /api/workspaces/{id}/members/{userId}", manageMembers, a.updateWorkspaceMember)
 	workspace("GET /api/workspaces/{id}/tests", useTests, a.tests)
+	workspace("GET /api/workspaces/{id}/run-activity", useTests, a.runActivity)
 	workspace("GET /api/workspaces/{id}/archived-tests", useTests, a.archivedTests)
 	workspace("POST /api/workspaces/{id}/tests", useTests, a.createTest)
 	test("GET /api/tests/{id}", a.test)

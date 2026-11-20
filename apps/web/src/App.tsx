@@ -427,7 +427,7 @@ function TestBrowser({ workspace, workspaces, api, apiBase, mock, user, onLogout
   const viewedTestId = surface === 'tests' ? selectedTestId : undefined;
   const viewedAuthorTestId = viewedTestId && (viewedTestId === visibleConversationTestId || !selected?.activeEditingSession) ? viewedTestId : undefined;
   const { activity, running, unread, permission, enableNotifications, runHistory } = useActivity(
-    api, allTests, { testId: viewedTestId, authorTestId: viewedAuthorTestId }, user.id, onBackgroundCompletion,
+    api, workspace.id, allTests, { testId: viewedTestId, authorTestId: viewedAuthorTestId }, user.id, onBackgroundCompletion,
   );
   const reportConversationVisibility = useCallback((visible: boolean) => {
     setVisibleConversationTestId(visible ? selectedTestId : undefined);
