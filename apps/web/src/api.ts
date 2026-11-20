@@ -344,7 +344,7 @@ function parseRun(value: unknown): Run {
   return {
     ...parseRunActivityFields(data),
     testId: nullableString(data.testId), workspaceId: string(data.workspaceId), error: optionalString(data.error),
-    versionId: optionalString(data.versionId),
+    versionId: optionalString(data.versionId), feedbackReportUrl: optionalString(data.feedbackReportUrl),
     workspaceSettings: data.workspaceSettings == null ? undefined : parseWorkspaceSnapshot(data.workspaceSettings),
     scriptOrigin: data.scriptOrigin == null ? undefined : choice(data.scriptOrigin, ['ai', 'manual', 'legacy'] as const),
     authorPartial: data.authorPartial == null ? undefined : parseAuthorPartial(data.authorPartial),

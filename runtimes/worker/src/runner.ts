@@ -213,9 +213,11 @@ async function execute(input: Input, taskDir: string, harness: TestHarness): Pro
     json = parsed;
   } catch { /* Evidence missing -> failed. */ }
   try { summary = JSON.parse((await boundedRead(summaryPath, 1024 * 1024)).toString()) as RuntimeSummary; } catch { /* Reporter failure -> failed. */ }
-  return decideResult({
+  const result = decideResult({
     exitCode, cancelled, watchdogExpired, reportReady: await regularFile(join(outputDir, "report.html")), json, summary, launchError,
   });
+  const targetOrigin = harness.networkIsolated ? harness.reachedTargetOrigin() : undefined;
+  return targetOrigin ? { ...result, targetOrigin } : result;
 }
 
 async function main(): Promise<void> {

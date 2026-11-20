@@ -242,8 +242,10 @@ type WorkerInput struct {
 }
 
 type Result struct {
-	Status string `json:"status"`
-	Error  string `json:"error,omitempty"`
+	TargetOrigin string `json:"targetOrigin,omitempty"`
+	Assertion    string `json:"assertion,omitempty"`
+	Status       string `json:"status"`
+	Error        string `json:"error,omitempty"`
 }
 
 func (r Result) valid() bool {

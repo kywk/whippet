@@ -324,6 +324,7 @@ export interface WorkspaceRunActivity extends RunActivity {
 }
 
 export interface Run extends RunActivity {
+  feedbackReportUrl?: string;
   workspaceId?: string;
   error?: string;
   versionId?: string;

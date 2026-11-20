@@ -27,6 +27,7 @@ type API struct {
 	viewerMu      sync.Mutex
 	userViewers   map[*viewerGrant]struct{}
 	agentLimiter  *agentRateLimiter
+	inspections   *InspectionConfig
 	log           *slog.Logger
 	liveViewer    http.Handler
 	liveMedia     http.Handler
@@ -58,6 +59,11 @@ func (a *API) WithSessionLiveHandlers(viewer, media http.Handler) *API {
 	return a
 }
 
+func (a *API) WithInspectionConfig(config *InspectionConfig) *API {
+	a.inspections = config
+	return a
+}
+
 func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	handle := func(pattern string, next http.HandlerFunc) { mux.Handle(pattern, boundedRequest(next)) }
@@ -85,6 +91,12 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 		writeJSON(w, 200, map[string]string{"status": "ready"})
 	})
 	mux.Handle("/mcp", boundedRequest(a.newMCPHandler()))
+	if a.inspections != nil {
+		handle("GET /api/inspections/workspaces/{workspaceId}/runs", a.inspectionHTTP)
+		handle("POST /api/inspections/workspaces/{workspaceId}/runs", a.inspectionHTTP)
+		handle("GET /api/inspections/workspaces/{workspaceId}/runs/{runId}", a.inspectionHTTP)
+		handle("POST /api/inspections/workspaces/{workspaceId}/runs/{runId}/links", a.inspectionHTTP)
+	}
 	handle("POST /api/dev-login", a.devLogin)
 	handle("POST /api/dev-logout", a.devLogout)
 	site("GET /api/me", signedIn, a.me)

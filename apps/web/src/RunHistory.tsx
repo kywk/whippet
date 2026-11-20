@@ -45,6 +45,7 @@ export function RunHistory({ api, apiBase, runs, group, loading, error, polling,
           <time dateTime={latest.createdAt}>{formatDate(latest.createdAt)}</time>
           {formal && latest.startedAt ? <span className="latest-duration">{duration(latest)}</span> : null}
           {latest.kind === 'author' ? <span>{latest.authorMode === 'summary' ? '結果見驗收摘要' : '撰寫結果見對話'}</span> : <ReportLink reportUrl={latest.reportUrl} apiBase={apiBase} />}
+          <FeedbackReportLink url={latest.feedbackReportUrl} />
         </div>
         <RunProblem run={latest} />
         {latest.kind !== 'author' && latest.error ? <details className="error-details"><summary>查看技術細節</summary><pre className="run-error">{latest.error}</pre></details> : null}
@@ -74,6 +75,7 @@ export function RunHistory({ api, apiBase, runs, group, loading, error, polling,
           <td><div className="run-actions">
             {run.kind === 'author' ? <span className="muted col-nowrap">{run.authorMode === 'summary' ? '結果見驗收摘要' : '撰寫結果見對話'}</span> : <>
               <ReportLink reportUrl={run.reportUrl} apiBase={apiBase} />
+              <FeedbackReportLink url={run.feedbackReportUrl} />
               {isBadStatus(run.status) ? <RunArtifacts api={api} apiBase={apiBase} runId={run.id} /> : null}
             </>}
             {isActiveRun(run) ? <>
@@ -84,6 +86,18 @@ export function RunHistory({ api, apiBase, runs, group, loading, error, polling,
         </tr>)}</tbody>
       </table></div> : !loading && !error ? <p className="run-history-empty muted">{formal ? '尚無正式執行紀錄。' : '尚無 AI 撰寫或草稿驗證紀錄。'}</p> : null}
   </section>;
+}
+
+function FeedbackReportLink({ url }: { url?: string }) {
+  if (!url) return null;
+  try {
+    const target = new URL(url);
+    if (!['https:', 'http:'].includes(target.protocol) || target.username || target.password ||
+        target.search || target.hash) return null;
+    return <a className="report-link" href={target.href} target="_blank" rel="noopener noreferrer" aria-label="查看回饋單（新分頁）">查看回饋單</a>;
+  } catch {
+    return null;
+  }
 }
 
 function shortRunId(id: string): string {

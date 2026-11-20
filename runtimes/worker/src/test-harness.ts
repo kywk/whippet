@@ -55,6 +55,7 @@ table inet whippet_test {
   return {
     networkIsolated: !localFixture,
     proxy: { server: proxy.url },
+    reachedTargetOrigin: proxy.reachedTargetOrigin,
     credentialUID: localFixture ? undefined : scriptUID,
     async grantAccess(path: string) {
       if (!localFixture) await chown(path, scriptUID, scriptUID);

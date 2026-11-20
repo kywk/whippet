@@ -94,6 +94,10 @@ func run(log *slog.Logger) error {
 	if publicOrigin != "" && !validPublicOrigin(publicOrigin) {
 		return errors.New("WHIPPET_PUBLIC_ORIGIN must be an exact HTTP(S) origin")
 	}
+	inspectionConfig, err := server.LoadInspectionConfig(os.Getenv("WHIPPET_INSPECTION_CONFIG"))
+	if err != nil {
+		return fmt.Errorf("inspection configuration: %w", err)
+	}
 	iceServers, err := server.ParseICEServers(os.Getenv("WHIPPET_LIVE_ICE_SERVERS"))
 	if err != nil {
 		return err
@@ -152,7 +156,7 @@ func run(log *slog.Logger) error {
 	engine.SetLiveHub(liveHub)
 	defer liveHub.Close()
 	api := server.NewAPI(store, artifacts, engine, token, log)
-	api.WithAdminAccess(adminToken, publicOrigin)
+	api.WithAdminAccess(adminToken, publicOrigin).WithInspectionConfig(inspectionConfig)
 	ws := &gateway.Gateway{Engine: engine, Log: log}
 	live := &gateway.LiveGateway{Hub: liveHub}
 	api.WithLiveHandlers(http.HandlerFunc(live.Viewer), http.HandlerFunc(live.Media))

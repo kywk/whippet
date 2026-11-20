@@ -32,6 +32,8 @@ export async function startScopeProxy(scope: WorkspaceConfig) {
   const agent = new Agent({ maxSockets: 32 });
   const sockets = new Set<Socket>();
   const tunnels = new WeakMap<Duplex, URL>();
+  const targetOrigin = scope.targets.length === 1 ? scope.targets[0]?.origin : undefined;
+  let reachedTarget = false;
   function track(socket: Socket) {
     if (sockets.has(socket)) return;
     sockets.add(socket);
@@ -60,6 +62,7 @@ export async function startScopeProxy(scope: WorkspaceConfig) {
     const headers = forwardHeaders(incoming.headers);
     headers.host = target.host;
     const upstream = request(target, { agent, method: incoming.method, headers }, response => {
+      if (target.origin === targetOrigin && response.statusCode && response.statusCode < 500) reachedTarget = true;
       outgoing.writeHead(response.statusCode ?? 502, forwardHeaders(response.headers));
       response.on("error", () => outgoing.destroy());
       response.pipe(outgoing);
@@ -134,6 +137,7 @@ export async function startScopeProxy(scope: WorkspaceConfig) {
       if (!allowSecure) { socket.destroy(); return; }
       const upstream = connect({ host: host(secure), port: Number(secure.port || 443) });
       track(upstream);
+      if (secure.origin === targetOrigin) upstream.once("data", () => { reachedTarget = true; });
       socket.once("close", () => upstream.destroy());
       upstream.once("close", () => socket.destroy());
       upstream.write(first);
@@ -155,6 +159,7 @@ export async function startScopeProxy(scope: WorkspaceConfig) {
   return {
     port,
     url: `http://${loopback}:${port}`,
+    reachedTargetOrigin: () => reachedTarget ? targetOrigin : undefined,
     async close() {
       agent.destroy();
       for (const socket of sockets) socket.destroy();

@@ -154,12 +154,12 @@ const runColumns = `r.id,r.test_id,r.status,r.created_at,r.started_at,r.finished
     r.kind,r.draft_revision,r.version_id,r.workspace_settings,r.editing_session_id,r.workspace_id,r.workspace_context,` + runAuthorMode + `,
     r.script_origin,r.authorization_revision,r.scope_proposal_id,
     CASE WHEN r.kind='author' AND r.attempt_id IS NOT NULL THEN ` + runProgressEvents + ` ELSE '[]'::jsonb END,
-    COALESCE(r.author_partial,'null'::jsonb),r.author_engine,` + runAuthorRepliedOnly
+    COALESCE(r.author_partial,'null'::jsonb),r.author_engine,` + runAuthorRepliedOnly + `,COALESCE((SELECT l.report_url FROM inspection_report_links l WHERE l.run_id=r.id AND l.attempt_id=r.attempt_id),'')`
 
 func scanRun(row scanner) (Run, error) {
 	var r Run
 	var settings, workspaceContext, progressEvents, partial []byte
-	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL, &r.Kind, &r.DraftRevision, &r.VersionID, &settings, &r.EditingSessionID, &r.WorkspaceID, &workspaceContext, &r.AuthorMode, &r.ScriptOrigin, &r.authorizationRevision, &r.scopeProposalID, &progressEvents, &partial, &r.AuthorEngine, &r.AuthorRepliedOnly)
+	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL, &r.Kind, &r.DraftRevision, &r.VersionID, &settings, &r.EditingSessionID, &r.WorkspaceID, &workspaceContext, &r.AuthorMode, &r.ScriptOrigin, &r.authorizationRevision, &r.scopeProposalID, &progressEvents, &partial, &r.AuthorEngine, &r.AuthorRepliedOnly, &r.FeedbackReportURL)
 	if err == nil {
 		r.WorkspaceSettings, err = decodeSettings(settings)
 		if err == nil {
@@ -177,11 +177,24 @@ func scanRun(row scanner) (Run, error) {
 }
 
 func (p *Postgres) CreateRun(ctx context.Context, testID string) (Run, error) {
+	return p.createRun(ctx, testID, nil)
+}
+
+func (p *Postgres) createRun(ctx context.Context, testID string, inspection *inspectionSchedule) (Run, error) {
 	tx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return Run{}, err
 	}
 	defer tx.Rollback()
+	if inspection != nil {
+		prior, err := inspection.prior(ctx, tx)
+		if err != nil {
+			return Run{}, err
+		}
+		if prior != "" {
+			return Run{ID: prior}, tx.Commit()
+		}
+	}
 	if _, err = lockEditingTest(ctx, tx, testID); err != nil {
 		return Run{}, err
 	}
@@ -224,6 +237,9 @@ func (p *Postgres) CreateRun(ctx context.Context, testID string) (Run, error) {
 	if v.ScriptOrigin == "legacy" && (snapshot == nil || snapshot.Config == nil) {
 		snapshot, _ = selectedContext(w, false)
 	}
+	if inspection != nil && (!confirmedCanonical(w) || !inspection.matches(w.ID, v.ID, v.WorkspaceContext)) {
+		return Run{}, ErrConflict
+	}
 	auth, proposal, err := executionBinding(w, origin, snapshot)
 	if err != nil {
 		return Run{}, err
@@ -232,6 +248,11 @@ func (p *Postgres) CreateRun(ctx context.Context, testID string) (Run, error) {
 	if _, err = tx.ExecContext(ctx, `INSERT INTO runs(id,test_id,workspace_id,version_id,script_snapshot,script_hash,timeout_ms,workspace_settings,workspace_context,script_origin,authorization_revision,scope_proposal_id,files_snapshot,bundle_hash,bundle_metadata)
  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`, id, testID, w.ID, v.ID, script, scriptHash(script), v.WorkspaceSettings.TimeoutMS, settingsJSON(v.WorkspaceSettings), jsonText(snapshot), origin, auth, proposal, files, bundleHash, metadata); err != nil {
 		return Run{}, err
+	}
+	if inspection != nil {
+		if err := inspection.record(ctx, tx, id); err != nil {
+			return Run{}, err
+		}
 	}
 	run, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs r WHERE r.id=$1`, id))
 	if err != nil {
@@ -532,6 +553,17 @@ func (p *Postgres) Complete(ctx context.Context, managerID, runID, attemptID str
 		}
 		if count != 2 {
 			return fmt.Errorf("%w: successful result requires report.html and results.json", ErrConflict)
+		}
+	}
+	if (result.Status == "failed" || result.Status == "succeeded") && result.TargetOrigin != "" {
+		assertion := ""
+		if result.Status == "failed" && inspectionDigest.MatchString(result.Assertion) {
+			assertion = result.Assertion
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE inspection_runs SET observed_target=true,
+			observed_assertion=CASE WHEN expected_assertion=$3 THEN $3 END
+			WHERE run_id=$1 AND target_origin=$2`, runID, result.TargetOrigin, assertion); err != nil {
+			return err
 		}
 	}
 	// Result finalizes the Run, but heartbeat must confirm slot reclamation separately.

@@ -69,6 +69,7 @@ type Run struct {
 	FinishedAt            *time.Time         `json:"finishedAt,omitempty"`
 	Error                 string             `json:"error,omitempty"`
 	ReportURL             string             `json:"reportUrl,omitempty"`
+	FeedbackReportURL     string             `json:"feedbackReportUrl,omitempty"`
 	Kind                  string             `json:"kind"`
 	DraftRevision         *int               `json:"draftRevision,omitempty"`
 	VersionID             *string            `json:"versionId,omitempty"`
@@ -250,8 +251,10 @@ type Event struct {
 }
 
 type Result struct {
-	Status string `json:"status"`
-	Error  string `json:"error,omitempty"`
+	TargetOrigin string `json:"targetOrigin,omitempty"`
+	Assertion    string `json:"assertion,omitempty"`
+	Status       string `json:"status"`
+	Error        string `json:"error,omitempty"`
 }
 
 func (r Result) Valid() bool {

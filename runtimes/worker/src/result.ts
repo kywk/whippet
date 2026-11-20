@@ -3,6 +3,8 @@ export type Status = "succeeded" | "failed" | "timed_out" | "cancelled";
 export interface WorkerResult {
   status: Status;
   error?: string;
+  assertion?: string;
+  targetOrigin?: string;
 }
 
 export interface RuntimeSummary {
@@ -12,6 +14,7 @@ export interface RuntimeSummary {
   timedOut: number;
   interrupted: number;
   errors: string[];
+  assertion?: string;
 }
 
 export interface Evidence {
@@ -53,5 +56,11 @@ export function decideResult(evidence: Evidence): WorkerResult {
     return { status: "succeeded" };
   }
   const detail = summary?.errors[0] ?? "A passing, nonempty Playwright run and both real reports are required";
-  return { status: "failed", error: `Playwright exit=${String(evidence.exitCode)}: ${detail}`.slice(0, 8192) };
+  const assertion = evidence.exitCode === 1 && summary?.status === "failed" &&
+    typeof summary.assertion === "string" && /^[a-f0-9]{64}$/.test(summary.assertion) ? summary.assertion : undefined;
+  return {
+    status: "failed",
+    error: `Playwright exit=${String(evidence.exitCode)}: ${detail}`.slice(0, 8192),
+    ...(assertion ? { assertion } : {}),
+  };
 }
