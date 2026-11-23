@@ -371,6 +371,30 @@ M9歷史失敗已定位（81352430診斷回合）：模型將首次cursor輸出�
 
 Web build/typecheck 通過。Chrome 桌面與 375 px 窄版核對素材、既有 AI 失敗紀錄及瀏覽器內重現的摘要失敗。摘要重試請求指向既有驗證，未送給 Server。19787 展示站已更新 Web，正式 Run `628c1180-a4dd-44b1-a41f-4a2a7fea8800` 的 Playwright 報告仍可開啟。
 
+2026-11-20 完成／主 Agent。測試與 Workspace 的 AI 對話依各自 session ID 從五張慧比特犬插畫選出固定頭像，滑鼠停留時以瀏覽器原生提示顯示犬名與介紹。版本歷史使用純文字對話。插畫以內建 ImageGen 生成水粉風格圖集，裁成獨立的 96 × 96 WebP 按需載入，每張約 1.8–2.4 KB。[頭像選角](https://chatgpt.com/share/6affc429-68b4-83ee-a783-5e3f5d18578b) · [Sounders](https://www.guinnessworldrecords.com/world-records/106242-farthest-jump-by-a-dog-dock-jumping) · [Slingshot](https://www.akc.org/expert-advice/news/dock-diving-whippet-guinness-world-record/) · [Fleetfoot](https://www.westminsterkennelclub.org/conformation-records/best-in-show-winners/) · Bourbon [AKC 冠軍](https://www.akc.org/press-releases/whippet-bourbon-wins-best-show-20th-akc-national-championship-presented-royal-canin/)、[Westminster 亞軍](https://www.westminsterkennelclub.org/conformation-records/reserve-best-in-show-winners/) · [Zorro](https://store.steampowered.com/app/4333780/)
+
+Web build/typecheck 及六項發佈畫面回歸通過。以合成 API 在 Chromium 桌機與 390 px 驗證待回覆、切換、重開與重新整理，並核對滑鼠停留目標的提示文字。同一對話的三個頭像共用一次圖片請求，版本歷史沒有頭像請求。
+
+13:52 套用至本機 19687 驗收站並重啟 Web。首頁、頭像模組與五張圖檔均回傳 HTTP 200，內容與已驗收的建置產物一致。API 正常回應未登入狀態。
+
+## Recruitment 本機 E2E 工作區（2026-11-20）
+
+完成／主 Agent。清理五個已退役的 Whippet 容器，保留 19687 驗收站、19587 本機 MCP 服務與原資料卷。Recruitment 使用 `~/nanshan/scripts/localenv` 的外勤最小配置，Flashlight 15173、Authn Agent 18117、Agent 18102、Recruitment 18120 及共用身分與資料服務均就緒。獨立程序查驗服務持續在線，既有 SAML／JWT E2E 通過。
+
+19687 的 `Recruitment E2E` Workspace 已確認並啟用為 revision 2，預設網址為 `http://host.docker.internal:15173/talent/login`，逾時 60 秒。以現行 Worker 映像的 Chromium 驗證登入入口可載入。Whippet 工作區範圍為 Flashlight 單一 origin；外勤 SAML 流程沿用宿主機的 localhost 設定。
+
+內外勤腳本交接前已啟動 Elite、Authn Staff、Staff、BPM Core 與 BPM BFF。Staff 招募版取自獨立 worktree `94d5092`，Authn Staff 使用固定 JAR `61128ac0e96c`。宿主機 Chromium 完成內勤 Keycloak SAML 與 `/staff-api/recruitment/session` 讀取，現有協定測試也通過 BPM Session、案件讀取與核決測試角色驗證。
+
+已修正 localenv 外勤頁注入本機登入橋接造成的 JavaScript 錯誤。外勤協定測試通過，實際 Chromium 回呼則因 Authn Agent 的全路徑 CORS 對 `Origin: null` 回傳 403，外勤瀏覽器登入待修。Whippet Worker 重驗 Flashlight 登入入口通過，外勤組織頁仍跳轉至 `localhost:18117`。本輪驗證至登入與讀取。
+
+2026-11-21 進行中／主 Agent。19687 的內建 AI 規劃失敗定位為 `skill_unavailable`，原因是 Server 派發的技能檔雜湊與 Worker 映像不同。更新 Worker 映像後，同一 QA 工作區的主管登入與候選清單需求已成功保存規劃草稿。19687 角色憑證庫已啟用，由有設定權限的管理者確認狀態。
+
+使用獨立 Docker Worker 與專用本機 AP 入口完成一筆合成案前測。主管以 SAML 登入並取得邀請，新人申請臨帳後以獨立瀏覽器工作階段登入，主管再登入查回同一準增員及有效帳期。首次新增、分享及建帳各一次，沿用原案重跑三項寫入皆為零。四個關鍵畫面保留去識別截圖。Whippet 內建 AI 產生三段模組、正式驗證、發佈及 QA 操作錄影，等待核准測試背景及資料可使用的模型端點。
+
+2026-11-21 06:15 完成／主 Agent。macOS 與 Docker Worker 使用既有 API key，各完成一次 OpenCode Responses 合成請求。Server 將每次 author Run 的技能檔案與雜湊一起固定，Manager 驗證並派送，Worker 於模型呼叫前核對。舊技能映像已重現 `skill_unavailable`，加入 Server 固定檔案後通過，竄改內容則遭拒。內建引擎、Vercel、Pi、Manager 測試及 MCP 互動／接單整合通過。
+
+已在 19687 更新同一組 Server、Manager 與 Worker。測試站就緒、Manager 心跳恢復，資料庫筆數與 migration 版本一致。合成工作區的內建 author Run `fc502194-1a89-414e-9ab8-fa516d59662e` 成功且 Worker 已回收，讀回的 Run 含 Server 固定的技能檔案。此次送往外部模型的驗證內容為合成搜尋案例。
+
 ## 既有測試改稿脈絡（2026-11-19）
 
 完成／主 Agent。測試改稿帶入固定 revision 腳本、測試名稱、來源版本說明、Workspace 範圍、對話與已有的草稿驗證結果。目標明顯偏離時以繁中說明並引導「新增測試」，只保存對話。
