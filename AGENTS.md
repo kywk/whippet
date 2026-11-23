@@ -9,6 +9,13 @@ Self-hosted Playwright 平台。使用繁體中文與台灣用語；優先交付
 - 總指揮負責排程、介面協調與整合；獨立模組可交給專業 Agent。每個檔案同時只有一位 owner。
 - 規則以本檔為主，細則按需讀取；使用者指示優先。CLAUDE.md 只作入口。
 
+## Worktree
+
+- 預設建立於 `~/workspace/worktree/whippet/<name>`；`<name>` 用分支或任務的簡短 slug。
+- 範例：`git worktree add ~/workspace/worktree/whippet/w3-retest -b codex/w3-retest`。
+- 不要建在 `/private/tmp`（系統清理後會變成 prunable），也不要放在 repo 的 `.worktrees/`。
+- 合併後清理：`git worktree remove <path>`、`git worktree prune`，再以 `git branch -d` 刪除已併入 main 的分支。
+
 ## Agent Harness
 
 - 調整任何 Harness 規則或新增 Agent／adapter 前，先讀 [共用 Harness 規格](docs/requirements/usecase-agent-platform.md#agent-harness)。同次變更一併處理內建 Agent、MCP 互動／接單與第三方框架 adapter。
