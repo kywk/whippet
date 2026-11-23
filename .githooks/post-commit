@@ -1,0 +1,17 @@
+#!/bin/sh
+# Rebuild the CodeGraph index after each commit on main.
+# Installed by: sh scripts/codegraph/install-hooks.sh
+# The rebuild runs in the background so it never delays the commit.
+
+set -eu
+
+branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+[ "$branch" = "main" ] || exit 0
+
+repo_root=$(git rev-parse --show-toplevel)
+reindex="$repo_root/scripts/codegraph/reindex.sh"
+[ -x "$reindex" ] || exit 0
+
+mkdir -p "$repo_root/.codegraph"
+nohup "$reindex" >>"$repo_root/.codegraph/hook.log" 2>&1 &
+exit 0

@@ -59,6 +59,7 @@ docker compose --env-file deploy/.env -f deploy/compose.runner.yml -f deploy/com
 - [編輯週期與摘要契約](contracts/mvp-v7.md)
 - [Workspace、登入與敏感監看契約](contracts/mvp-v8.md)
 - [有界歷史檢索契約](contracts/mvp-v9.md)
+- [CodeGraph 索引與 main commit hook](scripts/codegraph/README.md)
 
 Server／Manager 使用 Go，Worker 使用 Node.js／TypeScript 與 Playwright，前端使用 React SPA，資料庫為 PostgreSQL。
 模型 key 與 Manager token 請放在部署環境，不提交到原始碼。
