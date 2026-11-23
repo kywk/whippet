@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { ApiError, errorMessage } from './api';
 import { Loading, Notice, RunProblem, RunStatusBadge } from './components';
 import { AssistantTurn, ChatScroll, Composer, UserTurn, useStoredText } from './chat';
+import { avatarForSession } from './assistantAvatar';
 import { CancelRunButton } from './TestActions';
 import { AuthorLiveStatus, isBadStatus } from './trail';
 import { LiveView } from './LiveView';
@@ -70,6 +71,7 @@ function CreateWorkspace({ api, onReturn, onCreated, onDirtyChange, onRefreshLis
 
 function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirtyChange, onWorkspaceUpdated }: Props & { workspace: WorkspaceDetail }) {
   const [current, setCurrent] = useState(workspace);
+  const avatar = useMemo(() => avatarForSession(current.conversationId), [current.conversationId]);
   const [conversation, setConversation] = useState<WorkspaceConversationData>();
   const [content, setContent] = useStoredText(`workspace-${workspace.id}`);
   const [run, setRun] = useState<Run>();
@@ -261,8 +263,8 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
           <ol className="turns" aria-label="已儲存的 Workspace 訊息">
             {messages.map((message) => message.role === 'user'
               ? <UserTurn key={message.id} message={message} />
-              : <AssistantTurn key={message.id} name="Workspace 助手" time={message.createdAt}><p className="message-content">{message.content}</p></AssistantTurn>)}
-            {pendingTurn ? <AssistantTurn name="Workspace 助手" pending><AuthorLiveStatus run={run} mode="workspace" /></AssistantTurn> : null}
+              : <AssistantTurn key={message.id} avatar={avatar} name="Workspace 助手" time={message.createdAt}><p className="message-content">{message.content}</p></AssistantTurn>)}
+            {pendingTurn ? <AssistantTurn avatar={avatar} name="Workspace 助手" pending><AuthorLiveStatus run={run} mode="workspace" /></AssistantTurn> : null}
           </ol>
           {trackedId ? <section className={`artifact trail-card ${run && isActiveRun(run) ? 'is-running' : run?.status === 'failed' ? 'is-failed' : ''}`} aria-live="polite" aria-label="設定訪談狀態">
             <header className="artifact-head">

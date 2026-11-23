@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
-import whippetAvatar from './assets/whippet-avatar.webp';
+import type { AssistantAvatar } from './assistantAvatar';
 import { formatDate } from './components';
 import { ChevronDownIcon, SendIcon } from './icons';
 import { VoiceInputButton } from './VoiceInputButton';
@@ -53,9 +53,9 @@ export function UserTurn({ message }: { message: Message }) {
   return <li className="turn user"><div className="bubble"><p className="message-content">{message.content}</p></div><time className="turn-time" dateTime={message.createdAt}>{formatDate(message.createdAt)}</time></li>;
 }
 
-export function AssistantTurn({ name = 'Whippet', time, children, pending = false }: { name?: string; time?: string; children: ReactNode; pending?: boolean }) {
+export function AssistantTurn({ name = 'Whippet', time, children, pending = false, avatar }: { name?: string; time?: string; children: ReactNode; pending?: boolean; avatar?: AssistantAvatar }) {
   return <li className={`turn assistant${pending ? ' pending' : ''}`}>
-    <img className="avatar" src={whippetAvatar} width={32} height={32} alt="" />
+    {avatar ? <img className="avatar" src={avatar.src} width={32} height={32} loading="lazy" decoding="async" alt={avatar.name} title={`${avatar.name}｜${avatar.description}`} /> : null}
     <div className="turn-body">
       <div className="turn-name"><strong>{name}</strong>{time ? <time dateTime={time}>{formatDate(time)}</time> : null}</div>
       {children}

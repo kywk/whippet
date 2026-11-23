@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 import { ApiError, errorMessage } from './api';
 import { Loading, Notice, ReportLink, RunProblem, RunStatusBadge } from './components';
 import { AssistantTurn, ChatScroll, Composer, UserTurn, useStoredText } from './chat';
+import { avatarForSession } from './assistantAvatar';
+import type { AssistantAvatar } from './assistantAvatar';
 import { collapseDiff, diffLines, diffStat } from './diff';
 import { CancelRunButton } from './TestActions';
 import { AuthorLiveStatus, trailFromRuns, TrailCard } from './trail';
@@ -56,6 +58,7 @@ const STARTERS = [
 
 export function ConversationPanel({ api, apiBase, testId, editingSessionId, draft, draftDirty, draftBusy, runs, onRun, onRefreshRuns, onSynchronized, onUseCandidate, onOpenManual, onReplaceDraft, onEditSimilarTest, handoffContent, replacementBusy, onGuardChange, onConversationChanged, onRefreshSession, onShowTab, onWatch, liveView, sideOpen, onToggleSide, aiExploration, authorEngine = 'builtin', testKind, publishReady, planMode = false }: Props) {
   const nextEngine = authorEngine;
+  const avatar = useMemo(() => avatarForSession(editingSessionId), [editingSessionId]);
   const [conversation, setConversation] = useState<Conversation>();
   const [content, setContent] = useStoredText(editingSessionId);
   const loadedHandoff = useRef(false);
@@ -369,9 +372,9 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
       <ol className="turns" aria-label="已儲存的對話訊息">
         {messages.map((message, index) => message.role === 'user'
           ? <UserTurn key={message.id} message={message} />
-          : <ConversationMessage key={message.id} message={message} latest={index === lastAssistantIndex} scripts={scripts} draft={draft} runs={runs} apiBase={apiBase} onRefreshRuns={onRefreshRuns} onUseCandidate={onUseCandidate} onRequestRepair={() => { void send(repairPrompt); }} candidateDisabled={draftBusy || authorActive || synchronizing} actions={message === lastMessage ? recommendationActions : null} />)}
+          : <ConversationMessage key={message.id} avatar={avatar} message={message} latest={index === lastAssistantIndex} scripts={scripts} draft={draft} runs={runs} apiBase={apiBase} onRefreshRuns={onRefreshRuns} onUseCandidate={onUseCandidate} onRequestRepair={() => { void send(repairPrompt); }} candidateDisabled={draftBusy || authorActive || synchronizing} actions={message === lastMessage ? recommendationActions : null} />)}
         {similarTest ? <UserTurn message={{ id: similarTest.id, role: 'user', content: similarTest.content, createdAt: similarTest.createdAt }} /> : null}
-        {similarTest ? <AssistantTurn>
+        {similarTest ? <AssistantTurn avatar={avatar}>
           <section className="artifact" aria-label="相似測試確認">
             <div className="artifact-body">
               <p role="status">找到目的相近的測試「{similarTest.name}」。要調整既有腳本，還是繼續新增？</p>
@@ -382,7 +385,7 @@ export function ConversationPanel({ api, apiBase, testId, editingSessionId, draf
             </div>
           </section>
         </AssistantTurn> : null}
-        {pendingTurn ? <AssistantTurn pending>
+        {pendingTurn ? <AssistantTurn avatar={avatar} pending>
           <AuthorLiveStatus run={trackedRun ?? activeRun} mode="edit" />
           <div className="pending-actions">
             {activeRun ? <CancelRunButton api={api} run={activeRun} onUpdated={onRun} /> : null}
@@ -450,7 +453,8 @@ function ScriptChange({ message, scripts, draft, candidateDisabled, run, onUseCa
   </section>;
 }
 
-function ConversationMessage({ message, latest, scripts, draft, runs, apiBase, onRefreshRuns, onUseCandidate, onRequestRepair, candidateDisabled, actions }: {
+function ConversationMessage({ avatar, message, latest, scripts, draft, runs, apiBase, onRefreshRuns, onUseCandidate, onRequestRepair, candidateDisabled, actions }: {
+  avatar: AssistantAvatar;
   message: Message; latest: boolean; scripts: Record<number, string>; draft: Draft; runs: Run[]; apiBase: string;
   onRefreshRuns: () => void; onUseCandidate: (script: string) => boolean; onRequestRepair: () => void; candidateDisabled: boolean;
   actions: ReactNode;
@@ -459,7 +463,7 @@ function ConversationMessage({ message, latest, scripts, draft, runs, apiBase, o
   const validation = runs.find((item) => item.id === message.validationRunId);
   const hasScript = message.proposedScript !== undefined || message.appliedRevision !== undefined;
   const validationFailed = validation?.status === 'failed';
-  return <AssistantTurn time={message.createdAt}>
+  return <AssistantTurn avatar={avatar} time={message.createdAt}>
     {message.content ? <p className="message-content">{message.content}</p> : null}
     {actions}
     {hasScript ? <ScriptChange message={message} scripts={scripts} draft={draft} candidateDisabled={candidateDisabled} run={run} onUseCandidate={onUseCandidate} /> : null}
