@@ -75,50 +75,110 @@ func readSkillFile(root, relative string, limit int64) ([]byte, error) {
 	}
 	return data, nil
 }
-func loadSkill(root, id string, registry *ToolRegistry) (SkillManifest, SkillSnapshot, error) {
+
+const maxSkillPacketBytes = 512 << 10
+
+type SkillFiles struct {
+	Manifest   string            `json:"manifest"`
+	Main       string            `json:"main"`
+	References map[string]string `json:"references"`
+}
+
+type SkillFileSnapshot map[string]SkillFiles
+
+func (s *SkillFileSnapshot) UnmarshalJSON(raw []byte) error {
+	var files map[string]SkillFiles
+	if err := json.Unmarshal(raw, &files); err != nil || len(files) == 0 {
+		return ErrSkillUnavailable
+	}
+	*s = files
+	return nil
+}
+
+// Old persisted runs have only pins. If files are present each pin must match
+// exactly; never dispatch a partial packet or recover it from the current disk.
+func validSkillFiles(input AuthorInput) bool {
+	if input.SkillFiles == nil {
+		return true
+	}
+	if len(input.SkillFiles) == 0 || len(input.SkillFiles) != len(input.Skills) {
+		return false
+	}
+	raw, err := json.Marshal(input.SkillFiles)
+	if err != nil || len(raw) > maxSkillPacketBytes {
+		return false
+	}
+	seen := make(map[string]bool, len(input.Skills))
+	for _, pin := range input.Skills {
+		f, ok := input.SkillFiles[pin.ID]
+		if !ok || seen[pin.ID] || len(f.Main) > 8192 || len(f.Manifest) > 64<<10 ||
+			scriptHash(f.Main) != pin.SHA256 || scriptHash(f.Manifest) != pin.ManifestSHA256 ||
+			f.References == nil || len(f.References) != len(pin.ReferenceHashes) {
+			return false
+		}
+		seen[pin.ID] = true
+		for id, hash := range pin.ReferenceHashes {
+			data, ok := f.References[id]
+			if !ok || len(data) > 128<<10 || scriptHash(data) != hash {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func loadSkill(root, id string, registry *ToolRegistry) (SkillManifest, SkillSnapshot, SkillFiles, error) {
+	var files SkillFiles
 	var manifest SkillManifest
 	pin := SkillSnapshot{ID: id, ReferenceHashes: map[string]string{}}
 	if !moduleSlug.MatchString(id) {
-		return manifest, pin, ErrSkillUnavailable
+		return manifest, pin, files, ErrSkillUnavailable
 	}
 	raw, err := readSkillFile(root, id+"/manifest.json", 64<<10)
 	if err != nil {
-		return manifest, pin, err
+		return manifest, pin, files, err
 	}
 	main, err := readSkillFile(root, id+"/SKILL.md", 8192)
 	if err != nil {
-		return manifest, pin, err
+		return manifest, pin, files, err
 	}
 	var fields map[string]json.RawMessage
 	if json.Unmarshal(raw, &fields) != nil || fields["budget"] == nil || bytes.Equal(bytes.TrimSpace(fields["budget"]), []byte("null")) {
-		return manifest, pin, ErrSkillUnavailable
+		return manifest, pin, files, ErrSkillUnavailable
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if dec.Decode(&manifest) != nil || dec.Decode(new(any)) != io.EOF || manifest.ID != id || manifest.Version == "" || manifest.DefaultTools == nil || manifest.References == nil || !validPrimaryBudget(manifest.Budget, manifest.ID) || !validSkillModel(manifest.Model) {
-		return manifest, pin, ErrSkillUnavailable
+		return manifest, pin, files, ErrSkillUnavailable
 	}
 	seen := map[string]bool{}
 	for _, name := range manifest.DefaultTools {
 		if _, ok := registry.tool(name); !ok || seen[name] {
-			return manifest, pin, ErrSkillUnavailable
+			return manifest, pin, files, ErrSkillUnavailable
 		}
 		seen[name] = true
 	}
+	files = SkillFiles{Manifest: string(raw), Main: string(main), References: map[string]string{}}
+	size := len(raw) + len(main)
 	for _, ref := range manifest.References {
 		if !moduleSlug.MatchString(ref.ID) || !referencePath.MatchString(ref.Path) || !sha256Hex(ref.SHA256) || pin.ReferenceHashes[ref.ID] != "" {
-			return manifest, pin, ErrSkillUnavailable
+			return manifest, pin, files, ErrSkillUnavailable
 		}
 		data, err := readSkillFile(root, id+"/"+ref.Path, 128<<10)
 		if err != nil || scriptHash(string(data)) != ref.SHA256 {
-			return manifest, pin, ErrSkillUnavailable
+			return manifest, pin, files, ErrSkillUnavailable
 		}
+		size += len(data)
+		if size > maxSkillPacketBytes {
+			return manifest, pin, files, ErrSkillUnavailable
+		}
+		files.References[ref.ID] = string(data)
 		pin.ReferenceHashes[ref.ID] = ref.SHA256
 	}
 	pin.Version = manifest.Version
 	pin.SHA256 = scriptHash(string(main))
 	pin.ManifestSHA256 = scriptHash(string(raw))
-	return manifest, pin, nil
+	return manifest, pin, files, nil
 }
 func validSkillBudget(b AuthorBudget) bool {
 	return (b.MaxOutputTokens == nil || (*b.MaxOutputTokens >= 1 && *b.MaxOutputTokens <= 16384)) && b.MaxModelRequests > 0 && b.MaxModelRequests <= 9007199254740991 && b.MaxToolCalls >= 0 && b.MaxToolCalls <= 9007199254740991 && b.MaxDurationMS > 0 && b.MaxDurationMS <= 9007199254740991
@@ -159,11 +219,12 @@ func snapshotAuthor(input *AuthorInput) error {
 		return ErrSkillUnavailable
 	}
 	snapshots := []SkillSnapshot{}
+	packets := make(map[string]SkillFiles, len(ids))
 	defaults := map[string]bool{}
 	references := 0
 	var primary SkillManifest
 	for i, id := range ids {
-		manifest, pin, err := loadSkill(root, id, registry)
+		manifest, pin, files, err := loadSkill(root, id, registry)
 		if err != nil {
 			return err
 		}
@@ -171,10 +232,15 @@ func snapshotAuthor(input *AuthorInput) error {
 			primary = manifest
 		}
 		snapshots = append(snapshots, pin)
+		packets[id] = files
 		references += len(pin.ReferenceHashes)
 		for _, tool := range manifest.DefaultTools {
 			defaults[tool] = true
 		}
+	}
+	encoded, err := json.Marshal(packets)
+	if err != nil || len(encoded) > maxSkillPacketBytes {
+		return ErrSkillUnavailable
 	}
 	if primary.Model.Model != configuredAuthorModel() {
 		return ErrSkillUnavailable
@@ -208,6 +274,7 @@ func snapshotAuthor(input *AuthorInput) error {
 	}
 	input.SkillVersion = primary.Version
 	input.Skills = snapshots
+	input.SkillFiles = packets
 	input.AllowedTools = tools
 	input.Budget = &budget
 	input.Model = &primary.Model

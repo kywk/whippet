@@ -207,6 +207,26 @@ func runHarnessAuthorBridge(t *testing.T, input WorkerInput, url, token string, 
 	if err := os.WriteFile(cert, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: model.Certificate().Raw}), 0600); err != nil {
 		t.Fatal(err)
 	}
+	if len(input.Author.Runtime) > 0 {
+		// The persisted runtime normally overrides the environment. Bind only
+		// this test's copy to its loopback provider, retaining the skill pins.
+		var runtime runtimeSnapshot
+		if !validRuntimeSnapshot(input.Author.Runtime) || json.Unmarshal(input.Author.Runtime, &runtime) != nil {
+			t.Fatal("invalid runtime snapshot for bridge fixture")
+		}
+		runtime.BaseURL = model.URL
+		policy, err := json.Marshal(runtime.runtimeData)
+		if err != nil {
+			t.Fatal(err)
+		}
+		runtime.SHA256 = fmt.Sprintf("%x", sha256.Sum256(policy))
+		author := *input.Author
+		author.Runtime, err = json.Marshal(runtime)
+		if err != nil || !validRuntimeSnapshot(author.Runtime) {
+			t.Fatal("cannot pin the synthetic provider")
+		}
+		input.Author = &author
+	}
 	raw, _ := json.Marshal(input)
 	if err := os.WriteFile(filepath.Join(work, "input.json"), raw, 0600); err != nil {
 		t.Fatal(err)

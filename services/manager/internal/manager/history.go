@@ -225,7 +225,7 @@ func (c *historyChannel) handle(line string) bool {
 		return false
 	}
 	// The legacy endpoint is only for wholly legacy snapshots, never fallback.
-	if c.r.Author != nil && (len(c.r.Author.Skills) > 0 || len(c.r.Author.Budget) > 0 || len(c.r.Author.Model) > 0 || c.r.Author.ToolRegistryVersion != nil || c.r.Author.ToolRegistrySHA256 != nil) {
+	if c.r.Author != nil && (c.r.Author.SkillFiles != nil || len(c.r.Author.Skills) > 0 || len(c.r.Author.Budget) > 0 || len(c.r.Author.Model) > 0 || c.r.Author.ToolRegistryVersion != nil || c.r.Author.ToolRegistrySHA256 != nil) {
 		return true
 	}
 	var q historyRequest

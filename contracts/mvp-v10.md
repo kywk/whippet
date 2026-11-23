@@ -63,14 +63,15 @@ owner 確認契約無衝突才完成 M10.0。各子項只跑 implementation.md �
 - bundle hash payload 固定 `{schemaVersion:1,files,stages,module,dependencies}`；files 按 path、dependencies 按 moduleVersionId 排序，stages 原順序；缺省 module=null、stages=[]、dependencies=[]。dependencies 每項固定 `{moduleTestId,moduleVersionId}`。Server Go encoding/json 固定結構/map key 排序為唯一算法；不轉換內容換行。context/revision 另沿原有門檻核對。
 - partial 的 scriptHash 是最終 script 原始 UTF-8 SHA-256 lowercase 64 hex，Server 重算。有 checkpoint 必附 script；無 checkpoint 禁止 script。nextStep 非空且 <=8192 bytes。checkpoint 由 Worker 守衛產生，不採信模型。遮蔽若更動自試通過的 script，必須重新驗證或丟棄 checkpoint/script，不能宣稱 selfTestPassed。
 - partial 僅適用 test-author/legacy author，不適用 workspace/summary。Run.authorPartial 保存 `{reason,nextStep,checkpoint?,appliedRevision?}`；套用 checkpoint 後記錄 appliedRevision，繼續核對該 revision 以及 session/context，未套用時核對原 baseRevision。
-- skills 快照每項 `{id,version,sha256,manifestSha256,referenceHashes:Record<referenceId,sha256>}`；sha256 指 SKILL.md。skills[0] 為主 skill，其餘按 id 排序。WHIPPET_SKILLS_PATH 指向套件根，各 id 目錄含 SKILL.md、manifest.json、references/；reference path 相對該 skill 目錄。映像絕對路徑由 owner 回報既有佈局後 PM 配置。Worker 必須比對快照與本機 bytes，不符明確失敗，不以新版替代。author.budget/model 使用 manifest 的同名結構，model 不包含 key。僅全部新增快照欄位缺席才走 v9；部分缺席或 hash 不符不得降級。
+- `skills` 快照每項為 `{id,version,sha256,manifestSha256,referenceHashes:Record<referenceId,sha256>}`，`sha256` 指 `SKILL.md`。`skills[0]` 為主 skill，其餘按 id 排序。`author.budget` 與 `author.model` 沿用 manifest 結構。`author.model` 只包含非機密模型設定。所有 v10 快照欄位皆缺席時才使用 v9 格式。
+- Server 排入 author 任務時，同次讀取技能檔產生雜湊與 `author.skillFiles`，保存於該 Run 的 `author_payload`。`skillFiles` 是 `Record<skillId,{manifest:string,main:string,references:Record<referenceId,string>}>`。JSON 編碼合計上限 512 KiB，每個 `manifest` 上限 64 KiB、`main` 8 KiB、reference 128 KiB。鍵值須與 pins 完整吻合。Manager 驗證後將內容送入該 attempt 的 Worker `input.json`，journal 保存原有 pins。Worker 驗證雜湊、manifest 與本機支援的工具註冊表後才執行。舊任務缺少 `skillFiles` 時仍以映像檔案驗證既有 pins。指定 `skillFiles` 而檔案缺漏、超限或不符時會拒絕執行。外部 MCP 接單仍使用已授權的技能資源。
 - candidate 工具僅改 attempt-scoped candidate，不直接遞增正式草稿 revision；author 收尾以 CAS 一次套用。工具每次先驗活躍 attempt/權限，再查 dedupe；跨 attempt 不重用結果。Plan 排程與候選 Module 的具體工具 schema 在接線前由 PM 追加，不自行發明工具欄位。
 
 ### M10.2 reference 工具固定
 
 M10 的 model.provider 固定為 `opencode`，代表既有後端 Responses provider；model.model 必須等於後端已配置 model。此代號不允許選擇任意 endpoint，也不含金鑰。多 provider 路由留待 M12，Server 與 Worker 不自行使用其他別名。
 
-read_skill_reference 的 schema/limits 見 registry，結果 `{skillId,referenceId,content}`，完整 JSON 超限安全拒絕，不截斷。WHIPPET_SKILLS_PATH 映像固定 `/opt/whippet/worker/skills`，本機套件為 runtimes/worker/skills。Server 映像亦打包同一 skill 目錄供快照裁決。註冊不代表所有 Run 自動授權，仍以快照 allowedTools 為準。
+`read_skill_reference` 的 schema 與 limits 定義於 registry，結果為 `{skillId,referenceId,content}`，完整 JSON 超限會拒絕。Server 以 `WHIPPET_SKILLS_PATH` 為技能來源，映像路徑為 `/opt/whippet/worker/skills`，本機套件為 `runtimes/worker/skills`。可讀的 references 與工具依該次 Run 的 pins、manifest 與 `allowedTools` 決定。
 
 ### Partial 繼續 API（PM 固定）
 

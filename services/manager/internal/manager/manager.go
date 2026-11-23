@@ -348,6 +348,12 @@ func (m *Manager) accept(ctx context.Context, env Envelope) error {
 	}
 	r := record{RunID: env.RunID, AttemptID: env.AttemptID, Phase: "accepted", TimeoutMS: dispatch.TimeoutMS, ResultMessageID: newID(), Kind: dispatch.Kind, Author: dispatch.Author, ScriptOrigin: normalizedScriptOrigin(dispatch.ScriptOrigin),
 		WorkspaceID: dispatch.WorkspaceID, TestID: dispatch.TestID, WorkspaceContext: dispatch.WorkspaceContext}
+	// Recovery tracks this attempt by its pins; only its Worker needs inline content.
+	if r.Author != nil && r.Author.SkillFiles != nil {
+		journalAuthor := *r.Author
+		journalAuthor.SkillFiles = nil
+		r.Author = &journalAuthor
+	}
 	err := m.saveRecordLocked(r)
 	m.mu.Unlock()
 	if err != nil {

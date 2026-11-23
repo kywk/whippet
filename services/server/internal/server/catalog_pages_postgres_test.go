@@ -15,7 +15,7 @@ func TestM102CatalogPages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest, pin, err := loadSkill(repositoryFile("runtimes", "worker", "skills"), "usecase-planner", registry)
+	manifest, pin, _, err := loadSkill(repositoryFile("runtimes", "worker", "skills"), "usecase-planner", registry)
 	if err != nil {
 		t.Fatal(err)
 	}

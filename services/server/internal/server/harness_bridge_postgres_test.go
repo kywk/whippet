@@ -56,10 +56,20 @@ func runM10ServerBridge(t *testing.T, partial bool) {
 		t.Fatal("isolated assignment missing", err)
 	}
 	a := assignments[0]
+	if a.Author == nil || len(a.Author.SkillFiles) == 0 {
+		t.Fatal("assigned author run did not contain Server-pinned skill files")
+	}
 	token := "synthetic-m10-isolated-bridge-token"
 	server := httptest.NewTLSServer(NewAPI(p, files, engine, token, log).Handler(nil))
 	defer server.Close()
 	temp := t.TempDir()
+	workerSkills := filepath.Join(temp, "worker-skills")
+	if err = os.MkdirAll(filepath.Join(workerSkills, a.Author.SkillID), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(workerSkills, a.Author.SkillID, "SKILL.md"), []byte("Older Worker skill\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	ca := filepath.Join(temp, "public-ca.pem")
 	input := filepath.Join(temp, "input.json")
 	if err = os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw}), 0600); err != nil {
@@ -87,6 +97,7 @@ func runM10ServerBridge(t *testing.T, partial bool) {
 	}
 	cmd.Env = append(cmd.Env, "GOTOOLCHAIN=local", "GOPROXY=off", "GOSUMDB=off", "GOCACHE=/private/tmp/whippet-m10-go-cache",
 		"WHIPPET_M10_BRIDGE_URL="+server.URL, "WHIPPET_M10_BRIDGE_CA="+ca, "WHIPPET_M10_BRIDGE_TOKEN="+token, "WHIPPET_M10_BRIDGE_INPUT="+input,
+		"WHIPPET_SKILLS_PATH="+workerSkills,
 		"WHIPPET_M10_WORKER_ENTRY="+repositoryFile("runtimes", "worker", "dist", "author", "main.js"))
 	resultPath := filepath.Join(temp, "handoff.json")
 	if partial {
@@ -137,19 +148,14 @@ func runM10ServerBridge(t *testing.T, partial bool) {
 		}{[]ActiveAttempt{}})); err != nil {
 			t.Fatal(err)
 		}
-		next, err := p.ContinueAuthor(ctx, a.ID, a.Author.EditingSessionID, a.Author.BaseRevision)
-		if err != nil {
-			t.Fatal(err)
-		}
-		repeated, err := p.ContinueAuthor(ctx, a.ID, a.Author.EditingSessionID, a.Author.BaseRevision)
-		if err != nil || next.Run.ID != repeated.Run.ID {
-			t.Fatal("duplicate continue requeued", err)
+		if _, err = p.ContinueAuthor(ctx, a.ID, a.Author.EditingSessionID, a.Author.BaseRevision); !errors.Is(err, ErrContinuationBudget) {
+			t.Fatal("continuation must respect the exhausted one-request budget", err)
 		}
 		var count int
-		if err = p.DB.QueryRowContext(ctx, `SELECT count(*) FROM author_continuations WHERE source_run_id=$1`, a.ID).Scan(&count); err != nil || count != 1 {
-			t.Fatal("continuation is not unique", err)
+		if err = p.DB.QueryRowContext(ctx, `SELECT count(*) FROM author_continuations WHERE source_run_id=$1`, a.ID).Scan(&count); err != nil || count != 0 {
+			t.Fatal("exhausted continuation queued another run", err)
 		}
-		t.Log("real Node budget exhaustion -> Manager parser + HTTPS artifact upload -> Server partial persistence -> heartbeat reclaim -> one continued Run; identical request replays same Run; no SKIP")
+		t.Log("real Node budget exhaustion -> Manager parser + HTTPS artifact upload -> Server partial persistence -> heartbeat reclaim -> exhausted continuation rejected")
 		t.Log(string(output))
 		return
 	}

@@ -107,7 +107,7 @@ func validCapabilitySnapshotForMode(a *AuthorTask, mode authorValidationMode) (*
 	if a == nil {
 		return nil, errCapability
 	}
-	present := len(a.Skills) > 0 || len(a.Budget) > 0 || len(a.Model) > 0 || a.ToolRegistryVersion != nil || a.ToolRegistrySHA256 != nil
+	present := a.SkillFiles != nil || len(a.Skills) > 0 || len(a.Budget) > 0 || len(a.Model) > 0 || a.ToolRegistryVersion != nil || a.ToolRegistrySHA256 != nil
 	if len(a.Runtime) > 0 && (!present || !validRuntimeSnapshot(a.Runtime)) {
 		return nil, errCapability
 	}
@@ -129,6 +129,12 @@ func validCapabilitySnapshotForMode(a *AuthorTask, mode authorValidationMode) (*
 	if json.Unmarshal(a.Skills, &rawPins) != nil || len(rawPins) < 1 || len(rawPins) > 16 {
 		return nil, errCapability
 	}
+	if a.SkillFiles != nil {
+		encoded, err := json.Marshal(a.SkillFiles)
+		if err != nil || len(encoded) > maxSkillFilesBytes || len(a.SkillFiles) != len(rawPins) {
+			return nil, errCapability
+		}
+	}
 	seen := map[string]bool{}
 	previous := ""
 	for i, raw := range rawPins {
@@ -149,6 +155,9 @@ func validCapabilitySnapshotForMode(a *AuthorTask, mode authorValidationMode) (*
 			if !capabilityID.MatchString(id) || !capabilityHash.MatchString(hash) {
 				return nil, errCapability
 			}
+		}
+		if a.SkillFiles != nil && !a.SkillFiles.matches(pin) {
+			return nil, errCapability
 		}
 		seen[pin.ID] = true
 	}

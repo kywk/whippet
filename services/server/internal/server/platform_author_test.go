@@ -12,7 +12,7 @@ func m10PlatformInput(t *testing.T, role string) (AuthorInput, *ToolRegistry) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	m, p, e := loadSkill(repositoryFile("runtimes", "worker", "skills"), role, r)
+	m, p, _, e := loadSkill(repositoryFile("runtimes", "worker", "skills"), role, r)
 	if e != nil {
 		t.Fatal(e)
 	}

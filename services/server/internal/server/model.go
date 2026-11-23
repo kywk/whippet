@@ -158,6 +158,7 @@ type ChatMessage struct {
 }
 
 type AuthorInput struct {
+	SkillFiles          SkillFileSnapshot      `json:"skillFiles,omitempty"`
 	ModuleSummary       *ModuleSummarySnapshot `json:"moduleSummary,omitempty"`
 	Batch               *AuthorBatch           `json:"batch,omitempty"`
 	Platform            *AuthorPlatform        `json:"platform,omitempty"`

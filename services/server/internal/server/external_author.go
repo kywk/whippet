@@ -152,6 +152,8 @@ func (p *Postgres) externalTask(ctx context.Context, q queryDB, c externalClaim)
 		return ExternalTask{}, err
 	}
 	input.AllowedTools = allowed
+	// Raw packaged skills belong to the managed Worker. MCP exposes only reviewed resources.
+	input.SkillFiles = nil
 	settings, err := decodeSettings(rawSettings)
 	if err != nil {
 		return ExternalTask{}, err

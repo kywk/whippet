@@ -182,7 +182,7 @@ Worker 只從固定供應商機密設定取得金鑰，依快照覆蓋非機密�
 - 預算來自 skill manifest 快照。剩最後 1 次模型請求或最後 2 次工具呼叫時，注入收尾指示；超過上限時輸出 `partial`，Server 保存自我試跑通過的候選結果並顯示「繼續」。
 - 2026-11-15 builtin Module 收尾：`commit_module_candidate` 經 Worker 守衛確認完整候選自試通過後，以內部完成鉤子結束本輪產稿，避免後續探索耗盡預算而丟失交付；只有本輪具 `request_module_validation` 權限才標記正式驗證要求，仍由 Server 另排真實驗證。失敗自試仍可在原預算修復，取消／機密守衛不變。這不新增 Module partial 或跨 Run checkpoint；其他引擎回傳的 Module partial 仍維持既有 LIMIT。一般 Test 沒有可信 checkpoint 時，partial 下一步須如實指出尚無候選，不虛稱已有通過稿；此文案修正不溯及先前保存的 partial。
 - 單一 Run 內只保留最新一份完整 snapshot，舊的壓縮成摘要。
-- Skill 依 manifest 載入；`read_skill_reference` 只能讀已打包、已快照的 references。
+- Server 在 author Run 排入時固定技能主文、manifest、references 及雜湊。Manager 透過既有派工傳給 Worker，Worker 驗證後依 manifest 啟動引擎。已排入的 Run 沿用原快照，`read_skill_reference` 只讀該次 Run 固定的 references。
 
 ### 長對話與大任務的容量策略（2026-11-14）
 

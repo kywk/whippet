@@ -20,7 +20,7 @@ func m10PlatformCandidateFlow(t *testing.T, mode string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest, pin, err := loadSkill(repositoryFile("runtimes", "worker", "skills"), "usecase-planner", registry)
+	manifest, pin, _, err := loadSkill(repositoryFile("runtimes", "worker", "skills"), "usecase-planner", registry)
 	if err != nil {
 		t.Fatal(err)
 	}

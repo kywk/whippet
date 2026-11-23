@@ -1,7 +1,7 @@
 import { lstatSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AuthorError } from "./types.js";
+import { AuthorError, boundedText } from "./types.js";
 import { exactObject, sha256, type ToolRegistry } from "./registry.js";
 
 export interface SkillBudget { maxModelRequests: number; maxToolCalls: number; maxDurationMs: number; maxOutputTokens?: number }
@@ -13,10 +13,20 @@ export interface SkillManifest {
   id: string; version: string; defaultTools: string[]; budget: SkillBudget; model: SkillModel;
   references: { id: string; path: string; sha256: string }[];
 }
+interface SkillFiles {
+  manifest: string;
+  main: string;
+  references: Record<string, string>;
+}
 export interface CapabilitySnapshot {
   skills: SkillSnapshot[]; budget: SkillBudget; model: SkillModel; toolRegistryVersion: string; toolRegistrySha256: string;
+  skillFiles?: Record<string, SkillFiles>;
 }
 const snapshotKeys = ["skills", "budget", "model", "toolRegistryVersion", "toolRegistrySha256"] as const;
+const manifestLimit = 64 * 1024;
+const mainLimit = 8192;
+const referenceLimit = 128 * 1024;
+const skillFilesLimit = 512 * 1024;
 const identifier = /^[a-z][a-z0-9-]{0,63}$/;
 const hash = /^[a-f0-9]{64}$/;
 export const defaultSkillsPath = fileURLToPath(new URL("../../skills/", import.meta.url));
@@ -33,7 +43,7 @@ function validModel(v: unknown): v is SkillModel {
 export function capabilitySnapshot(author: object): CapabilitySnapshot | undefined {
   const value = author as Record<string, unknown>;
   const present = snapshotKeys.filter(key => Object.hasOwn(value, key));
-  if (!present.length) return undefined;
+  if (!present.length && !Object.hasOwn(value, "skillFiles")) return undefined;
   if (present.length !== snapshotKeys.length || !Array.isArray(value.skills) || !value.skills.length || value.skills.length > 16 ||
       !validBudget(value.budget) || !validModel(value.model) || typeof value.toolRegistryVersion !== "string" || !value.toolRegistryVersion ||
       typeof value.toolRegistrySha256 !== "string" || !hash.test(value.toolRegistrySha256)) throw new AuthorError("invalid_input");
@@ -71,11 +81,18 @@ export function loadSkillBundle(snapshot: CapabilitySnapshot, registry: ToolRegi
     // Public loader also validates direct callers, not only author input.
     capabilitySnapshot(snapshot);
     if (snapshot.toolRegistryVersion !== registry.version || snapshot.toolRegistrySha256 !== registry.sha256) throw new Error();
+    const supplied = snapshot.skillFiles;
+    if (Object.hasOwn(snapshot, "skillFiles") &&
+        (!exactObject(supplied, snapshot.skills.map(pin => pin.id)) || Buffer.byteLength(JSON.stringify(supplied)) > skillFilesLimit)) throw new Error();
     const loaded = snapshot.skills.map(pin => {
-      const bytes = packaged(root, `${pin.id}/manifest.json`, 64 * 1024);
-      const main = packaged(root, `${pin.id}/SKILL.md`, 8192);
+      const files = supplied?.[pin.id];
+      if (supplied && (!exactObject(files, ["manifest", "main", "references"]) ||
+          !boundedText(files.manifest, manifestLimit) || !boundedText(files.main, mainLimit) ||
+          !exactObject(files.references, Object.keys(pin.referenceHashes)))) throw new Error();
+      const bytes = files ? files.manifest : packaged(root, `${pin.id}/manifest.json`, manifestLimit).toString("utf8");
+      const main = files ? files.main : packaged(root, `${pin.id}/SKILL.md`, mainLimit).toString("utf8");
       if (sha256(bytes) !== pin.manifestSha256 || sha256(main) !== pin.sha256) throw new Error();
-      const m: unknown = JSON.parse(bytes.toString("utf8"));
+      const m: unknown = JSON.parse(bytes);
       if (!exactObject(m, ["id", "version", "defaultTools", "budget", "model", "references"]) || m.id !== pin.id || m.version !== pin.version ||
           !validBudget(m.budget) || ((m.budget.maxOutputTokens ?? 8192) > 8192 && m.id !== 'module-authoring') || !validModel(m.model) || !Array.isArray(m.defaultTools) || new Set(m.defaultTools).size !== m.defaultTools.length ||
           !m.defaultTools.every((name: unknown) => typeof name === "string" && registry.tools.some(tool => tool.name === name)) || !Array.isArray(m.references)) throw new Error();
@@ -84,10 +101,14 @@ export function loadSkillBundle(snapshot: CapabilitySnapshot, registry: ToolRegi
         if (!exactObject(ref, ["id", "path", "sha256"]) || typeof ref.id !== "string" || !identifier.test(ref.id) || ids.has(ref.id) ||
             typeof ref.path !== "string" || !/^references\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.[a-zA-Z0-9]+$/.test(ref.path) ||
             typeof ref.sha256 !== "string" || !hash.test(ref.sha256) || pin.referenceHashes[ref.id] !== ref.sha256) throw new Error();
+        if (files) {
+          const content = files.references[ref.id];
+          if (!boundedText(content, referenceLimit) || sha256(content) !== ref.sha256) throw new Error();
+        }
         ids.add(ref.id);
       }
       if (Object.keys(pin.referenceHashes).length !== ids.size) throw new Error();
-      return { manifest: m as unknown as SkillManifest, content: main.toString("utf8"), pin };
+      return { manifest: m as unknown as SkillManifest, content: main, pin, files };
     });
     const primary = loaded[0]!.manifest;
     if ((['maxModelRequests','maxToolCalls','maxDurationMs'] as const).some(key => snapshot.budget[key] > primary.budget[key]) ||
@@ -102,9 +123,9 @@ export function loadSkillBundle(snapshot: CapabilitySnapshot, registry: ToolRegi
           const skill = loaded.find(skill => skill.pin.id === skillId);
           const ref = skill?.manifest.references.find(ref => ref.id === referenceId);
           if (!skill || !ref) throw new Error();
-          const bytes = packaged(root, `${skillId}/${ref.path}`, 128 * 1024);
-          if (sha256(bytes) !== ref.sha256) throw new Error();
-          const result = { skillId, referenceId, content: bytes.toString("utf8") };
+          const content = skill.files ? skill.files.references[referenceId] : packaged(root, `${skillId}/${ref.path}`, referenceLimit).toString("utf8");
+          if (!boundedText(content, referenceLimit) || sha256(content) !== ref.sha256) throw new Error();
+          const result = { skillId, referenceId, content };
           const tool = registry.tools.find(tool => tool.name === "read_skill_reference");
           if (!tool || Buffer.byteLength(JSON.stringify(result)) > tool.limits.maxOutputBytes) throw new Error();
           return result;

@@ -54,6 +54,17 @@ func TestM10SkillSnapshotPolicyAndDrift(t *testing.T) {
 	if strings.Join(input.AllowedTools, ",") != "read_author_snapshot,read_conversation_history,read_draft,read_skill_reference" {
 		t.Fatalf("policy widened %v", input.AllowedTools)
 	}
+	for _, pin := range input.Skills {
+		f, ok := input.SkillFiles[pin.ID]
+		if !ok || scriptHash(f.Main) != pin.SHA256 || scriptHash(f.Manifest) != pin.ManifestSHA256 || len(f.References) != len(pin.ReferenceHashes) {
+			t.Fatal("snapshot lacks verified file bytes")
+		}
+		for id, hash := range pin.ReferenceHashes {
+			if scriptHash(f.References[id]) != hash {
+				t.Fatal("snapshot reference hash mismatch")
+			}
+		}
+	}
 	prior := input.Skills[0].SHA256
 	path := filepath.Join(root, "test-author", "SKILL.md")
 	if err := os.WriteFile(path, []byte("new valid skill"), 0600); err != nil {
@@ -63,7 +74,7 @@ func TestM10SkillSnapshotPolicyAndDrift(t *testing.T) {
 	if err := snapshotAuthor(&next); err != nil {
 		t.Fatal(err)
 	}
-	if next.Skills[0].SHA256 == prior || input.Skills[0].SHA256 != prior {
+	if next.Skills[0].SHA256 == prior || input.Skills[0].SHA256 != prior || next.SkillFiles["test-author"].Main != "new valid skill" || scriptHash(input.SkillFiles["test-author"].Main) != prior {
 		t.Fatal("enqueue did not snapshot new bytes independently")
 	}
 	data, _ := json.Marshal(input)
@@ -115,5 +126,62 @@ func TestM10SkillPathEscapeAndSymlink(t *testing.T) {
 	}
 	if _, err := readSkillFile(root, "link.md", 8192); err == nil {
 		t.Fatal("symlink accepted")
+	}
+}
+
+func TestSkillFilesDispatchAndBounds(t *testing.T) {
+	root := m10SkillRoot(t)
+	original := AuthorInput{SkillID: "usecase-planner", ConversationID: NewID(), BaseRevision: 1}
+	if err := snapshotAuthor(&original); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name  string
+		alter func(*AuthorInput)
+		valid bool
+	}{
+		{"verified", func(*AuthorInput) {}, true},
+		{"legacy", func(a *AuthorInput) { a.SkillFiles = nil }, true},
+		{"wrong skill", func(a *AuthorInput) { a.SkillFiles["extra"] = a.SkillFiles[a.SkillID] }, false},
+		{"missing reference", func(a *AuthorInput) { delete(a.SkillFiles[a.SkillID].References, "stages") }, false},
+		{"modified reference", func(a *AuthorInput) { a.SkillFiles[a.SkillID].References["stages"] += "!" }, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var a AuthorInput
+			if err := json.Unmarshal([]byte(jsonText(original)), &a); err != nil {
+				t.Fatal(err)
+			}
+			tc.alter(&a)
+			dest := Assignment{Run: Run{Kind: "author"}}
+			err := decodeAssignmentAuthor(&dest, jsonText(a))
+			if (err == nil) != tc.valid {
+				t.Fatal("unexpected dispatch result", err)
+			}
+		})
+	}
+	var nullPacket map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(jsonText(original)), &nullPacket); err != nil {
+		t.Fatal(err)
+	}
+	nullPacket["skillFiles"] = json.RawMessage(`null`)
+	if err := decodeAssignmentAuthor(&Assignment{Run: Run{Kind: "author"}}, jsonText(nullPacket)); err == nil {
+		t.Fatal("explicit null must not dispatch as a legacy snapshot")
+	}
+	// An independently valid, bounded reference can exceed the packet cap once JSON escaped.
+	dir := filepath.Join(root, "usecase-planner")
+	var m SkillManifest
+	if err := json.Unmarshal([]byte(original.SkillFiles[original.SkillID].Manifest), &m); err != nil {
+		t.Fatal(err)
+	}
+	long := strings.Repeat("\x01", 128<<10)
+	m.References[0].SHA256 = scriptHash(long)
+	if err := os.WriteFile(filepath.Join(dir, m.References[0].Path), []byte(long), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(jsonText(m)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := snapshotAuthor(&original); err != ErrSkillUnavailable {
+		t.Fatal("oversize serialized packet accepted", err)
 	}
 }

@@ -92,6 +92,30 @@ for (const engine of ["builtin", "vercel", "pi"] as const) test(`${engine} rejec
   } finally { await f.close(); }
 });
 
+for (const engine of ["builtin", "vercel", "pi"] as const) test(`${engine} accepts only the pinned Server skill contents`, async () => {
+  const f = await fixture(() => envelope([text('{"message":"已載入技能"}')]));
+  try {
+    const input = task();
+    const root = new URL("../../../skills/test-author/", import.meta.url);
+    const manifest = readFileSync(new URL("manifest.json", root), "utf8");
+    const main = readFileSync(new URL("SKILL.md", root), "utf8") + "\nSynthetic Server revision.\n";
+    const references = Object.fromEntries(JSON.parse(manifest).references.map(({ id, path }: { id: string; path: string }) =>
+      [id, readFileSync(new URL(path, root), "utf8")]));
+    input.author.skills![0]!.sha256 = sha256(main);
+    input.author.skillFiles = { "test-author": { manifest, main, references } };
+    const fetcher: typeof fetch = async (_url, init) => fetch(f.config.baseURL + "/responses", init);
+    const config = { ...f.config, engine };
+
+    const output = await runAuthor(input, config, browser, { fetcher });
+    assert.equal(output.message, "已載入技能");
+    assert.match(f.bodies[0]!.instructions, /Synthetic Server revision/);
+
+    input.author.skillFiles["test-author"]!.main = "unverified revision";
+    await assert.rejects(runAuthor(input, config, browser, { fetcher }), { code: "skill_unavailable" });
+    assert.equal(f.bodies.length, 1);
+  } finally { await f.close(); }
+});
+
 test("only fixed retrievable versions compact; eight-turn loop preserves protected facts, call/result pairs and encrypted reasoning", async t => {
   const version = "22222222-2222-4222-8222-222222222222";
   const f = await fixture((_body, i) => envelope(i < 8 ? [{ type: "reasoning", id: `rs_${i}`, summary: [], encrypted_content: `opaque-${i}` }, call("catalog_get", String(i), { moduleVersionId: version })] : [text()]));

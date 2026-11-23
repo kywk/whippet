@@ -148,6 +148,55 @@ function task(snapshot: CapabilitySnapshot): AuthorInput {
   } };
 }
 
+test("author consumes the pinned Server files even when the Worker image has old skills", async () => {
+  const f = fixture();
+  const previousRoot = process.env.WHIPPET_SKILLS_PATH;
+  process.env.WHIPPET_SKILLS_PATH = f.root;
+  try {
+    const files = { manifest: readFileSync(join(f.dir, "manifest.json"), "utf8"), main: f.content, references: { recipe: f.reference } };
+    writeFileSync(join(f.dir, "SKILL.md"), "old Worker instructions");
+    writeFileSync(join(f.dir, "references/recipe.md"), "old Worker reference");
+    const input = task({ ...f.snapshot, ...{ skillFiles: { "test-author": files } } });
+    const config = readAIConfig({ WHIPPET_AI_ENABLED: "true", OPENCODE_API_KEY: "synthetic-skill-sync" });
+    let requests = 0;
+    const output = await runAuthor(input, config, undefined, { fetcher: async (_url, init) => {
+      const body = JSON.parse(init!.body as string);
+      if (++requests === 1) {
+        assert(body.instructions.includes(f.content));
+        assert(!body.instructions.includes(f.reference));
+        assert(!body.instructions.includes(files.manifest));
+        return Response.json({ status: "completed", output: [{ type: "function_call", call_id: "read", name: "read_skill_reference", arguments: '{"skillId":"test-author","referenceId":"recipe"}' }] });
+      }
+      const result = body.input.find((item: { type: string }) => item.type === "function_call_output");
+      assert.equal(JSON.parse(result.output).content, f.reference);
+      return Response.json({ status: "completed", output: [], output_text: '{"message":"完成"}' });
+    } });
+    assert.equal(output.message, "完成");
+    assert.equal(requests, 2);
+  } finally {
+    if (previousRoot === undefined) delete process.env.WHIPPET_SKILLS_PATH;
+    else process.env.WHIPPET_SKILLS_PATH = previousRoot;
+    f.close();
+  }
+});
+
+test("invalid Server skill files cannot fall back to valid files in the Worker image", () => {
+  const f = fixture();
+  try {
+    const files = { manifest: readFileSync(join(f.dir, "manifest.json"), "utf8"), main: f.content, references: { recipe: f.reference } };
+    const invalid = [null, {}, { "test-author": files, other: files },
+      { "test-author": { ...files, manifest: files.manifest + "\n" } },
+      { "test-author": { ...files, main: "different main" } },
+      { "test-author": { ...files, references: {} } },
+      { "test-author": { ...files, references: { recipe: "different reference" } } },
+      { "test-author": { ...files, references: { ...files.references, extra: "extra reference" } } }];
+    for (const skillFiles of invalid) {
+      const snapshot = { ...f.snapshot, skillFiles } as CapabilitySnapshot;
+      assert.throws(() => loadSkillBundle(snapshot, f.registry, f.root), { code: "skill_unavailable" });
+    }
+  } finally { f.close(); }
+});
+
 test("real author wiring uses pinned registry/manifest/reference and server-reduced budget", async () => {
   const f = fixture(); const previous = process.env.WHIPPET_SKILLS_PATH;
   process.env.WHIPPET_SKILLS_PATH = f.root;

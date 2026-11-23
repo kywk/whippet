@@ -133,7 +133,7 @@ export function validateAuthorInput(value: unknown): AuthorInput {
   } catch { throw new AuthorError("invalid_input"); }
   const a = v.author;
   if (a.allowedTools !== undefined && !Array.isArray(a.allowedTools)) throw new AuthorError("invalid_input");
-  if (Object.keys(a).some((k) => !["conversationId", "baseRevision", "messages", "validation", "skillId", "skillVersion", "allowedTools", "editingSessionId", "contextRevision", "testName", "sourceVersion", "conversationSummary", "validationEvidence", "history", "skills", "budget", "model", "toolRegistryVersion", "toolRegistrySha256", "platform", "batch", "moduleSummary", "runtime"].includes(k))) throw new AuthorError("invalid_input");
+  if (Object.keys(a).some((k) => !["conversationId", "baseRevision", "messages", "validation", "skillId", "skillVersion", "allowedTools", "editingSessionId", "contextRevision", "testName", "sourceVersion", "conversationSummary", "validationEvidence", "history", "skills", "skillFiles", "budget", "model", "toolRegistryVersion", "toolRegistrySha256", "platform", "batch", "moduleSummary", "runtime"].includes(k))) throw new AuthorError("invalid_input");
   if (Object.hasOwn(a, "testName") && (a.skillId !== "test-author" || !boundedText(a.testName, 200, true))) throw new AuthorError("invalid_input");
   const capability = capabilitySnapshot(a);
   if (Array.isArray(a.allowedTools) && a.allowedTools.includes("read_author_snapshot") && !capability) throw new AuthorError("invalid_input");

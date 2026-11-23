@@ -20,6 +20,8 @@ Go Manager 主動連線 Server，以一次性 Docker Worker 執行 TypeScript sp
 
 ## 建置與啟動
 
+部署技能同步功能時，先排空 author 任務，更新各執行節點的 Worker 映像與 Manager，再更新 Server。Manager 以 `WORKER_IMAGE` 指定的本機映像啟動容器。生效後，技能內容的調整由 Server 在新 Run 固定並派送。工具註冊表或程式碼更新仍需一起部署相容的映像與服務。
+
 下列為整合時的操作方式。Worker 依賴與正式 TypeScript build 已完成，lockfile 已保留；Dockerfile 使用 `npm ci`。Worker 映像由總指揮代跑建置，詳細狀態見 [DELIVERY.md](DELIVERY.md)。本 Agent 不重試相同 Docker build。
 
 從 repo 根目錄建置，build context 各限於服務目錄：

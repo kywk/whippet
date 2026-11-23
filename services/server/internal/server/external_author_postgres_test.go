@@ -153,6 +153,13 @@ func TestM11ExternalAuthorClaimAndImmutableSnapshot(t *testing.T) {
 	if err != nil || task == nil || task.RunID != sub.Run.ID || task.ContextBundle.Author.SkillID != "test-author" {
 		t.Fatalf("external claim: %+v %v", task, err)
 	}
+	var hasPacket bool
+	if err := p.DB.QueryRowContext(ctx, `SELECT author_payload ? 'skillFiles' FROM runs WHERE id=$1`, sub.Run.ID).Scan(&hasPacket); err != nil || !hasPacket {
+		t.Fatal("persisted author skill packet missing", err)
+	}
+	if task.ContextBundle.Author.SkillFiles != nil || strings.Contains(jsonText(task), `"skillFiles":`) {
+		t.Fatal("raw skill packet disclosed to external task")
+	}
 	assertExternalTaskTestID(t, *task, &test.ID)
 	assertExternalTaskToolDefinitions(t, *task)
 	for _, name := range task.ContextBundle.Author.AllowedTools {

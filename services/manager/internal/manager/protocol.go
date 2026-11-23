@@ -99,6 +99,7 @@ func (m *AuthorMessage) UnmarshalJSON(data []byte) error {
 }
 
 type AuthorTask struct {
+	SkillFiles          skillFileSet              `json:"skillFiles,omitempty"`
 	ModuleSummary       json.RawMessage           `json:"moduleSummary,omitempty"`
 	Batch               json.RawMessage           `json:"batch,omitempty"`
 	Platform            json.RawMessage           `json:"platform,omitempty"`
@@ -147,7 +148,7 @@ func (a *AuthorTask) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
-	if count != 0 && count != 5 {
+	if (count != 0 || a.SkillFiles != nil) && count != 5 {
 		return fmt.Errorf("incomplete capability snapshot")
 	}
 	if value, exists := keys["runtime"]; exists && (count != 5 || !validRuntimeSnapshot(value)) {
