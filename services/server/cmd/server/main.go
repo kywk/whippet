@@ -125,9 +125,9 @@ func run(log *slog.Logger) error {
 		env("WHIPPET_AUTHOR_INTENT_API_KEY", os.Getenv("OPENCODE_API_KEY")),
 	)
 	store := &server.Postgres{DB: db, CredentialTLS: certFile != "", AuthorIntent: intent, NewTestReview: review}
-	store.Secrets, err = server.NewSecretVault(os.Getenv("WHIPPET_SECRET_MASTER_KEY"))
+	store.Secrets, err = loadSecretVault(os.Getenv("WHIPPET_SECRET_MASTER_KEY"), os.Getenv("WHIPPET_SECRET_MASTER_KEY_FILE"), defaultSecretMasterKeyFile)
 	if err != nil {
-		log.Warn("Workspace credential storage unavailable")
+		log.Warn("Workspace credential storage unavailable", "reason", err)
 	}
 	startupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

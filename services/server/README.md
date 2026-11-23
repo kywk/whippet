@@ -30,7 +30,10 @@ go run -mod=readonly ./cmd/server
 | `PORT` | `8080`；HTTP 或 TLS 共用此單一 listener |
 | `TLS_CERT_FILE`、`TLS_KEY_FILE` | 選填，必須成對；部署提供 PEM 憑證鏈／私鑰檔案。缺一或載入失敗則啟動失敗，不降級 HTTP |
 | `WHIPPET_SECRET_MASTER_KEY` | 選填；部署提供 base64 編碼的 32-byte AES-256 key。未配置或格式錯誤時一般資料 API 可用，但 secretsAvailable=false、機密寫入／撤銷回 503 secrets_unavailable；沒有明文替代儲存 |
+| `WHIPPET_SECRET_MASTER_KEY_FILE` | 選填，讀取與 `WHIPPET_SECRET_MASTER_KEY` 相同格式的專用金鑰檔。使用 0400 或 0600 一般檔案，上限 1024 bytes，可保留 Base64 換行。兩個變數同時有值、檔案無效或無法讀取時，Server 會記錄錯誤並停用角色憑證庫，一般資料 API 仍可用。 |
 | `WHIPPET_LIVE_ICE_SERVERS` | `[]`；專用 STUN／TURN RTCIceServer JSON 陣列，不使用 Manager／AI 憑證 |
+
+部署可用 `go build -ldflags '-X main.defaultSecretMasterKeyFile=/run/secrets/whippet-vault' ./cmd/server` 指定預設的檔案路徑。發行版預設為空字串。啟動時明確提供的金鑰或檔案路徑優先。部署時應為保管庫保留同一把金鑰，以便重啟後讀取既有角色憑證。
 
 `POST /api/dev-login` 回固定 `dev-admin`／`superadmin`，不建立 cookie 或 token；M1 的一般 API 共用固定開發身分。這個服務尚未提供真實登入與租戶隔離。SPA 透過相同 origin 的 `/api` 反向代理串接，沒有開放跨來源 CORS。
 
