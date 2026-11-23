@@ -51,6 +51,8 @@ docker run --rm --init \
 
 Manager 會為一次性 Worker 設定上述容器權限。腳本以降權 UID 執行，失去隔離能力時會以 `test_harness_unavailable` 停止。需要連站的測試由 Server 提供核准的 `workspaceContext`，舊 `workspaceSettings` 僅提供相容的執行資料。Chromium 與 Playwright request fixture 使用 Worker 的代理。使用新版 Node.js 的 `fetch` 也會讀取代理環境變數。
 
+對於從應用程式入口啟動的 SAML 登入，腳本可從 `whippet/login` 匯入 `loginAs`，以 `'workspace-entry'` 作為第六個參數。Workspace 需要設定可發起登入且接收登入返回的完整 `defaultTestUrl`，將 ACS 與 IdP 核准為登入相依來源，並將角色的 `loginOrigin` 指向登入表單所在的 IdP。Worker 從工作區入口啟動該頁的登入流程，驗證表單送出來源與返回網址。腳本仍須斷言登入後才會出現的業務結果。
+
 可在 Docker 驗證實際出站限制。
 
 ```sh

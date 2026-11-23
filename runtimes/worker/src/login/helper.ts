@@ -22,11 +22,11 @@ export async function submitLogin(page:Page,values:LoginValues,usernameSelector:
     await maskKnownInputs(page,[values.username,values.password]);
     // Fixed code, not model eval. No password literal in source or fill title.
     for(const [selector,value]of [[usernameSelector,values.username],[passwordSelector,values.password]] as const){
-      await page.locator(selector).evaluate((node,text)=>{
-        if(!(node instanceof HTMLInputElement))throw new Error('unsupported_login_input');
+      await page.locator(selector).evaluate((node,{text, credentialOrigin})=>{
+        if(location.origin !== credentialOrigin || !(node instanceof HTMLInputElement))throw new Error('unsupported_login_input');
         const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;
         setter?.call(node,text);node.dispatchEvent(new Event('input',{bubbles:true}));node.dispatchEvent(new Event('change',{bubbles:true}));
-      },value);
+      },{text:value, credentialOrigin:values.loginOrigin});
     }
     await page.locator(submitSelector).click();
     // Password input remains hidden after failed login too; do not expose value.
@@ -41,7 +41,9 @@ export async function submitLogin(page:Page,values:LoginValues,usernameSelector:
 
 // The parent runner owns Manager stdin. Only this local attempt socket is used
 // by the full Playwright worker; neither credentials nor tokens are in env.
-export async function loginAs(page:Page,roleId:string,usernameSelector:string,passwordSelector:string,submitSelector:string):Promise<{submitted:true}> {
+export async function loginAs(page:Page,roleId:string,usernameSelector:string,passwordSelector:string,submitSelector:string,mode?:'workspace-entry'):Promise<{submitted:true}> {
+  const gate = browserScope(page.context());
+  if (mode !== undefined && (mode !== 'workspace-entry' || !gate)) throw new CredentialError();
   const socketPath=process.env.WHIPPET_LOGIN_SOCKET;
   if(!socketPath)throw new CredentialError();
   const values=await new Promise<Credentials>((resolve,reject)=>{
@@ -53,7 +55,20 @@ export async function loginAs(page:Page,roleId:string,usernameSelector:string,pa
       try{const reply=JSON.parse(buffer.subarray(0,n).toString('utf8'));if(reply.error)throw new CredentialError();done=true;resolve(reply.credentials);socket.destroy();}catch{fail();}});
   });
   try{
-    const gate = browserScope(page.context());
+    if (mode === 'workspace-entry' && gate) {
+      const hooks = (globalThis as LoginHooks)[LOGIN_HOOK];
+      await hooks?.pause();
+      try {
+        return await gate.duringWorkspaceLogin(page, roleId, values.loginOrigin, async (entry, remaining) => {
+          await page.goto(entry, {waitUntil:'commit', timeout:remaining()});
+          await page.waitForURL(url => url.origin === values.loginOrigin, {waitUntil:'domcontentloaded', timeout:remaining()});
+          const submitted = await submitLogin(page, values, usernameSelector, passwordSelector, submitSelector);
+          await page.waitForURL(url => url.href === entry, {waitUntil:'domcontentloaded', timeout:remaining()});
+          return submitted;
+        });
+      } catch { throw new CredentialError(); }
+      finally { await hooks?.resume(); }
+    }
     if (!gate) return await submitLogin(page, values, usernameSelector, passwordSelector, submitSelector);
     return await gate.duringLogin(values.loginOrigin, async () => {
       if (new URL(page.url()).origin !== new URL(values.loginOrigin).origin) {

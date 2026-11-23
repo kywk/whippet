@@ -19,14 +19,23 @@ export class AIOriginGate {
   private revision=0;
   private navigationBlock?:{revision:number;issue:ScopeIssue};
   private loginOrigin?:string;
+  private readonly workspaceLogins = new WeakMap<Page, number>();
+  private readonly entryUrl: string;
+  private readonly roleOrigins = new Map<string, string>();
+  private readonly loginTimeout: number;
   private readonly observedLoginOrigins=new Set<string>();
   constructor(config:WorkspaceConfig){
     validateWorkspaceConfig(config);
+    this.entryUrl = config.defaultTestUrl;
+    this.loginTimeout = Math.min(config.timeoutMs, 60000);
+    for (const role of config.loginRoles) {
+      if (role.roleId) this.roleOrigins.set(role.roleId, origin(role.loginOrigin));
+    }
     for(const site of config.targets)this.targets.add(origin(site.origin));
     for(const site of config.dependencies)this.dependencies.set(origin(site.origin),site.purpose);
     for(const value of config.excludedOrigins)this.excluded.add(origin(value));
   }
-  check(value:string,kind:string):ScopeIssue|undefined {
+  check(value:string,kind:string,page?:Page):ScopeIssue|undefined {
     let u:URL;
     try{u=new URL(value);if(u.username||u.password||!['http:','https:','ws:','wss:'].includes(u.protocol))throw new Error();}
     catch{return {error:"invalid_browser_url",message:"僅可使用無帳密的 HTTP(S) 網頁與對應 WebSocket。"};}
@@ -37,6 +46,7 @@ export class AIOriginGate {
     if(purpose&&kind==='transport')return;
     if(purpose==='api'&&['xhr','fetch','eventsource','websocket'].includes(kind))return;
     if(purpose==='cdn'&&['script','stylesheet','image','font','media','manifest','texttrack'].includes(kind))return;
+    if (purpose === 'login' && page && (this.workspaceLogins.get(page) ?? 0) > Date.now()) return;
     if(purpose==='login'&&this.loginOrigin===o)return;
     if(purpose==='login'&&kind!=='navigation'&&this.observedLoginOrigins.has(o))return;
     if(purpose)return {error:"dependency_usage_not_allowed",origin:o,message:"此網站僅可作已確認的 dependency 用途；登入請用角色登入工具，不能當一般驗測目標。"};
@@ -51,6 +61,30 @@ export class AIOriginGate {
   checkpoint():number{return this.revision;}
   throwNavigationSince(revision:number):void{if(this.navigationBlock&&this.navigationBlock.revision>revision)throw new BrowserScopeError(this.navigationBlock.issue);}
   takeIssues():ScopeIssue[]{return this.issues.splice(0);}
+  async duringWorkspaceLogin<T>(
+    page: Page, roleId: string, credentialOrigin: string,
+    operation: (entry: string, remaining: () => number) => Promise<T>
+  ): Promise<T> {
+    const roleOrigin = origin(credentialOrigin);
+    const denied = () => new BrowserScopeError({
+      error: 'dependency_usage_not_allowed',
+      message: '此角色或頁面未獲准使用工作區登入流程。'
+    });
+    if (browserScope(page.context()) !== this || !this.entryUrl ||
+        this.roleOrigins.get(roleId) !== roleOrigin || this.excluded.has(roleOrigin) ||
+        this.dependencies.get(roleOrigin) !== 'login' || this.workspaceLogins.has(page)) throw denied();
+    const entry = new URL(this.entryUrl);
+    if (!this.targets.has(entry.origin) || this.excluded.has(entry.origin)) throw denied();
+    const deadline = Date.now() + this.loginTimeout;
+    const remaining = () => {
+      const ms = deadline - Date.now();
+      if (ms <= 0) throw denied();
+      return ms;
+    };
+    this.workspaceLogins.set(page, deadline);
+    try { return await operation(entry.href, remaining); }
+    finally { this.workspaceLogins.delete(page); }
+  }
   async duringLogin<T>(url:string,operation:()=>Promise<T>):Promise<T>{
     const o=origin(url);
     if(!this.targets.has(o)&&this.dependencies.get(o)!=='login')this.require(url,'navigation');
@@ -79,10 +113,10 @@ export async function installAIOriginGate(context:BrowserContext,gate:AIOriginGa
       session.on('Fetch.requestPaused',(event:ResponsePause)=>{
         void (async()=>{
           const kind=event.resourceType==='Document'?'navigation':event.resourceType.toLowerCase();
-          let issue=gate.check(event.request.url,kind);
+          let issue=gate.check(event.request.url,kind,page);
           if(!issue&&[301,302,303,307,308].includes(event.responseStatusCode??0)){
             const location=event.responseHeaders?.find((h)=>h.name.toLowerCase()==='location')?.value;
-            if(location){try{issue=gate.check(new URL(location,event.request.url).href,kind);}catch{issue={error:'invalid_browser_url',message:'網站跳轉網址無效，已停止本次跳轉。'};}}
+            if(location){try{issue=gate.check(new URL(location,event.request.url).href,kind,page);}catch{issue={error:'invalid_browser_url',message:'網站跳轉網址無效，已停止本次跳轉。'};}}
           }
           if(issue){gate.block(issue,kind);await session.send('Fetch.failRequest',{requestId:event.requestId,errorReason:'BlockedByClient'});}
           else await session.send('Fetch.continueResponse',{requestId:event.requestId});
@@ -91,7 +125,7 @@ export async function installAIOriginGate(context:BrowserContext,gate:AIOriginGa
       await session.send('Fetch.enable',{patterns:[{urlPattern:'*',requestStage:'Response'}]});
       page.on('framenavigated',(frame)=>{
         if(frame!==page.mainFrame()||frame.url()==='about:blank')return;
-        const issue=gate.check(frame.url(),'navigation');
+        const issue=gate.check(frame.url(),'navigation',page);
         if(issue){gate.block(issue,'navigation');void page.close().catch(()=>undefined);}
       });
     })();
@@ -99,7 +133,9 @@ export async function installAIOriginGate(context:BrowserContext,gate:AIOriginGa
   }
   context.on('page',(page)=>{void ready(page).catch(()=>{gate.block(unavailable,'navigation');void page.close().catch(()=>undefined);});});
   await context.route('**/*',async(route,request)=>{
-    const kind=requestKind(request),issue=gate.check(request.url(),kind);
+    let owner: Page | undefined;
+    try { owner = request.frame().page(); } catch { /* No owning page for this request. */ }
+    const kind=requestKind(request),issue=gate.check(request.url(),kind,owner);
     if(issue){gate.block(issue,kind);await route.abort('blockedbyclient');return;}
     try{await ready(request.frame().page());}
     catch{gate.block(unavailable,kind);await route.abort('blockedbyclient');return;}
