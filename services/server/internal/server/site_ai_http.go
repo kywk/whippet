@@ -71,6 +71,12 @@ func writeSiteAIError(w http.ResponseWriter, err error) bool {
 	switch code {
 	case errSiteAIUnsupported:
 		status, message = http.StatusUnprocessableEntity, "執行端不支援這組設定。"
+	case errSiteAIProposalRejected:
+		status, message = http.StatusUnprocessableEntity, "請補充 Agent 用途或指定支援的引擎與模型，也可以直接填寫表單。"
+	case errSiteAISensitiveInput:
+		status, message = http.StatusUnprocessableEntity, "請移除提案文字中的憑證，並使用表單的專用金鑰欄位。"
+	case errSiteAIProposalUnavailable:
+		status, message = http.StatusServiceUnavailable, "AI Manager 暫時無法產生提案，可以重試或直接填寫表單。"
 	case errSiteAITransport:
 		status, message = http.StatusBadRequest, "憑證操作需要 HTTPS 或直接 loopback 連線。"
 	case errSiteAIDisabled:
@@ -119,6 +125,7 @@ func (a *API) registerSiteAIRoutes(mux *http.ServeMux) {
 	handle("GET /api/admin/ai/options", a.siteAIOptions)
 	handle("GET /api/admin/ai/agents", a.siteAIAgents)
 	handle("POST /api/admin/ai/agents", a.siteAICreateAgent)
+	handle(siteAIProposalRoute, a.siteAIProposeAgent)
 	handle("GET /api/admin/ai/agents/{agentId}", a.siteAIAgent)
 	handle("POST /api/admin/ai/agents/{agentId}/retry", a.siteAIRetryAgent)
 	handle("PUT /api/admin/ai/agents/{agentId}/model-key", a.siteAIChangeKey)
@@ -132,6 +139,8 @@ func (a *API) failSiteAI(w http.ResponseWriter, r *http.Request, actor platformA
 	if p, ok := a.store.(*Postgres); ok && browserWrite(r.Method) {
 		var item managementAudit
 		switch {
+		case r.Pattern == siteAIProposalRoute:
+			item = platformAudit(actor, "propose_agent", "agent", "", nil)
 		case r.PathValue("resourceId") != "":
 			item = platformAudit(actor, "resource_action", "resource", r.PathValue("resourceId"), nil)
 		case ValidID(r.PathValue("agentId")):
@@ -147,6 +156,9 @@ func (a *API) failSiteAI(w http.ResponseWriter, r *http.Request, actor platformA
 		switch {
 		case errors.As(err, &siteError):
 			code = string(siteError)
+			if siteError == errSiteAIProposalUnavailable {
+				outcome = "failed"
+			}
 		case errors.Is(err, errForbidden):
 			code = "forbidden"
 		case errors.Is(err, ErrInvalid):
