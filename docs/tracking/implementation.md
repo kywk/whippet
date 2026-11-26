@@ -8,11 +8,17 @@
 
 | 順序 | 狀態 | 依賴 | 交付與完成條件 |
 | --- | --- | --- | --- |
-| ADM-0 契約 | 待辦 | v13 | 固定角色能力、封存狀態、資源識別、指派與建立請求、錯誤及舊客戶端預設值，提供成功／拒絕範例 |
-| ADM-1 Workspace 與成員 | 待辦 | ADM-0 | 從登入到建立 Workspace、指派成員、封存及還原；通過 A1、A2 |
-| ADM-2 資源清單與調配 | 待辦 | ADM-0 | 串起 Manager WSS 與兩種 MCP 活動，調配落到 dispatch／claim；通過 A3 |
-| ADM-3 AI Manager 建立 | 待辦 | ADM-2 | 先用既有 Manager 建立內建 Agent 並完成一筆任務，再接 Vercel、Pi 與自管回連；通過 A4 |
-| ADM-4 整合驗收 | 待辦 | ADM-1 至 ADM-3 | 以正式 Web 建置、真 Server 與資料庫走完 Site Manager 建立及指派、Super Admin 建 Agent 並完成工作；逐入口記錄 A5 放行與拒絕結果 |
+| ADM-0 契約 | 完成（契約 Agent） | v13 | 固定角色能力、封存狀態、資源識別、指派與建立請求、錯誤及舊客戶端預設值，提供成功／拒絕範例 |
+| ADM-1 Workspace 與成員 | 完成（Server、Web） | ADM-0 | 從登入到建立 Workspace、指派成員、封存及還原；通過 A1、A2 |
+| ADM-2 資源清單與調配 | 完成（Server、Runtime、Web） | ADM-0 | 串起 Manager WSS 與兩種 MCP 活動，調配落到 dispatch／claim；通過 A3 |
+| ADM-3 AI Manager 建立 | 完成（Server、Runtime、Web） | ADM-2 | 先用既有 Manager 建立內建 Agent 並完成一筆任務，再接 Vercel、Pi 與自管回連；通過 A4 |
+| ADM-4 整合驗收 | 完成（整合、Runtime） | ADM-1 至 ADM-3 | 以正式 Web 建置、真 Server 與資料庫走完 Site Manager 建立及指派、Super Admin 建 Agent 並完成工作；逐入口記錄 A5 放行與拒絕結果 |
+
+[v14 契約](../../contracts/mvp-v14.md) 已合併，核對 9 組 JSON 範例與文件連結。Manager 容量回報切片通過建置及 7 項定向競態測試，使用模擬容器及本機 WebSocket。
+
+2026-11-26 全站後台完成。四種角色由正式 Web 操作，搭配隔離 PostgreSQL、Linux Server、TLS/WSS Manager、Docker Worker。A1–A3 驗證成員撤權、封存等待／取消、還原、歷史報告、改派競爭與重連。A4 驗證自然語言提案、人工確認、個別 Key 輪替、撤銷及失敗重試。四次輸出掃描共 80 檔，合成 Key 命中數為 0。
+
+A5 的內建、Vercel、Pi 作者均實際完成 Run；MCP 互動瀏覽器驗證同 Workspace 放行與跨區拒絕，自管 Pi Bridge 完成 claim、heartbeat、工具、冪等 submit 與正式 Playwright 驗證。已修正被撤銷 Key 的 Agent 在一般入列時的錯誤碼；以真 Web 重驗為 `409 agent_not_ready`。外部模型使用合成 provider，發佈涵蓋人工確認及有效摘要門檻。[重現方式與驗收範圍](../../scripts/test/adm4-acceptance.md)
 
 ## 外部 AI Worker 安裝（2026-11-26）
 
