@@ -75,14 +75,22 @@ func editingAuthorInput(s EditingSession, d draftState, skill string, messages [
 		SourceVersion: s.SourceVersion, ConversationSummary: s.ConversationSummary, ConversationID: s.ConversationID, BaseRevision: d.Revision, Messages: messages}
 }
 
-func enqueueAuthor(ctx context.Context, tx *sql.Tx, d draftState, input AuthorInput, bindings ...Run) (Run, error) {
+func (p *Postgres) enqueueAuthor(ctx context.Context, tx *sql.Tx, d draftState, input AuthorInput, bindings ...Run) (Run, error) {
 	if err := snapshotAuthor(&input); err != nil {
 		return Run{}, err
 	}
-	return enqueueAuthorSnapshot(ctx, tx, d, input, bindings...)
+	return p.enqueueAuthorSnapshot(ctx, tx, d, input, bindings...)
 }
 
 func enqueueAuthorSnapshot(ctx context.Context, tx *sql.Tx, d draftState, input AuthorInput, bindings ...Run) (Run, error) {
+	return enqueueAuthorSnapshotWithSiteAI(ctx, tx, d, input, siteAIConnectionView{}, bindings...)
+}
+
+func (p *Postgres) enqueueAuthorSnapshot(ctx context.Context, tx *sql.Tx, d draftState, input AuthorInput, bindings ...Run) (Run, error) {
+	return enqueueAuthorSnapshotWithSiteAI(ctx, tx, d, input, p.siteAIConnection(), bindings...)
+}
+
+func enqueueAuthorSnapshotWithSiteAI(ctx context.Context, tx *sql.Tx, d draftState, input AuthorInput, conn siteAIConnectionView, bindings ...Run) (Run, error) {
 	var workspace string
 	var status workspaceArchiveStatus
 	if err := tx.QueryRowContext(ctx, `SELECT w.id,w.archive_status FROM workspaces w JOIN tests t ON t.workspace_id=w.id WHERE t.id=$1 FOR SHARE OF w`, d.TestID).Scan(&workspace, &status); err != nil {
@@ -91,7 +99,17 @@ func enqueueAuthorSnapshot(ctx context.Context, tx *sql.Tx, d draftState, input 
 	if err := status.workError(); err != nil {
 		return Run{}, err
 	}
-	if err := snapshotRuntime(ctx, tx, workspace, &input); err != nil {
+	var binding Run
+	if len(bindings) > 0 {
+		binding = bindings[0]
+	}
+	selected, err := bindSiteAIAuthor(ctx, tx, workspace, &input, binding, conn)
+	if err != nil {
+		return Run{}, err
+	}
+	if selected != nil {
+		binding.AuthorEngine = selected.engine()
+	} else if err = snapshotRuntime(ctx, tx, workspace, &input); err != nil {
 		return Run{}, err
 	}
 	payload, err := json.Marshal(input)
@@ -99,16 +117,15 @@ func enqueueAuthorSnapshot(ctx context.Context, tx *sql.Tx, d draftState, input 
 		return Run{}, err
 	}
 	id := NewID()
-	var binding Run
-	if len(bindings) > 0 {
-		binding = bindings[0]
-	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO runs(id,test_id,kind,draft_revision,script_snapshot,script_hash,timeout_ms,author_payload,workspace_settings,editing_session_id,workspace_id,workspace_context,script_origin,authorization_revision,scope_proposal_id,author_intent_checked,author_engine)
  SELECT $1,$2,'author',$3,$4,$5,$6,$7,$8,$9,t.workspace_id,$10,$11,$12,$13,true,
  CASE WHEN $15 IN ('builtin','external') THEN $15 WHEN $14 IN ('test-author','acceptance-summary','module-authoring','usecase-planner') THEN w.author_engine ELSE 'builtin' END FROM tests t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=$2`, id, d.TestID, d.Revision, d.Script, d.hash, input.Budget.MaxDurationMS, string(payload), settingsJSON(d.WorkspaceSettings), d.EditingSessionID, jsonText(d.WorkspaceContext), d.ScriptOrigin, binding.authorizationRevision, binding.scopeProposalID, input.SkillID, binding.AuthorEngine); err != nil {
 		return Run{}, err
 	}
 	if err = saveAuthorChainBudget(ctx, tx, id, input, binding.chainBudget); err != nil {
+		return Run{}, err
+	}
+	if err = saveSiteAIRunBinding(ctx, tx, workspace, id, selected); err != nil {
 		return Run{}, err
 	}
 	return scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs r WHERE r.id=$1`, id))
@@ -345,7 +362,7 @@ func (p *Postgres) CreateSummary(ctx context.Context, testID, sessionID string, 
 		}
 		input.ValidationEvidence = &evidence
 	}
-	run, err := enqueueAuthor(ctx, tx, d, input)
+	run, err := p.enqueueAuthor(ctx, tx, d, input)
 	if err != nil {
 		return Run{}, err
 	}

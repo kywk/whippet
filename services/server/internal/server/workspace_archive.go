@@ -141,16 +141,16 @@ func readManagedWorkspace(ctx context.Context, q queryDB, id string, role siteRo
 	impact := &item.Impact
 	row := q.QueryRowContext(ctx, `SELECT `+workspaceSummaryColumns+`,r.queued,r.active,
  (SELECT count(*) FROM external_author_claims WHERE workspace_id=w.id AND state='active'),
- (SELECT count(*) FROM agent_browser_leases WHERE workspace_id=w.id AND NOT reclaimed),r.unreleased
+ (SELECT count(*) FROM agent_browser_leases WHERE workspace_id=w.id AND NOT reclaimed),r.unreleased,
+ (SELECT count(*) FROM site_ai_provisions WHERE workspace_id=w.id AND NOT reclaimed)
  FROM workspaces w CROSS JOIN LATERAL (
   SELECT count(*) FILTER (WHERE status='queued') AS queued,
          count(*) FILTER (WHERE `+workspaceBusyRun+`) AS active,
          count(*) FILTER (WHERE manager_id IS NOT NULL AND NOT slot_released) AS unreleased
   FROM runs WHERE workspace_id=w.id AND `+workspaceUnfinishedRun+`
  ) r WHERE w.id=$1`, id)
-	// Provisioning is introduced in ADM-3. The field is part of the ADM-1 response.
 	var err error
-	item.Workspace, err = scanWorkspaceSummary(row, role, &impact.QueuedRuns, &impact.ActiveRuns, &impact.ExternalClaims, &impact.BrowserLeases, &impact.UnreleasedRunSlots)
+	item.Workspace, err = scanWorkspaceSummary(row, role, &impact.QueuedRuns, &impact.ActiveRuns, &impact.ExternalClaims, &impact.BrowserLeases, &impact.UnreleasedRunSlots, &impact.ProvisionJobs)
 	return item, err
 }
 
@@ -262,6 +262,9 @@ func (p *Postgres) archiveWorkspace(ctx context.Context, actor platformActor, id
 }
 
 func cancelWorkspaceWork(ctx context.Context, tx *sql.Tx, id string, cancelActive bool) error {
+	if err := cancelSiteAIProvisions(ctx, tx, "workspace_id", id, cancelActive); err != nil {
+		return err
+	}
 	if cancelActive {
 		// External tools, heartbeats and submissions lock the claim before the Run.
 		if _, err := tx.ExecContext(ctx, `UPDATE external_author_claims SET state='cancelled' WHERE workspace_id=$1 AND state='active'`, id); err != nil {

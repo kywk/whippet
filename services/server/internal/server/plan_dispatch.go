@@ -124,7 +124,7 @@ func (p *Postgres) enqueuePlanModuleAuthor(ctx context.Context, tx *sql.Tx, plan
 	if err != nil {
 		return Run{}, err
 	}
-	run, err := enqueueAuthorSnapshot(ctx, tx, d, input, Run{authorizationRevision: auth, scopeProposalID: proposal})
+	run, err := p.enqueueAuthorSnapshot(ctx, tx, d, input, Run{authorizationRevision: auth, scopeProposalID: proposal})
 	if err != nil {
 		return Run{}, err
 	}

@@ -132,12 +132,22 @@ func (p *Postgres) CreateWorkspaceAuthor(ctx context.Context, id, content string
 	if err = snapshotAuthor(&input); err != nil {
 		return AuthorSubmission{}, err
 	}
-	if err = snapshotRuntime(ctx, tx, id, &input); err != nil {
+	selected, err := bindSiteAIAuthor(ctx, tx, id, &input, Run{}, p.siteAIConnection())
+	if err != nil {
+		return AuthorSubmission{}, err
+	}
+	engine := w.AuthorEngine
+	if selected != nil {
+		engine = selected.engine()
+	} else if err = snapshotRuntime(ctx, tx, id, &input); err != nil {
 		return AuthorSubmission{}, err
 	}
 	runID := NewID()
 	if _, err = tx.ExecContext(ctx, `INSERT INTO runs(id,workspace_id,test_id,kind,script_snapshot,script_hash,timeout_ms,author_payload,workspace_settings,workspace_context,script_origin,authorization_revision,scope_proposal_id,author_engine,author_intent_checked)
- VALUES($1,$2,NULL,'author','',$3,$4,$5,$6,$7,'legacy',$8,$9,$10,true)`, runID, id, scriptHash(""), input.Budget.MaxDurationMS, jsonText(input), settingsJSON(&w.WorkspaceSettings), jsonText(snapshot), authorization, scopeProposal, w.AuthorEngine); err != nil {
+ VALUES($1,$2,NULL,'author','',$3,$4,$5,$6,$7,'legacy',$8,$9,$10,true)`, runID, id, scriptHash(""), input.Budget.MaxDurationMS, jsonText(input), settingsJSON(&w.WorkspaceSettings), jsonText(snapshot), authorization, scopeProposal, engine); err != nil {
+		return AuthorSubmission{}, err
+	}
+	if err = saveSiteAIRunBinding(ctx, tx, id, runID, selected); err != nil {
 		return AuthorSubmission{}, err
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO messages(id,conversation_id,role,content,run_id) VALUES($1,$2,'user',$3,$4)`, NewID(), c.ID, content, runID); err != nil {

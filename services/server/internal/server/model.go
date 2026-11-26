@@ -54,6 +54,7 @@ type Test struct {
 }
 
 type Run struct {
+	AgentID               *string `json:"agentId,omitempty"`
 	chainBudget           *authorChainBudget
 	AuthorEngine          string         `json:"authorEngine"`
 	AuthorPartial         *AuthorPartial `json:"authorPartial,omitempty"`
@@ -206,10 +207,11 @@ func Terminal(status string) bool {
 }
 
 type Assignment struct {
-	archiveStatus workspaceArchiveStatus
-	Retest        *retestTarget
-	Files         []RunFile
-	ModuleABI     *ModuleABI
+	modelCredential *siteAIModelCredential
+	archiveStatus   workspaceArchiveStatus
+	Retest          *retestTarget
+	Files           []RunFile
+	ModuleABI       *ModuleABI
 	Run
 	ManagerID string
 	AttemptID string

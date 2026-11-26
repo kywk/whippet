@@ -214,7 +214,7 @@ func (p *Postgres) ContinuePlanStage(ctx context.Context, id, stageID string, re
 	if err = next.constrain(&input); err != nil {
 		return nil, err
 	}
-	run, err := enqueueAuthorSnapshot(ctx, tx, md, input, Run{authorizationRevision: auth, scopeProposalID: proposal, AuthorEngine: engine, chainBudget: next})
+	run, err := p.enqueueAuthorSnapshot(ctx, tx, md, input, Run{authorizationRevision: auth, scopeProposalID: proposal, AuthorEngine: engine, chainBudget: next})
 	if err != nil {
 		return nil, err
 	}

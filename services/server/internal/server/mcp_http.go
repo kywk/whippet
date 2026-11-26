@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -109,6 +110,11 @@ func (a *API) newMCPHandler() http.Handler {
 			if auditErr := p.RecordAgentToolAudit(ctx, auth.token, name, decision); auditErr != nil {
 				return nil, ErrHistoryUnavailable
 			}
+			if decision == "allowed" {
+				if err := p.recordSiteAIMCPActivity(ctx, auth.token.ID, name); err != nil {
+					a.log.Warn("MCP activity observation failed", "tool", name)
+				}
+			}
 			return result, err
 		}
 	})
@@ -173,6 +179,9 @@ func (a *API) newMCPHandler() http.Handler {
 				writeError(w, http.StatusRequestEntityTooLarge, "request_too_large", "MCP request exceeds limit")
 				return
 			}
+			if serveSiteAIMCP(w, r, p, token, body) {
+				return
+			}
 			r.Body = io.NopCloser(bytes.NewReader(body))
 		}
 		ctx := context.WithValue(r.Context(), agentAuthContextKey{}, agentAuthContext{secret: secret, token: token})
@@ -206,6 +215,9 @@ func mcpErrorCode(code string) *mcp.CallToolResult {
 }
 
 func mcpWorkspaceWorkError(err error) *mcp.CallToolResult {
+	if errors.Is(err, errSiteAIClaimPaused) || errors.Is(err, errSiteAINotReady) {
+		return mcpErrorCode(err.Error())
+	}
 	if code := workspaceErrorCode(err); code != "" {
 		return mcpErrorCode(code)
 	}

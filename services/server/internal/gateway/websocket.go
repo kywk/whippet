@@ -56,14 +56,20 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
-		Capacity int `json:"capacity"`
+		Capacity int             `json:"capacity"`
+		Admin    json.RawMessage `json:"admin"`
 	}
 	if server.ValidateEnvelope(hello) != nil || hello.Type != "hello" || json.Unmarshal(hello.Payload, &payload) != nil {
 		g.reject(conn, "invalid hello")
 		return
 	}
+	caps, err := server.ParseSiteAIManagerCapabilities(payload.Admin)
+	if err != nil {
+		g.reject(conn, "invalid hello")
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	session, err := g.Engine.Attach(ctx, hello.ManagerID, payload.Capacity, &peer{conn})
+	session, err := g.Engine.AttachSiteAI(ctx, hello.ManagerID, payload.Capacity, &peer{conn}, caps, r.TLS != nil)
 	cancel()
 	if err != nil {
 		g.Log.Warn("manager hello rejected", "managerId", hello.ManagerID, "error", err)
