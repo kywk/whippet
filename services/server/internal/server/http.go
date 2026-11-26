@@ -17,23 +17,23 @@ import (
 )
 
 type API struct {
-	store          Store
-	artifacts      ArtifactStorage
-	engine         *Engine
-	token          string
-	adminToken     string
-	publicOrigin   string
-	adminSessions  *adminSessions
-	viewerMu       sync.Mutex
-	userViewers    map[*viewerGrant]struct{}
-	agentLimiter   *agentRateLimiter
-	inspections    *InspectionConfig
-	siteAIProposer siteAIProposalGenerator
-	log            *slog.Logger
-	liveViewer     http.Handler
-	liveMedia      http.Handler
-	sessionViewer  http.Handler
-	sessionMedia   http.Handler
+	store         Store
+	artifacts     ArtifactStorage
+	engine        *Engine
+	token         string
+	adminToken    string
+	publicOrigin  string
+	adminSessions *adminSessions
+	viewerMu      sync.Mutex
+	userViewers   map[*viewerGrant]struct{}
+	agentLimiter  *agentRateLimiter
+	inspections   *InspectionConfig
+	agentProposer siteAIProposalGenerator
+	log           *slog.Logger
+	liveViewer    http.Handler
+	liveMedia     http.Handler
+	sessionViewer http.Handler
+	sessionMedia  http.Handler
 }
 
 func NewAPI(store Store, artifacts ArtifactStorage, engine *Engine, token string, log *slog.Logger) *API {

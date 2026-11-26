@@ -79,7 +79,7 @@ type siteAIProposalOptions struct {
 type siteAIProposalGenerator func(context.Context, string, siteAIProposalOptions) (siteAIProposalChoice, error)
 
 func (a *API) WithSiteAIAgentProposals(baseURL, model, key string) *API {
-	a.siteAIProposer = newAuthorIntentClient(baseURL, model, key).proposeSiteAIAgent
+	a.agentProposer = newAuthorIntentClient(baseURL, model, key).proposeSiteAIAgent
 	return a
 }
 
@@ -169,10 +169,10 @@ func (p *Postgres) siteAIProposalOptions(ctx context.Context, workspaceID string
 	}
 	out := siteAIProposalOptions{Managed: []siteAIProposalManagedOption{}, SelfManaged: []siteAIProposalSelfOption{}}
 	for _, item := range options.Managed {
-		out.Managed = append(out.Managed, siteAIProposalManagedOption{item.ProfileID, item.Engine, item.Provider, item.Model})
+		out.Managed = append(out.Managed, siteAIProposalManagedOption{ProfileID: item.ProfileID, Engine: item.Engine, Provider: item.Provider, Model: item.Model})
 	}
 	for _, item := range options.SelfManaged {
-		out.SelfManaged = append(out.SelfManaged, siteAIProposalSelfOption{item.Engine, item.Providers})
+		out.SelfManaged = append(out.SelfManaged, siteAIProposalSelfOption{Engine: item.Engine, Providers: item.Providers})
 	}
 	return out, nil
 }
@@ -199,7 +199,7 @@ func (a *API) siteAIProposeAgent(w http.ResponseWriter, r *http.Request, p *Post
 		a.failSiteAI(w, r, actor, err)
 		return
 	}
-	if a.siteAIProposer == nil || options.hasCredential(a.adminToken, a.token) {
+	if a.agentProposer == nil || options.hasCredential(a.adminToken, a.token) {
 		a.failSiteAI(w, r, actor, errSiteAIProposalUnavailable)
 		return
 	}
@@ -207,7 +207,7 @@ func (a *API) siteAIProposeAgent(w http.ResponseWriter, r *http.Request, p *Post
 		a.failSiteAI(w, r, actor, errSiteAIProposalRejected)
 		return
 	}
-	choice, err := a.siteAIProposer(r.Context(), input.Instruction, options)
+	choice, err := a.agentProposer(r.Context(), input.Instruction, options)
 	if err != nil {
 		a.failSiteAI(w, r, actor, err)
 		return
