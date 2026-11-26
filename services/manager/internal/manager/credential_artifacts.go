@@ -18,10 +18,14 @@ import (
 )
 
 func (m *Manager) rememberCredentials(r record, v credentialValues) error {
+	return m.rememberAttemptSecrets(r, v.Username, v.Password)
+}
+
+func (m *Manager) rememberAttemptSecrets(r record, values ...string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	current, ok := m.records[r.AttemptID]
-	if !ok || current.RunID != r.RunID || current.CancelRequested || !current.holdsSlot() {
+	if !ok || current.RunID != r.RunID || current.CancelRequested || !current.holdsSlot() || !sameModelCredential(current.ModelCredential, r.ModelCredential) {
 		return errCredentials
 	}
 	current.CredentialsUsed = true
@@ -31,7 +35,7 @@ func (m *Manager) rememberCredentials(r record, v credentialValues) error {
 	if m.secrets == nil {
 		m.secrets = make(map[string][]string)
 	}
-	m.secrets[r.AttemptID] = append(m.secrets[r.AttemptID], v.Username, v.Password)
+	m.secrets[r.AttemptID] = append(m.secrets[r.AttemptID], values...)
 	return nil
 }
 func secretReplacer(values []string) *strings.Replacer {

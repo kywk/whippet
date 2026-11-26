@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +31,10 @@ type Manager struct {
 	mu                         sync.Mutex // records and admission
 	records                    map[string]record
 	attemptSlots               slotIndex
+	provisions                 map[string]provisionRecord
+	provisionSlots             slotIndex
+	provisionControls          map[string]context.CancelFunc
+	provisionRuntime           provisionRuntime
 	controls                   map[string]context.CancelFunc // execution only; collection uses service context
 	sessions                   map[string]sessionRecord
 	sessionSlots               slotIndex
@@ -41,6 +46,8 @@ type Manager struct {
 	wg                         sync.WaitGroup
 	connMu                     sync.Mutex // serializes writes and connection replacement
 	conn                       *websocket.Conn
+	keySession                 *modelKeySession // guarded by connMu
+	admin                      *adminCapabilities
 	events                     chan Envelope
 	heartbeatWake              chan struct{} // coalesces reclamation reports between periodic heartbeats
 	liveMu                     sync.Mutex
@@ -51,8 +58,8 @@ type Manager struct {
 }
 
 func New(cfg Config) (*Manager, error) {
-	if cfg.MaxWorkers < 1 {
-		return nil, errors.New("MAX_WORKERS must be a positive integer")
+	if cfg.MaxWorkers < 1 || cfg.MaxWorkers > 64 {
+		return nil, errors.New("MAX_WORKERS must be between 1 and 64")
 	}
 	tlsConfig, err := serverTLSConfig(cfg)
 	if err != nil {
@@ -72,7 +79,19 @@ func New(cfg Config) (*Manager, error) {
 		lock.Close()
 		return nil, err
 	}
-	m := &Manager{cfg: cfg, http: newHTTPClientWithTLS(tlsConfig), tlsConfig: tlsConfig, lock: lock, records: records, controls: make(map[string]context.CancelFunc), sessions: sessions, sessionControls: make(map[string]context.CancelFunc), sessionWorking: make(map[string]*sessionWorkingState), sessionIdleTimeout: 10 * time.Minute, events: make(chan Envelope, 64), heartbeatWake: make(chan struct{}, 1), secrets: make(map[string][]string)}
+	provisions, err := loadProvisions(cfg.WorkDir)
+	if err != nil {
+		lock.Close()
+		return nil, err
+	}
+	m := &Manager{
+		cfg: cfg, http: newHTTPClientWithTLS(tlsConfig), tlsConfig: tlsConfig, lock: lock,
+		records: records, controls: make(map[string]context.CancelFunc),
+		provisions: provisions, provisionControls: make(map[string]context.CancelFunc),
+		sessions: sessions, sessionControls: make(map[string]context.CancelFunc),
+		sessionWorking: make(map[string]*sessionWorkingState), sessionIdleTimeout: 10 * time.Minute,
+		events: make(chan Envelope, 64), heartbeatWake: make(chan struct{}, 1), secrets: make(map[string][]string),
+	}
 	m.attemptSlots = make(slotIndex)
 	for id, r := range records {
 		m.attemptSlots.update(id, r.holdsSlot())
@@ -81,10 +100,16 @@ func New(cfg Config) (*Manager, error) {
 	for id, r := range sessions {
 		m.sessionSlots.update(id, !r.Reclaimed)
 	}
+	m.provisionSlots = make(slotIndex)
+	for id, r := range provisions {
+		m.provisionSlots.update(id, r.holdsSlot())
+	}
 	if m109Enabled() {
 		m.transport = newManagerTransportDiagnostic(cfg.WorkDir)
 	}
-	m.docker = dockerCLI{cfg: cfg, client: m.http, remember: m.rememberCredentials}
+	docker := dockerCLI{cfg: cfg, client: m.http, remember: m.rememberCredentials, resolveModelKey: m.resolveModelKey,
+		rememberModelKey: func(r record, key string) error { return m.rememberAttemptSecrets(r, key) }}
+	m.docker, m.provisionRuntime = docker, docker
 	sessionRuntime := newDockerSessionRuntime(cfg)
 	sessionRuntime.client = m.http
 	sessionRuntime.credential = m.handleSessionCredential
@@ -107,8 +132,10 @@ func (m *Manager) recoverAttempts(ctx context.Context) {
 }
 
 func (m *Manager) Run(ctx context.Context) error {
+	m.configureAdmin(ctx)
 	m.recoverAttempts(ctx)
 	m.recoverSessions(ctx)
+	m.recoverProvisions(ctx)
 	eventsDone := make(chan struct{})
 	go func() {
 		defer close(eventsDone)
@@ -140,6 +167,14 @@ func (m *Manager) Run(ctx context.Context) error {
 }
 
 func (m *Manager) session(ctx context.Context) error {
+	if m.admin != nil {
+		m.mu.Lock()
+		awaitingRecovery := len(m.provisionSlots) > m.cfg.MaxWorkers
+		m.mu.Unlock()
+		if awaitingRecovery {
+			return errors.New("waiting for provision recovery after capacity reduction")
+		}
+	}
 	connectionAttempt := m.transport.connection("DIAL_START")
 	wsURL := "ws" + strings.TrimPrefix(m.cfg.ServerURL, "http") + "/api/manager/connect"
 	cfg, err := websocket.NewConfig(wsURL, m.cfg.ServerURL)
@@ -173,6 +208,8 @@ func (m *Manager) session(ctx context.Context) error {
 	m.transport.connection("HEARTBEAT_SENT", connectionAttempt)
 	m.setConn(conn)
 	defer m.setConn(nil)
+	connectionCtx, cancelConnection := context.WithCancel(ctx)
+	defer cancelConnection()
 	// v1 has no result receipt ACK. Stable terminal message IDs allow safe replay.
 	m.transport.connection("REPLAY_START", connectionAttempt)
 	for _, r := range m.snapshot() {
@@ -187,6 +224,7 @@ func (m *Manager) session(ctx context.Context) error {
 	done := make(chan struct{})
 	heartbeatDone := make(chan struct{})
 	defer func() {
+		cancelConnection()
 		close(done)
 		<-heartbeatDone // The old sender must finish before a reconnect publishes its connection.
 	}()
@@ -224,7 +262,23 @@ func (m *Manager) session(ctx context.Context) error {
 		}
 		switch env.Type {
 		case "heartbeat_ack":
-			// Server liveness reply; receiving it renews the next read deadline.
+			first := m.currentKeySession() == nil
+			if err := m.acceptAdminAck(connectionCtx, conn, env.Payload); err != nil {
+				return err
+			}
+			if first && m.currentKeySession() != nil {
+				if err := m.replayProvisionResults(); err != nil {
+					return err
+				}
+			}
+		case "agent.provision":
+			if err := m.acceptProvision(ctx, connectionCtx, env); err != nil {
+				slog.Warn("agent provision rejected")
+			}
+		case "agent.provision_cancel":
+			if err := m.cancelProvision(ctx, env); err != nil {
+				slog.Warn("agent provision cancellation rejected")
+			}
 		case "dispatch":
 			if err := m.accept(ctx, env); err != nil {
 				slog.Warn("dispatch not acknowledged", "runId", env.RunID, "error", err)
@@ -271,6 +325,9 @@ func (m *Manager) setConn(conn *websocket.Conn) {
 	if m.conn != nil && m.conn != conn {
 		m.conn.Close()
 	}
+	if m.conn != conn {
+		m.keySession = nil
+	}
 	m.conn = conn
 }
 
@@ -279,6 +336,9 @@ func (m *Manager) send(env Envelope) error {
 	defer m.connMu.Unlock()
 	if m.conn == nil {
 		return errors.New("Manager is offline")
+	}
+	if env.Type == "agent.provision_result" && (m.keySession == nil || m.keySession.ctx.Err() != nil) {
+		return errors.New("Manager admin session unavailable")
 	}
 	err := writeManagerEnvelope(m.conn, env)
 	if err != nil {
@@ -302,7 +362,10 @@ func (m *Manager) requestHeartbeat() {
 }
 
 func (m *Manager) hello() Envelope {
-	return message(m.cfg.ManagerID, "hello", "", "", map[string]int{"capacity": m.cfg.MaxWorkers})
+	return message(m.cfg.ManagerID, "hello", "", "", struct {
+		Capacity int                `json:"capacity"`
+		Admin    *adminCapabilities `json:"admin,omitempty"`
+	}{m.cfg.MaxWorkers, m.admin})
 }
 
 func (m *Manager) heartbeatMessage() Envelope {
@@ -317,8 +380,20 @@ func (m *Manager) heartbeatMessage() Envelope {
 		r := m.sessions[id]
 		sessions = append(sessions, map[string]string{"sessionId": r.SessionID, "leaseId": r.LeaseID, "state": r.State})
 	}
+	payload := map[string]any{"active": active, "sessions": sessions}
+	if m.admin != nil {
+		ids := make([]string, 0, len(m.provisionSlots))
+		for id := range m.provisionSlots {
+			ids = append(ids, id)
+		}
+		slices.Sort(ids)
+		payload["admin"] = struct {
+			FreeSlots          int      `json:"freeSlots"`
+			ActiveProvisionIDs []string `json:"activeProvisionIds"`
+		}{max(0, m.cfg.MaxWorkers-m.occupiedSlotsLocked()), ids}
+	}
 	m.mu.Unlock()
-	return message(m.cfg.ManagerID, "heartbeat", "", "", map[string]any{"active": active, "sessions": sessions})
+	return message(m.cfg.ManagerID, "heartbeat", "", "", payload)
 }
 
 func (m *Manager) validateCommand(env Envelope) error {
@@ -339,11 +414,14 @@ func (m *Manager) accept(ctx context.Context, env Envelope) error {
 	if err := validDispatch(dispatch); err != nil {
 		return err
 	}
+	if dispatch.ModelCredential != nil && !m.supportsManagedDispatch(dispatch) {
+		return errModelKey
+	}
 	m.mu.Lock()
 	if existing, found := m.records[env.AttemptID]; found {
 		m.mu.Unlock()
-		if existing.RunID != env.RunID {
-			return errors.New("attemptId already belongs to a different Run")
+		if existing.RunID != env.RunID || !sameModelCredential(existing.ModelCredential, dispatch.ModelCredential) {
+			return errors.New("attemptId belongs to a different dispatch")
 		}
 		if err := m.send(message(m.cfg.ManagerID, "ack", env.RunID, env.AttemptID, struct{}{})); err != nil {
 			return err
@@ -358,7 +436,7 @@ func (m *Manager) accept(ctx context.Context, env Envelope) error {
 		return errors.New("Worker slot is occupied; MAX_WORKERS reached, including cleanup")
 	}
 	r := record{RunID: env.RunID, AttemptID: env.AttemptID, Phase: "accepted", TimeoutMS: dispatch.TimeoutMS, ResultMessageID: newID(), Kind: dispatch.Kind, Author: dispatch.Author, ScriptOrigin: normalizedScriptOrigin(dispatch.ScriptOrigin),
-		WorkspaceID: dispatch.WorkspaceID, TestID: dispatch.TestID, WorkspaceContext: dispatch.WorkspaceContext}
+		WorkspaceID: dispatch.WorkspaceID, TestID: dispatch.TestID, WorkspaceContext: dispatch.WorkspaceContext, ModelCredential: dispatch.ModelCredential}
 	// Recovery tracks this attempt by its pins; only its Worker needs inline content.
 	if r.Author != nil && r.Author.SkillFiles != nil {
 		journalAuthor := *r.Author
@@ -542,6 +620,7 @@ func (m *Manager) prepare(r record, dispatch Dispatch) error {
 		RunID:     r.RunID, AttemptID: r.AttemptID, Script: dispatch.Script, TimeoutMS: dispatch.TimeoutMS,
 		Kind: dispatch.Kind, Author: dispatch.Author, ScriptOrigin: normalizedScriptOrigin(dispatch.ScriptOrigin),
 		WorkspaceSettings: dispatch.WorkspaceSettings,
+		ModelCredential:   r.ModelCredential,
 		WorkspaceID:       dispatch.WorkspaceID, TestID: dispatch.TestID, WorkspaceContext: dispatch.WorkspaceContext,
 	}
 	raw, err := json.Marshal(input)

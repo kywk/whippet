@@ -27,9 +27,11 @@ type containerRuntime interface {
 }
 
 type dockerCLI struct {
-	cfg      Config
-	client   *http.Client
-	remember func(record, credentialValues) error
+	cfg              Config
+	client           *http.Client
+	remember         func(record, credentialValues) error
+	resolveModelKey  modelKeyResolver
+	rememberModelKey func(record, string) error
 }
 
 func (d dockerCLI) name(r record) string {
@@ -46,7 +48,9 @@ func (d dockerCLI) Execute(ctx context.Context, r record, taskDir string, emit f
 	createCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	create := dockerCommand(createCtx, d.createArgs(r, taskDir)...)
-	create.Env = workerCLIEnvironment(r.Kind, os.Environ())
+	if r.Kind == "author" && r.ModelCredential == nil {
+		create.Env = workerCLIEnvironment(r.Kind, os.Environ())
+	}
 	if out, err := create.CombinedOutput(); err != nil {
 		return execution{ExitCode: -1, Error: fmt.Sprintf("docker create: %v: %s", err, clip(string(out), 2000))}
 	}
@@ -66,6 +70,9 @@ func (d dockerCLI) createArgs(r record, taskDir string) []string {
 	if r.Kind == "author" {
 		if m109Enabled() {
 			args = append(args, "--env", "WHIPPET_M109_DIAGNOSTICS=1")
+		}
+		if r.ModelCredential != nil {
+			return append(args, d.cfg.WorkerImage, "node", "dist/author/main.js", "--managed-model-key")
 		}
 		for _, name := range authorEnvNames {
 			args = append(args, "--env", name)
@@ -128,7 +135,15 @@ func (d dockerCLI) attach(ctx context.Context, r record, emit func(string, strin
 	}}
 	history := &historyChannel{ctx: runCtx, cfg: d.cfg, r: r, input: input, client: client}
 	tools := &toolChannel{ctx: runCtx, cfg: d.cfg, r: r, input: input, client: client}
-	cmd.Stdout = &lineWriter{emit: touchActivity, toolFrames: r.Author != nil && len(r.Author.Skills) > 0, intercept: func(line string) bool { return channel.handle(line) || history.handle(line) || tools.handle(line) }}
+	key := &modelKeyChannel{ctx: runCtx, input: input, workspaceID: r.WorkspaceID}
+	if r.ModelCredential != nil && d.rememberModelKey != nil {
+		key.request = modelKeyRequest{modelCredential: *r.ModelCredential, Purpose: "run", RunID: r.RunID, AttemptID: r.AttemptID}
+		key.resolve = d.resolveModelKey
+		key.remember = func(value string) error { return d.rememberModelKey(r, value) }
+	}
+	cmd.Stdout = &lineWriter{emit: touchActivity, toolFrames: r.Author != nil && len(r.Author.Skills) > 0, intercept: func(line string) bool {
+		return key.handle(line) || channel.handle(line) || history.handle(line) || tools.handle(line)
+	}}
 	cmd.Stderr = &lineWriter{emit: touchActivity, stderr: true}
 	if err := cmd.Start(); err != nil {
 		return execution{ExitCode: -1, Error: "docker start: " + err.Error()}

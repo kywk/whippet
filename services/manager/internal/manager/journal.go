@@ -12,23 +12,24 @@ import (
 // accepted -> running -> collecting -> complete. complete implies container
 // removal and successful upload of all available v1 artifacts.
 type record struct {
-	CredentialsUsed      bool            `json:"credentialsUsed,omitempty"`
-	CredentialsSanitized bool            `json:"credentialsSanitized,omitempty"`
-	ScriptOrigin         string          `json:"scriptOrigin,omitempty"`
-	RunID                string          `json:"runId"`
-	AttemptID            string          `json:"attemptId"`
-	Phase                string          `json:"phase"`
-	TimeoutMS            int64           `json:"timeoutMs"`
-	Result               *Result         `json:"result,omitempty"`
-	Artifacts            []string        `json:"artifacts,omitempty"`
-	ResultMessageID      string          `json:"resultMessageId"`
-	CancelRequested      bool            `json:"cancelRequested,omitempty"`
-	Reclaimed            bool            `json:"reclaimed,omitempty"`
-	Kind                 string          `json:"kind,omitempty"`
-	Author               *AuthorTask     `json:"author,omitempty"` // Fixed nonsecret input, never provider/environment credentials.
-	WorkspaceID          string          `json:"workspaceId,omitempty"`
-	TestID               json.RawMessage `json:"testId,omitempty"`
-	WorkspaceContext     json.RawMessage `json:"workspaceContext,omitempty"`
+	CredentialsUsed      bool             `json:"credentialsUsed,omitempty"`
+	CredentialsSanitized bool             `json:"credentialsSanitized,omitempty"`
+	ScriptOrigin         string           `json:"scriptOrigin,omitempty"`
+	RunID                string           `json:"runId"`
+	AttemptID            string           `json:"attemptId"`
+	Phase                string           `json:"phase"`
+	TimeoutMS            int64            `json:"timeoutMs"`
+	Result               *Result          `json:"result,omitempty"`
+	Artifacts            []string         `json:"artifacts,omitempty"`
+	ResultMessageID      string           `json:"resultMessageId"`
+	CancelRequested      bool             `json:"cancelRequested,omitempty"`
+	Reclaimed            bool             `json:"reclaimed,omitempty"`
+	Kind                 string           `json:"kind,omitempty"`
+	Author               *AuthorTask      `json:"author,omitempty"` // Fixed nonsecret input, never provider/environment credentials.
+	ModelCredential      *modelCredential `json:"modelCredential,omitempty"`
+	WorkspaceID          string           `json:"workspaceId,omitempty"`
+	TestID               json.RawMessage  `json:"testId,omitempty"`
+	WorkspaceContext     json.RawMessage  `json:"workspaceContext,omitempty"`
 }
 
 func (r record) holdsSlot() bool { return r.Phase != "complete" && !r.Reclaimed }
@@ -46,7 +47,7 @@ func (s slotIndex) update(id string, occupied bool) {
 }
 
 func (m *Manager) occupiedSlotsLocked() int {
-	return len(m.attemptSlots) + len(m.sessionSlots)
+	return len(m.attemptSlots) + len(m.sessionSlots) + len(m.provisionSlots)
 }
 
 func (m *Manager) saveRecordLocked(r record) error {
@@ -160,6 +161,9 @@ func loadRecords(workDir string) (map[string]record, error) {
 		}
 		if validWorkspaceOwner(r.WorkspaceID, r.TestID, r.WorkspaceContext, r.Author) != nil {
 			return nil, errors.New("invalid journal Workspace snapshot")
+		}
+		if r.ModelCredential != nil && (r.Kind != "author" || r.Author == nil || !validRuntimeSnapshot(r.Author.Runtime) || !uuidPattern.MatchString(r.WorkspaceID)) {
+			return nil, errModelKey
 		}
 		if r.Result != nil && !r.Result.valid() || (r.Phase == "complete" || r.Phase == "collecting") && r.Result == nil {
 			return nil, fmt.Errorf("invalid journal result: %s", entry.Name())

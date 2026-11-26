@@ -25,18 +25,19 @@ type Envelope struct {
 }
 
 type Dispatch struct {
-	Retest            json.RawMessage `json:"retest,omitempty"`
-	Files             []RunFile       `json:"files,omitempty"`
-	ModuleABI         *ModuleABI      `json:"moduleAbi,omitempty"`
-	ScriptOrigin      string          `json:"scriptOrigin,omitempty"`
-	Kind              string          `json:"kind"`
-	Script            string          `json:"script"`
-	TimeoutMS         int64           `json:"timeoutMs"`
-	Author            *AuthorTask     `json:"author,omitempty"`
-	WorkspaceSettings json.RawMessage `json:"workspaceSettings,omitempty"`
-	WorkspaceID       string          `json:"workspaceId,omitempty"`
-	TestID            json.RawMessage `json:"testId,omitempty"`
-	WorkspaceContext  json.RawMessage `json:"workspaceContext,omitempty"`
+	Retest            json.RawMessage  `json:"retest,omitempty"`
+	Files             []RunFile        `json:"files,omitempty"`
+	ModuleABI         *ModuleABI       `json:"moduleAbi,omitempty"`
+	ScriptOrigin      string           `json:"scriptOrigin,omitempty"`
+	Kind              string           `json:"kind"`
+	Script            string           `json:"script"`
+	TimeoutMS         int64            `json:"timeoutMs"`
+	Author            *AuthorTask      `json:"author,omitempty"`
+	ModelCredential   *modelCredential `json:"modelCredential,omitempty"`
+	WorkspaceSettings json.RawMessage  `json:"workspaceSettings,omitempty"`
+	WorkspaceID       string           `json:"workspaceId,omitempty"`
+	TestID            json.RawMessage  `json:"testId,omitempty"`
+	WorkspaceContext  json.RawMessage  `json:"workspaceContext,omitempty"`
 }
 
 func (d *Dispatch) UnmarshalJSON(data []byte) error {
@@ -52,6 +53,11 @@ func (d *Dispatch) UnmarshalJSON(data []byte) error {
 	var keys map[string]json.RawMessage
 	if json.Unmarshal(data, &keys) != nil {
 		return errBundle
+	}
+	if _, exists := keys["modelCredential"]; exists || d.ModelCredential != nil {
+		if _, unique := uniqueBudgetFields(data); !unique || !exists || d.ModelCredential == nil {
+			return errModelKey
+		}
 	}
 	if raw, ok := keys["files"]; ok {
 		if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
@@ -228,20 +234,21 @@ type AuthorValidation struct {
 }
 
 type WorkerInput struct {
-	Retest            json.RawMessage `json:"retest,omitempty"`
-	Files             []RunFile       `json:"files,omitempty"`
-	ModuleABI         *ModuleABI      `json:"moduleAbi,omitempty"`
-	ScriptOrigin      string          `json:"scriptOrigin,omitempty"`
-	RunID             string          `json:"runId"`
-	AttemptID         string          `json:"attemptId"`
-	Script            string          `json:"script"`
-	TimeoutMS         int64           `json:"timeoutMs"`
-	Kind              string          `json:"kind,omitempty"`
-	Author            *AuthorTask     `json:"author,omitempty"`
-	WorkspaceSettings json.RawMessage `json:"workspaceSettings,omitempty"`
-	WorkspaceID       string          `json:"workspaceId,omitempty"`
-	TestID            json.RawMessage `json:"testId,omitempty"`
-	WorkspaceContext  json.RawMessage `json:"workspaceContext,omitempty"`
+	Retest            json.RawMessage  `json:"retest,omitempty"`
+	Files             []RunFile        `json:"files,omitempty"`
+	ModuleABI         *ModuleABI       `json:"moduleAbi,omitempty"`
+	ScriptOrigin      string           `json:"scriptOrigin,omitempty"`
+	RunID             string           `json:"runId"`
+	AttemptID         string           `json:"attemptId"`
+	Script            string           `json:"script"`
+	TimeoutMS         int64            `json:"timeoutMs"`
+	Kind              string           `json:"kind,omitempty"`
+	Author            *AuthorTask      `json:"author,omitempty"`
+	ModelCredential   *modelCredential `json:"modelCredential,omitempty"`
+	WorkspaceSettings json.RawMessage  `json:"workspaceSettings,omitempty"`
+	WorkspaceID       string           `json:"workspaceId,omitempty"`
+	TestID            json.RawMessage  `json:"testId,omitempty"`
+	WorkspaceContext  json.RawMessage  `json:"workspaceContext,omitempty"`
 }
 
 type Result struct {

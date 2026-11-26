@@ -20,6 +20,7 @@ import {CredentialError,type KnownSecrets} from '../login/client.js';
 import { hasHistory, HistoryError, type HistoryClient } from "./history.js";
 import { ConversationMemory } from "./conversation-memory.js";
 import { ModuleCandidateStore } from "./module-candidate.js";
+import { containsModelKey } from "./model-key.js";
 
 export const AUTHOR_INSTRUCTIONS = [
   "You are Whippet's task agent. Follow the selected packaged skill; shared Playwright examples are reference, not permission to act.",
@@ -36,8 +37,8 @@ export const AUTHOR_INSTRUCTIONS = [
 type Item = Record<string, unknown>;
 
 function noSecret(value: unknown, config: AIConfig): void {
-  const text = JSON.stringify(value);
-  if ([config.apiKey, ...Object.values(config.providerKeys ?? {})].some(key => key && text.includes(key))) throw new AuthorError("sensitive_output");
+  const text = typeof value === "string" ? value : JSON.stringify(value) ?? "";
+  if ([config.apiKey, ...Object.values(config.providerKeys ?? {})].some(key => containsModelKey(text, key))) throw new AuthorError("sensitive_output");
 }
 
 async function bounded<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
@@ -160,6 +161,7 @@ export async function runAuthor(
         chargedModelRequests++;
         const prepared = buildResponsesRequest(config, { sessionId: input.author.conversationId, input: "Whippet author coding task" });
         const serializedBody=JSON.stringify({ ...JSON.parse(prepared.init.body), ...body });
+        noSecret(serializedBody, config);
         if(options.observer){
           const outgoing=JSON.parse(serializedBody);
           const entries=Array.isArray(outgoing.input)?outgoing.input:[];

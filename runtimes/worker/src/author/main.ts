@@ -3,7 +3,8 @@ import { HarnessClient } from "./harness.js";
 import { moduleAuthor, plannerAuthor } from "./platform.js";
 import { lstat, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { readAuthorConfig } from "./runtime.js";
+import { managedModelConfig, readAuthorConfig } from "./runtime.js";
+import { requestModelKey } from "./model-key.js";
 import { runAuthor } from "./loop.js";
 import { explorationBrowser, type ExplorationBrowser } from "./tools.js";
 import { AuthorError, serializeAuthorArtifact, authorNeedsBrowser, validateAuthorInput } from "./types.js";
@@ -14,6 +15,7 @@ import { hasHistory, HistoryClient } from "./history.js";
 const workDir = resolve(process.env.WHIPPET_WORK_DIR ?? "/work");
 const outputDir = join(workDir, "output");
 const stop = new AbortController();
+const managedModelKey = process.argv.includes("--managed-model-key");
 const diagnostics=process.env.WHIPPET_M109_DIAGNOSTICS === '1' ? new ModuleDiagnostics():undefined;
 const emitDiagnostic=(value:object)=>process.stdout.write(`${JSON.stringify({kind:'log',message:'m109_diagnostic:'+JSON.stringify(value)})}\n`);
 for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => stop.abort());
@@ -29,17 +31,22 @@ async function main(): Promise<void> {
   let credentials:CredentialClient|undefined;
   let harness: HarnessClient | undefined;
   let history: HistoryClient | undefined;
+  let config: ReturnType<typeof readAuthorConfig> | undefined;
   let result: { status: "succeeded" | "failed" | "timed_out" | "cancelled"; error?: string };
   try {
     await mkdir(outputDir);
     const info = await lstat(join(workDir, "input.json"));
     if (!info.isFile() || info.size > 64 * 1024 * 1024) throw new AuthorError("invalid_input");
     const input = validateAuthorInput(JSON.parse(await readFile(join(workDir, "input.json"), "utf8")) as unknown);
+    if (managedModelKey !== !!input.modelCredential) throw new AuthorError("security_unavailable");
     if(input.workspaceId)credentials=new CredentialClient(input);
     if(moduleAuthor(input)||plannerAuthor(input))harness=new HarnessClient(input);
     if(hasHistory(input))history=new HistoryClient(input);
+    config = input.modelCredential && input.author.runtime
+      ? managedModelConfig(input.author.runtime, await requestModelKey(input.modelCredential, stop.signal))
+      : readAuthorConfig(process.env, input.author.runtime);
     if (authorNeedsBrowser(input)) browser = explorationBrowser(process.env,{scope:input.workspaceContext?.config??unconfirmedBrowserScope(),credentials,defaultTestUrl:input.workspaceContext?.config?.defaultTestUrl||input.workspaceSettings?.defaultTestUrl,timeoutMs:input.workspaceContext?.config?.timeoutMs||input.workspaceSettings?.timeoutMs});
-    const output = await runAuthor(input, readAuthorConfig(process.env, input.author.runtime), browser, {
+    const output = await runAuthor(input, config, browser, {
       signal: stop.signal,
       ...(diagnostics?{moduleDiagnostics:diagnostics}:{}),
       ...(diagnostics || process.env.WHIPPET_M106_OBSERVE === "1" ? {observer:(event:string)=>process.stdout.write(`${JSON.stringify({kind:"log",message:event})}\n`)} : {}),
@@ -55,9 +62,11 @@ async function main(): Promise<void> {
     const safe = error instanceof AuthorError ? error : new AuthorError("provider_failed");
     result = { status: stop.signal.aborted || safe.code === "cancelled" ? "cancelled" : safe.code === "timed_out" ? "timed_out" : "failed", error: safe.message };
   } finally {
+    if (config && managedModelKey) config.apiKey = "";
     credentials?.close();
     history?.close();
     harness?.close();
+    if (managedModelKey) process.stdin.destroy();
     // Manager independently reclaims the container even if the browser hangs.
     let timer: NodeJS.Timeout | undefined;
     try { if (browser) await Promise.race([browser.close().catch(() => undefined), new Promise<void>((resolve) => { timer = setTimeout(resolve, 1000); })]); }

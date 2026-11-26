@@ -4,6 +4,8 @@ Workspace 的測試網路範圍由 Server 固定，Worker 在自試、正式驗�
 
 受管 author 任務使用 Server 隨 Run 派送的 `author.skillFiles`。內建引擎、Vercel 與 Pi 在送出第一個模型請求前，皆核對 manifest、技能主文、references 與已固定的雜湊。較早建立、只固定雜湊的 Run 可繼續以映像內技能驗證和執行。
 
+v14 指定 Agent 的作者任務由 Manager 啟動 `node dist/author/main.js --managed-model-key`，並以私有 stdin 提供該次任務的 Key。Agent 探測用 `node dist/author/probe.js --managed-model-key`，以一次模型請求核對固定挑戰，將狀態寫入 `/work/output/probe.json`。只有 Manager 在確認容器回收後才釋放名額。入口與格式見 [v14 契約](../../contracts/mvp-v14.md#代管配置探測與-key-解析)。
+
 一次性 Node.js／TypeScript Worker，以真正的 Playwright Test Runner 執行完整 spec，輸出內建 HTML／JSON reporter 結果。映像及 `@playwright/test` 同為 **1.64.1**，依 [Playwright Docker 文件](https://playwright.dev/docs/docker) 保持版本一致；HTML／JSON 與自訂 NDJSON reporter 依 [官方 reporter 介面](https://playwright.dev/docs/test-reporters) 設定。
 
 ## 輸入與輸出

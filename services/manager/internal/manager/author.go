@@ -24,6 +24,9 @@ var authorContextPattern = regexp.MustCompile(`^author:context:compacted:([1-9]|
 const maxAuthorTimeoutMS = 900000
 
 func validDispatch(d Dispatch) error {
+	if d.ModelCredential != nil && (!d.ModelCredential.valid() || d.Kind != "author" || d.Author == nil || !validRuntimeSnapshot(d.Author.Runtime) || !uuidPattern.MatchString(d.WorkspaceID)) {
+		return errModelKey
+	}
 	if d.Author != nil && !validPlatform(d.Author.Platform, d.Author, d.Script) {
 		return errCapability
 	}

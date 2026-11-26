@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { AIError, readAIConfig, type AIConfig, type EngineId, type ProviderId, type ReasoningEffort } from "../ai/config.js";
+import { validModelKey } from "./model-key.js";
 
 export interface AuthorRuntime {
   schemaVersion: 1;
@@ -44,6 +45,13 @@ export function runtimeConfig(config: AIConfig, r: AuthorRuntime): AIConfig {
   if (!apiKey || /[\r\n]/.test(apiKey)) throw new AIError("missing_key");
   return { ...config, apiKey, engine: r.engine, provider: r.provider, baseURL: r.baseURL, model: r.model,
     reasoningEffort: r.reasoningEffort, contextWindowTokens: r.contextWindowTokens || undefined, contextInputTokens: r.contextInputTokens };
+}
+
+export function managedModelConfig(runtime: AuthorRuntime, key: string): AIConfig {
+  if (!validRuntime(runtime) || !validModelKey(key)) throw new AIError("invalid_config");
+  return { enabled: true, apiKey: key, engine: runtime.engine, provider: runtime.provider,
+    baseURL: runtime.baseURL, model: runtime.model, reasoningEffort: runtime.reasoningEffort,
+    contextWindowTokens: runtime.contextWindowTokens || undefined, contextInputTokens: runtime.contextInputTokens };
 }
 
 // Resolve nonsecret policy before parsing env, so queued snapshots ignore even
