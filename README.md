@@ -38,12 +38,15 @@ docker compose --env-file deploy/.env -f deploy/compose.runner.yml -f deploy/com
 
 ## 加入外部 AI Worker
 
-`whippet-worker` 採用標準 Agent Skills 格式。從要使用 Agent 的工作目錄執行下列命令，將 `<Whippet checkout>` 換成 Whippet 原始碼路徑，或換成含有此 Skill 且可存取的 Git URL。 [Agent Skills 規格](https://agentskills.io/specification)
+使用 Node.js 22.20 以上，在要使用 Agent 的專案目錄執行下列命令。若 CLI 顯示客戶端清單，選擇要使用的 Agent。指令會從 GitHub 安裝 `whippet-worker`，執行環境需有讀取 `kywk/whippet` 的權限。
 
 ```sh
-npx skills add '<Whippet checkout>' --skill whippet-worker --copy \
-  -a codex -a claude-code -a opencode
+npx skills add kywk/whippet --skill whippet-worker
 ```
+
+可用 `--agent` 指定客戶端，例如 `--agent cursor`。使用 `--agent '*'` 可安裝到所有 `skills` CLI 支援的客戶端。預設只在目前專案安裝，需跨專案使用時可加上 `--global`。 [skills CLI 指令與支援的 Agent](https://github.com/vercel-labs/skills/blob/main/docs/commands.md#skills-add)
+
+若已有本機原始碼，可將 `kywk/whippet` 換成該目錄的路徑，例如 `npx skills add /path/to/whippet --skill whippet-worker`。安裝後執行 `npx skills list` 確認目前專案的安裝結果，再重新開啟 Agent 工作階段。
 
 由管理員提供完整 MCP URL 與目標 Workspace 的 Agent Token，依 [MCP 接入設定](skills/whippet-worker/references/setup.md) 設定客戶端。Workspace 的「AI 撰寫引擎」設為「外部 Agent」後，可請已安裝 Skill 的 Agent 接一筆新任務。Whippet 負責候選驗證與發佈權限。
 
