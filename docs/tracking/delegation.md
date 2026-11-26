@@ -2,6 +2,19 @@
 
 M1–M6 本機功能證據沿用；目前由 UI／UX PM 推進 M7–M9 規格與後續實作。里程碑與唯一進度來源為 [實作計畫](implementation.md)。
 
+## 全站管理後台
+
+依 [實作計畫](implementation.md#全站管理後台) 的 ADM 編號派工，驗收情境見 [後台規格](../requirements/site-management/spec.md#驗收情境)。
+
+| Owner／寫入範圍 | 可直接執行的任務 | 交接成果 |
+| --- | --- | --- |
+| 總指揮／contracts、docs、整合腳本 | ADM-0 對照 v13 與既有 WSS、MCP，定義最小增量與舊版預設；ADM-4 整合並維護唯一進度表 | 契約範例、入口別驗收紀錄及環境缺口 |
+| Server／services/server | ADM-1 封存交易、成員授權與舊角色 API；ADM-2 彙整連線、管理租約與派工；ADM-3 保存 Agent、機密參照、建立冪等與稽核 | migration、API、授權拒絕及並行狀態測試 |
+| Runtime／services/manager、runtimes/worker、runtimes/agent-bridge | ADM-2 回報能力、容量、重連與排空；ADM-3 載入個別憑證、配置及回收、驗證內建／Vercel／Pi 與 MCP 回連 | 能力範例、建立失敗重試與跨 Agent 憑證隔離證據 |
+| Web／apps/web | ADM-1 建立全站入口與成員頁、封存影響預覽；ADM-2 依來源顯示操作；ADM-3 建立表單、機密輸入、回連與錯誤重試 | 四種角色桌機／窄版操作與直接連結拒絕結果 |
+
+ADM-0 固定介面後，Web 可用契約範例、Runtime 可用固定任務、Server 可用模擬 Manager 並行。第一條真實流程以 ADM-1 的 Workspace 接上 ADM-2、ADM-3 的受管 Agent。共同介面異動交由總指揮寫入；各 owner 回報檔案、介面差異、實際驗證及剩餘工作。
+
 ## 固定分工
 
 同時最多三個實作 Agent，加上一個輕量總指揮；小任務可由一個 Agent 完成，不為湊分工而拆工作。

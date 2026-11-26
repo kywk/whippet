@@ -67,3 +67,5 @@
 - 有可觀看的執行畫面；WebRTC 與備援各自的實際驗證狀態如實記錄。
 
 MVP 驗證方式與開發順序見 [實作計畫](../tracking/implementation.md)。
+
+全站管理後台的角色調整、Workspace 生命週期與 AI 資源管理目標見[後台規格](site-management/spec.md)。

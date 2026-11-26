@@ -2,6 +2,18 @@
 
 規格已寫入；M1 三個模組首批程式已交付；M1 已完成本機真實端到端驗收：成功、斷言失敗及兩份 HTML 報告顯示皆通過。M2、M3 已完成本機驗收；M4 已完成本機驗收；M5／M6 本機功能已通過，部署與開源缺口獨立追蹤；M7–M9 對話工作區已完成本機驗收；目前優先 M10–M12 Use Case 與 Agent 平台化（見文末章節）。需求以 [MVP 規格](../requirements/mvp.md) 為準，技術邊界見 [架構設計](../architecture/design.md)，負責範圍見 [分工計畫](delegation.md)。
 
+## 全站管理後台
+
+[需求與驗收 A1–A5](../requirements/site-management/spec.md) · [分工任務](delegation.md#全站管理後台)。下表為唯一進度來源，開始時登記實際 owner。
+
+| 順序 | 狀態 | 依賴 | 交付與完成條件 |
+| --- | --- | --- | --- |
+| ADM-0 契約 | 待辦 | v13 | 固定角色能力、封存狀態、資源識別、指派與建立請求、錯誤及舊客戶端預設值，提供成功／拒絕範例 |
+| ADM-1 Workspace 與成員 | 待辦 | ADM-0 | 從登入到建立 Workspace、指派成員、封存及還原；通過 A1、A2 |
+| ADM-2 資源清單與調配 | 待辦 | ADM-0 | 串起 Manager WSS 與兩種 MCP 活動，調配落到 dispatch／claim；通過 A3 |
+| ADM-3 AI Manager 建立 | 待辦 | ADM-2 | 先用既有 Manager 建立內建 Agent 並完成一筆任務，再接 Vercel、Pi 與自管回連；通過 A4 |
+| ADM-4 整合驗收 | 待辦 | ADM-1 至 ADM-3 | 以正式 Web 建置、真 Server 與資料庫走完 Site Manager 建立及指派、Super Admin 建 Agent 並完成工作；逐入口記錄 A5 放行與拒絕結果 |
+
 ## 外部 AI Worker 安裝（2026-11-26）
 
 完成（Codex）。`skills` CLI 可安裝 [whippet-worker](../../skills/whippet-worker/SKILL.md)，由 Workspace Agent Token 經 MCP 接單。參考 Worker 支援反向代理前綴。
