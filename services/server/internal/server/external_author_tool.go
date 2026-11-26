@@ -181,7 +181,8 @@ func (p *Postgres) ExpireExternalClaims(ctx context.Context) error {
 		return err
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, `SELECT run_id,browser_session_id FROM external_author_claims WHERE state='active' AND (expires_at<=now() OR deadline_at<=now()) FOR UPDATE`)
+	rows, err := tx.QueryContext(ctx, `SELECT run_id,browser_session_id FROM external_author_claims
+ WHERE state='active' AND (expires_at<=now() OR deadline_at<=now()) ORDER BY workspace_id,run_id FOR UPDATE SKIP LOCKED`)
 	if err != nil {
 		return err
 	}
@@ -207,7 +208,9 @@ func (p *Postgres) ExpireExternalClaims(ctx context.Context) error {
 		if _, err = tx.ExecContext(ctx, `UPDATE external_author_claims SET state='timed_out' WHERE run_id=$1 AND state='active'`, v.run); err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE runs SET status='timed_out',error=$2,finished_at=now() WHERE id=$1 AND status='running'`, v.run, "AI authoring timed out. The saved draft is unchanged; you can retry."); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE runs SET status=CASE WHEN status='cancelling' THEN 'cancelled' ELSE 'timed_out' END,
+ error=CASE WHEN status='cancelling' THEN error ELSE $2 END,finished_at=now()
+ WHERE id=$1 AND status IN ('running','cancelling')`, v.run, "AI authoring timed out. The saved draft is unchanged; you can retry."); err != nil {
 			return err
 		}
 		if v.browser != nil {
@@ -237,22 +240,10 @@ func (p *Postgres) RecoverExternalClaims(ctx context.Context) error {
 	return tx.Commit()
 }
 
-func (p *Postgres) CancelExternalClaim(ctx context.Context, runID string) error {
-	_, err := p.DB.ExecContext(ctx, `UPDATE external_author_claims SET state='cancelled' WHERE run_id=$1 AND state='active'`, runID)
-	if err != nil {
-		return err
-	}
-	_, err = p.DB.ExecContext(ctx, `UPDATE agent_browser_leases SET state='closing' WHERE session_id IN (SELECT browser_session_id FROM external_author_claims WHERE run_id=$1) AND NOT reclaimed`, runID)
-	return err
-}
-
 func (p *Postgres) RevokeExternalClaims(ctx context.Context, tx *sql.Tx, tokenID string) error {
-	if _, err := tx.ExecContext(ctx, `UPDATE runs SET status='cancelled',error='external author token revoked',finished_at=now() WHERE id IN (SELECT run_id FROM external_author_claims WHERE token_id=$1 AND state='active') AND status='running'`, tokenID); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE agent_browser_leases SET state='closing' WHERE session_id IN (SELECT browser_session_id FROM external_author_claims WHERE token_id=$1 AND state='active') AND NOT reclaimed`, tokenID); err != nil {
-		return err
-	}
-	_, err := tx.ExecContext(ctx, `UPDATE external_author_claims SET state='revoked' WHERE token_id=$1 AND state='active'`, tokenID)
+	_, err := tx.ExecContext(ctx, `WITH revoked AS (
+ UPDATE external_author_claims SET state='revoked' WHERE token_id=$1 AND state='active' RETURNING run_id
+ ) UPDATE runs SET status='cancelled',error='external author token revoked',finished_at=now()
+ WHERE id IN (SELECT run_id FROM revoked) AND status IN ('running','cancelling')`, tokenID)
 	return err
 }

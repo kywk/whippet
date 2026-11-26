@@ -58,11 +58,31 @@ type queryDB interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
 
-// The only entry to draft writes: Workspace SHARE -> Test -> Session/Draft -> Run.
-func lockEditingTest(ctx context.Context, tx *sql.Tx, testID string) (*WorkspaceSettings, error) {
+type workspaceEditingAccess int
+
+// Existing attempts, cancellation and history may read or complete while the
+// Workspace is draining. Ordinary editing requires an active Workspace.
+const existingWorkspaceWork workspaceEditingAccess = 1
+
+func lockTestWorkspace(ctx context.Context, tx *sql.Tx, testID string, access ...workspaceEditingAccess) ([]byte, error) {
 	var raw []byte
-	if err := tx.QueryRowContext(ctx, `SELECT w.settings FROM workspaces w JOIN tests t ON t.workspace_id=w.id WHERE t.id=$1 FOR SHARE OF w`, testID).Scan(&raw); err != nil {
+	var status workspaceArchiveStatus
+	if err := tx.QueryRowContext(ctx, `SELECT w.settings,w.archive_status FROM workspaces w JOIN tests t ON t.workspace_id=w.id WHERE t.id=$1 FOR SHARE OF w`, testID).Scan(&raw, &status); err != nil {
 		return nil, dbError(err)
+	}
+	if len(access) == 0 {
+		if err := status.workError(); err != nil {
+			return nil, err
+		}
+	}
+	return raw, nil
+}
+
+// Draft writes lock Workspace SHARE -> Test -> Session/Draft -> Run.
+func lockEditingTest(ctx context.Context, tx *sql.Tx, testID string, access ...workspaceEditingAccess) (*WorkspaceSettings, error) {
+	raw, err := lockTestWorkspace(ctx, tx, testID, access...)
+	if err != nil {
+		return nil, err
 	}
 	var archived bool
 	if err := tx.QueryRowContext(ctx, `SELECT archived_at IS NOT NULL FROM tests WHERE id=$1 FOR UPDATE`, testID).Scan(&archived); err != nil {
@@ -232,11 +252,11 @@ func startEditingSessionInTx(ctx context.Context, tx *sql.Tx, testID string, ini
 	return s, created, nil
 }
 
-func requireEditingDraft(ctx context.Context, tx *sql.Tx, testID, id string) (draftState, EditingSession, error) {
+func requireEditingDraft(ctx context.Context, tx *sql.Tx, testID, id string, access ...workspaceEditingAccess) (draftState, EditingSession, error) {
 	if !ValidID(id) {
 		return draftState{}, EditingSession{}, ErrInvalid
 	}
-	if _, err := lockEditingTest(ctx, tx, testID); err != nil {
+	if _, err := lockEditingTest(ctx, tx, testID, access...); err != nil {
 		return draftState{}, EditingSession{}, err
 	}
 	s, err := readEditing(ctx, tx, testID, id)
@@ -285,7 +305,7 @@ func (p *Postgres) DiscardEditingSession(ctx context.Context, testID, id string,
 		return EditingSession{}, err
 	}
 	defer tx.Rollback()
-	if _, err = lockEditingTest(ctx, tx, testID); err != nil {
+	if _, err = lockEditingTest(ctx, tx, testID, existingWorkspaceWork); err != nil {
 		return EditingSession{}, err
 	}
 	s, err := readEditing(ctx, tx, testID, id)
@@ -359,7 +379,7 @@ func (p *Postgres) FinalizeDiscardingSessions(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if _, err = lockEditingTest(ctx, tx, pair[0]); err == nil {
+		if _, err = lockEditingTest(ctx, tx, pair[0], existingWorkspaceWork); err == nil {
 			err = finishDiscard(ctx, tx, pair[0], pair[1])
 		}
 		if err == nil {

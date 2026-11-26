@@ -182,6 +182,9 @@ func (p *Postgres) createAuthorInTxForEngine(ctx context.Context, tx *sql.Tx, d 
 }
 
 func (p *Postgres) createAuthorInTxForRuntime(ctx context.Context, tx *sql.Tx, d draftState, session EditingSession, content, engine string, runtime *AuthorRuntime, chain *authorChainBudget, toolCeiling ...[]string) (AuthorSubmission, error) {
+	if err := requireActiveWorkspace(ctx, tx, session.WorkspaceID); err != nil {
+		return AuthorSubmission{}, err
+	}
 	testID, sessionID, revision := d.TestID, session.ID, d.Revision
 	var active bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM runs WHERE test_id=$1 AND kind='author'

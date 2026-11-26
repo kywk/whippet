@@ -54,7 +54,7 @@ func (p *Postgres) harnessPlatform(ctx context.Context, run, attempt string, req
 	if kind != "author" || json.Unmarshal(raw, &input) != nil || input.EditingSessionID != session || validateToolSnapshot(input, registry, request.Name) != nil {
 		return nil, ErrHistoryUnavailable
 	}
-	draft, editing, err := requireEditingDraft(ctx, tx, test, session)
+	draft, editing, err := requireEditingDraft(ctx, tx, test, session, existingWorkspaceWork)
 	if err != nil {
 		return nil, ErrHistoryUnavailable
 	}

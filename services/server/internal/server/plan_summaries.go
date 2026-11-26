@@ -161,7 +161,7 @@ func (p *Postgres) PlanSummary(ctx context.Context, id string) (*PlanSummary, er
 		result.Name = out.Name
 		result.SuggestedTags = out.SuggestedTags
 	}
-	d, s, err := requireEditingDraft(ctx, tx, plan.TestID, plan.EditingSessionID)
+	d, s, err := requireEditingDraft(ctx, tx, plan.TestID, plan.EditingSessionID, existingWorkspaceWork)
 	if err == nil {
 		current, e := p.buildPlanBatch(ctx, tx, plan, d, s)
 		if e == nil {

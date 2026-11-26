@@ -103,13 +103,21 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	handle("POST /api/dev-logout", a.devLogout)
 	site("GET /api/me", signedIn, a.me)
 	site("GET /api/users", manageDirectory, a.users)
-	site("PATCH /api/users/{userId}/role", manageDirectory, a.updateUserRole)
+	site("PATCH /api/users/{userId}/role", manageSiteRoles, a.updateUserRole)
+	site("GET /api/admin/workspaces", manageSiteWorkspaces, a.listManagedWorkspaces)
+	site("GET /api/admin/workspaces/{id}", manageSiteWorkspaces, a.managedWorkspace)
+	site("PATCH /api/admin/workspaces/{id}", manageSiteWorkspaces, a.renameWorkspaceHTTP)
+	site("POST /api/admin/workspaces/{id}/archive", manageSiteWorkspaces, a.archiveWorkspaceHTTP)
+	site("POST /api/admin/workspaces/{id}/restore", manageSiteWorkspaces, a.restoreWorkspaceHTTP)
+	site("/api/admin/ai/{path...}", manageAIResources, func(w http.ResponseWriter, _ *http.Request) {
+		a.fail(w, ErrNotFound)
+	})
 	site("GET /api/workspaces", signedIn, a.workspaces)
 	site("POST /api/workspaces", createWorkspaces, a.createWorkspace)
-	handle("POST /api/workspaces/{id}/agent-tokens", a.mcpFeature(a.workspaceAPI(workspaceByID, manageAgentTokens, a.createAgentToken)))
-	handle("GET /api/workspaces/{id}/agent-tokens", a.mcpFeature(a.workspaceAPI(workspaceByID, manageAgentTokens, a.listAgentTokens)))
-	handle("DELETE /api/workspaces/{id}/agent-tokens/{tokenId}", a.mcpFeature(a.workspaceAPI(workspaceByID, manageAgentTokens, a.revokeAgentToken)))
-	handle("GET /api/workspaces/{id}/agent-tool-audit", a.mcpFeature(a.workspaceAPI(workspaceByID, manageAgentTokens, a.listAgentAudit)))
+	workspace("POST /api/workspaces/{id}/agent-tokens", manageAgentTokens, a.mcpFeature(a.createAgentToken))
+	workspace("GET /api/workspaces/{id}/agent-tokens", manageAgentTokens, a.mcpFeature(a.listAgentTokens))
+	workspace("DELETE /api/workspaces/{id}/agent-tokens/{tokenId}", manageAgentTokens, a.mcpFeature(a.revokeAgentToken))
+	workspace("GET /api/workspaces/{id}/agent-tool-audit", manageAgentTokens, a.mcpFeature(a.listAgentAudit))
 	handle("GET /api/workspaces/{id}/browser-sessions", a.mcpFeature(a.workspaceAPI(workspaceByID, manageSettings, a.listBrowserSessions)))
 	workspace("GET /api/workspaces/{id}/conversation", manageSettings, a.workspaceConversation)
 	workspace("POST /api/workspaces/{id}/messages", manageSettings, a.workspaceMessage)
@@ -320,7 +328,7 @@ func (a *API) cancel(w http.ResponseWriter, r *http.Request) {
 	}
 	item, err := a.store.Cancel(r.Context(), id)
 	if err != nil {
-		a.fail(w, err)
+		a.failManagement(w, r, actorFromContext(r.Context()), err)
 		return
 	}
 	if Terminal(item.Status) {
@@ -500,6 +508,12 @@ func (a *API) fail(w http.ResponseWriter, err error) {
 		writeError(w, 403, "forbidden", err.Error())
 	case errors.Is(err, errLastSuper):
 		writeError(w, 409, "last_super_admin", "至少需要保留一位 Super Admin。")
+	case errors.Is(err, errManagementRevision):
+		writeError(w, 409, "stale_revision", "工作區管理資料已更新，請重新載入。")
+	case errors.Is(err, errWorkspaceArchiving):
+		writeError(w, 409, "workspace_archiving", "工作區封存中，暫停接受新工作。")
+	case errors.Is(err, errWorkspaceArchived):
+		writeError(w, 409, "workspace_archived", "工作區已封存。")
 	case errors.Is(err, ErrNotFound):
 		writeError(w, 404, "not_found", "resource not found")
 	case errors.Is(err, ErrConflict):

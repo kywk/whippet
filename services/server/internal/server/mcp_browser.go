@@ -25,7 +25,7 @@ func mcpBrowserError(code string) *mcp.CallToolResult {
 	if !validBrowserError(code) {
 		code = "session_unavailable"
 	}
-	return &mcp.CallToolResult{IsError: true, StructuredContent: map[string]any{"error": code}, Content: []mcp.Content{&mcp.TextContent{Text: code}}}
+	return mcpErrorCode(code)
 }
 
 func mcpBrowserMeta(req *mcp.CallToolRequest) (string, string, string, bool) {
@@ -61,13 +61,16 @@ func (a *API) callMCPBrowser(ctx context.Context, p *Postgres, tool ToolDefiniti
 		if !errors.Is(err, ErrNotFound) || a.engine == nil {
 			return mcpToolFailure(ctx)
 		}
-		managerID, epoch, ready := a.engine.BrowserEndpoint()
-		if !ready {
-			return mcpToolError()
-		}
 		workspace, err := p.Workspace(ctx, token.WorkspaceID)
 		if err != nil {
 			return mcpToolFailure(ctx)
+		}
+		if err := workspace.Management.State.workError(); err != nil {
+			return mcpWorkspaceWorkError(err)
+		}
+		managerID, epoch, ready := a.engine.BrowserEndpoint()
+		if !ready {
+			return mcpToolError()
 		}
 		registry, err := loadToolRegistry()
 		if err != nil {
@@ -75,12 +78,12 @@ func (a *API) callMCPBrowser(ctx context.Context, p *Postgres, tool ToolDefiniti
 		}
 		lease, existed, err := p.OpenBrowserLease(ctx, token, args.RequestID, managerID, epoch, registry, workspace)
 		if err != nil {
-			return mcpToolError()
+			return mcpWorkspaceWorkError(err)
 		}
 		if existed {
 			return mcpBrowserResult(lease, tool.Limits.MaxOutputBytes)
 		}
-		if err := a.engine.SendBrowserOpen(lease); err != nil {
+		if err := a.engine.SendBrowserOpen(ctx, lease); err != nil {
 			_ = p.MarkBrowserLeaseReclaimPending(ctx, lease.ManagerID)
 			a.engine.Wake()
 			lease.State = "reclaim_pending"

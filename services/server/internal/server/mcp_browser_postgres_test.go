@@ -265,7 +265,7 @@ func TestM11BrowserLeaseRevocationAndReconnectConverge(t *testing.T) {
 	if err != nil || existed {
 		t.Fatalf("open: existed=%v err=%v", existed, err)
 	}
-	if err := engine.SendBrowserOpen(lease); err != nil {
+	if err := engine.SendBrowserOpen(ctx, lease); err != nil {
 		t.Fatal(err)
 	}
 	nextBrowserMessage(t, peer, "session.open")
@@ -309,7 +309,7 @@ func TestM11BrowserLeaseRevocationAndReconnectConverge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := engine.SendBrowserOpen(newLease); err != nil {
+	if err := engine.SendBrowserOpen(ctx, newLease); err != nil {
 		t.Fatal(err)
 	}
 	nextBrowserMessage(t, peer, "session.open")

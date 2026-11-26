@@ -136,7 +136,19 @@ func validateStages(stages []Stage) error {
 
 // API keeps the original CreateTest path for older Store implementations.
 func (p *Postgres) CreatePlatformTest(ctx context.Context, workspace, name, description, kind string, slug *string) (Test, error) {
-	return insertPlatformTest(ctx, p.DB, workspace, name, description, kind, slug)
+	tx, err := p.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return Test{}, err
+	}
+	defer tx.Rollback()
+	if err := requireActiveWorkspace(ctx, tx, workspace); err != nil {
+		return Test{}, err
+	}
+	item, err := insertPlatformTest(ctx, tx, workspace, name, description, kind, slug)
+	if err != nil {
+		return item, err
+	}
+	return item, tx.Commit()
 }
 
 func insertPlatformTest(ctx context.Context, q queryDB, workspace, name, description, kind string, slug *string) (Test, error) {

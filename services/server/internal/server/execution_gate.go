@@ -292,7 +292,8 @@ func (p *Postgres) assignmentAllowed(ctx context.Context, q queryDB, a Assignmen
 // Unacknowledged network/AI work already being cancelled must not be started
 // solely to explain cancellation; Manager can persist an unknown cancel result.
 func (p *Postgres) CanDispatch(a Assignment) bool {
-	return (a.Kind != "author" && offlineManualExecution(a.ScriptOrigin, a.WorkspaceContext)) || (a.Kind == "author" && !hasBrowserTools(a.Author))
+	return a.archiveStatus.workError() == nil &&
+		((a.Kind != "author" && offlineManualExecution(a.ScriptOrigin, a.WorkspaceContext)) || (a.Kind == "author" && !hasBrowserTools(a.Author)))
 }
 func offlineAuthorAllowed(a Assignment) bool {
 	if a.Kind != "author" || a.Author == nil || hasBrowserTools(a.Author) {

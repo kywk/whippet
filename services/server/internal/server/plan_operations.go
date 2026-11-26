@@ -7,12 +7,12 @@ import (
 	"errors"
 )
 
-func lockPlan(ctx context.Context, tx *sql.Tx, id string) (*Plan, draftState, EditingSession, error) {
+func lockPlan(ctx context.Context, tx *sql.Tx, id string, access ...workspaceEditingAccess) (*Plan, draftState, EditingSession, error) {
 	var test, session string
 	if err := tx.QueryRowContext(ctx, `SELECT test_id,editing_session_id FROM plans WHERE id=$1`, id).Scan(&test, &session); err != nil {
 		return nil, draftState{}, EditingSession{}, dbError(err)
 	}
-	d, s, err := requireEditingDraft(ctx, tx, test, session)
+	d, s, err := requireEditingDraft(ctx, tx, test, session, access...)
 	if err != nil {
 		return nil, d, s, err
 	}
@@ -116,7 +116,7 @@ func (p *Postgres) CancelPlan(ctx context.Context, id string, revision int) (*Pl
 		return nil, err
 	}
 	defer tx.Rollback()
-	plan, _, _, err := lockPlan(ctx, tx, id)
+	plan, _, _, err := lockPlan(ctx, tx, id, existingWorkspaceWork)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +187,8 @@ func (p *Postgres) CancelPlan(ctx context.Context, id string, revision int) (*Pl
 func refreshPlanOutcomes(ctx context.Context, q interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }, test string) error {
-	_, err := q.ExecContext(ctx, `UPDATE plans p SET status='stopped',revision=p.revision+1,error='Use Case validation did not succeed'
+	_, err := q.ExecContext(ctx, `UPDATE plans p SET status='stopped',revision=p.revision+1,
+ error=CASE WHEN r.error='workspace_archiving' THEN r.error ELSE 'Use Case validation did not succeed' END
  FROM runs r WHERE p.test_id=$1 AND p.validation_run_id=r.id AND p.status='composed' AND r.status IN ('failed','cancelled','timed_out','interrupted')`, test)
 	return err
 }

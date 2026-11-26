@@ -133,7 +133,7 @@ func (p *Postgres) completeAuthorWith(ctx context.Context, testID, runID, attemp
 		return err
 	}
 	defer tx.Rollback()
-	if _, err = lockEditingTest(ctx, tx, testID); err != nil {
+	if _, err = lockEditingTest(ctx, tx, testID, existingWorkspaceWork); err != nil {
 		return err
 	}
 	status, err := lock(tx)
@@ -293,12 +293,23 @@ func (p *Postgres) completeAuthorWith(ctx context.Context, testID, runID, attemp
 						}
 						var validationID *string
 						if plan.requestValidation {
-							if _, _, permissionErr := executionForDraft(ctx, tx, d); permissionErr != nil {
-								if !errors.Is(permissionErr, ErrScopeConfirmation) {
+							permissionErr := requireActiveWorkspace(ctx, tx, session.WorkspaceID)
+							if permissionErr == nil {
+								_, _, permissionErr = executionForDraft(ctx, tx, d)
+							}
+							if permissionErr != nil {
+								switch {
+								case errors.Is(permissionErr, errWorkspaceArchiving):
+									if err := recordArchiveProgress(ctx, tx, runID); err != nil {
+										return err
+									}
+									plan.message += "\n\nworkspace_archiving：工作區封存中，草稿已保留。還原後可另行驗證。"
+								case errors.Is(permissionErr, ErrScopeConfirmation):
+									plan.message += "\n\nscope_confirmation_required：AI 套用後的草稿尚無有效確認範圍，未排驗證；草稿已保存。"
+								default:
 									return permissionErr
 								}
 								plan.requestValidation = false
-								plan.message += "\n\nscope_confirmation_required：AI 套用後的草稿尚無有效確認範圍，未排驗證；草稿已保存。"
 							}
 						}
 						if plan.requestValidation {

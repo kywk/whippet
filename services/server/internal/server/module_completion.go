@@ -84,7 +84,18 @@ func (p *Postgres) completeModule(ctx context.Context, tx *sql.Tx, run, attempt 
 		}
 	}
 	if *out.RequestValidation || input.Platform.PlanID != nil {
-		_, err = tx.ExecContext(ctx, `INSERT INTO module_validation_requests(source_run_id,test_id,editing_session_id,revision,context_revision) VALUES($1,$2,$3,$4,$5)`, run, d.TestID, session.ID, next, session.ContextRevision+1)
+		status, err := lockWorkspaceWorkStatus(ctx, tx, session.WorkspaceID)
+		if err != nil {
+			return err
+		}
+		skipped := status == workspaceArchiving
+		if skipped {
+			if err := recordArchiveProgress(ctx, tx, run); err != nil {
+				return err
+			}
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO module_validation_requests(source_run_id,test_id,editing_session_id,revision,context_revision,resolved) VALUES($1,$2,$3,$4,$5,$6)`, run, d.TestID, session.ID, next, session.ContextRevision+1, skipped)
+		return err
 	}
 	return err
 }
@@ -138,6 +149,11 @@ func (p *Postgres) scheduleModuleValidation(ctx context.Context, run, test, sess
 	}
 	if resolved || !released || status != "succeeded" {
 		return nil
+	}
+	if errors.Is(scopeErr, errWorkspaceArchiving) {
+		if err := recordArchiveProgress(ctx, tx, run); err != nil {
+			return err
+		}
 	}
 	var validation *string
 	if planActive && scopeErr == nil && d.Revision == revision && s.ContextRevision == contextRevision {

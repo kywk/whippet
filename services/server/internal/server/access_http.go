@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const requestTimeout = 30 * time.Second
@@ -20,6 +21,9 @@ const (
 	signedIn siteAccess = iota
 	createWorkspaces
 	manageDirectory
+	manageSiteRoles
+	manageSiteWorkspaces
+	manageAIResources
 )
 
 type workspaceAccess int
@@ -54,6 +58,12 @@ func (p sitePermissions) allows(access siteAccess) bool {
 		return p.CreateWorkspace
 	case manageDirectory:
 		return p.ManageUsers
+	case manageSiteRoles:
+		return p.ManageSiteRoles
+	case manageSiteWorkspaces:
+		return p.ManageSiteWorkspaces
+	case manageAIResources:
+		return p.ManageAIResources
 	default:
 		return false
 	}
@@ -172,7 +182,7 @@ func (a *API) siteAPI(access siteAccess, next http.HandlerFunc) http.HandlerFunc
 			return
 		}
 		if !actor.user.Permissions.allows(access) {
-			a.fail(w, errForbidden)
+			a.failManagement(w, r, actor, errForbidden)
 			return
 		}
 		ctx := context.WithValue(r.Context(), actorContextKey{}, actor)
@@ -275,9 +285,13 @@ func (a *API) workspaceAPI(resource workspaceResource, operation workspaceAccess
 		if !ok {
 			return
 		}
+		if operation == manageAgentTokens && actor.user.Role != superAdmin {
+			a.failManagement(w, r, actor, errForbidden)
+			return
+		}
 		grant, err := a.scopeWorkspace(r, actor, resource, operation)
 		if err != nil {
-			a.fail(w, err)
+			a.failManagement(w, r, actor, err)
 			return
 		}
 		ctx := context.WithValue(r.Context(), actorContextKey{}, actor)
@@ -301,7 +315,11 @@ func (a *API) mcpFeature(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func decodeAccessBody(w http.ResponseWriter, r *http.Request, dst any, allowEmpty bool) error {
-	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4096))
+	return decodeManagementBody(w, r, dst, 4096, allowEmpty)
+}
+
+func decodeManagementBody(w http.ResponseWriter, r *http.Request, dst any, maxBytes int64, allowEmpty bool) error {
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBytes))
 	if err != nil {
 		return ErrInvalid
 	}
@@ -309,7 +327,7 @@ func decodeAccessBody(w http.ResponseWriter, r *http.Request, dst any, allowEmpt
 		return io.EOF
 	}
 	raw = bytes.TrimSpace(raw)
-	if len(raw) == 0 || raw[0] != '{' || strictJSONNoDuplicates(raw) != nil {
+	if len(raw) == 0 || raw[0] != '{' || !utf8.Valid(raw) || strictJSONNoDuplicates(raw) != nil {
 		return ErrInvalid
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
@@ -400,10 +418,25 @@ func (a *API) users(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, ErrConflict)
 		return
 	}
+	search := strings.TrimSpace(r.URL.Query().Get("q"))
+	if !validMetadataText(search, 100) {
+		a.fail(w, ErrInvalid)
+		return
+	}
 	users, err := readPlatformUsers(r.Context(), p.DB, false)
 	if err != nil {
 		a.fail(w, err)
 		return
+	}
+	if search != "" {
+		search = strings.ToLower(search)
+		matched := users[:0]
+		for _, user := range users {
+			if strings.Contains(strings.ToLower(user.Name), search) || strings.Contains(strings.ToLower(user.ID), search) {
+				matched = append(matched, user)
+			}
+		}
+		users = matched
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": users})
 }
@@ -417,19 +450,20 @@ func (a *API) updateUserRole(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Role siteRole `json:"role"`
 	}
+	actor := actorFromContext(r.Context())
 	if err := decodeAccessBody(w, r, &body, false); err != nil {
-		a.fail(w, err)
+		a.failManagement(w, r, actor, err)
 		return
 	}
 	ctx, id := r.Context(), r.PathValue("userId")
 	a.viewerMu.Lock()
-	user, err := p.setSiteRole(ctx, actorFromContext(ctx), id, body.Role)
+	user, err := p.setSiteRole(ctx, actor, id, body.Role)
 	if err == nil {
 		a.recheckUserViewersLocked(user, "")
 	}
 	a.viewerMu.Unlock()
 	if err != nil {
-		a.fail(w, err)
+		a.failManagement(w, r, actor, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"user": user})
@@ -458,20 +492,21 @@ func (a *API) updateWorkspaceMember(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Role memberRole `json:"role"`
 	}
+	actor := actorFromContext(r.Context())
 	if err := decodeAccessBody(w, r, &body, false); err != nil {
-		a.fail(w, err)
+		a.failManagement(w, r, actor, err)
 		return
 	}
 	ctx := r.Context()
 	id := workspaceGrantFromContext(ctx).workspaceID
 	a.viewerMu.Lock()
-	member, err := p.setWorkspaceMember(ctx, actorFromContext(ctx), id, r.PathValue("userId"), body.Role)
+	member, err := p.setWorkspaceMember(ctx, actor, id, r.PathValue("userId"), body.Role)
 	if err == nil {
 		a.recheckWorkspaceMemberViewersLocked(p, member, id)
 	}
 	a.viewerMu.Unlock()
 	if err != nil {
-		a.fail(w, err)
+		a.failManagement(w, r, actor, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"member": member})

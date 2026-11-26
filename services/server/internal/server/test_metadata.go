@@ -85,6 +85,9 @@ func (p *Postgres) PatchTestMetadata(ctx context.Context, testID string, patch T
 		return Test{}, err
 	}
 	defer tx.Rollback()
+	if _, err := lockTestWorkspace(ctx, tx, testID); err != nil {
+		return Test{}, err
+	}
 	var revision int
 	var versionID *string
 	if err = tx.QueryRowContext(ctx, `SELECT metadata_revision,published_version_id FROM tests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, testID).Scan(&revision, &versionID); err != nil {

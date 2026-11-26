@@ -23,7 +23,7 @@ func (a *API) callMCPTask(ctx context.Context, p *Postgres, tool ToolDefinition,
 		}
 		task, err := p.ClaimExternalAuthor(ctx, token, args.RequestID)
 		if err != nil {
-			return mcpToolError()
+			return mcpWorkspaceWorkError(err)
 		}
 		return mcpBrowserResult(map[string]any{"task": task}, tool.Limits.MaxOutputBytes)
 	case "task_heartbeat":
@@ -145,8 +145,9 @@ func (a *API) callExternalTool(ctx context.Context, p *Postgres, token AgentToke
 
 func externalToolMCPResult(receipt externalToolReceipt, limit int) *mcp.CallToolResult {
 	if receipt.Error != "" {
-		if receipt.Error == "busy" || receipt.Error == "unknown_result" {
-			return mcpBrowserError(receipt.Error)
+		switch receipt.Error {
+		case "busy", "unknown_result", "workspace_archiving", "workspace_archived":
+			return mcpErrorCode(receipt.Error)
 		}
 		return mcpToolError()
 	}
@@ -219,6 +220,13 @@ func (a *API) executeExternalTool(ctx context.Context, p *Postgres, token AgentT
 		var lease BrowserLease
 		var err error
 		if c.BrowserSessionID == nil {
+			var status workspaceArchiveStatus
+			if err := p.DB.QueryRowContext(ctx, `SELECT archive_status FROM workspaces WHERE id=$1`, c.WorkspaceID).Scan(&status); err != nil {
+				return externalToolReceipt{Error: "tool_unavailable"}
+			}
+			if code := workspaceErrorCode(status.workError()); code != "" {
+				return externalToolReceipt{Error: code}
+			}
 			manager, epoch, ready := a.engine.BrowserEndpoint()
 			if !ready {
 				return externalToolReceipt{Error: "busy", Retryable: true}
@@ -230,13 +238,16 @@ func (a *API) executeExternalTool(ctx context.Context, p *Postgres, token AgentT
 			var existed bool
 			lease, existed, err = p.OpenExternalBrowserLease(ctx, token, c, manager, epoch, registry)
 			if err != nil {
+				if code := workspaceErrorCode(err); code != "" {
+					return externalToolReceipt{Error: code}
+				}
 				if errors.Is(err, errBrowserScopeInvalid) {
 					return externalToolReceipt{Error: "tool_unavailable"}
 				}
 				return externalToolReceipt{Error: "busy", Retryable: true}
 			}
 			if !existed {
-				if err = a.engine.SendBrowserOpen(lease); err != nil {
+				if err = a.engine.SendBrowserOpen(ctx, lease); err != nil {
 					_ = p.MarkBrowserLeaseReclaimPending(ctx, lease.ManagerID)
 					a.engine.Wake()
 					return externalToolReceipt{Error: "unknown_result"}

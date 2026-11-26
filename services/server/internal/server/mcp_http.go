@@ -201,6 +201,17 @@ func mcpToolError() *mcp.CallToolResult {
 	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "tool unavailable"}}}
 }
 
+func mcpErrorCode(code string) *mcp.CallToolResult {
+	return &mcp.CallToolResult{IsError: true, StructuredContent: map[string]any{"error": code}, Content: []mcp.Content{&mcp.TextContent{Text: code}}}
+}
+
+func mcpWorkspaceWorkError(err error) *mcp.CallToolResult {
+	if code := workspaceErrorCode(err); code != "" {
+		return mcpErrorCode(code)
+	}
+	return mcpToolError()
+}
+
 func mcpToolFailure(ctx context.Context) *mcp.CallToolResult {
 	if state, ok := ctx.Value(mcpAuditStateKey{}).(*mcpAuditState); ok {
 		state.failed = true

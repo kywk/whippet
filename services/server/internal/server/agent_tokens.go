@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
-	"errors"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -46,6 +45,21 @@ func validAgentTokenName(name string) bool {
 	return name != "" && utf8.ValidString(name) && !strings.ContainsRune(name, 0) && utf8.RuneCountInString(name) <= 100
 }
 
+func authorizeAgentTokenManager(ctx context.Context, tx *sql.Tx) error {
+	actor := actorFromContext(ctx)
+	if actor.user.ID == "" {
+		return nil
+	}
+	role, err := lockActorSiteRole(ctx, tx, actor)
+	if err != nil {
+		return err
+	}
+	if role != superAdmin {
+		return errForbidden
+	}
+	return nil
+}
+
 func (p *Postgres) CreateAgentToken(ctx context.Context, workspace, name string) (AgentToken, string, error) {
 	name = strings.TrimSpace(name)
 	if !ValidID(workspace) || !validAgentTokenName(name) {
@@ -57,9 +71,26 @@ func (p *Postgres) CreateAgentToken(ctx context.Context, workspace, name string)
 	}
 	secret := base64.RawURLEncoding.EncodeToString(raw[:])
 	digest := sha256.Sum256([]byte(secret))
-	item, err := scanAgentToken(p.DB.QueryRowContext(ctx, `INSERT INTO agent_tokens(id,workspace_id,name,token_hash)
+	tx, err := p.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return AgentToken{}, "", err
+	}
+	defer tx.Rollback()
+	if err := authorizeAgentTokenManager(ctx, tx); err != nil {
+		return AgentToken{}, "", err
+	}
+	if err := requireActiveWorkspace(ctx, tx, workspace); err != nil {
+		return AgentToken{}, "", err
+	}
+	item, err := scanAgentToken(tx.QueryRowContext(ctx, `INSERT INTO agent_tokens(id,workspace_id,name,token_hash)
 		SELECT $1,id,$3,$4 FROM workspaces WHERE id=$2 RETURNING `+agentTokenColumns, NewID(), workspace, name, digest[:]))
 	if err != nil {
+		return AgentToken{}, "", err
+	}
+	if err := platformAudit(actorFromContext(ctx), "create_agent_token", "agent_token", item.ID, &workspace).record(ctx, tx, "succeeded", nil); err != nil {
+		return AgentToken{}, "", err
+	}
+	if err := tx.Commit(); err != nil {
 		return AgentToken{}, "", err
 	}
 	return item, secret, nil
@@ -98,13 +129,20 @@ func (p *Postgres) RevokeAgentToken(ctx context.Context, workspace, id string) e
 		return err
 	}
 	defer tx.Rollback()
-	var got string
-	err = tx.QueryRowContext(ctx, `UPDATE agent_tokens SET revoked_at=COALESCE(revoked_at,now())
-		WHERE id=$1 AND workspace_id=$2 RETURNING id`, id, workspace).Scan(&got)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
+	if err := authorizeAgentTokenManager(ctx, tx); err != nil {
+		return err
 	}
-	if err != nil {
+	if _, err := lockWorkspaceWorkStatus(ctx, tx, workspace); err != nil {
+		return err
+	}
+	var alreadyRevoked bool
+	if err := tx.QueryRowContext(ctx, `SELECT revoked_at IS NOT NULL FROM agent_tokens WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, id, workspace).Scan(&alreadyRevoked); err != nil {
+		return dbError(err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE agent_tokens SET revoked_at=COALESCE(revoked_at,now()) WHERE id=$1 AND workspace_id=$2`, id, workspace); err != nil {
+		return err
+	}
+	if err := p.RevokeExternalClaims(ctx, tx, id); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE agent_browser_leases SET state='closing'
@@ -115,8 +153,10 @@ func (p *Postgres) RevokeAgentToken(ctx context.Context, workspace, id string) e
 		(SELECT session_id FROM agent_browser_leases WHERE token_id=$1 AND workspace_id=$2 AND NOT reclaimed)`, id, workspace); err != nil {
 		return err
 	}
-	if err := p.RevokeExternalClaims(ctx, tx, id); err != nil {
-		return err
+	if !alreadyRevoked {
+		if err := platformAudit(actorFromContext(ctx), "revoke_agent_token", "agent_token", id, &workspace).record(ctx, tx, "succeeded", nil); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

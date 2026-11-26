@@ -245,7 +245,7 @@ func (e *Engine) Handle(ctx context.Context, s *Session, m Envelope) error {
 		err = e.store.Acknowledge(ctx, s.managerID, m.RunID, m.AttemptID)
 	case "event":
 		var event Event
-		if json.Unmarshal(m.Payload, &event) != nil || event.EventID == "" || len(event.EventID) > 128 ||
+		if json.Unmarshal(m.Payload, &event) != nil || event.EventID == "" || event.EventID == archiveProgressEventID || len(event.EventID) > 128 ||
 			(event.Kind != "started" && event.Kind != "log") || len(event.Message) > 64*1024 {
 			return fmt.Errorf("%w: invalid event", ErrInvalid)
 		}
@@ -274,6 +274,9 @@ func (e *Engine) Tick(ctx context.Context) error {
 			return err
 		}
 		if err := p.ExpireExternalClaims(ctx); err != nil {
+			return err
+		}
+		if err := p.finalizeWorkspaceArchives(ctx); err != nil {
 			return err
 		}
 	}

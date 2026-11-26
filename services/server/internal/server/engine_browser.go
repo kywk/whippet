@@ -26,12 +26,23 @@ func (e *Engine) BrowserEndpoint() (string, string, bool) {
 	return e.session.managerID, e.session.liveEpoch, true
 }
 
-func (e *Engine) SendBrowserOpen(lease BrowserLease) error {
+func (e *Engine) SendBrowserOpen(ctx context.Context, lease BrowserLease) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	s := e.session
 	if s == nil || !s.ready || s.managerID != lease.ManagerID || s.liveEpoch != lease.ManagerEpoch {
 		return ErrConflict
+	}
+	if p, ok := e.store.(*Postgres); ok {
+		current, err := p.BrowserLeaseBySession(ctx, lease.SessionID)
+		if err != nil {
+			return err
+		}
+		// A close can overtake an admitted lease before its open is sent.
+		// Checking under the writer lock prevents opening it after that close.
+		if current.Reclaimed || current.State != "opening" {
+			return nil
+		}
 	}
 	payload := struct {
 		SessionID           string          `json:"sessionId"`

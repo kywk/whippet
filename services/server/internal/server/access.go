@@ -37,9 +37,12 @@ const (
 )
 
 type sitePermissions struct {
-	CreateWorkspace   bool `json:"createWorkspace"`
-	ManageUsers       bool `json:"manageUsers"`
-	ManageSuperAdmins bool `json:"manageSuperAdmins"`
+	CreateWorkspace      bool `json:"createWorkspace"`
+	ManageUsers          bool `json:"manageUsers"`
+	ManageSuperAdmins    bool `json:"manageSuperAdmins"`
+	ManageSiteRoles      bool `json:"manageSiteRoles"`
+	ManageSiteWorkspaces bool `json:"manageSiteWorkspaces"`
+	ManageAIResources    bool `json:"manageAIResources"`
 }
 
 type platformUser struct {
@@ -53,7 +56,8 @@ func presentUser(id, name string, role siteRole) platformUser {
 	return platformUser{
 		ID: id, Name: name, Role: role,
 		Permissions: sitePermissions{
-			CreateWorkspace: role.admin(), ManageUsers: role.admin(), ManageSuperAdmins: role == superAdmin,
+			CreateWorkspace: role.admin(), ManageUsers: role.admin(), ManageSiteWorkspaces: role.admin(),
+			ManageSuperAdmins: role == superAdmin, ManageSiteRoles: role == superAdmin, ManageAIResources: role == superAdmin,
 		},
 	}
 }
@@ -150,14 +154,11 @@ func (p *Postgres) setSiteRole(ctx context.Context, actor platformActor, id stri
 	if actor.bootstrap {
 		actorRole = superAdmin
 	}
-	if !actorRole.admin() {
+	if actorRole != superAdmin {
 		return platformUser{}, errForbidden
 	}
 	if current.ID == "" {
 		return platformUser{}, ErrNotFound
-	}
-	if actorRole != superAdmin && (role == superAdmin || current.Role == superAdmin) {
-		return platformUser{}, errForbidden
 	}
 	if supers == 1 && current.Role == superAdmin && role != superAdmin {
 		return platformUser{}, errLastSuper
@@ -165,7 +166,32 @@ func (p *Postgres) setSiteRole(ctx context.Context, actor platformActor, id stri
 	if _, err := tx.ExecContext(ctx, `UPDATE platform_users SET site_role=$2 WHERE id=$1`, id, role); err != nil {
 		return platformUser{}, err
 	}
+	if current.Role != role {
+		if err := platformAudit(actor, "set_site_role", "user", id, nil).record(ctx, tx, "succeeded", nil); err != nil {
+			return platformUser{}, err
+		}
+	}
 	return presentUser(id, current.Name, role), tx.Commit()
+}
+
+func lockActorSiteRole(ctx context.Context, tx *sql.Tx, actor platformActor) (siteRole, error) {
+	if actor.bootstrap {
+		return superAdmin, nil
+	}
+	var role siteRole
+	err := tx.QueryRowContext(ctx, `SELECT site_role FROM platform_users WHERE id=$1 FOR SHARE`, actor.user.ID).Scan(&role)
+	return role, dbError(err)
+}
+
+func requireSiteManager(ctx context.Context, tx *sql.Tx, actor platformActor) error {
+	role, err := lockActorSiteRole(ctx, tx, actor)
+	if err != nil {
+		return err
+	}
+	if !role.admin() {
+		return errForbidden
+	}
+	return nil
 }
 
 func readMemberRole(ctx context.Context, q queryDB, workspaceID, userID string) (memberRole, error) {
@@ -205,11 +231,9 @@ func (p *Postgres) setWorkspaceMember(ctx context.Context, actor platformActor, 
 		return workspaceMember{}, err
 	}
 	defer tx.Rollback()
-	actorRole := superAdmin
-	if !actor.bootstrap {
-		if err := tx.QueryRowContext(ctx, `SELECT site_role FROM platform_users WHERE id=$1 FOR SHARE`, actor.user.ID).Scan(&actorRole); err != nil {
-			return workspaceMember{}, dbError(err)
-		}
+	actorRole, err := lockActorSiteRole(ctx, tx, actor)
+	if err != nil {
+		return workspaceMember{}, err
 	}
 	// A workspace-row lock covers additions as well as edits and removals.
 	if err := tx.QueryRowContext(ctx, `SELECT id FROM workspaces WHERE id=$1 FOR UPDATE`, workspaceID).Scan(&workspaceID); err != nil {
@@ -232,14 +256,22 @@ func (p *Postgres) setWorkspaceMember(ctx context.Context, actor platformActor, 
 	if err := tx.QueryRowContext(ctx, `SELECT display_name FROM platform_users WHERE id=$1`, userID).Scan(&member.Name); err != nil {
 		return workspaceMember{}, dbError(err)
 	}
+	var change sql.Result
 	if role == noMemberRole {
-		_, err = tx.ExecContext(ctx, `DELETE FROM workspace_memberships WHERE workspace_id=$1 AND user_id=$2`, workspaceID, userID)
+		change, err = tx.ExecContext(ctx, `DELETE FROM workspace_memberships WHERE workspace_id=$1 AND user_id=$2`, workspaceID, userID)
 	} else {
-		_, err = tx.ExecContext(ctx, `INSERT INTO workspace_memberships(workspace_id,user_id,role) VALUES($1,$2,$3)
-ON CONFLICT(workspace_id,user_id) DO UPDATE SET role=EXCLUDED.role`, workspaceID, userID, role)
+		change, err = tx.ExecContext(ctx, `INSERT INTO workspace_memberships(workspace_id,user_id,role) VALUES($1,$2,$3)
+ON CONFLICT(workspace_id,user_id) DO UPDATE SET role=EXCLUDED.role WHERE workspace_memberships.role<>EXCLUDED.role`, workspaceID, userID, role)
 	}
 	if err != nil {
 		return workspaceMember{}, err
+	}
+	if changed, err := change.RowsAffected(); err != nil {
+		return workspaceMember{}, err
+	} else if changed > 0 {
+		if err := platformAudit(actor, "set_workspace_member", "user", userID, &workspaceID).record(ctx, tx, "succeeded", nil); err != nil {
+			return workspaceMember{}, err
+		}
 	}
 	return member, tx.Commit()
 }

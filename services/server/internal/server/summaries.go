@@ -84,8 +84,12 @@ func enqueueAuthor(ctx context.Context, tx *sql.Tx, d draftState, input AuthorIn
 
 func enqueueAuthorSnapshot(ctx context.Context, tx *sql.Tx, d draftState, input AuthorInput, bindings ...Run) (Run, error) {
 	var workspace string
-	if err := tx.QueryRowContext(ctx, `SELECT workspace_id FROM tests WHERE id=$1`, d.TestID).Scan(&workspace); err != nil {
+	var status workspaceArchiveStatus
+	if err := tx.QueryRowContext(ctx, `SELECT w.id,w.archive_status FROM workspaces w JOIN tests t ON t.workspace_id=w.id WHERE t.id=$1 FOR SHARE OF w`, d.TestID).Scan(&workspace, &status); err != nil {
 		return Run{}, dbError(err)
+	}
+	if err := status.workError(); err != nil {
+		return Run{}, err
 	}
 	if err := snapshotRuntime(ctx, tx, workspace, &input); err != nil {
 		return Run{}, err

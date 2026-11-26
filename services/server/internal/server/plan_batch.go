@@ -141,7 +141,7 @@ func (p *Postgres) buildPlanBatch(ctx context.Context, tx *sql.Tx, plan *Plan, d
 				return nil, err
 			}
 			var ms EditingSession
-			md, ms, err = requireEditingDraft(ctx, tx, stage.ModuleTestID, session)
+			md, ms, err = requireEditingDraft(ctx, tx, stage.ModuleTestID, session, existingWorkspaceWork)
 			if err != nil || md.Revision != revision || ms.ContextRevision != contextRevision {
 				return nil, ErrConflict
 			}
