@@ -10,6 +10,7 @@ import { FrozenAuthorSnapshot } from '../../worker/dist/author/snapshot.js';
 import { BridgeError, boundedJSON, canonical, object, secretGuard, strictJSON, uuid } from './safety.js';
 import { MCPClient } from './transport.js';
 import { PrivateState, readToken, type Identity, type Journal } from './state.js';
+import { registerAgent } from './registration.js';
 
 const connected = new Set(['read_draft', 'read_author_snapshot', 'read_validation_report', 'read_conversation_history', 'browser_navigate', 'browser_snapshot', 'browser_click', 'browser_fill', 'browser_login']);
 export interface Options {
@@ -17,6 +18,8 @@ export interface Options {
   signal?: AbortSignal; mcpFetch?: typeof fetch; modelFetch?: typeof fetch;
   heartbeatMs?: number;
   mcpIntervalMs?: number;
+  selfManaged?: boolean;
+  agentHeartbeatMs?: number;
 }
 export interface BridgeResult { state: 'idle' | 'submitted'; runId?: string; appliedRevision?: number | null; validationRunId?: string | null }
 
@@ -43,6 +46,7 @@ export async function runOnce(options: Options): Promise<BridgeResult> {
   const client = new MCPClient(options.url, token, guard, options.mcpFetch, options.mcpIntervalMs);
   const state = new PrivateState(options.stateFile);
   state.lock();
+  let stopRegistration: (() => Promise<void>) | undefined;
   try {
     let journal = state.read();
     if (journal && (journal.url !== client.url || journal.tokenHash !== sha256(token))) throw new BridgeError('state_mismatch');
@@ -64,6 +68,11 @@ export async function runOnce(options: Options): Promise<BridgeResult> {
     // A lost submit response resumes with the exact persisted ID and body;
     // it never reclaims, reruns the model, or creates another tool call.
     if (journal.phase === 'submitting') return await submit();
+    if (options.selfManaged) stopRegistration = await registerAgent(client, options.config, {
+      signal: options.signal, fetcher: options.modelFetch, guard, intervalMs: options.agentHeartbeatMs,
+      previousProbe: journal.agentProbe,
+      saveProbe: receipt => { journal!.agentProbe = receipt; state.write(journal!); },
+    });
     const claim = object(await client.call('task_claim', { requestId: journal.requestId }, options.signal));
     if (claim.task === null) { journal.phase = 'idle'; state.write(journal); return { state: 'idle' }; }
     const task = object(claim.task);
@@ -71,7 +80,7 @@ export async function runOnce(options: Options): Promise<BridgeResult> {
     const identity: Identity = { runId: task.runId, attemptId: task.attemptId, leaseId: task.leaseId };
     journal.task = identity; journal.phase = 'claimed'; state.write(journal);
     return await work(task, identity, journal, state, client, guard, options, submit);
-  } finally { state.unlock(); }
+  } finally { try { await stopRegistration?.(); } finally { state.unlock(); } }
 }
 
 async function work(task: Record<string, any>, identity: Identity, journal: Journal, state: PrivateState, client: MCPClient,

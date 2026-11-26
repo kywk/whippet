@@ -28,6 +28,8 @@ npm start --prefix runtimes/agent-bridge -- \
 
 一次執行最多領一筆，沒有輪詢／背景daemon。stdout只印固定狀態、結果識別與錯誤分類，從不列印任務、草稿、模型回應或憑證。`submitted`只表示平台接受候選；正式驗證與發佈仍須沿平台流程確認。`idle`也會保存為這次操作的結果；下一筆工作使用新的state檔案。
 
+全站後台建立的 v14 自管 Agent 使用專用 Token。執行時加上 `--self-managed`，並讓 `--engine`、本機 provider 與 model 對應建立時的設定。客戶端先登錄 `test-author` 能力，收到挑戰才以本機 Key 執行一次探測，再依 Server 的資格判定領單。執行期間的登錄心跳與任務租約心跳各自運作。探測回報遺失時使用同一 state 檔重送原結果。一次執行結束後，以最近有效活動時間顯示資源狀態。既有 Workspace Token 沿用上例指令。
+
 ## 用量、租約與重送
 
 registry12.0任務可提供`read_author_snapshot`。超容量門檻時，初始原稿可顯示為凍結引用；用固定SHA與offset讀8KiB頁面，沿nextOffsetBytes讀取。null明確取全文，全文仍受context保護；這是原baseRevision資料，不是提交候選或驗證證據。讀取使用原工具預算，hash不符或工具結果不明就停止。需與Server／Worker打包的registry及skill pins一致，舊Run不自動換pin。

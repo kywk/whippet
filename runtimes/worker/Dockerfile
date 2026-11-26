@@ -1,5 +1,7 @@
 FROM mcr.microsoft.com/playwright:v1.64.1-noble
 
+LABEL org.whippet.worker.admin='{"version":1,"engines":["builtin","vercel","pi"],"skills":["test-author","workspace-author","acceptance-summary","module-authoring","usecase-planner"]}'
+
 RUN apt-get update && apt-get install -y --no-install-recommends nftables procps \
     && rm -rf /var/lib/apt/lists/*
 

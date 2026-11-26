@@ -1,12 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { PassThrough } from "node:stream";
 import { AIError, readAIConfig } from "../ai/config.js";
 import { runAuthor } from "./loop.js";
 import { loadToolRegistry, sha256 } from "./registry.js";
 import { AuthorError, type AuthorInput } from "./types.js";
-import { readAuthorConfig, runtimeConfig, runtimeDigest, validRuntime, type AuthorRuntime } from "./runtime.js";
+import { managedModelConfig, readAuthorConfig, runtimeConfig, runtimeDigest, validRuntime, type AuthorRuntime } from "./runtime.js";
 import { fixture, envelope, text } from "./spike/fixture.js";
+import { requestModelKey } from "./model-key.js";
+import { runModelProbe } from "./model-probe.js";
 
 const golden: AuthorRuntime = JSON.parse(readFileSync(new URL("../../../../contracts/testdata/agent-runtime.json", import.meta.url), "utf8"));
 function task(runtime = golden): AuthorInput {
@@ -84,4 +87,52 @@ test("final guard also rejects an inactive provider's secret in synthetic output
     await assert.rejects(runAuthor(task(), config, undefined, { fetcher: async (_url, init) => fetch(f.config.baseURL + "/responses", init) }), (error: unknown) => error instanceof AuthorError && error.code === "sensitive_output");
     assert.equal(f.bodies.length, 1);
   } finally { await f.close(); }
+});
+
+for (const engine of ["builtin", "vercel", "pi"] as const) test(`ADM v14 ${engine} probe and author use the pinned key`, async () => {
+  const runtime = signed({ engine, profileId: engine });
+  const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const key = `isolated-${engine}-fixture-key`;
+  const credential = { agentId: id, secretVersion: 2 };
+  const read = new PassThrough(), write = new PassThrough();
+  write.on("data", data => {
+    const request = JSON.parse(String(data));
+    assert.deepEqual(request, { kind: "model_key_request", requestId: request.requestId, ...credential });
+    read.write(JSON.stringify({ kind: "model_key_response", requestId: request.requestId, ...credential, apiKey: key }) + "\n");
+  });
+  const config = managedModelConfig(runtime, await requestModelKey(credential, new AbortController().signal, { read, write }));
+  let probes = 0;
+  assert.equal(await runModelProbe(config, id, { fetcher: async (url, init) => {
+    probes++;
+    assert.equal(url, `${runtime.baseURL}/responses`);
+    assert.equal(new Headers(init?.headers).get("authorization"), `Bearer ${key}`);
+    const body = JSON.parse(String(init?.body));
+    assert.deepEqual(body.tools, []);
+    assert.equal(body.max_output_tokens, 128);
+    assert.equal(body.model, runtime.model);
+    assert.ok(!String(init?.body).includes(key));
+    return Response.json(envelope([text(`  WHIPPET_PROBE:${id}  `)]));
+  } }), "passed");
+  assert.equal(probes, 1);
+  assert.equal(await runModelProbe(config, id, { fetcher: async () => new Response(null, { status: 401 }) }), "provider_auth_failed");
+  const input = { ...task(runtime), workspaceId: id, testId: id, modelCredential: credential };
+  const authored = await runAuthor(input, config, undefined, { fetcher: async (_url, init) => {
+    assert.equal(new Headers(init?.headers).get("authorization"), `Bearer ${key}`);
+    assert.ok(!String(init?.body).includes(key));
+    return Response.json(envelope([text()]));
+  } });
+  assert.equal(authored.message, "完成");
+  assert.ok(!JSON.stringify(authored).includes(key));
+});
+
+test("ADM v14 cannot use a different agent or secret version from stdin", async () => {
+  const credential = { agentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", secretVersion: 2 };
+  for (const override of [{ secretVersion: 1 }, { agentId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" }]) {
+    const read = new PassThrough(), write = new PassThrough();
+    write.on("data", data => {
+      const { requestId } = JSON.parse(String(data));
+      read.write(JSON.stringify({ kind: "model_key_response", requestId, ...credential, ...override, apiKey: "other-fixture-key" }) + "\n");
+    });
+    await assert.rejects(requestModelKey(credential, new AbortController().signal, { read, write }), { code: "missing_key" });
+  }
 });

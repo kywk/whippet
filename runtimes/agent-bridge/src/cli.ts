@@ -5,7 +5,7 @@ import { BridgeError } from './safety.js';
 
 export async function main(args = process.argv.slice(2)): Promise<number> {
   if (args.length === 1 && args[0] === '--help') {
-    process.stdout.write('Usage: npm start -- --mcp-url <HTTPS-or-loopback/mcp> --token-file <private-file> --state-file <private-journal> [--engine vercel|pi]\nOne test-author task per invocation. The default engine is Vercel.\n');
+    process.stdout.write('Usage: npm start -- --mcp-url <HTTPS-or-loopback/mcp> --token-file <private-file> --state-file <private-journal> [--engine vercel|pi] [--self-managed]\nOne test-author task per invocation. The default engine is Vercel.\n');
     return 0;
   }
   const controller = new AbortController();
@@ -13,8 +13,11 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
   process.once('SIGINT', cancel); process.once('SIGTERM', cancel);
   try {
     const values = new Map<string, string>();
-    for (let index = 0; index < args.length; index += 2) {
-      const name = args[index], value = args[index + 1];
+    let selfManaged = false;
+    for (let index = 0; index < args.length;) {
+      const name = args[index++];
+      if (name === '--self-managed' && !selfManaged) { selfManaged = true; continue; }
+      const value = args[index++];
       if (!name || !['--mcp-url', '--token-file', '--state-file', '--engine'].includes(name) || values.has(name) || !value) throw new BridgeError('invalid_input');
       values.set(name, value);
     }
@@ -22,7 +25,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
     const engine = values.get('--engine') ?? 'vercel';
     if (engine !== 'pi' && engine !== 'vercel') throw new BridgeError('invalid_input');
     const config = readAIConfig({ ...process.env, WHIPPET_AI_ENGINE: engine });
-    const result = await runOnce({ url: values.get('--mcp-url')!, tokenFile: values.get('--token-file')!, stateFile: values.get('--state-file')!, config, signal: controller.signal });
+    const result = await runOnce({ url: values.get('--mcp-url')!, tokenFile: values.get('--token-file')!, stateFile: values.get('--state-file')!, config, signal: controller.signal, selfManaged });
     process.stdout.write(JSON.stringify(result) + '\n');
     return 0;
   } catch (error) {

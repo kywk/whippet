@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { validateWorkspaceContext, validateWorkspaceConfig, type WorkspaceContext, type WorkspaceConfig } from "../workspace-context.js";
 import { validSequence, hasHistory, type HistoryPin } from "./history.js";
 import { validRuntime, type AuthorRuntime } from "./runtime.js";
+import { validModelCredential, type ModelCredential } from "./model-key.js";
 
 export const EDIT_TOOLS = ["read_draft", "read_author_snapshot", "read_validation_report", "update_draft", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login", "request_validation", "read_conversation_history"] as const;
 export interface ValidationEvidence {
@@ -26,6 +27,7 @@ export interface AuthorInput {
   testId?:string|null;
   workspaceContext?:WorkspaceContext|null;
   scriptOrigin?:'ai'|'manual'|'legacy';
+  modelCredential?: ModelCredential;
   author: Partial<CapabilitySnapshot> & {
     runtime?: AuthorRuntime;
     platform?: PlatformInput;
@@ -123,7 +125,7 @@ export function validateAuthorInput(value: unknown): AuthorInput {
     !Number.isSafeInteger(v.author.baseRevision) || v.author.baseRevision < 0 ||
     !Array.isArray(v.author.messages) || v.author.messages.length > 12
   ) throw new AuthorError("invalid_input");
-  if(Object.keys(v).some((k)=>!["kind","runId","attemptId","script","timeoutMs","workspaceSettings","workspaceId","testId","workspaceContext","scriptOrigin","author"].includes(k))||v.scriptOrigin!==undefined&&!['ai','manual','legacy'].includes(v.scriptOrigin))throw new AuthorError("invalid_input");
+  if(Object.keys(v).some((k)=>!["kind","runId","attemptId","script","timeoutMs","workspaceSettings","workspaceId","testId","workspaceContext","scriptOrigin","author","modelCredential"].includes(k))||v.scriptOrigin!==undefined&&!['ai','manual','legacy'].includes(v.scriptOrigin))throw new AuthorError("invalid_input");
   try {
     validateWorkspaceSettings(v.workspaceSettings);
     if(v.workspaceId!==undefined&&v.testId===undefined||v.workspaceId===undefined&&v.testId!==undefined)throw new Error();
@@ -138,6 +140,7 @@ export function validateAuthorInput(value: unknown): AuthorInput {
   const capability = capabilitySnapshot(a);
   if (Array.isArray(a.allowedTools) && a.allowedTools.includes("read_author_snapshot") && !capability) throw new AuthorError("invalid_input");
   if (Object.hasOwn(a, "runtime") && (!capability || !validRuntime(a.runtime))) throw new AuthorError("invalid_input");
+  if (Object.hasOwn(v, "modelCredential") && (!v.workspaceId || !validModelCredential(v.modelCredential) || !a.runtime)) throw new AuthorError("invalid_input");
   if (capability && (capability.skills[0]!.id !== a.skillId || capability.skills[0]!.version !== a.skillVersion)) throw new AuthorError("invalid_input");
   if (a.allowedTools?.includes("record_conversation_memory") && (!capability || !hasHistory(v))) throw new AuthorError("invalid_input");
   validatePlatform(v, !!capability);

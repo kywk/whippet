@@ -78,6 +78,23 @@ Linux 如需 `host.docker.internal`，加 `--add-host host.docker.internal:host-
 
 Manager 重啟會先處理未完成 journal，停止未確認回收的舊容器；有已保存的 collecting 結果就補送附件。尚未保存終態者回報 `failed` 並明示中斷；已保存取消要求者回 cancelled。不猜測成功，也不重跑。契約 result 尚無 `interrupted`；journal 損毀或同一 WORK_DIR 同時被其他程序占用時拒絕啟動。舊 M1 journal 可直接讀取，未記錄 reclaimed 時保守地再確認回收。
 
+### v14 資源回報與代管 Agent
+
+在 `SERVER_URL` 使用 HTTPS，並將 `WORKER_IMAGE` 指向本機已建好的 v14 Worker。Manager 啟動時檢查映像能力標籤，將容器啟動固定到該映像內容識別，並在 WSS `hello.admin` 宣告引擎與主 skill。更換 Worker 映像後重新啟動 Manager，讓 Server 對帳新的 `workerRevision`。HTTP、舊 Worker 或回覆空 `heartbeat_ack` 的 Server 走既有 v13 流程。
+
+Run、瀏覽器租約與配置探測共用 `MAX_WORKERS`。`heartbeat.admin` 回報可用名額和未回收的 `operationId`。暫停、指派與排空由 Server 決定新工作資格，現有工作依原 Run 或租約完成或取消。探測結果可先回 `reclaimed:false`，Docker 確認移除且 journal 寫入成功才回 `true`。Manager 重啟時以原 `operationId` 回收並重播，重送沿用已保存的狀態。
+
+代管作者與探測從當前 WSS 世代取得解析憑證所需的 nonce。Manager 透過 HTTPS 解析已固定的 Agent 與 Key 版本，再透過該容器的 stdin 傳遞 Key。部署用模型設定仍適用於舊作者任務。詳細欄位見 [v14 契約](../../contracts/mvp-v14.md#adm-3-agent-建立與選用)。
+
+下列測試以隔離映像中的合成 provider 驗證實際 Docker 探測、Key 輪替及三種引擎的作者入口。
+
+```sh
+docker build -f runtimes/worker/Dockerfile -t whippet-worker:adm14 .
+docker build -t whippet-worker:adm14-fixture runtimes/worker/testdata/adm14
+(cd services/manager && WHIPPET_ADM14_SYNTHETIC_WORKER_IMAGE=whippet-worker:adm14-fixture \
+  go test ./internal/manager -run '^TestADM14DockerManagedProbeAndAuthor$' -count=1 -v)
+```
+
 ## M3 author 任務
 
 `kind:"author"` 允許空草稿，附 `author:{conversationId,baseRevision,messages,validation?}`；messages 最近最多 12 則、總 32000 字元，timeout 最多 180000 ms。optional validation 是 `{runId,status,error?}` 快照，error 最多 4000 字元；沒有快照也可執行。journal 保存 kind，input 保存草稿／對話／驗證摘要快照；兩者不加入任何 AI 環境設定或 key。author 仍沿用同一套 ACK、名額、cancel、回收、重連與補傳。

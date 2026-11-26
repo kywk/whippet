@@ -2,6 +2,7 @@ import { constants, closeSync, fstatSync, fsyncSync, lstatSync, openSync, readFi
 import { dirname, isAbsolute } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { BridgeError, object, strictJSON, uuid } from './safety.js';
+import type { ProbeOutcome } from '../../worker/dist/author/model-probe.js';
 
 function parent(path: string) {
   if (!isAbsolute(path)) throw new BridgeError('state_unavailable');
@@ -27,12 +28,14 @@ export function readToken(path: string): string {
   return token;
 }
 export interface Identity { runId: string; attemptId: string; leaseId: string }
+export interface ProbeReceipt { registrationId: string; challengeId: string; status?: ProbeOutcome }
 export interface Journal {
   schemaVersion: 1; url: string; tokenHash: string; requestId: string;
   phase: 'claiming' | 'claimed' | 'submitting' | 'submitted' | 'idle';
   task?: Identity;
   submit?: Identity & { submitId: string; output: Record<string, unknown> };
   result?: Record<string, unknown>;
+  agentProbe?: ProbeReceipt;
 }
 export class PrivateState {
   private owner?: string;
@@ -56,7 +59,12 @@ export class PrivateState {
     try { lstatSync(this.path); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw new BridgeError('state_unavailable'); }
     const value = object(strictJSON(readPrivate(this.path, 13 * 1024 * 1024)));
     if (value.schemaVersion !== 1 || !uuid(value.requestId) || !['claiming', 'claimed', 'submitting', 'submitted', 'idle'].includes(value.phase) ||
-      Object.keys(value).some(key => !['schemaVersion', 'url', 'tokenHash', 'requestId', 'phase', 'task', 'submit', 'result'].includes(key))) throw new BridgeError('state_unavailable');
+      Object.keys(value).some(key => !['schemaVersion', 'url', 'tokenHash', 'requestId', 'phase', 'task', 'submit', 'result', 'agentProbe'].includes(key))) throw new BridgeError('state_unavailable');
+    if (Object.hasOwn(value, 'agentProbe')) {
+      const probe = object(value.agentProbe);
+      if (!uuid(probe.registrationId) || !uuid(probe.challengeId) || Object.keys(probe).some(key => !['registrationId', 'challengeId', 'status'].includes(key)) ||
+        (Object.hasOwn(probe, 'status') && !['passed', 'provider_auth_failed', 'provider_unavailable', 'probe_failed'].includes(probe.status))) throw new BridgeError('state_unavailable');
+    }
     if (value.task && !['runId', 'attemptId', 'leaseId'].every(key => uuid(value.task[key]))) throw new BridgeError('state_unavailable');
     if (value.phase === 'submitting' && (!value.submit || !uuid(value.submit.submitId) || !value.task || !['runId', 'attemptId', 'leaseId'].every(key => value.submit[key] === value.task[key]))) throw new BridgeError('state_unavailable');
     return value as Journal;

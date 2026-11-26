@@ -1,4 +1,4 @@
-import { BridgeError, boundedJSON, object } from './safety.js';
+import { BridgeError, agentControlCode, boundedJSON, object } from './safety.js';
 import { setTimeout as delay } from 'node:timers/promises';
 
 export function mcpURL(raw: string): string {
@@ -34,9 +34,15 @@ export class MCPClient {
       const code = result.structuredContent?.error;
       if (code === 'busy' || code?.code === 'busy') throw new BridgeError('busy');
       if (code === 'unknown_result' || code?.code === 'unknown_result') throw new BridgeError('unknown_result');
+      const state = agentControlCode(code?.code ?? code);
+      if (state) throw new BridgeError(state);
       throw new BridgeError('tool_unavailable');
     }
     return object(result.structuredContent);
+  }
+  async agent(method: 'register' | 'probe' | 'heartbeat', params: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>> {
+    if (!this.version) throw new BridgeError('invalid_input');
+    return object(await this.rpc(`whippet/agent/${method}`, params, signal));
   }
   async resource(uri: string, signal: AbortSignal): Promise<string> {
     const result = object(await this.rpc('resources/read', { uri }, signal));
@@ -70,7 +76,12 @@ export class MCPClient {
     if (!response.headers.get('content-type')?.startsWith('application/json')) { await response.body?.cancel().catch(() => undefined); throw new BridgeError('invalid_response'); }
     const reply = object(await boundedJSON(response, 13 * 1024 * 1024));
     this.guard(reply);
-    if (reply.jsonrpc !== '2.0' || reply.id !== id || reply.error || !Object.hasOwn(reply, 'result')) throw new BridgeError('invalid_response');
+    if (reply.jsonrpc !== '2.0' || reply.id !== id) throw new BridgeError('invalid_response');
+    if (method.startsWith('whippet/agent/') && reply.error?.code === -32000) {
+      const state = agentControlCode(reply.error?.data?.code);
+      if (state) throw new BridgeError(state);
+    }
+    if (reply.error || !Object.hasOwn(reply, 'result')) throw new BridgeError('invalid_response');
     return reply.result;
   }
 }

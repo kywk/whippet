@@ -168,3 +168,76 @@ test('429 is explicit and never automatically resends a control operation', asyn
   await assert.rejects(client.call('task_claim', { requestId: randomUUID() }), (error: unknown) => error instanceof BridgeError && error.code === 'rate_limited');
   assert.equal(requests, 1);
 });
+
+for (const engine of ['vercel', 'pi'] as const) test(`ADM v14 ${engine} registers, replays the probe and claims one task`, async t => {
+  const f = fixture(t);
+  const registrationId = randomUUID(), challengeId = randomUUID();
+  const probes: unknown[] = [];
+  let probeCalls = 0, registrationHeartbeats = 0;
+  const future = (ms: number) => new Date(Date.now() + ms).toISOString();
+  const options: Options = { ...f.options, selfManaged: true, agentHeartbeatMs: 5, config: { ...f.options.config, engine },
+    mcpFetch: async (url, init) => {
+      const request = strictJSON(String(init?.body));
+      if (!request.method.startsWith('whippet/agent/')) return f.options.mcpFetch!(url, init);
+      assert.equal(new Headers(init?.headers).get('mcp-protocol-version'), '2025-06-18');
+      assert.equal(new Headers(init?.headers).get('authorization'), `Bearer ${token}`);
+      let result: unknown;
+      if (request.method === 'whippet/agent/register') {
+        assert.deepEqual(request.params, { engine, provider: 'opencode', model: config.model, skillIds: ['test-author'] });
+        result = { registrationId, heartbeatIntervalMs: 30000, expiresAt: future(90000), challenge: { id: challengeId, expiresAt: future(30000) } };
+      } else if (request.method === 'whippet/agent/probe') {
+        probes.push(request.params);
+        if (probes.length === 1) throw new TypeError('synthetic lost probe reply');
+        result = { status: 'ready', reason: null };
+      } else {
+        assert.equal(request.method, 'whippet/agent/heartbeat');
+        registrationHeartbeats++;
+        assert.deepEqual(request.params, { registrationId });
+        result = { expiresAt: future(90000) };
+      }
+      return Response.json({ jsonrpc: '2.0', id: request.id, result });
+    },
+    modelFetch: async (url, init) => {
+      const body = strictJSON(String(init?.body));
+      if (body.max_output_tokens === 128) {
+        probeCalls++;
+        assert.equal(new Headers(init?.headers).get('authorization'), `Bearer ${key}`);
+        assert.deepEqual(body.tools, []);
+        return Response.json(envelope([text(`WHIPPET_PROBE:${challengeId}`)]));
+      }
+      await new Promise(resolve => setTimeout(resolve, 25));
+      return f.options.modelFetch!(url, init);
+    },
+  };
+  await assert.rejects(runOnce(options), { code: 'mcp_unavailable' });
+  assert.equal(f.calls.filter(call => call.params?.name === 'task_claim').length, 0);
+  assert.equal((await runOnce(options)).state, 'submitted');
+  assert.deepEqual(probes, Array(2).fill({ registrationId, challengeId, status: 'passed' }));
+  assert.equal(probeCalls, 1);
+  assert.ok(registrationHeartbeats > 0);
+  assert.ok(!readFileSync(f.stateFile, 'utf8').includes(key));
+});
+
+test('ADM v14 a failed self-managed probe reports the fixed reason before stopping', async t => {
+  const f = fixture(t);
+  const registrationId = randomUUID(), challengeId = randomUUID();
+  let probes = 0;
+  const options: Options = { ...f.options, selfManaged: true,
+    modelFetch: async () => new Response(null, { status: 401 }),
+    mcpFetch: async (url, init) => {
+      const request = strictJSON(String(init?.body));
+      let result: unknown;
+      if (request.method === 'whippet/agent/register') {
+        result = { registrationId, heartbeatIntervalMs: 30000, expiresAt: new Date(Date.now() + 90000).toISOString(), challenge: { id: challengeId, expiresAt: new Date(Date.now() + 30000).toISOString() } };
+      } else if (request.method === 'whippet/agent/probe') {
+        probes++;
+        assert.deepEqual(request.params, { registrationId, challengeId, status: 'provider_auth_failed' });
+        result = { status: 'failed', reason: 'provider_auth_failed' };
+      } else return f.options.mcpFetch!(url, init);
+      return Response.json({ jsonrpc: '2.0', id: request.id, result });
+    },
+  };
+  await assert.rejects(runOnce(options), { code: 'agent_not_ready' });
+  assert.equal(probes, 1);
+  assert.ok(!f.calls.some(call => call.params?.name === 'task_claim'));
+});

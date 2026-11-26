@@ -1,4 +1,11 @@
-export type BridgeCode = 'invalid_input' | 'invalid_response' | 'secret_file_unavailable' | 'state_unavailable' | 'state_busy' | 'state_mismatch' | 'interrupted_task' | 'mcp_unavailable' | 'mcp_unauthorized' | 'rate_limited' | 'tool_unavailable' | 'busy' | 'unknown_result' | 'lease_lost' | 'unsupported_skill' | 'sensitive_data' | 'incomplete_task' | 'worker_failed';
+import { containsModelKey } from '../../worker/dist/author/model-key.js';
+
+export type AgentControlCode = 'claim_paused' | 'agent_not_ready' | 'conflict' | 'workspace_archiving' | 'workspace_archived';
+export type BridgeCode = 'invalid_input' | 'invalid_response' | 'secret_file_unavailable' | 'state_unavailable' | 'state_busy' | 'state_mismatch' | 'interrupted_task' | 'mcp_unavailable' | 'mcp_unauthorized' | 'rate_limited' | 'tool_unavailable' | 'busy' | 'unknown_result' | 'lease_lost' | 'unsupported_skill' | 'sensitive_data' | 'incomplete_task' | 'worker_failed' | AgentControlCode;
+
+export function agentControlCode(value: unknown): AgentControlCode | undefined {
+  if (value === 'claim_paused' || value === 'agent_not_ready' || value === 'conflict' || value === 'workspace_archiving' || value === 'workspace_archived') return value;
+}
 export class BridgeError extends Error {
   constructor(readonly code: BridgeCode) { super(code); }
 }
@@ -35,7 +42,7 @@ export function canonical(value: unknown): string {
 export function secretGuard(secrets: string[]) {
   return (value: unknown) => {
     const text = typeof value === 'string' ? value : JSON.stringify(value);
-    if (secrets.some(secret => secret && text?.includes(secret))) throw new BridgeError('sensitive_data');
+    if (secrets.some(secret => containsModelKey(text ?? '', secret))) throw new BridgeError('sensitive_data');
   };
 }
 export async function boundedJSON(response: Response, maximum = 4 * 1024 * 1024): Promise<any> {
