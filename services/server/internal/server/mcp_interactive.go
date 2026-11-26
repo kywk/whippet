@@ -37,6 +37,12 @@ func requireInteractiveWorkspace(ctx context.Context, tx *sql.Tx, workspace stri
 	return nil
 }
 
+func requireInteractiveTestOwner(ctx context.Context, tx *sql.Tx, workspace, testID string) error {
+	var id string
+	err := tx.QueryRowContext(ctx, `SELECT id FROM tests WHERE id=$1 AND workspace_id=$2`, testID, workspace).Scan(&id)
+	return dbError(err)
+}
+
 func priorInteractiveOperation(ctx context.Context, tx *sql.Tx, token AgentToken, op interactiveOperation) (json.RawMessage, error) {
 	var hash, result []byte
 	err := tx.QueryRowContext(ctx, `SELECT request_hash,result FROM agent_interactive_operations WHERE token_id=$1 AND tool_name=$2 AND request_id=$3`, token.ID, op.Name, op.RequestID).Scan(&hash, &result)
@@ -85,6 +91,10 @@ func (p *Postgres) InteractiveDraftCreate(ctx context.Context, token AgentToken,
 		return nil, err
 	}
 	defer tx.Rollback()
+	status, err := lockWorkspaceWorkStatus(ctx, tx, token.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
 	if err = lockInteractiveToken(ctx, tx, token); err != nil {
 		return nil, err
 	}
@@ -92,6 +102,9 @@ func (p *Postgres) InteractiveDraftCreate(ctx context.Context, token AgentToken,
 		return nil, e
 	} else if prior != nil {
 		return prior, tx.Commit()
+	}
+	if err := status.workError(); err != nil {
+		return nil, err
 	}
 	if err = requireInteractiveWorkspace(ctx, tx, token.WorkspaceID); err != nil {
 		return nil, err
@@ -129,6 +142,9 @@ func (p *Postgres) InteractiveAuthorStart(ctx context.Context, token AgentToken,
 		return nil, err
 	}
 	defer tx.Rollback()
+	if _, err := lockWorkspaceWorkStatus(ctx, tx, token.WorkspaceID); err != nil {
+		return nil, err
+	}
 	// A committed replay needs no draft lock. New work follows the established
 	// Workspace/Test/Draft -> Token -> Claim order used by submit and platform tools.
 	if prior, e := priorInteractiveOperation(ctx, tx, token, op); e != nil {
@@ -142,6 +158,9 @@ func (p *Postgres) InteractiveAuthorStart(ctx context.Context, token AgentToken,
 			return nil, e
 		}
 		return result, tx.Commit()
+	}
+	if err := requireInteractiveTestOwner(ctx, tx, token.WorkspaceID, args.TestID); err != nil {
+		return nil, err
 	}
 	d, session, err := requireEditingDraft(ctx, tx, args.TestID, args.EditingSessionID)
 	if err != nil {
@@ -297,6 +316,9 @@ func (p *Postgres) InteractiveValidationRequest(ctx context.Context, token Agent
 		return nil, err
 	}
 	defer tx.Rollback()
+	if _, err := lockWorkspaceWorkStatus(ctx, tx, token.WorkspaceID); err != nil {
+		return nil, err
+	}
 	if prior, e := priorInteractiveOperation(ctx, tx, token, op); e != nil {
 		return nil, e
 	} else if prior != nil {
@@ -310,6 +332,9 @@ func (p *Postgres) InteractiveValidationRequest(ctx context.Context, token Agent
 			return nil, err
 		}
 		return prior, tx.Commit()
+	}
+	if err := requireInteractiveTestOwner(ctx, tx, token.WorkspaceID, args.TestID); err != nil {
+		return nil, err
 	}
 	d, s, err := requireEditingDraft(ctx, tx, args.TestID, args.EditingSessionID)
 	if err != nil {
@@ -459,6 +484,9 @@ func (a *API) callMCPInteractive(ctx context.Context, p *Postgres, tool ToolDefi
 		return mcpToolError()
 	}
 	if err != nil {
+		if code := workspaceErrorCode(err); code != "" {
+			return mcpErrorCode(code)
+		}
 		if code := authorIntentErrorCode(err); code != "" {
 			if state, ok := ctx.Value(mcpAuditStateKey{}).(*mcpAuditState); ok {
 				state.failed = true

@@ -54,6 +54,9 @@ func (p *Postgres) SetAuthorEngine(ctx context.Context, id string, revision int,
 	if err != nil {
 		return Workspace{}, err
 	}
+	if err := w.Management.State.workError(); err != nil {
+		return Workspace{}, err
+	}
 	if err = checkRevision(revision, w.Revision); err != nil {
 		return Workspace{}, err
 	}

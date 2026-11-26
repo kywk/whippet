@@ -225,7 +225,7 @@ func (p *Postgres) conversationHistory(ctx context.Context, manager, run, attemp
 		if page.TestID == nil || page.EditingSessionID == nil || input.EditingSessionID != *page.EditingSessionID {
 			return page, ErrHistoryUnavailable
 		}
-		d, s, err := requireEditingDraft(ctx, tx, *page.TestID, *page.EditingSessionID)
+		d, s, err := requireEditingDraft(ctx, tx, *page.TestID, *page.EditingSessionID, existingWorkspaceWork)
 		if err != nil {
 			if errors.Is(err, ErrNotFound) || errors.Is(err, ErrConflict) {
 				return page, ErrHistoryUnavailable

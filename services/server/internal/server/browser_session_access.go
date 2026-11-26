@@ -103,14 +103,14 @@ func (p *Postgres) ResolveBrowserSessionCredentials(ctx context.Context, manager
 	if err := tx.QueryRowContext(ctx, `SELECT token_id,workspace_id FROM agent_browser_leases WHERE session_id=$1 AND lease_id=$2`, sessionID, leaseID).Scan(&tokenID, &workspaceID); err != nil {
 		return result, dbError(err)
 	}
+	w, proposalID, err := readWorkspaceCore(ctx, tx, workspaceID, true)
+	if err != nil {
+		return result, err
+	}
 	var tokenWorkspace string
 	var revoked sql.NullTime
 	if err := tx.QueryRowContext(ctx, `SELECT workspace_id,revoked_at FROM agent_tokens WHERE id=$1 FOR UPDATE`, tokenID).Scan(&tokenWorkspace, &revoked); err != nil || revoked.Valid || tokenWorkspace != workspaceID {
 		return result, ErrCredentialUnavailable
-	}
-	w, proposalID, err := readWorkspaceCore(ctx, tx, workspaceID, true)
-	if err != nil {
-		return result, err
 	}
 	w, err = fillWorkspace(ctx, tx, w, proposalID, true, p.CredentialTLS)
 	if err != nil {

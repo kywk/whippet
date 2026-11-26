@@ -62,6 +62,16 @@ func TestPlatformRolesPostgres(t *testing.T) {
 	}
 	qa, workspaceAdminCookie := login(developmentQA), login(developmentWorkspaceAdmin)
 	site, super := login("dev-site-admin"), login(developmentAdmin)
+	check(call("GET", "/api/admin/workspaces", "", "", qa), 403)
+	check(call("GET", "/api/admin/workspaces", "", "", workspaceAdminCookie), 403)
+	check(call("GET", "/api/admin/ai/resources", "", "", site), 403)
+	check(call("GET", "/api/admin/workspaces", "", "", super), 200)
+	me := check(call("GET", "/api/me", "", "", site), 200)
+	var siteIdentity struct{ User platformUser }
+	if err := json.Unmarshal(me.Body.Bytes(), &siteIdentity); err != nil || !siteIdentity.User.Permissions.ManageSiteWorkspaces ||
+		siteIdentity.User.Permissions.ManageSiteRoles || siteIdentity.User.Permissions.ManageAIResources {
+		t.Fatalf("Site Manager capabilities: %s", me.Body)
+	}
 	const seedWorkspace = "/api/workspaces/00000000-0000-4000-8000-000000000001"
 	const seedTest = "/api/tests/10000000-0000-4000-8000-000000000001"
 	var saved struct {
@@ -85,6 +95,23 @@ func TestPlatformRolesPostgres(t *testing.T) {
 	check(call("POST", "/api/workspaces", `{"name":"Denied"}`, "", workspaceAdminCookie), 403)
 	check(call("GET", "/api/users", "", "", workspaceAdminCookie), 403)
 	check(call("GET", "/api/users", "", "", site), 200)
+	directory := check(call("GET", "/api/users?q=%20QA%20", "", "", site), 200)
+	var matches struct{ Items []platformUser }
+	if err := json.Unmarshal(directory.Body.Bytes(), &matches); err != nil || len(matches.Items) != 1 || matches.Items[0].ID != developmentQA {
+		t.Fatalf("case-insensitive account search: %s", directory.Body)
+	}
+	var page struct {
+		Items     []workspaceSummary
+		NextAfter *string
+	}
+	response := check(call("GET", "/api/admin/workspaces?state=active&limit=1", "", "", site), 200)
+	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || len(page.Items) != 1 || page.NextAfter == nil || *page.NextAfter != page.Items[0].ID {
+		t.Fatalf("first management page: %s", response.Body)
+	}
+	response = check(call("GET", "/api/admin/workspaces?state=active&limit=1&after="+*page.NextAfter, "", "", site), 200)
+	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || len(page.Items) != 1 || page.Items[0].ID != workspace.ID || page.NextAfter != nil {
+		t.Fatalf("second management page: %s", response.Body)
+	}
 	check(call("GET", createdPath+"/members", "", "", qa), 403)
 	check(call("GET", createdPath+"/members", "", "", workspaceAdminCookie), 200)
 	check(call("GET", createdPath+"/agent-tokens", "", "", workspaceAdminCookie), 403)
@@ -152,10 +179,25 @@ func TestPlatformRolesPostgres(t *testing.T) {
 	check(call("PATCH", "/api/users/dev-admin/role", `{"role":"none"}`, "", site), 403)
 	check(call("PATCH", "/api/users/dev-qa/role", `{"role":"superadmin"}`, "", site), 403)
 	check(call("PATCH", "/api/users/dev-admin/role", `{"role":"none"}`, "", super), 409)
-	check(call("PATCH", "/api/users/dev-qa/role", `{"role":"site_admin"}`, "", site), 200)
+	archivePath := "/api/admin/workspaces/" + workspace.ID + "/archive"
+	archived := check(call("POST", archivePath, `{"revision":1,"mode":"drain"}`, "", site), 200)
+	var committed managedWorkspace
+	if err := json.Unmarshal(archived.Body.Bytes(), &committed); err != nil || committed.Workspace.Management.State != workspaceArchived ||
+		committed.Workspace.Management.Revision != 2 || committed.Impact != (workspaceArchiveImpact{}) {
+		t.Fatalf("direct archive: %s", archived.Body)
+	}
+	check(call("POST", archivePath, `{"revision":2,"mode":"drain"}`, "", site), 200)
+	var archivedAudits int
+	if err := p.DB.QueryRowContext(ctx, `SELECT count(*) FROM site_management_audit
+ WHERE workspace_id=$1 AND actor_kind='user' AND actor_id='dev-site-admin' AND action='archive_workspace' AND outcome='succeeded'`, workspace.ID).Scan(&archivedAudits); err != nil || archivedAudits != 1 {
+		t.Fatalf("archive audit was not idempotent: %d %v", archivedAudits, err)
+	}
+	check(call("PATCH", "/api/users/dev-qa/role", `{"role":"site_admin"}`, "", site), 403)
+	check(call("PATCH", "/api/users/dev-qa/role", `{"role":"site_admin"}`, "", super), 200)
 	check(call("GET", "/api/users", "", "", qa), 200)
 	check(call("GET", seedTest, "", "", qa), 200)
-	check(call("PATCH", "/api/users/dev-qa/role", `{"role":"none"}`, "", site), 200)
+	check(call("PATCH", "/api/users/dev-qa/role", `{"role":"none"}`, "", site), 403)
+	check(call("PATCH", "/api/users/dev-qa/role", `{"role":"none"}`, "", super), 200)
 	check(call("GET", seedTest, "", "", qa), 404)
 	check(call("PATCH", "/api/users/dev-site-admin/role", `{"role":"superadmin"}`, "", super), 200)
 	done := make(chan int, 2)

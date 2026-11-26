@@ -54,11 +54,11 @@ func (p *Postgres) listWorkspaces(ctx context.Context, userID *string) ([]Worksp
 }
 
 func listWorkspaceCores(ctx context.Context, tx *sql.Tx, userID *string) ([]workspaceListItem, error) {
-	stmt := `SELECT ` + workspaceCoreColumns + ` FROM workspaces w ORDER BY w.id`
+	stmt := `SELECT ` + workspaceCoreColumns + ` FROM workspaces w WHERE w.archive_status<>'archived' ORDER BY w.id`
 	var args []any
 	if userID != nil {
 		stmt = `SELECT ` + workspaceCoreColumns + `,m.role FROM workspaces w
- JOIN workspace_memberships m ON m.workspace_id=w.id AND m.user_id=$1 ORDER BY w.id`
+ JOIN workspace_memberships m ON m.workspace_id=w.id AND m.user_id=$1 WHERE w.archive_status<>'archived' ORDER BY w.id`
 		args = append(args, *userID)
 	}
 	rows, err := tx.QueryContext(ctx, stmt, args...)

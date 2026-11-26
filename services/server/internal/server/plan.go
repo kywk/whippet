@@ -175,7 +175,7 @@ func (p *Postgres) Plan(ctx context.Context, test, session string) (*Plan, error
 		return nil, err
 	}
 	defer tx.Rollback()
-	if _, _, err = requireEditingDraft(ctx, tx, test, session); err != nil {
+	if _, _, err = requireEditingDraft(ctx, tx, test, session, existingWorkspaceWork); err != nil {
 		return nil, err
 	}
 	if err = requireUseCase(ctx, tx, test); err != nil {

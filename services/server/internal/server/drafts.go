@@ -90,7 +90,7 @@ func checkPublication(revision int, confirmed bool, d draftState, v validationEv
 }
 
 func (p *Postgres) CreateTest(ctx context.Context, workspaceID, name, description string) (Test, error) {
-	return insertTest(ctx, p.DB, workspaceID, name, description)
+	return p.CreatePlatformTest(ctx, workspaceID, name, description, "test", nil)
 }
 
 func insertTest(ctx context.Context, q queryDB, workspaceID, name, description string) (Test, error) {
@@ -258,7 +258,14 @@ func enqueueValidationSnapshot(ctx context.Context, tx *sql.Tx, d draftState, bu
 			return Run{}, err
 		}
 	}
-	auth, proposal, err := executionForDraft(ctx, tx, execution)
+	w, err := workspaceForTest(ctx, tx, d.TestID)
+	if err != nil {
+		return Run{}, err
+	}
+	if err := requireActiveWorkspace(ctx, tx, w.ID); err != nil {
+		return Run{}, err
+	}
+	auth, proposal, err := executionBinding(w, execution.ScriptOrigin, execution.WorkspaceContext)
 	if err != nil {
 		return Run{}, err
 	}

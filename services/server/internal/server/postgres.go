@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/lib/pq"
 	"github.com/whippet/whippet/services/server/migrations"
 )
 
@@ -142,7 +143,10 @@ const runReportURL = `CASE WHEN EXISTS(SELECT 1 FROM artifacts a WHERE a.run_id=
 
 const runAuthorMode = `CASE WHEN r.kind='author' THEN CASE WHEN r.author_payload->>'skillId'='acceptance-summary' THEN 'summary' WHEN r.author_payload->>'skillId'='workspace-author' THEN 'workspace' ELSE 'edit' END ELSE '' END`
 
-const runProgressEvents = `COALESCE((SELECT jsonb_agg(e.message ORDER BY e.created_at) FROM run_events e WHERE e.run_id=r.id AND e.attempt_id=r.attempt_id AND e.kind='log'),'[]'::jsonb)`
+const archiveProgressEventID = "server:workspace_archiving"
+
+const runProgressEvents = `COALESCE((SELECT jsonb_agg(e.message ORDER BY e.created_at) FROM run_events e
+ WHERE e.run_id=r.id AND e.attempt_id=r.attempt_id AND e.kind='log' AND (r.kind='author' OR e.event_id='` + archiveProgressEventID + `')),'[]'::jsonb)`
 
 const runAuthorRepliedOnly = `CASE WHEN r.kind='author' AND r.status='succeeded' AND r.author_partial IS NULL AND COALESCE(r.author_payload->>'skillId','test-author')='test-author'
     THEN EXISTS(SELECT 1 FROM editing_sessions s JOIN messages m ON m.conversation_id=s.conversation_id
@@ -153,7 +157,7 @@ const runAuthorRepliedOnly = `CASE WHEN r.kind='author' AND r.status='succeeded'
 const runColumns = `r.id,r.test_id,r.status,r.created_at,r.started_at,r.finished_at,r.error,` + runReportURL + `,
     r.kind,r.draft_revision,r.version_id,r.workspace_settings,r.editing_session_id,r.workspace_id,r.workspace_context,` + runAuthorMode + `,
     r.script_origin,r.authorization_revision,r.scope_proposal_id,
-    CASE WHEN r.kind='author' AND r.attempt_id IS NOT NULL THEN ` + runProgressEvents + ` ELSE '[]'::jsonb END,
+    CASE WHEN r.attempt_id IS NOT NULL THEN ` + runProgressEvents + ` ELSE '[]'::jsonb END,
     COALESCE(r.author_partial,'null'::jsonb),r.author_engine,` + runAuthorRepliedOnly + `,COALESCE((SELECT l.report_url FROM inspection_report_links l WHERE l.run_id=r.id AND l.attempt_id=r.attempt_id),'')`
 
 func scanRun(row scanner) (Run, error) {
@@ -198,6 +202,10 @@ func (p *Postgres) createRun(ctx context.Context, testID string, extension publi
 	if _, err = lockEditingTest(ctx, tx, testID); err != nil {
 		return Run{}, err
 	}
+	w, err := workspaceForTest(ctx, tx, testID)
+	if err != nil {
+		return Run{}, err
+	}
 	v, err := scanVersion(tx.QueryRowContext(ctx, `SELECT `+versionColumns+` FROM test_versions WHERE id=(SELECT published_version_id FROM tests WHERE id=$1)`, testID))
 	if err != nil {
 		if err == ErrNotFound {
@@ -228,10 +236,6 @@ func (p *Postgres) createRun(ctx context.Context, testID string, extension publi
 		script, origin = bundle.entry(), bundle.origin()
 		files, metadata = jsonText(bundle.Files), bundle.metadata()
 		bundleHash = &digest
-	}
-	w, err := workspaceForTest(ctx, tx, testID)
-	if err != nil {
-		return Run{}, err
 	}
 	snapshot := v.WorkspaceContext
 	if v.ScriptOrigin == "legacy" && (snapshot == nil || snapshot.Config == nil) {
@@ -289,17 +293,48 @@ func (p *Postgres) Run(ctx context.Context, id string) (Run, error) {
 }
 
 func (p *Postgres) Cancel(ctx context.Context, id string) (Run, error) {
-	_, err := p.DB.ExecContext(ctx, `UPDATE runs SET
+	tx, err := p.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return Run{}, err
+	}
+	defer tx.Rollback()
+	var workspace string
+	if err := tx.QueryRowContext(ctx, `SELECT workspace_id FROM runs WHERE id=$1`, id).Scan(&workspace); err != nil {
+		return Run{}, dbError(err)
+	}
+	if err := authorizeWorkspace(ctx, workspace); err != nil {
+		return Run{}, err
+	}
+	if _, err := lockWorkspaceWorkStatus(ctx, tx, workspace); err != nil {
+		return Run{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE external_author_claims SET state='cancelled' WHERE run_id=$1 AND state='active'`, id); err != nil {
+		return Run{}, err
+	}
+	changed, err := tx.ExecContext(ctx, `UPDATE runs SET
 		status=CASE WHEN status='queued' OR author_engine='external' THEN 'cancelled' ELSE 'cancelling' END,
 		finished_at=CASE WHEN status='queued' OR author_engine='external' THEN now() ELSE finished_at END
         WHERE id=$1 AND status IN ('queued','dispatched','running','collecting')`, id)
 	if err != nil {
 		return Run{}, err
 	}
-	if err := p.CancelExternalClaim(ctx, id); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE agent_browser_leases SET state='closing'
+ WHERE author_run_id=$1 AND NOT reclaimed AND state IN ('opening','ready')`, id); err != nil {
 		return Run{}, err
 	}
-	return p.Run(ctx, id)
+	if count, err := changed.RowsAffected(); err != nil {
+		return Run{}, err
+	} else if count > 0 {
+		entry := platformAudit(actorFromContext(ctx), "cancel_run", "run", id, &workspace)
+		if err := entry.record(ctx, tx, "succeeded", nil); err != nil {
+			return Run{}, err
+		}
+	}
+	run, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs r WHERE r.id=$1`, id))
+	if err != nil {
+		return run, err
+	}
+	return run, tx.Commit()
 }
 
 func (p *Postgres) RegisterManager(ctx context.Context, id string, capacity int) error {
@@ -313,8 +348,8 @@ func (p *Postgres) Assignments(ctx context.Context, managerID string) ([]Assignm
 	if err := p.rejectUnsafeWork(ctx); err != nil {
 		return nil, err
 	}
-	rows, err := p.DB.QueryContext(ctx, `SELECT r.id,r.status,r.attempt_id,r.script_snapshot,r.timeout_ms,r.acknowledged_at IS NOT NULL,r.kind,COALESCE(r.author_payload::text,''),r.workspace_settings,r.workspace_id,r.test_id,r.workspace_context,r.script_origin,r.authorization_revision,r.scope_proposal_id,r.files_snapshot,r.bundle_hash,r.bundle_metadata
-        FROM runs r WHERE r.manager_id=$1 AND NOT r.slot_released ORDER BY r.queue_seq`, managerID)
+	rows, err := p.DB.QueryContext(ctx, `SELECT r.id,r.status,r.attempt_id,r.script_snapshot,r.timeout_ms,r.acknowledged_at IS NOT NULL,r.kind,COALESCE(r.author_payload::text,''),r.workspace_settings,r.workspace_id,r.test_id,r.workspace_context,r.script_origin,r.authorization_revision,r.scope_proposal_id,r.files_snapshot,r.bundle_hash,r.bundle_metadata,w.archive_status
+        FROM runs r JOIN workspaces w ON w.id=r.workspace_id WHERE r.manager_id=$1 AND NOT r.slot_released ORDER BY r.queue_seq`, managerID)
 	if err != nil {
 		return nil, err
 	}
@@ -325,7 +360,7 @@ func (p *Postgres) Assignments(ctx context.Context, managerID string) ([]Assignm
 		var authorPayload string
 		var settings, context, files, metadata []byte
 		var bundleHash *string
-		if err := rows.Scan(&a.ID, &a.Status, &a.AttemptID, &a.Script, &a.TimeoutMS, &a.Acked, &a.Kind, &authorPayload, &settings, &a.WorkspaceID, &a.TestID, &context, &a.ScriptOrigin, &a.authorizationRevision, &a.scopeProposalID, &files, &bundleHash, &metadata); err != nil {
+		if err := rows.Scan(&a.ID, &a.Status, &a.AttemptID, &a.Script, &a.TimeoutMS, &a.Acked, &a.Kind, &authorPayload, &settings, &a.WorkspaceID, &a.TestID, &context, &a.ScriptOrigin, &a.authorizationRevision, &a.scopeProposalID, &files, &bundleHash, &metadata, &a.archiveStatus); err != nil {
 			return nil, err
 		}
 		a.WorkspaceSettings, err = decodeSettings(settings)
@@ -385,6 +420,16 @@ func (p *Postgres) Claim(ctx context.Context, managerID string, capacity int) (*
 		return nil, err
 	}
 	defer tx.Rollback()
+	// Lock candidate workspaces before the Manager and Run. A workspace
+	// already being archived can be skipped without blocking other work.
+	var workspaces pq.StringArray
+	if err := tx.QueryRowContext(ctx, `SELECT ARRAY(
+ SELECT w.id::text FROM workspaces w WHERE w.archive_status='active'
+ AND EXISTS (SELECT FROM runs r WHERE r.workspace_id=w.id AND r.status='queued' AND r.author_engine='builtin')
+ ORDER BY w.id FOR SHARE OF w SKIP LOCKED
+)`).Scan(&workspaces); err != nil {
+		return nil, err
+	}
 	var persistedCapacity int
 	if err := tx.QueryRowContext(ctx, `SELECT capacity FROM managers WHERE id=$1 FOR UPDATE`, managerID).Scan(&persistedCapacity); err != nil {
 		return nil, dbError(err)
@@ -397,31 +442,44 @@ func (p *Postgres) Claim(ctx context.Context, managerID string, capacity int) (*
 		+ (SELECT count(*) FROM agent_browser_leases WHERE manager_id=$1 AND NOT reclaimed)`, managerID).Scan(&occupied); err != nil {
 		return nil, err
 	}
-	if occupied >= capacity {
+	if occupied >= capacity || len(workspaces) == 0 {
 		return nil, nil
 	}
+	for {
+		assignment, retry, err := p.claimManagedRun(ctx, tx, managerID, workspaces)
+		if err != nil {
+			return nil, err
+		}
+		if !retry {
+			return assignment, tx.Commit()
+		}
+	}
+}
+
+func (p *Postgres) claimManagedRun(ctx context.Context, tx *sql.Tx, managerID string, workspaces pq.StringArray) (*Assignment, bool, error) {
 	a := Assignment{ManagerID: managerID, AttemptID: NewID()}
 	var authorPayload string
 	var settings, context, files, metadata []byte
 	var bundleHash *string
-	err = tx.QueryRowContext(ctx, `SELECT id,script_snapshot,timeout_ms,kind,COALESCE(author_payload::text,''),workspace_settings,workspace_id,test_id,workspace_context,script_origin,authorization_revision,scope_proposal_id,files_snapshot,bundle_hash,bundle_metadata FROM runs
-        WHERE status='queued' AND author_engine='builtin' ORDER BY queue_seq FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&a.ID, &a.Script, &a.TimeoutMS, &a.Kind, &authorPayload, &settings, &a.WorkspaceID, &a.TestID, &context, &a.ScriptOrigin, &a.authorizationRevision, &a.scopeProposalID, &files, &bundleHash, &metadata)
+	err := tx.QueryRowContext(ctx, `SELECT id,script_snapshot,timeout_ms,kind,COALESCE(author_payload::text,''),workspace_settings,workspace_id,test_id,workspace_context,script_origin,authorization_revision,scope_proposal_id,files_snapshot,bundle_hash,bundle_metadata FROM runs
+        WHERE status='queued' AND author_engine='builtin' AND workspace_id=ANY($1::uuid[])
+        ORDER BY queue_seq FOR UPDATE SKIP LOCKED LIMIT 1`, workspaces).Scan(&a.ID, &a.Script, &a.TimeoutMS, &a.Kind, &authorPayload, &settings, &a.WorkspaceID, &a.TestID, &context, &a.ScriptOrigin, &a.authorizationRevision, &a.scopeProposalID, &files, &bundleHash, &metadata)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
+		return nil, false, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	a.WorkspaceSettings, err = decodeSettings(settings)
 	if err == nil {
 		a.WorkspaceContext, err = decodeWorkspaceContext(context)
 	}
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	bundle, err := decodeRunBundle(files, metadata, bundleHash, a.Script, a.ScriptOrigin)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if bundle != nil {
 		a.Files = bundle.Files
@@ -430,36 +488,33 @@ func (p *Postgres) Claim(ctx context.Context, managerID string, capacity int) (*
 		}
 	}
 	if err := decodeAssignmentAuthor(&a, authorPayload); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if permissionErr := p.assignmentAllowed(ctx, tx, a); permissionErr != nil {
 		if permissionErr != ErrScopeConfirmation {
-			return nil, permissionErr
+			return nil, false, permissionErr
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE runs SET status='failed',error='scope_confirmation_required',finished_at=now() WHERE id=$1`, a.ID); err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		return nil, tx.Commit()
+		return nil, true, nil
 	}
 	if a.Kind == "run" {
 		a.Retest, err = lookupRetestTarget(ctx, tx, a.ID)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
 	if allowed, err := p.checkQueuedAuthorIntent(ctx, tx, a.ID, a.Author); err != nil {
-		return nil, err
+		return nil, false, err
 	} else if !allowed {
-		return nil, tx.Commit()
+		return nil, true, nil
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE runs SET status='dispatched',manager_id=$2,attempt_id=$3,slot_released=false WHERE id=$1`, a.ID, managerID, a.AttemptID); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	a.Status = "dispatched"
-	return &a, nil
+	return &a, false, nil
 }
 
 func decodeAssignmentAuthor(a *Assignment, payload string) error {

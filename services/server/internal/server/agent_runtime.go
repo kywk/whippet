@@ -227,6 +227,9 @@ func (p *Postgres) SetAgentRuntime(ctx context.Context, workspace string, revisi
 	if err != nil {
 		return nil, err
 	}
+	if err := w.Management.State.workError(); err != nil {
+		return nil, err
+	}
 	if err = checkRevision(revision, w.Revision); err != nil {
 		return nil, err
 	}

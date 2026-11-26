@@ -84,6 +84,10 @@ func (p *Postgres) openBrowserLease(ctx context.Context, token AgentToken, reque
 		return BrowserLease{}, false, err
 	}
 	defer tx.Rollback()
+	w, err := p.lockBrowserWorkspace(ctx, tx, token.WorkspaceID)
+	if err != nil {
+		return BrowserLease{}, false, err
+	}
 	var capacity int
 	if err := tx.QueryRowContext(ctx, `SELECT capacity FROM managers WHERE id=$1 FOR UPDATE`, managerID).Scan(&capacity); err != nil {
 		return BrowserLease{}, false, dbError(err)
@@ -92,10 +96,6 @@ func (p *Postgres) openBrowserLease(ctx context.Context, token AgentToken, reque
 	var revoked sql.NullTime
 	if err := tx.QueryRowContext(ctx, `SELECT workspace_id,revoked_at FROM agent_tokens WHERE id=$1 FOR UPDATE`, token.ID).Scan(&tokenWorkspace, &revoked); err != nil || tokenWorkspace != token.WorkspaceID || revoked.Valid {
 		return BrowserLease{}, false, ErrNotFound
-	}
-	w, err := p.lockBrowserWorkspace(ctx, tx, token.WorkspaceID)
-	if err != nil {
-		return BrowserLease{}, false, err
 	}
 	var snapshot *WorkspaceContext
 	var authorRunID *string
@@ -134,6 +134,9 @@ func (p *Postgres) openBrowserLease(ctx context.Context, token AgentToken, reque
 		if current.DeadlineAt.Before(deadline) {
 			deadline = current.DeadlineAt
 		}
+	}
+	if err := w.Management.State.workError(); err != nil {
+		return BrowserLease{}, false, err
 	}
 	var occupied int
 	if err := tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM runs WHERE manager_id=$1 AND NOT slot_released)
@@ -222,9 +225,33 @@ func (p *Postgres) CloseBrowserLease(ctx context.Context, token AgentToken, sess
 	if !ValidID(sessionID) || !ValidID(leaseID) {
 		return BrowserLease{}, ErrInvalid
 	}
-	return scanBrowserLease(p.DB.QueryRowContext(ctx, `UPDATE agent_browser_leases SET state=CASE WHEN reclaimed THEN state ELSE 'closing' END
-		WHERE session_id=$1 AND lease_id=$2 AND token_id=$3 AND workspace_id=$4
-		RETURNING `+browserLeaseColumns, sessionID, leaseID, token.ID, token.WorkspaceID))
+	tx, err := p.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return BrowserLease{}, err
+	}
+	defer tx.Rollback()
+	if _, err := lockWorkspaceWorkStatus(ctx, tx, token.WorkspaceID); err != nil {
+		return BrowserLease{}, err
+	}
+	if err := lockInteractiveToken(ctx, tx, token); err != nil {
+		return BrowserLease{}, err
+	}
+	lease, err := scanBrowserLease(tx.QueryRowContext(ctx, `SELECT `+browserLeaseColumns+` FROM agent_browser_leases
+ WHERE session_id=$1 AND lease_id=$2 AND token_id=$3 AND workspace_id=$4 FOR UPDATE`, sessionID, leaseID, token.ID, token.WorkspaceID))
+	if err != nil {
+		return BrowserLease{}, err
+	}
+	if !lease.Reclaimed && lease.State != "closing" {
+		if _, err := tx.ExecContext(ctx, `UPDATE agent_browser_leases SET state='closing' WHERE session_id=$1`, sessionID); err != nil {
+			return BrowserLease{}, err
+		}
+		entry := managementAudit{actorKind: "agent_token", actorID: token.ID, action: "close_browser_lease", target: "browser_lease", targetID: lease.LeaseID, workspace: &lease.WorkspaceID}
+		if err := entry.record(ctx, tx, "succeeded", nil); err != nil {
+			return BrowserLease{}, err
+		}
+		lease.State = "closing"
+	}
+	return lease, tx.Commit()
 }
 
 func (p *Postgres) MarkBrowserLeaseReclaimPending(ctx context.Context, managerID string) error {
@@ -320,13 +347,13 @@ func (p *Postgres) ReserveBrowserCall(ctx context.Context, token AgentToken, lea
 		return false, err
 	}
 	defer tx.Rollback()
-	var revoked sql.NullTime
-	if err := tx.QueryRowContext(ctx, `SELECT revoked_at FROM agent_tokens WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, token.ID, token.WorkspaceID).Scan(&revoked); err != nil || revoked.Valid {
-		return false, ErrNotFound
-	}
 	w, err := p.lockBrowserWorkspace(ctx, tx, token.WorkspaceID)
 	if err != nil {
 		return false, err
+	}
+	var revoked sql.NullTime
+	if err := tx.QueryRowContext(ctx, `SELECT revoked_at FROM agent_tokens WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, token.ID, token.WorkspaceID).Scan(&revoked); err != nil || revoked.Valid {
+		return false, ErrNotFound
 	}
 	locked, err := scanBrowserLease(tx.QueryRowContext(ctx, `SELECT `+browserLeaseColumns+` FROM agent_browser_leases
 		WHERE session_id=$1 AND lease_id=$2 AND token_id=$3 AND workspace_id=$4 FOR UPDATE`, lease.SessionID, lease.LeaseID, token.ID, token.WorkspaceID))

@@ -22,6 +22,7 @@ type Workspace struct {
 	Name         string `json:"name"`
 	AuthorEngine string `json:"authorEngine"`
 	WorkspaceSettings
+	Management            workspaceManagement   `json:"management"`
 	Lifecycle             string                `json:"lifecycle"`
 	AuthorizationRevision int64                 `json:"authorizationRevision"`
 	ScopeStatus           string                `json:"scopeStatus"`
@@ -205,9 +206,10 @@ func Terminal(status string) bool {
 }
 
 type Assignment struct {
-	Retest    *retestTarget
-	Files     []RunFile
-	ModuleABI *ModuleABI
+	archiveStatus workspaceArchiveStatus
+	Retest        *retestTarget
+	Files         []RunFile
+	ModuleABI     *ModuleABI
 	Run
 	ManagerID string
 	AttemptID string

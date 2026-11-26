@@ -41,7 +41,7 @@ func (a *API) createAgentToken(w http.ResponseWriter, r *http.Request) {
 	}
 	item, secret, err := store.CreateAgentToken(r.Context(), workspace, body.Name)
 	if err != nil {
-		a.fail(w, err)
+		a.failManagement(w, r, actorFromContext(r.Context()), err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"token": secret, "agentToken": item})
@@ -83,7 +83,7 @@ func (a *API) revokeAgentToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := store.RevokeAgentToken(r.Context(), workspace, id); err != nil {
-		a.fail(w, err)
+		a.failManagement(w, r, actorFromContext(r.Context()), err)
 		return
 	}
 	if a.engine != nil {

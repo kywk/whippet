@@ -69,7 +69,11 @@ func TestM11MCPAndTokenManagementDisabledWithoutAdminKey(t *testing.T) {
 		r := httptest.NewRequest(http.MethodPost, "https://whippet.example"+path, nil)
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, r)
-		if w.Code != http.StatusServiceUnavailable {
+		want := http.StatusUnauthorized
+		if path == "/mcp" {
+			want = http.StatusServiceUnavailable
+		}
+		if w.Code != want {
 			t.Errorf("%s without admin key: %d", path, w.Code)
 		}
 	}

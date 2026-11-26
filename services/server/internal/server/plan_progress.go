@@ -9,6 +9,11 @@ import (
 
 func (p *Postgres) advancePlanInTx(ctx context.Context, tx *sql.Tx, plan *Plan, d draftState, session EditingSession) error {
 	stop := func(message string) error {
+		if message == "workspace_archiving" {
+			if err := recordPlanArchiveProgress(ctx, tx, jsonText(plan.Stages)); err != nil {
+				return err
+			}
+		}
 		plan.Status = "stopped"
 		plan.Error = &message
 		plan.Revision++
@@ -20,6 +25,10 @@ func (p *Postgres) advancePlanInTx(ctx context.Context, tx *sql.Tx, plan *Plan, 
 	}
 	if d.Revision != plan.BaseRevision || session.ContextRevision != plan.ContextRevision {
 		return stop("Use Case context changed")
+	}
+	archiveStatus, err := lockWorkspaceWorkStatus(ctx, tx, session.WorkspaceID)
+	if err != nil {
+		return err
 	}
 	boundary := len(plan.Stages) - 1
 	if plan.ThroughStageID != nil {
@@ -49,6 +58,9 @@ func (p *Postgres) advancePlanInTx(ctx context.Context, tx *sql.Tx, plan *Plan, 
 			continue
 		}
 		if stage.Status == "pending" {
+			if archiveStatus != workspaceActive {
+				return stop("workspace_archiving")
+			}
 			if _, err := tx.ExecContext(ctx, "SAVEPOINT stage_dispatch"); err != nil {
 				return err
 			}
@@ -66,10 +78,10 @@ func (p *Postgres) advancePlanInTx(ctx context.Context, tx *sql.Tx, plan *Plan, 
 			if stage.AuthorRunID == nil {
 				return stop("Module author binding missing")
 			}
-			var status string
+			var status, reason string
 			var released bool
 			var partialRaw []byte
-			if err := tx.QueryRowContext(ctx, `SELECT status,slot_released,author_partial FROM runs WHERE id=$1`, *stage.AuthorRunID).Scan(&status, &released, &partialRaw); err != nil {
+			if err := tx.QueryRowContext(ctx, `SELECT status,slot_released,author_partial,COALESCE(error,'') FROM runs WHERE id=$1`, *stage.AuthorRunID).Scan(&status, &released, &partialRaw, &reason); err != nil {
 				return err
 			}
 			if !Terminal(status) {
@@ -77,6 +89,9 @@ func (p *Postgres) advancePlanInTx(ctx context.Context, tx *sql.Tx, plan *Plan, 
 			}
 			if status != "succeeded" {
 				stage.Status = "failed"
+				if reason == "workspace_archiving" {
+					return stop(reason)
+				}
 				return stop("Module author did not succeed")
 			}
 			if !released {
@@ -102,6 +117,9 @@ func (p *Postgres) advancePlanInTx(ctx context.Context, tx *sql.Tx, plan *Plan, 
 			}
 			if validation == nil {
 				stage.Status = "failed"
+				if archiveStatus != workspaceActive {
+					return stop("workspace_archiving")
+				}
 				return stop("Module validation scope or revision changed")
 			}
 			stage.CandidateVersionID = &candidate
@@ -131,7 +149,7 @@ func (p *Postgres) advancePlanInTx(ctx context.Context, tx *sql.Tx, plan *Plan, 
 			if !released {
 				return nil
 			}
-			md, ms, err := requireEditingDraft(ctx, tx, stage.ModuleTestID, editing)
+			md, ms, err := requireEditingDraft(ctx, tx, stage.ModuleTestID, editing, existingWorkspaceWork)
 			if err != nil {
 				return stop("Module editing session changed")
 			}
@@ -149,6 +167,9 @@ func (p *Postgres) advancePlanInTx(ctx context.Context, tx *sql.Tx, plan *Plan, 
 			}
 			stage.Status = "ready"
 		}
+	}
+	if archiveStatus != workspaceActive {
+		return stop("workspace_archiving")
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE plans SET stages=$2 WHERE id=$1`, plan.ID, jsonText(plan.Stages)); err != nil {
 		return err
@@ -190,7 +211,7 @@ func (p *Postgres) progressRunningPlans(ctx context.Context) error {
 		if e != nil {
 			return e
 		}
-		plan, d, s, e := lockPlan(ctx, tx, id)
+		plan, d, s, e := lockPlan(ctx, tx, id, existingWorkspaceWork)
 		if e == nil && plan.Status == "running" {
 			e = p.advancePlanInTx(ctx, tx, plan, d, s)
 		}

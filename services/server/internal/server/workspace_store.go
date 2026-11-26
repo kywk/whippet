@@ -10,9 +10,9 @@ import (
 
 func jsonText(value any) string { data, _ := json.Marshal(value); return string(data) }
 
-const workspaceCoreColumns = `w.id,w.name,w.settings,w.lifecycle,w.canonical_config,w.authorization_revision,w.scope_status,
+const workspaceCoreColumns = `w.id,COALESCE(w.management_name,w.name),w.settings,w.lifecycle,w.canonical_config,w.authorization_revision,w.scope_status,
  (SELECT c.id FROM conversations c WHERE c.workspace_id=w.id AND c.owner_type='workspace'),
- (SELECT r.id FROM runs r WHERE r.workspace_id=w.id AND r.test_id IS NULL AND r.kind='author' AND r.status IN ('queued','dispatched','running','collecting','cancelling')),w.current_proposal_id,w.author_engine`
+ (SELECT r.id FROM runs r WHERE r.workspace_id=w.id AND r.test_id IS NULL AND r.kind='author' AND r.status IN ('queued','dispatched','running','collecting','cancelling')),w.current_proposal_id,w.author_engine,` + workspaceManagementColumns
 
 func readWorkspaceCore(ctx context.Context, q queryDB, id string, lock bool) (Workspace, *string, error) {
 	stmt := `SELECT ` + workspaceCoreColumns + ` FROM workspaces w WHERE w.id=$1`
@@ -27,9 +27,11 @@ func scanWorkspaceCore(row scanner, extra ...any) (Workspace, *string, error) {
 	var legacy, config []byte
 	var proposalID *string
 	fields := []any{&w.ID, &w.Name, &legacy, &w.Lifecycle, &config, &w.AuthorizationRevision, &w.ScopeStatus, &w.ConversationID, &w.ActiveRunID, &proposalID, &w.AuthorEngine}
+	fields = append(fields, w.Management.scanFields()...)
 	if err := row.Scan(append(fields, extra...)...); err != nil {
 		return w, nil, dbError(err)
 	}
+	w.Management.setUTC()
 	s, err := decodeSettings(legacy)
 	if err != nil {
 		return w, nil, err
@@ -127,6 +129,13 @@ func scanWorkspaceRole(row scanner, extra ...any) (RoleRef, error) {
 
 func setWorkspaceAvailability(w *Workspace, secrets, tls bool) {
 	w.SecretsAvailable = secrets
+	if reason := workspaceErrorCode(w.Management.State.workError()); reason != "" {
+		unavailable := capability(false, reason)
+		w.Capabilities = WorkspaceCapabilities{AIExploration: unavailable, AIExecution: unavailable, ManualExecution: unavailable, CredentialLogin: unavailable}
+		w.ExecutionAvailable = false
+		w.UnavailableReason = &reason
+		return
+	}
 	w.Capabilities = workspaceCapabilities(*w, secrets, tls)
 	w.ExecutionAvailable = w.Capabilities.AIExecution.Available || w.Capabilities.ManualExecution.Available
 	if !w.ExecutionAvailable {
@@ -178,6 +187,11 @@ func (p *Postgres) CreateWorkspace(ctx context.Context, name string) (Workspace,
 		return Workspace{}, err
 	}
 	defer tx.Rollback()
+	if actor := actorFromContext(ctx); actor.user.ID != "" {
+		if err := requireSiteManager(ctx, tx, actor); err != nil {
+			return Workspace{}, err
+		}
+	}
 	id, conversationID := NewID(), NewID()
 	if _, err = tx.ExecContext(ctx, `INSERT INTO workspaces(id,name,lifecycle) VALUES($1,$2,'draft')`, id, name); err != nil {
 		return Workspace{}, err
@@ -262,8 +276,11 @@ func (p *Postgres) SaveWorkspaceCredentials(ctx context.Context, workspaceID, ro
 		return RoleRef{}, err
 	}
 	defer tx.Rollback()
-	_, ref, err := lockCredentialRole(ctx, tx, workspaceID, roleID, expected, true)
+	w, ref, err := lockCredentialRole(ctx, tx, workspaceID, roleID, expected, true)
 	if err != nil {
+		return ref, err
+	}
+	if err := w.Management.State.workError(); err != nil {
 		return ref, err
 	}
 	if ref.SecretRef == nil {

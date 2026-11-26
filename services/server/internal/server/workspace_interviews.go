@@ -88,6 +88,9 @@ func (p *Postgres) CreateWorkspaceAuthor(ctx context.Context, id, content string
 	if err != nil {
 		return AuthorSubmission{}, err
 	}
+	if err := w.Management.State.workError(); err != nil {
+		return AuthorSubmission{}, err
+	}
 	if err = checkRevision(revision, w.Revision); err != nil {
 		return AuthorSubmission{}, err
 	}
@@ -295,6 +298,11 @@ func (p *Postgres) ActWorkspaceProposal(ctx context.Context, id, proposalID, act
 	w, pid, err := readWorkspaceCore(ctx, tx, id, true)
 	if err != nil {
 		return w, WorkspaceProposal{}, err
+	}
+	if action != "cancel" {
+		if err := w.Management.State.workError(); err != nil {
+			return w, WorkspaceProposal{}, err
+		}
 	}
 	proposal, err := readProposal(ctx, tx, id, proposalID, true)
 	if err != nil {

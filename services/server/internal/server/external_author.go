@@ -199,13 +199,27 @@ func (p *Postgres) ClaimExternalAuthor(ctx context.Context, token AgentToken, re
 		return nil, err
 	}
 	defer tx.Rollback()
+	status, err := lockWorkspaceWorkStatus(ctx, tx, token.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
 	var workspace string
 	var revoked sql.NullTime
 	if err = tx.QueryRowContext(ctx, `SELECT workspace_id,revoked_at FROM agent_tokens WHERE id=$1 FOR UPDATE`, token.ID).Scan(&workspace, &revoked); err != nil || workspace != token.WorkspaceID || revoked.Valid {
 		return nil, ErrNotFound
 	}
+	if status == workspaceArchived {
+		return nil, errWorkspaceArchived
+	}
 	c, err := scanExternalClaim(tx.QueryRowContext(ctx, `SELECT `+externalClaimColumns+` FROM external_author_claims WHERE token_id=$1 AND request_id=$2`, token.ID, requestID))
 	if err == nil {
+		if status == workspaceArchiving {
+			if err := p.externalLive(ctx, tx, c); errors.Is(err, ErrConflict) {
+				return nil, errWorkspaceArchiving
+			} else if err != nil {
+				return nil, err
+			}
+		}
 		task, e := p.externalTask(ctx, tx, c)
 		if e != nil {
 			return nil, e
@@ -213,6 +227,9 @@ func (p *Postgres) ClaimExternalAuthor(ctx context.Context, token AgentToken, re
 		return &task, tx.Commit()
 	}
 	if !errors.Is(err, ErrNotFound) {
+		return nil, err
+	}
+	if err := status.workError(); err != nil {
 		return nil, err
 	}
 	var active bool
