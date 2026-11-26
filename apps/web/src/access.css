@@ -52,34 +52,11 @@
 .access-form select, .access-form .button.compact, .access-view-header .button.compact { min-height: 44px; }
 .access-note:empty { margin: 0; }
 .site-management { height: 100%; overflow: auto; }
-.site-management-bar { background: var(--rail); color: var(--rail-ink); }
-.site-management-bar-inner, .site-management-nav, .site-management-breadcrumb {
-  width: min(100%, 980px);
+.site-management-breadcrumb {
+  width: min(100%, 1320px);
   margin-inline: auto;
-  padding-inline: clamp(16px, 3vw, 40px);
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px 16px;
+  padding: 12px clamp(16px, 3vw, 40px) 0;
 }
-.site-management-bar-inner { justify-content: space-between; min-height: 54px; }
-.site-management-bar-inner > strong { font-size: 1rem; }
-.site-management-account { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
-.site-management-account a { color: inherit; display: inline-flex; align-items: center; min-height: 44px; }
-.site-management-account .rail-link { min-height: 44px; }
-.site-management-nav { padding-top: 12px; }
-.site-management-nav a {
-  color: var(--muted);
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding-inline: 12px;
-  border-bottom: 2px solid transparent;
-  font-weight: 600;
-  text-decoration: none;
-}
-.site-management-nav a.current { border-color: var(--blue); color: var(--blue); }
-.site-management-nav a:hover { background: var(--subtle); }
 .site-management-breadcrumb a { display: inline-flex; align-items: center; min-height: 44px; }
 .site-workspace-actions { flex-wrap: wrap; }
 .site-workspace-actions .button { min-height: 44px; }
@@ -129,3 +106,55 @@
 .archive-list button:hover, .archive-list button:focus-visible { background: var(--subtle); }
 .archive-list button > span { display: grid; gap: 2px; overflow-wrap: anywhere; }
 .archive-list .muted { font-size: .8rem; }
+
+/* The platform console has its own navigation outside workspace-level views. */
+.admin-shell { display: grid; grid-template-columns: 222px minmax(0, 1fr); min-height: 100%; }
+.admin-sidebar {
+  position: sticky; top: 0; height: 100dvh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 32px; padding: 28px 16px 16px;
+  color: var(--rail-ink); background: var(--rail);
+}
+.admin-brand, .admin-nav a, .admin-return, .admin-identity, .admin-identity button { display: flex; align-items: center; gap: 10px; }
+.admin-brand { padding-inline: 10px; }
+.admin-brand img { border-radius: 9px; }
+.admin-brand strong { display: block; font-size: 1.35rem; line-height: 1.2; letter-spacing: -.035em; }
+.admin-brand span { font-size: .78rem; color: var(--rail-muted); }
+.admin-nav { display: grid; gap: 6px; }
+.admin-nav a, .admin-return { min-height: 44px; padding: 9px 12px; color: var(--rail-ink); text-decoration: none; border-radius: var(--radius); }
+.admin-nav a:hover, .admin-return:hover { background: var(--rail-2); }
+.admin-nav [aria-current] { background: var(--rail-3); box-shadow: inset 3px 0 var(--copy-yellow); font-weight: 700; }
+.admin-sidebar :focus-visible { outline-color: var(--copy-yellow); }
+.admin-return { margin-top: auto; }
+.admin-canvas { min-width: 0; }
+.admin-topbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px 16px; padding: 6px clamp(16px, 3vw, 44px); min-height: 60px; background: var(--surface); border-bottom: 1px solid var(--line); color: var(--muted); }
+.admin-identity { overflow-wrap: anywhere; }
+.admin-identity small { display: block; }
+.admin-identity button { background: transparent; border: 0; min-height: 44px; color: var(--muted); }
+.admin-identity button:hover { color: var(--blue); }
+.admin-canvas .access-view { width: min(100%, 1320px); overflow: visible; gap: 24px; }
+.admin-canvas h1 { font-size: clamp(1.5rem, 2vw, 2rem); }
+.admin-canvas .access-view-header p { margin-top: 6px; }
+.admin-directory { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.admin-directory-tools { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+.admin-directory-tools .access-search { width: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.admin-directory-tools .text-input { width: auto; margin: 0; }
+.admin-directory .access-list { border: 0; background: transparent; }
+.admin-directory .access-list > li { padding: 16px 20px; }
+.admin-directory .access-list > li:hover { background: var(--subtle); }
+.admin-directory > :is(p, .notice, .site-workspace-pagination) { margin: 16px 20px; }
+.admin-workspace-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 9px; color: var(--blue); background: var(--subtle); }
+@media (max-width: 800px) {
+  .admin-shell { display: block; }
+  .admin-sidebar { height: auto; position: static; display: grid; grid-template-columns: 1fr auto; align-items: center; padding: 12px 16px; gap: 10px; }
+  .admin-brand { padding: 0; }
+  .admin-return { grid-area: 1 / 2; margin: 0; }
+  .admin-nav { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; }
+  .admin-nav a { padding-inline: 8px; }
+  .admin-nav [aria-current] { box-shadow: inset 0 -3px var(--copy-yellow); }
+  .admin-topbar { min-height: 48px; }
+}
+@media (max-width: 480px) {
+  .admin-nav a { flex: 1; justify-content: center; flex-direction: column; gap: 2px; font-size: .78rem; padding: 6px 2px; }
+  .admin-directory-tools, .admin-directory .access-list > li { padding: 14px; }
+  .admin-directory li .site-workspace-actions { width: 100%; }
+}

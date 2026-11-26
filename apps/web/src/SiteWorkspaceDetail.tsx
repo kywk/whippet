@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { ApiError, errorMessage } from './api';
 import { formatDate, Loading, Notice } from './components';
 import { useResource } from './hooks';
+import './management-directory.css';
 import { ArchiveIcon, RefreshIcon, UsersIcon } from './icons';
 import { WorkspaceNameForm } from './WorkspaceNameForm';
 import type { ArchiveImpact, ManagedWorkspace, ManagedWorkspaceApi, WorkspaceArchiveMode, WorkspaceManagement } from './types';
@@ -15,7 +16,7 @@ const impactKeys = Object.keys(impactLabels) as (keyof ArchiveImpact)[];
 
 function ImpactCounts({ impact }: { impact: ArchiveImpact }) {
   return <dl className="workspace-impact-counts">
-    {impactKeys.map((key) => <div key={key}><dt>{impactLabels[key]}</dt><dd>{impact[key]}</dd></div>)}
+    {impactKeys.map((key) => <div key={key} className={impact[key] > 0 ? 'has-impact' : undefined}><dt>{impactLabels[key]}</dt><dd>{impact[key]}</dd></div>)}
   </dl>;
 }
 
@@ -72,7 +73,7 @@ export function SiteWorkspaceDetail({ api, workspaceId, onMembers, onOpenWorkspa
     }
   }
 
-  return <section className="access-view" aria-labelledby="workspace-management-title">
+  return <section className="access-view workspace-detail" aria-labelledby="workspace-management-title">
     <header className="access-view-header">
       <div>
         <h1 id="workspace-management-title" ref={heading} tabIndex={-1}>{workspace?.name ?? 'Workspace 詳情'}</h1>
@@ -98,7 +99,7 @@ export function SiteWorkspaceDetail({ api, workspaceId, onMembers, onOpenWorkspa
             if (!signal.aborted) { setSaved('name'); setRenaming(false); }
           }} /> : <p className="muted">管理名稱會顯示在 Workspace 清單與工作台。驗測範圍及登入角色由 Workspace 設定提案管理。</p>}
       </section>
-      <section className="workspace-management-panel" aria-labelledby="workspace-archive-title">
+      <section className="workspace-management-panel archive-panel" aria-labelledby="workspace-archive-title">
         <header><h2 id="workspace-archive-title">Workspace 封存</h2>
           <span className={`chip ${state === 'archiving' ? 'warm' : state === 'archived' ? 'neutral' : 'ok'}`}>{stateLabels[management.state]}</span>
         </header>

@@ -8,7 +8,14 @@ import { AiResourceDetail, AiResources } from './AiResources';
 import { AiRouting } from './AiRouting';
 import type { AiAdminApi } from './aiAdminTypes';
 import { Notice } from './components';
+import { GearIcon, PanelIcon, ScriptIcon } from './icons';
 import './ai-manager.css';
+
+const sections = [
+  { view: 'resources', label: '執行資源', icon: PanelIcon },
+  { view: 'agents', label: 'Agent 清單', icon: ScriptIcon },
+  { view: 'routing', label: 'Workspace 選用', icon: GearIcon },
+] as const;
 
 export function AiManager({ api, apiBase, route, workspaces, onNavigate, onAccessChanged }: {
   api: AiAdminApi; apiBase: string; route: AiManagementRoute; workspaces: AiWorkspaceDirectory; onNavigate: AiNavigate; onAccessChanged: () => void;
@@ -28,9 +35,12 @@ export function AiManager({ api, apiBase, route, workspaces, onNavigate, onAcces
   return <section className="access-view ai-view" aria-labelledby="ai-manager-title">
     <h1 id="ai-manager-title">AI Manager</h1>
     <nav className="ai-navigation" aria-label="AI Manager 導覽">
-      <AiLink className={`button ${active === 'resources' ? 'primary' : 'secondary'}`} route={{ view: 'resources' }} aria-current={route.view === 'resources' ? 'page' : undefined} onNavigate={onNavigate}>執行資源</AiLink>
-      <AiLink className={`button ${active === 'agents' ? 'primary' : 'secondary'}`} route={{ view: 'agents' }} aria-current={route.view === 'agents' ? 'page' : undefined} onNavigate={onNavigate}>Agent 清單</AiLink>
-      <AiLink className={`button ${active === 'routing' ? 'primary' : 'secondary'}`} route={{ view: 'routing' }} aria-current={route.view === 'routing' ? 'page' : undefined} onNavigate={onNavigate}>Workspace 選用</AiLink>
+      {sections.map(({ view, label, icon: Icon }) => (
+        <AiLink key={view} className="ai-section-link" route={{ view }} onNavigate={onNavigate}
+          aria-current={active === view ? (route.view === view ? 'page' : 'location') : undefined}>
+          <Icon /><span>{label}</span>
+        </AiLink>
+      ))}
     </nav>
     <div className="ai-stack">{content}</div>
   </section>;

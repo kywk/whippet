@@ -7,6 +7,7 @@ import { SITE_ROLES, WORKSPACE_MEMBER_ROLES } from './types';
 import type { DevUser, WhippetApi, WorkspaceDetail } from './types';
 import { useResource } from './hooks';
 import './access.css';
+import './management-directory.css';
 
 type RoleEntry<Role extends string> = { id: string; name: string; role: Role };
 
@@ -44,10 +45,12 @@ function RoleDirectory<Role extends string>({ title, subtitle, scope, roleNames,
   const heading = useRef<HTMLHeadingElement>(null);
   const searchId = useId();
   const [search, setSearch] = useState('');
+  const [filterRole, setFilterRole] = useState('');
   const [note, setNote] = useState('');
   const query = search.trim().toLocaleLowerCase();
   const entries = directory.data?.filter((entry) =>
-    entry.name.toLocaleLowerCase().includes(query) || entry.id.toLocaleLowerCase().includes(query));
+    (!filterRole || entry.role === filterRole) &&
+    (entry.name.toLocaleLowerCase().includes(query) || entry.id.toLocaleLowerCase().includes(query)));
   useEffect(() => { heading.current?.focus(); }, []);
 
   function handleSave(entry: RoleEntry<Role>) {
@@ -57,7 +60,7 @@ function RoleDirectory<Role extends string>({ title, subtitle, scope, roleNames,
     onAccessChanged();
   }
 
-  return <section className="access-view" aria-labelledby="access-title">
+  return <section className="access-view role-directory" aria-labelledby="access-title">
     <header className="access-view-header">
       <div><h1 id="access-title" ref={heading} tabIndex={-1}>{title}</h1>{subtitle ? <p className="access-subtitle muted">{subtitle}</p> : null}</div>
       <button type="button" className="button secondary compact" disabled={directory.loading} onClick={() => { setNote(''); directory.retry(); }}>
@@ -67,13 +70,23 @@ function RoleDirectory<Role extends string>({ title, subtitle, scope, roleNames,
     {directory.error ? <Notice message={directory.error} retry={directory.retry} /> : null}
     {directory.loading && !directory.data ? <Loading text="正在載入角色…" /> : null}
     {entries ? <>
-      <div className="settings-field access-search">
-        <label htmlFor={searchId}>搜尋帳號</label>
-        <input id={searchId} type="search" className="text-input" placeholder="輸入名稱或帳號" value={search} onChange={(event) => setSearch(event.target.value)} />
+      <div className="directory-tools">
+        <div className="settings-field access-search">
+          <label htmlFor={searchId}>搜尋帳號</label>
+          <input id={searchId} type="search" className="text-input" placeholder="輸入名稱或帳號" value={search} onChange={(event) => setSearch(event.target.value)} />
+        </div>
+        <label className="settings-field">篩選角色
+          <select className="text-input" value={filterRole} onChange={(event) => setFilterRole(event.target.value)}>
+            <option value="">全部角色</option>
+            {(Object.keys(roleNames) as Role[]).map((role) => <option key={role} value={role}>{roleNames[role]}</option>)}
+          </select>
+        </label>
+        <span role="status" className="directory-count">{entries.length} 個帳號</span>
       </div>
       {entries.length ? <ul className="access-list">
         {entries.map((entry) => <li key={entry.id}>
           <div className="access-person">
+            <span className="directory-avatar" aria-hidden="true">{Array.from(entry.name.trim() || entry.id)[0]}</span>
             <div className="access-person-label"><strong>{entry.name}</strong><span className="identifier muted">{entry.id}</span></div>
             <span className="chip neutral"><span className="sr-only">目前角色 </span>{roleNames[entry.role]}</span>
             {entry.id === currentUserId ? <span className="chip neutral">目前登入</span> : null}
@@ -81,7 +94,7 @@ function RoleDirectory<Role extends string>({ title, subtitle, scope, roleNames,
           {roles.includes(entry.role) ? <RoleForm entry={entry} scope={scope} roleNames={roleNames} roles={roles} save={save}
             onSaving={() => setNote('')} onSaved={handleSave} onPermissionChanged={onAccessChanged} /> : null}
         </li>)}
-      </ul> : <p className="muted" role="status">{query ? '找不到符合的帳號。' : '目前沒有可管理的帳號。'}</p>}
+      </ul> : <p className="muted" role="status">{query || filterRole ? '找不到符合的帳號，請調整搜尋條件或角色。' : '目前沒有可管理的帳號。'}</p>}
     </> : null}
     <p className="access-note" role="status">{note}</p>
   </section>;
@@ -134,7 +147,7 @@ function RoleForm<Role extends string>({ entry, scope, roleNames, roles, save, o
     <select id={labelId} className="text-input" value={selectedRole} disabled={busy} onChange={(event) => setSelection({ current: entry.role, next: event.target.value as Role })}>
       {roles.map((role) => <option key={role} value={role}>{roleNames[role]}</option>)}
     </select>
-    <button type="submit" className="button secondary compact" disabled={busy || selectedRole === entry.role} aria-label={busy ? `正在儲存 ${entry.name} 的角色` : `儲存 ${entry.name} 的角色`}>
+    <button type="submit" className={`button ${selectedRole === entry.role ? 'secondary' : 'primary'} compact`} disabled={busy || selectedRole === entry.role} aria-label={busy ? `正在儲存 ${entry.name} 的角色` : `儲存 ${entry.name} 的角色`}>
       {busy ? '儲存中…' : '儲存'}
     </button>
     {error ? <Notice message={error} /> : null}

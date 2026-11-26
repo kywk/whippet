@@ -1,14 +1,15 @@
 import { lazy, useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
-import { siteManagementHref } from './access';
+import { siteManagementHref, siteRoleNames } from './access';
 import type { SiteManagementRoute } from './access';
 import { Loading, Notice, SurfaceBoundary } from './components';
 import { useResource } from './hooks';
-import { LogOutIcon, PlusIcon, RefreshIcon } from './icons';
+import { ExternalIcon, GearIcon, LogOutIcon, PanelIcon, PlusIcon, RefreshIcon, UsersIcon } from './icons';
 import { SiteWorkspaceDetail } from './SiteWorkspaceDetail';
 import { SiteUsers, WorkspaceMembers } from './UserAccess';
 import { WorkspaceNameForm } from './WorkspaceNameForm';
 import type { DevUser, ManagedWorkspaceApi, WhippetApi, WorkspaceDetail, WorkspaceManagementState } from './types';
+import brandIcon from './assets/whippet-icon.png';
 import './access.css';
 
 interface Props {
@@ -84,27 +85,30 @@ export function SiteManagement({ api, apiBase, user, mock, route, workspaces, on
     content = <SiteWorkspaceList api={adminApi} canCreate={user.permissions.createWorkspace} onNavigate={onNavigate} />;
   }
 
-  return <>
-    <header className="site-management-bar">
-      <div className="site-management-bar-inner">
-        <strong>全站管理</strong>
-        <div className="site-management-account">
-          <a href={siteManagementHref()} onClick={(event) => followLink(event, () => onNavigate())}>返回測試工作台</a>
-          <button type="button" className="rail-link" onClick={onLogout}><LogOutIcon />登出</button>
-        </div>
-      </div>
-    </header>
-    {mock ? <div className="mock-banner" role="status">示範模式：使用本機 mock 資料，重新整理後資料會清除。</div> : null}
-    {workspaceAccess || rolesAccess || aiAccess ? <nav aria-label="全站管理導覽" className="site-management-nav">
-      {workspaceAccess ? <a href={siteManagementHref(workspaceListRoute)} aria-current={route.page === 'workspaces' ? 'page' : undefined}
-        className={route.page !== 'roles' && route.page !== 'ai' ? 'current' : undefined} onClick={(event) => followLink(event, () => onNavigate(workspaceListRoute))}>Workspace 管理</a> : null}
-      {rolesAccess ? <a href={siteManagementHref(rolesRoute)} aria-current={route.page === 'roles' ? 'page' : undefined}
-        className={route.page === 'roles' ? 'current' : undefined} onClick={(event) => followLink(event, () => onNavigate(rolesRoute))}>全站角色</a> : null}
-      {aiAccess ? <a href={siteManagementHref(aiRoute)} aria-current={route.page === 'ai' ? 'page' : undefined}
-        className={route.page === 'ai' ? 'current' : undefined} onClick={(event) => followLink(event, () => onNavigate(aiRoute))}>AI Manager</a> : null}
-    </nav> : null}
-    {content}
-  </>;
+  const workspaceSection = route.page !== 'roles' && route.page !== 'ai';
+  const sectionLabel = workspaceSection ? 'Workspace 管理' : route.page === 'roles' ? '全站角色' : 'AI Manager';
+  return <div className="admin-shell">
+    <aside className="admin-sidebar">
+      <div className="admin-brand"><img src={brandIcon} alt="" width="38" height="38" /><div><strong>Whippet</strong><span>全站管理</span></div></div>
+      <nav aria-label="全站管理導覽" className="admin-nav">
+        {workspaceAccess && <a href={siteManagementHref(workspaceListRoute)} aria-current={workspaceSection ? route.page === 'workspaces' ? 'page' : 'location' : undefined}
+          onClick={(event) => followLink(event, () => onNavigate(workspaceListRoute))}><PanelIcon />Workspace 管理</a>}
+        {rolesAccess && <a href={siteManagementHref(rolesRoute)} aria-current={route.page === 'roles' ? 'page' : undefined}
+          onClick={(event) => followLink(event, () => onNavigate(rolesRoute))}><UsersIcon />全站角色</a>}
+        {aiAccess && <a href={siteManagementHref(aiRoute)} aria-current={route.page === 'ai' ? 'location' : undefined}
+          onClick={(event) => followLink(event, () => onNavigate(aiRoute))}><GearIcon />AI Manager</a>}
+      </nav>
+      <a className="admin-return" href={siteManagementHref()} onClick={(event) => followLink(event, () => onNavigate())}><ExternalIcon />返回測試工作台</a>
+    </aside>
+    <div className="admin-canvas">
+      <header className="admin-topbar"><span>全站管理 <span aria-hidden="true">／</span> <strong>{sectionLabel}</strong></span>
+        <div className="admin-identity"><span>{user.name}{user.name !== siteRoleNames[user.role] && <small>{siteRoleNames[user.role]}</small>}</span>
+          <button type="button" onClick={onLogout}><LogOutIcon />登出</button></div>
+      </header>
+      {mock && <div className="mock-banner" role="status">示範模式：使用本機 mock 資料，重新整理後資料會清除。</div>}
+      {content}
+    </div>
+  </div>;
 }
 
 function ManagementHeading({ children }: { children: ReactNode }) {
@@ -134,52 +138,60 @@ function SiteWorkspaceList({ api, canCreate, onNavigate }: Pick<Props, 'onNaviga
 
   return <section className="access-view">
     <header className="access-view-header">
-      <ManagementHeading>Workspace 管理</ManagementHeading>
+      <div><ManagementHeading>Workspace 管理</ManagementHeading><p className="muted">查看工作區狀態、指派成員與管理封存。</p></div>
       <div className="action-row site-workspace-actions">
         <button type="button" className="button secondary" disabled={loading} onClick={retry}><RefreshIcon />重新載入</button>
         {canCreate ? <a className="button primary" href={siteManagementHref(createRoute)} onClick={(event) => followLink(event, () => onNavigate(createRoute))}><PlusIcon />建立 Workspace</a> : null}
       </div>
     </header>
-    <div className="settings-field access-search">
-      <label htmlFor={stateFilterId}>Workspace 狀態</label>
-      <select id={stateFilterId} className="text-input" value={filter} onChange={(event) => {
-        setFilter(event.target.value as keyof typeof stateLabels);
-        setCursors([null]);
-      }}>
-        {Object.entries(stateLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-      </select>
+    <div className="admin-directory">
+      <div className="admin-directory-tools">
+        <div>
+          <h2>工作區清單</h2>
+          <span className="muted" role="status">{list ? `本頁 ${list.length} 個工作區` : null}</span>
+        </div>
+        <div className="settings-field access-search">
+          <label htmlFor={stateFilterId}>Workspace 狀態</label>
+          <select id={stateFilterId} className="text-input" value={filter} onChange={(event) => {
+            setFilter(event.target.value as keyof typeof stateLabels);
+            setCursors([null]);
+          }}>
+            {Object.entries(stateLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </div>
+      </div>
+      {error ? <Notice message={error} retry={retry} /> : null}
+      {loading && !list ? <Loading text="正在載入 Workspace…" /> : null}
+      {list?.length ? <ul className="access-list">
+        {list.map((workspace) => {
+          const workspaceRoute = { page: 'workspace', workspaceId: workspace.id } as const;
+          const membersRoute = { page: 'members', workspaceId: workspace.id } as const;
+          const state = workspace.management.state;
+          return <li key={workspace.id}>
+            <div className="access-person">
+              <span className="admin-workspace-icon"><PanelIcon /></span><div className="access-person-label"><strong>{workspace.name}</strong><span className="identifier muted">{workspace.id}</span></div>
+              <span className={`chip ${state === 'archiving' ? 'warm' : state === 'archived' ? 'neutral' : 'ok'}`}>
+                {stateLabels[state]}
+              </span>
+              {state === 'active' && workspace.lifecycle !== 'active' ? <span className="muted">{workspace.lifecycle === 'draft' ? '尚待設定' : '待確認'}</span> : null}
+            </div>
+            <div className="action-row site-workspace-actions">
+              <a className="button secondary" href={siteManagementHref(workspaceRoute)}
+                aria-label={`查看詳情（${workspace.name}）`} onClick={(event) => followLink(event, () => onNavigate(workspaceRoute))}>查看詳情</a>
+              {workspace.permissions.manageMembers ? <a className="button secondary" href={siteManagementHref(membersRoute)}
+                aria-label={`管理成員（${workspace.name}）`} onClick={(event) => followLink(event, () => onNavigate(membersRoute))}>管理成員</a> : null}
+            </div>
+          </li>;
+        })}
+      </ul> : list ? <p className="muted" role="status">{filter === 'all' ? '尚無 Workspace。' : '沒有符合目前狀態的 Workspace。'}</p> : null}
+      {cursors.length > 1 || nextAfter ? <div className="action-row site-workspace-actions site-workspace-pagination">
+        <button type="button" className="button secondary" disabled={loading || cursors.length === 1} onClick={() => setCursors((current) => current.slice(0, -1))}>上一頁</button>
+        <span className="muted" role="status">第 {cursors.length} 頁</span>
+        <button type="button" className="button secondary" disabled={loading || !nextAfter} onClick={() => {
+          if (nextAfter && nextAfter !== after) setCursors((current) => [...current, nextAfter]);
+        }}>下一頁</button>
+      </div> : null}
     </div>
-    {error ? <Notice message={error} retry={retry} /> : null}
-    {loading && !list ? <Loading text="正在載入 Workspace…" /> : null}
-    {list?.length ? <ul className="access-list">
-      {list.map((workspace) => {
-        const workspaceRoute = { page: 'workspace', workspaceId: workspace.id } as const;
-        const membersRoute = { page: 'members', workspaceId: workspace.id } as const;
-        const state = workspace.management.state;
-        return <li key={workspace.id}>
-          <div className="access-person">
-            <div className="access-person-label"><strong>{workspace.name}</strong><span className="identifier muted">{workspace.id}</span></div>
-            <span className={`chip ${state === 'archiving' ? 'warm' : state === 'archived' ? 'neutral' : 'ok'}`}>
-              {stateLabels[state]}
-            </span>
-            {state === 'active' && workspace.lifecycle !== 'active' ? <span className="muted">{workspace.lifecycle === 'draft' ? '尚待設定' : '待確認'}</span> : null}
-          </div>
-          <div className="action-row site-workspace-actions">
-            <a className="button secondary" href={siteManagementHref(workspaceRoute)}
-              aria-label={`查看詳情（${workspace.name}）`} onClick={(event) => followLink(event, () => onNavigate(workspaceRoute))}>查看詳情</a>
-            {workspace.permissions.manageMembers ? <a className="button secondary" href={siteManagementHref(membersRoute)}
-              aria-label={`管理成員（${workspace.name}）`} onClick={(event) => followLink(event, () => onNavigate(membersRoute))}>管理成員</a> : null}
-          </div>
-        </li>;
-      })}
-    </ul> : list ? <p className="muted" role="status">{filter === 'all' ? '尚無 Workspace。' : '沒有符合目前狀態的 Workspace。'}</p> : null}
-    {cursors.length > 1 || nextAfter ? <div className="action-row site-workspace-actions site-workspace-pagination">
-      <button type="button" className="button secondary" disabled={loading || cursors.length === 1} onClick={() => setCursors((current) => current.slice(0, -1))}>上一頁</button>
-      <span className="muted" role="status">第 {cursors.length} 頁</span>
-      <button type="button" className="button secondary" disabled={loading || !nextAfter} onClick={() => {
-        if (nextAfter && nextAfter !== after) setCursors((current) => [...current, nextAfter]);
-      }}>下一頁</button>
-    </div> : null}
   </section>;
 }
 

@@ -41,6 +41,11 @@ function ResourceStatus({ resource }: { resource: AiResource }) {
 export function AiResources({ api, workspaces, onNavigate }: { api: AiAdminApi; workspaces: AiWorkspaceDirectory; onNavigate: AiNavigate }) {
   const load = useCallback((signal: AbortSignal) => collectAiPages((after) => api.listResources(after, signal)), [api]);
   const list = useResource(load, true);
+  const [query, setQuery] = useState('');
+  const term = query.trim().toLowerCase();
+  const visible = list.data?.filter((resource) =>
+    [resource.name, resource.id, resourceSource(resource), workspaceScope(resource, workspaces)]
+      .some((value) => value.toLowerCase().includes(term))) ?? [];
   useAiRefresh(list.retry, !list.loading, 10000);
 
   function total(source: AiResource['source']) {
@@ -51,7 +56,7 @@ export function AiResources({ api, workspaces, onNavigate }: { api: AiAdminApi; 
       if (resource.capacity.available === null) unknown += 1;
       else available += resource.capacity.available;
     }
-    return <>{available} 個{unknown ? <span className="muted"> · {unknown} 筆容量未知</span> : null}</>;
+    return <><strong>{available}</strong> 個{unknown ? <span className="muted"> · {unknown} 筆容量未知</span> : null}</>;
   }
 
   return <>
@@ -63,7 +68,13 @@ export function AiResources({ api, workspaces, onNavigate }: { api: AiAdminApi; 
         <div><dt>Manager 已知可用名額</dt><dd>{total('manager')}</dd></div>
         <div><dt>MCP 已知可接單名額</dt><dd>{total('mcp')}</dd></div>
       </dl>
-      {list.data.length ? <ul className="access-list ai-list">{list.data.map((resource) => <li key={resource.id}>
+      {list.data.length > 0 && <div className="ai-list-toolbar">
+        <label className="settings-field ai-filter">搜尋資源
+          <input className="text-input" type="search" placeholder="名稱、識別碼或 Workspace" value={query} onChange={(event) => setQuery(event.target.value)} />
+        </label>
+        <span className="muted" role="status">顯示 {visible.length} / {list.data.length} 筆</span>
+      </div>}
+      {visible.length ? <ul className="access-list ai-list">{visible.map((resource) => <li key={resource.id}>
         <div className="ai-row-info">
           <strong>{resource.name}</strong><span className="identifier muted">{resource.id}</span>
           <p>{resourceSource(resource)} · {workspaceScope(resource, workspaces)}</p>
@@ -73,7 +84,7 @@ export function AiResources({ api, workspaces, onNavigate }: { api: AiAdminApi; 
         <div className="action-row ai-actions"><ResourceStatus resource={resource} />
           <AiLink className="button secondary" aria-label={`查看資源（${resource.name}）`} route={{ view: 'resource', id: resource.id }} onNavigate={onNavigate}>查看資源</AiLink>
         </div>
-      </li>)}</ul> : <p className="muted">目前沒有執行資源。</p>}
+      </li>)}</ul> : <div className="ai-panel">{list.data.length ? <><p>找不到符合「{query}」的資源。</p><button type="button" className="button secondary" onClick={() => setQuery('')}>清除搜尋</button></> : <p>目前沒有執行資源。</p>}</div>}
     </> : null}
   </>;
 }
