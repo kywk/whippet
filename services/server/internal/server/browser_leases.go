@@ -88,9 +88,9 @@ func (p *Postgres) openBrowserLease(ctx context.Context, token AgentToken, reque
 	if err != nil {
 		return BrowserLease{}, false, err
 	}
-	var capacity int
-	if err := tx.QueryRowContext(ctx, `SELECT capacity FROM managers WHERE id=$1 FOR UPDATE`, managerID).Scan(&capacity); err != nil {
-		return BrowserLease{}, false, dbError(err)
+	manager, err := readSiteAIManager(ctx, tx, managerID, true)
+	if err != nil {
+		return BrowserLease{}, false, err
 	}
 	var tokenWorkspace string
 	var revoked sql.NullTime
@@ -138,12 +138,18 @@ func (p *Postgres) openBrowserLease(ctx context.Context, token AgentToken, reque
 	if err := w.Management.State.workError(); err != nil {
 		return BrowserLease{}, false, err
 	}
-	var occupied int
-	if err := tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM runs WHERE manager_id=$1 AND NOT slot_released)
-		+ (SELECT count(*) FROM agent_browser_leases WHERE manager_id=$1 AND NOT reclaimed)`, managerID).Scan(&occupied); err != nil {
+	if !manager.allows(w.ID) {
+		return BrowserLease{}, false, ErrConflict
+	}
+	occupied, err := siteAIManagerOccupancy(ctx, tx, managerID)
+	if err != nil {
 		return BrowserLease{}, false, err
 	}
-	if occupied >= capacity {
+	conn := p.siteAIConnection()
+	if conn.ManagerID != managerID {
+		conn = siteAIConnectionView{}
+	}
+	if conn.available(manager.Capacity, occupied) == 0 {
 		return BrowserLease{}, false, ErrConflict
 	}
 	lease := BrowserLease{SessionID: NewID(), LeaseID: NewID(), State: "opening", TokenID: token.ID,

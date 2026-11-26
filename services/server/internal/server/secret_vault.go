@@ -14,7 +14,10 @@ var ErrSecretsUnavailable = errors.New("secrets_unavailable")
 var ErrSecurityUnavailable = errors.New("security_unavailable")
 var ErrProposalRequired = errors.New("proposal_required")
 
-type SecretVault struct{ aead cipher.AEAD }
+type SecretVault struct {
+	aead             cipher.AEAD
+	siteAIRequestKey [32]byte
+}
 type credentialValues struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -29,6 +32,7 @@ func NewSecretVault(encoded string) (*SecretVault, error) {
 	if err != nil || len(key) != 32 {
 		return nil, ErrSecretsUnavailable
 	}
+	defer clear(key)
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, ErrSecretsUnavailable
@@ -37,7 +41,7 @@ func NewSecretVault(encoded string) (*SecretVault, error) {
 	if err != nil {
 		return nil, ErrSecretsUnavailable
 	}
-	return &SecretVault{aead}, nil
+	return &SecretVault{aead: aead, siteAIRequestKey: siteAIRequestKey(key)}, nil
 }
 func secretAAD(workspace, role, ref string, version int) []byte {
 	return []byte(fmt.Sprintf("whippet-secret-v1:%s:%s:%s:%d", workspace, role, ref, version))

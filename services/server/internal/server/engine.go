@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -23,6 +24,7 @@ type Session struct {
 	peer      Peer
 	ready     bool
 	sent      map[string]time.Time
+	siteAI    siteAIConnectionView
 }
 
 type Engine struct {
@@ -76,7 +78,11 @@ func (e *Engine) Run(ctx context.Context) {
 }
 
 func (e *Engine) Attach(ctx context.Context, managerID string, capacity int, peer Peer) (*Session, error) {
-	if len(managerID) == 0 || len(managerID) > 128 || capacity < 1 {
+	return e.AttachSiteAI(ctx, managerID, capacity, peer, nil, false)
+}
+
+func (e *Engine) AttachSiteAI(ctx context.Context, managerID string, capacity int, peer Peer, caps *SiteAIManagerCapabilities, secure bool) (*Session, error) {
+	if len(managerID) == 0 || len(managerID) > 128 || capacity < 1 || capacity > 64 {
 		return nil, fmt.Errorf("%w: hello requires managerId and positive capacity", ErrInvalid)
 	}
 	e.mu.Lock()
@@ -95,14 +101,22 @@ func (e *Engine) Attach(ctx context.Context, managerID string, capacity int, pee
 		previous = e.session
 		_ = e.session.peer.Close()
 	}
+	conn, err := newSiteAIConnection(managerID, caps, secure)
+	if err != nil {
+		return nil, err
+	}
 	if p, ok := e.store.(*Postgres); ok {
+		p.siteAIConn.Store(nil)
+		if err := p.reconcileSiteAIProvisions(ctx, managerID, conn.Epoch); err != nil {
+			return nil, err
+		}
 		if err := p.MarkBrowserLeaseReclaimPending(ctx, managerID); err != nil {
 			return nil, err
 		}
 		e.failBrowserCallsLocked("unknown_result")
 	}
 	// Even a fresh DB must reconcile the Manager's active journal before dispatch.
-	s := &Session{managerID: managerID, liveEpoch: NewID(), capacity: capacity, peer: peer, sent: map[string]time.Time{}}
+	s := &Session{managerID: managerID, liveEpoch: conn.Epoch, capacity: capacity, peer: peer, sent: map[string]time.Time{}, siteAI: conn}
 	e.session = s
 	e.Wake()
 	return s, nil
@@ -114,6 +128,7 @@ func (e *Engine) Detach(s *Session) {
 	if e.session == s {
 		e.session = nil
 		if p, ok := e.store.(*Postgres); ok {
+			p.siteAIConn.Store(nil)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			_ = p.MarkBrowserLeaseReclaimPending(ctx, s.managerID)
 			cancel()
@@ -134,6 +149,7 @@ func (e *Engine) Close() {
 		_ = e.session.peer.Close()
 		e.session = nil
 		if p, ok := e.store.(*Postgres); ok {
+			p.siteAIConn.Store(nil)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			_ = p.MarkBrowserLeaseReclaimPending(ctx, previous.managerID)
 			cancel()
@@ -172,6 +188,7 @@ func (e *Engine) Handle(ctx context.Context, s *Session, m Envelope) error {
 	if m.Type == "heartbeat" {
 		var payload struct {
 			Active   *[]ActiveAttempt `json:"active"`
+			Admin    json.RawMessage  `json:"admin"`
 			Sessions []struct {
 				SessionID string `json:"sessionId"`
 				LeaseID   string `json:"leaseId"`
@@ -180,6 +197,16 @@ func (e *Engine) Handle(ctx context.Context, s *Session, m Envelope) error {
 		}
 		if err := json.Unmarshal(m.Payload, &payload); err != nil || payload.Active == nil {
 			return fmt.Errorf("%w: heartbeat requires active array", ErrInvalid)
+		}
+		var admin siteAIManagerHeartbeat
+		if s.siteAI.Capabilities != nil {
+			var err error
+			admin, err = parseSiteAIManagerHeartbeat(payload.Admin, s.capacity)
+			if err != nil {
+				return err
+			}
+		} else if len(payload.Admin) != 0 {
+			return ErrInvalid
 		}
 		known, err := e.store.Assignments(ctx, s.managerID)
 		if err != nil {
@@ -209,13 +236,24 @@ func (e *Engine) Handle(ctx context.Context, s *Session, m Envelope) error {
 		if err := e.store.ReleaseSlots(ctx, s.managerID, *payload.Active); err != nil {
 			return err
 		}
+		reportedOccupancy := len(*payload.Active)
 		if p, ok := e.store.(*Postgres); ok {
+			provisionCount, err := p.checkSiteAIProvisionHeartbeat(ctx, s, admin.ActiveProvisionIDs)
+			if err != nil {
+				return err
+			}
+			reportedOccupancy += provisionCount
+			reportedLeases := make(map[string]bool, len(payload.Sessions))
 			for _, reported := range payload.Sessions {
 				if !ValidID(reported.SessionID) || !ValidID(reported.LeaseID) ||
 					(reported.State != "starting" && reported.State != "ready" && reported.State != "closing" && reported.State != "reclaim_pending") {
 					return ErrInvalid
 				}
 				lease, err := p.BrowserLeaseBySession(ctx, reported.SessionID)
+				if err == nil && lease.LeaseID == reported.LeaseID && lease.ManagerID == s.managerID && !lease.Reclaimed && !reportedLeases[reported.SessionID] {
+					reportedLeases[reported.SessionID] = true
+					reportedOccupancy++
+				}
 				if err != nil || lease.LeaseID != reported.LeaseID || lease.ManagerID != s.managerID || lease.Reclaimed || lease.ManagerEpoch != s.liveEpoch || lease.State == "closing" || lease.State == "reclaim_pending" {
 					if err := s.peer.Send(NewEnvelope("session.close", s.managerID, "", "", map[string]string{"sessionId": reported.SessionID, "leaseId": reported.LeaseID})); err != nil {
 						s.ready = false
@@ -223,13 +261,34 @@ func (e *Engine) Handle(ctx context.Context, s *Session, m Envelope) error {
 					}
 				}
 			}
+			if _, err := p.DB.ExecContext(ctx, `UPDATE managers SET last_heartbeat_at=now() WHERE id=$1`, s.managerID); err != nil {
+				return err
+			}
 		}
-		if err := s.peer.Send(NewEnvelope("heartbeat_ack", s.managerID, "", "", struct{}{})); err != nil {
+		if err := s.peer.Send(NewEnvelope("heartbeat_ack", s.managerID, "", "", s.siteAI.acknowledgement())); err != nil {
 			s.ready = false
 			_ = s.peer.Close()
 			return err
 		}
 		s.ready = true
+		s.siteAI.LastHeartbeat, s.siteAI.FreeSlots = time.Now().UTC(), admin.FreeSlots
+		s.siteAI.ReportedOccupancy = reportedOccupancy
+		if p, ok := e.store.(*Postgres); ok {
+			view := s.siteAI
+			p.siteAIConn.Store(&view)
+		}
+		e.Wake()
+		return nil
+	}
+	if m.Type == "agent.provision_result" {
+		p, ok := e.store.(*Postgres)
+		var report siteAIProvisionResult
+		if !ok || s.siteAI.Nonce == "" || !s.ready || m.RunID != "" || m.AttemptID != "" || decodeSiteAIJSON(m.Payload, &report) != nil {
+			return ErrInvalid
+		}
+		if err := p.finishSiteAIProvision(ctx, s.siteAI, report); err != nil && !errors.Is(err, ErrNotFound) {
+			return err
+		}
 		e.Wake()
 		return nil
 	}
@@ -276,6 +335,12 @@ func (e *Engine) Tick(ctx context.Context) error {
 		if err := p.ExpireExternalClaims(ctx); err != nil {
 			return err
 		}
+		if err := p.expireSiteAIProvisions(ctx); err != nil {
+			return err
+		}
+		if err := p.finalizeSiteAIManager(ctx); err != nil {
+			return err
+		}
 		if err := p.finalizeWorkspaceArchives(ctx); err != nil {
 			return err
 		}
@@ -307,6 +372,11 @@ func (e *Engine) Tick(ctx context.Context) error {
 			}
 		} else if a.Status == "dispatched" && !a.Acked {
 			liveCommands["dispatch:"+a.AttemptID] = true
+		}
+	}
+	if p, ok := e.store.(*Postgres); ok {
+		if err := p.sendSiteAIProvisions(ctx, s, liveCommands); err != nil {
+			return err
 		}
 	}
 	for key := range s.sent {
@@ -355,28 +425,35 @@ func (e *Engine) send(s *Session, a Assignment, kind string) error {
 	}
 	var payload any = struct{}{}
 	if kind == "dispatch" {
+		if a.modelCredential != nil && (a.Author == nil || a.Author.Runtime == nil || !s.siteAI.supports(a.Author.Runtime.Engine)) {
+			return nil
+		}
 		taskKind := "run"
 		if a.Kind == "author" {
 			taskKind = "author"
 		}
 		payload = struct {
-			ScriptOrigin      string             `json:"scriptOrigin"`
-			WorkspaceID       string             `json:"workspaceId"`
-			TestID            *string            `json:"testId"`
-			WorkspaceContext  *WorkspaceContext  `json:"workspaceContext,omitempty"`
-			Kind              string             `json:"kind"`
-			Script            string             `json:"script"`
-			Files             []RunFile          `json:"files,omitempty"`
-			ModuleABI         *ModuleABI         `json:"moduleAbi,omitempty"`
-			Retest            *retestTarget      `json:"retest,omitempty"`
-			TimeoutMS         int                `json:"timeoutMs"`
-			Author            *AuthorInput       `json:"author,omitempty"`
-			WorkspaceSettings *WorkspaceSettings `json:"workspaceSettings,omitempty"`
-		}{effectiveScriptOrigin(a.ScriptOrigin), a.WorkspaceID, a.TestID, a.WorkspaceContext, taskKind, a.Script, a.Files, a.ModuleABI, a.Retest, a.TimeoutMS, a.Author, a.WorkspaceSettings}
+			ScriptOrigin      string                 `json:"scriptOrigin"`
+			WorkspaceID       string                 `json:"workspaceId"`
+			TestID            *string                `json:"testId"`
+			WorkspaceContext  *WorkspaceContext      `json:"workspaceContext,omitempty"`
+			Kind              string                 `json:"kind"`
+			Script            string                 `json:"script"`
+			Files             []RunFile              `json:"files,omitempty"`
+			ModuleABI         *ModuleABI             `json:"moduleAbi,omitempty"`
+			Retest            *retestTarget          `json:"retest,omitempty"`
+			TimeoutMS         int                    `json:"timeoutMs"`
+			Author            *AuthorInput           `json:"author,omitempty"`
+			WorkspaceSettings *WorkspaceSettings     `json:"workspaceSettings,omitempty"`
+			ModelCredential   *siteAIModelCredential `json:"modelCredential,omitempty"`
+		}{effectiveScriptOrigin(a.ScriptOrigin), a.WorkspaceID, a.TestID, a.WorkspaceContext, taskKind, a.Script, a.Files, a.ModuleABI, a.Retest, a.TimeoutMS, a.Author, a.WorkspaceSettings, a.modelCredential}
 	}
 	if err := s.peer.Send(NewEnvelope(kind, s.managerID, a.ID, a.AttemptID, payload)); err != nil {
 		// The committed attempt is preserved, including when the write outcome is unknown.
 		s.ready = false
+		if p, ok := e.store.(*Postgres); ok {
+			p.siteAIConn.Store(nil)
+		}
 		_ = s.peer.Close()
 		return err
 	}

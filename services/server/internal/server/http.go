@@ -91,6 +91,7 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 		writeJSON(w, 200, map[string]string{"status": "ready"})
 	})
 	mux.Handle("/mcp", boundedRequest(a.newMCPHandler()))
+	a.registerSiteAIRoutes(mux)
 	if a.inspections != nil {
 		handle("GET /api/inspections/workspaces/{workspaceId}/runs", a.inspectionHTTP)
 		handle("POST /api/inspections/workspaces/{workspaceId}/runs", a.inspectionHTTP)
@@ -476,6 +477,9 @@ func (a *API) artifact(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) fail(w http.ResponseWriter, err error) {
+	if writeSiteAIError(w, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, ErrContinuationBudget):
 		writeError(w, 409, "continuation_budget_exhausted", "此續接鏈已達總嘗試上限，或剩餘模型、工具及執行時間額度不足，無法再繼續；已保存的草稿與證據仍保留。")

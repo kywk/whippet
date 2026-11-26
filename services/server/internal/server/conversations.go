@@ -304,7 +304,7 @@ func (p *Postgres) createAuthorInTxForRuntime(ctx context.Context, tx *sql.Tx, d
 		}
 		input.AllowedTools = restricted
 	}
-	run, err := enqueueAuthorSnapshot(ctx, tx, d, input, Run{authorizationRevision: auth, scopeProposalID: proposal, AuthorEngine: engine, chainBudget: chain})
+	run, err := p.enqueueAuthorSnapshot(ctx, tx, d, input, Run{authorizationRevision: auth, scopeProposalID: proposal, AuthorEngine: engine, chainBudget: chain})
 	if err != nil {
 		return AuthorSubmission{}, err
 	}

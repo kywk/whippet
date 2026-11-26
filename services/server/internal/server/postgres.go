@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/lib/pq"
 	"github.com/whippet/whippet/services/server/migrations"
@@ -20,6 +22,7 @@ type Postgres struct {
 	Artifacts     ArtifactStorage
 	Secrets       *SecretVault
 	CredentialTLS bool
+	siteAIConn    atomic.Pointer[siteAIConnectionView]
 }
 
 // Migrate serializes startup migrations and records each file in the same transaction.
@@ -158,12 +161,13 @@ const runColumns = `r.id,r.test_id,r.status,r.created_at,r.started_at,r.finished
     r.kind,r.draft_revision,r.version_id,r.workspace_settings,r.editing_session_id,r.workspace_id,r.workspace_context,` + runAuthorMode + `,
     r.script_origin,r.authorization_revision,r.scope_proposal_id,
     CASE WHEN r.attempt_id IS NOT NULL THEN ` + runProgressEvents + ` ELSE '[]'::jsonb END,
-    COALESCE(r.author_partial,'null'::jsonb),r.author_engine,` + runAuthorRepliedOnly + `,COALESCE((SELECT l.report_url FROM inspection_report_links l WHERE l.run_id=r.id AND l.attempt_id=r.attempt_id),'')`
+    COALESCE(r.author_partial,'null'::jsonb),r.author_engine,` + runAuthorRepliedOnly + `,COALESCE((SELECT l.report_url FROM inspection_report_links l WHERE l.run_id=r.id AND l.attempt_id=r.attempt_id),''),
+    (SELECT b.agent_id FROM site_ai_run_bindings b WHERE b.run_id=r.id)`
 
 func scanRun(row scanner) (Run, error) {
 	var r Run
 	var settings, workspaceContext, progressEvents, partial []byte
-	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL, &r.Kind, &r.DraftRevision, &r.VersionID, &settings, &r.EditingSessionID, &r.WorkspaceID, &workspaceContext, &r.AuthorMode, &r.ScriptOrigin, &r.authorizationRevision, &r.scopeProposalID, &progressEvents, &partial, &r.AuthorEngine, &r.AuthorRepliedOnly, &r.FeedbackReportURL)
+	err := row.Scan(&r.ID, &r.TestID, &r.Status, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Error, &r.ReportURL, &r.Kind, &r.DraftRevision, &r.VersionID, &settings, &r.EditingSessionID, &r.WorkspaceID, &workspaceContext, &r.AuthorMode, &r.ScriptOrigin, &r.authorizationRevision, &r.scopeProposalID, &progressEvents, &partial, &r.AuthorEngine, &r.AuthorRepliedOnly, &r.FeedbackReportURL, &r.AgentID)
 	if err == nil {
 		r.WorkspaceSettings, err = decodeSettings(settings)
 		if err == nil {
@@ -348,8 +352,9 @@ func (p *Postgres) Assignments(ctx context.Context, managerID string) ([]Assignm
 	if err := p.rejectUnsafeWork(ctx); err != nil {
 		return nil, err
 	}
-	rows, err := p.DB.QueryContext(ctx, `SELECT r.id,r.status,r.attempt_id,r.script_snapshot,r.timeout_ms,r.acknowledged_at IS NOT NULL,r.kind,COALESCE(r.author_payload::text,''),r.workspace_settings,r.workspace_id,r.test_id,r.workspace_context,r.script_origin,r.authorization_revision,r.scope_proposal_id,r.files_snapshot,r.bundle_hash,r.bundle_metadata,w.archive_status
-        FROM runs r JOIN workspaces w ON w.id=r.workspace_id WHERE r.manager_id=$1 AND NOT r.slot_released ORDER BY r.queue_seq`, managerID)
+	rows, err := p.DB.QueryContext(ctx, `SELECT r.id,r.status,r.attempt_id,r.script_snapshot,r.timeout_ms,r.acknowledged_at IS NOT NULL,r.kind,COALESCE(r.author_payload::text,''),r.workspace_settings,r.workspace_id,r.test_id,r.workspace_context,r.script_origin,r.authorization_revision,r.scope_proposal_id,r.files_snapshot,r.bundle_hash,r.bundle_metadata,w.archive_status,b.agent_id,b.secret_version
+        FROM runs r JOIN workspaces w ON w.id=r.workspace_id LEFT JOIN site_ai_run_bindings b ON b.run_id=r.id
+        WHERE r.manager_id=$1 AND NOT r.slot_released ORDER BY r.queue_seq`, managerID)
 	if err != nil {
 		return nil, err
 	}
@@ -360,9 +365,11 @@ func (p *Postgres) Assignments(ctx context.Context, managerID string) ([]Assignm
 		var authorPayload string
 		var settings, context, files, metadata []byte
 		var bundleHash *string
-		if err := rows.Scan(&a.ID, &a.Status, &a.AttemptID, &a.Script, &a.TimeoutMS, &a.Acked, &a.Kind, &authorPayload, &settings, &a.WorkspaceID, &a.TestID, &context, &a.ScriptOrigin, &a.authorizationRevision, &a.scopeProposalID, &files, &bundleHash, &metadata, &a.archiveStatus); err != nil {
+		var secretVersion *int
+		if err := rows.Scan(&a.ID, &a.Status, &a.AttemptID, &a.Script, &a.TimeoutMS, &a.Acked, &a.Kind, &authorPayload, &settings, &a.WorkspaceID, &a.TestID, &context, &a.ScriptOrigin, &a.authorizationRevision, &a.scopeProposalID, &files, &bundleHash, &metadata, &a.archiveStatus, &a.AgentID, &secretVersion); err != nil {
 			return nil, err
 		}
+		siteAIAssignmentCredential(&a, secretVersion)
 		a.WorkspaceSettings, err = decodeSettings(settings)
 		if err == nil {
 			a.WorkspaceContext, err = decodeWorkspaceContext(context)
@@ -430,23 +437,32 @@ func (p *Postgres) Claim(ctx context.Context, managerID string, capacity int) (*
 )`).Scan(&workspaces); err != nil {
 		return nil, err
 	}
-	var persistedCapacity int
-	if err := tx.QueryRowContext(ctx, `SELECT capacity FROM managers WHERE id=$1 FOR UPDATE`, managerID).Scan(&persistedCapacity); err != nil {
-		return nil, dbError(err)
-	}
-	if persistedCapacity < capacity {
-		capacity = persistedCapacity
-	}
-	var occupied int
-	if err := tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM runs WHERE manager_id=$1 AND NOT slot_released)
-		+ (SELECT count(*) FROM agent_browser_leases WHERE manager_id=$1 AND NOT reclaimed)`, managerID).Scan(&occupied); err != nil {
+	manager, err := readSiteAIManager(ctx, tx, managerID, true)
+	if err != nil {
 		return nil, err
 	}
-	if occupied >= capacity || len(workspaces) == 0 {
+	if manager.Control != "enabled" {
+		return nil, nil
+	}
+	assigned := make(pq.StringArray, 0, len(workspaces))
+	for _, workspace := range workspaces {
+		if manager.allows(workspace) {
+			assigned = append(assigned, workspace)
+		}
+	}
+	conn := p.siteAIConnection()
+	if conn.ManagerID != managerID {
+		conn = siteAIConnectionView{}
+	}
+	occupied, err := siteAIManagerOccupancy(ctx, tx, managerID)
+	if err != nil {
+		return nil, err
+	}
+	if conn.available(min(manager.Capacity, capacity), occupied) == 0 || len(assigned) == 0 {
 		return nil, nil
 	}
 	for {
-		assignment, retry, err := p.claimManagedRun(ctx, tx, managerID, workspaces)
+		assignment, retry, err := p.claimManagedRun(ctx, tx, managerID, assigned, conn)
 		if err != nil {
 			return nil, err
 		}
@@ -456,20 +472,31 @@ func (p *Postgres) Claim(ctx context.Context, managerID string, capacity int) (*
 	}
 }
 
-func (p *Postgres) claimManagedRun(ctx context.Context, tx *sql.Tx, managerID string, workspaces pq.StringArray) (*Assignment, bool, error) {
+func (p *Postgres) claimManagedRun(ctx context.Context, tx *sql.Tx, managerID string, workspaces pq.StringArray, conn siteAIConnectionView) (*Assignment, bool, error) {
 	a := Assignment{ManagerID: managerID, AttemptID: NewID()}
 	var authorPayload string
 	var settings, context, files, metadata []byte
 	var bundleHash *string
-	err := tx.QueryRowContext(ctx, `SELECT id,script_snapshot,timeout_ms,kind,COALESCE(author_payload::text,''),workspace_settings,workspace_id,test_id,workspace_context,script_origin,authorization_revision,scope_proposal_id,files_snapshot,bundle_hash,bundle_metadata FROM runs
-        WHERE status='queued' AND author_engine='builtin' AND workspace_id=ANY($1::uuid[])
-        ORDER BY queue_seq FOR UPDATE SKIP LOCKED LIMIT 1`, workspaces).Scan(&a.ID, &a.Script, &a.TimeoutMS, &a.Kind, &authorPayload, &settings, &a.WorkspaceID, &a.TestID, &context, &a.ScriptOrigin, &a.authorizationRevision, &a.scopeProposalID, &files, &bundleHash, &metadata)
+	var secretVersion *int
+	var advertised SiteAIManagerCapabilities
+	if conn.Capabilities != nil {
+		advertised = *conn.Capabilities
+	}
+	err := tx.QueryRowContext(ctx, `SELECT r.id,r.script_snapshot,r.timeout_ms,r.kind,COALESCE(r.author_payload::text,''),r.workspace_settings,r.workspace_id,r.test_id,r.workspace_context,r.script_origin,r.authorization_revision,r.scope_proposal_id,r.files_snapshot,r.bundle_hash,r.bundle_metadata,b.agent_id,b.secret_version
+        FROM runs r LEFT JOIN site_ai_run_bindings b ON b.run_id=r.id LEFT JOIN site_ai_agents ag ON ag.id=b.agent_id
+        WHERE r.status='queued' AND r.author_engine='builtin' AND r.workspace_id=ANY($1::uuid[])
+        AND (b.run_id IS NULL OR ($2 AND ag.status='ready' AND ag.key_configured AND ag.key_version=b.secret_version
+          AND ag.verified_manager_id=$3 AND ag.verified_worker_revision=$4 AND ag.engine=ANY($5::text[])
+          AND r.author_payload->>'skillId'=ANY(ag.verified_skills) AND r.author_payload->>'skillId'=ANY($6::text[])))
+        ORDER BY r.queue_seq FOR UPDATE OF r SKIP LOCKED LIMIT 1`, workspaces, conn.online(time.Now()) && conn.Nonce != "", managerID, advertised.WorkerRevision,
+		pq.Array(advertised.Engines), pq.Array(advertised.Skills)).Scan(&a.ID, &a.Script, &a.TimeoutMS, &a.Kind, &authorPayload, &settings, &a.WorkspaceID, &a.TestID, &context, &a.ScriptOrigin, &a.authorizationRevision, &a.scopeProposalID, &files, &bundleHash, &metadata, &a.AgentID, &secretVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false, nil
 	}
 	if err != nil {
 		return nil, false, err
 	}
+	siteAIAssignmentCredential(&a, secretVersion)
 	a.WorkspaceSettings, err = decodeSettings(settings)
 	if err == nil {
 		a.WorkspaceContext, err = decodeWorkspaceContext(context)

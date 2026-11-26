@@ -67,7 +67,7 @@ func (p *Postgres) CreatePlanSummary(ctx context.Context, id string, revision in
 	input := editingAuthorInput(s, d, "acceptance-summary", []ChatMessage{{Role: "user", Content: "Summarize this verified Use Case and the complete reused/new/modified Module batch, including coverage and limitations. Do not claim untested behavior."}})
 	input.Batch = batch
 	input.ValidationEvidence = &batch.UseCase.ValidationEvidence
-	run, err := enqueueAuthor(ctx, tx, d, input)
+	run, err := p.enqueueAuthor(ctx, tx, d, input)
 	if err != nil {
 		return Run{}, err
 	}

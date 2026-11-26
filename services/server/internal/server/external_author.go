@@ -232,6 +232,10 @@ func (p *Postgres) ClaimExternalAuthor(ctx context.Context, token AgentToken, re
 	if err := status.workError(); err != nil {
 		return nil, err
 	}
+	dedicated, allowedSkills, err := siteAIMCPClaimPolicy(ctx, tx, token)
+	if err != nil {
+		return nil, err
+	}
 	var active bool
 	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM external_author_claims WHERE token_id=$1 AND state='active')`, token.ID).Scan(&active); err != nil {
 		return nil, err
@@ -241,7 +245,12 @@ func (p *Postgres) ClaimExternalAuthor(ctx context.Context, token AgentToken, re
 	}
 	var runID string
 	var raw []byte
-	err = tx.QueryRowContext(ctx, `SELECT r.id,r.author_payload FROM runs r WHERE r.workspace_id=$1 AND r.kind='author' AND r.author_engine='external' AND r.status='queued' AND r.author_payload->>'skillId' IN ('test-author','acceptance-summary','module-authoring','usecase-planner','workspace-author') ORDER BY r.queue_seq FOR UPDATE OF r SKIP LOCKED LIMIT 1`, token.WorkspaceID).Scan(&runID, &raw)
+	err = tx.QueryRowContext(ctx, `SELECT r.id,r.author_payload FROM runs r LEFT JOIN site_ai_run_bindings b ON b.run_id=r.id
+ WHERE r.workspace_id=$1 AND r.kind='author' AND r.author_engine='external' AND r.status='queued'
+ AND r.author_payload->>'skillId' IN ('test-author','acceptance-summary','module-authoring','usecase-planner','workspace-author')
+ AND ($2::text[] IS NULL OR r.author_payload->>'skillId'=ANY($2))
+ AND (CASE WHEN $3 THEN b.token_id=$4 ELSE b.run_id IS NULL END)
+ ORDER BY r.queue_seq FOR UPDATE OF r SKIP LOCKED LIMIT 1`, token.WorkspaceID, allowedSkills, dedicated, token.ID).Scan(&runID, &raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, tx.Commit()
 	}
@@ -260,6 +269,9 @@ func (p *Postgres) claimExternalRunInTx(ctx context.Context, tx *sql.Tx, token A
 	var input AuthorInput
 	if json.Unmarshal(raw, &input) != nil || input.Budget == nil || (input.EditingSessionID == "" && input.SkillID != "workspace-author") {
 		return nil, ErrInvalid
+	}
+	if err := verifySiteAIMCPClaimBinding(ctx, tx, token, runID, input.SkillID); err != nil {
+		return nil, err
 	}
 	contextRevision := input.ContextRevision
 	maxDuration := input.Budget.MaxDurationMS

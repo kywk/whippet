@@ -135,25 +135,17 @@ func (p *Postgres) RevokeAgentToken(ctx context.Context, workspace, id string) e
 	if _, err := lockWorkspaceWorkStatus(ctx, tx, workspace); err != nil {
 		return err
 	}
-	var alreadyRevoked bool
-	if err := tx.QueryRowContext(ctx, `SELECT revoked_at IS NOT NULL FROM agent_tokens WHERE id=$1 AND workspace_id=$2 FOR UPDATE`, id, workspace).Scan(&alreadyRevoked); err != nil {
-		return dbError(err)
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE agent_tokens SET revoked_at=COALESCE(revoked_at,now()) WHERE id=$1 AND workspace_id=$2`, id, workspace); err != nil {
+	item, err := readSiteAIToken(ctx, tx, id, true)
+	if err != nil {
 		return err
 	}
-	if err := p.RevokeExternalClaims(ctx, tx, id); err != nil {
-		return err
+	if item.WorkspaceID != workspace {
+		return ErrNotFound
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE agent_browser_leases SET state='closing'
-		WHERE token_id=$1 AND workspace_id=$2 AND NOT reclaimed`, id, workspace); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE agent_browser_calls SET state='unknown' WHERE state='sent' AND session_id IN
-		(SELECT session_id FROM agent_browser_leases WHERE token_id=$1 AND workspace_id=$2 AND NOT reclaimed)`, id, workspace); err != nil {
-		return err
-	}
-	if !alreadyRevoked {
+	if !item.Revoked {
+		if err := p.revokeSiteAIToken(ctx, tx, item); err != nil {
+			return err
+		}
 		if err := platformAudit(actorFromContext(ctx), "revoke_agent_token", "agent_token", id, &workspace).record(ctx, tx, "succeeded", nil); err != nil {
 			return err
 		}
