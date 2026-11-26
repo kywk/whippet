@@ -74,14 +74,17 @@ func TestADM2ResourceAssignmentPostgres(t *testing.T) {
 
 func TestADM3ManagedKeyPostgres(t *testing.T) {
 	f := newSiteAIFixture(t)
-	const profile = `[{"id":"adm-fixture","engine":"builtin","provider":"openai-responses","baseURL":"https://provider.example/v1","model":"fixture-model","reasoningEffort":"low","contextWindowTokens":32768,"contextInputTokens":16384}]`
-	t.Setenv("WHIPPET_AI_RUNTIME_PROFILES_JSON", profile)
+	const profiles = `[
+  {"id":"adm-fixture","engine":"builtin","provider":"openai-responses","baseURL":"https://provider.example/v1","model":"fixture-model","reasoningEffort":"low","contextWindowTokens":32768,"contextInputTokens":16384},
+  {"id":"adm-vercel","engine":"vercel","provider":"openai-responses","baseURL":"https://provider.example/v1","model":"fixture-model","reasoningEffort":"low","contextWindowTokens":32768,"contextInputTokens":16384}
+]`
+	t.Setenv("WHIPPET_AI_RUNTIME_PROFILES_JSON", profiles)
 	var err error
 	f.store.Secrets, err = NewSecretVault(base64.StdEncoding.EncodeToString(make([]byte, 32)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.session, err = f.engine.AttachSiteAI(f.ctx, "manager-test", 2, f.peer, &SiteAIManagerCapabilities{Version: 1, Engines: []string{"builtin"}, Skills: []string{"test-author"}, WorkerRevision: strings.Repeat("a", 64)}, true)
+	f.session, err = f.engine.AttachSiteAI(f.ctx, "manager-test", 2, f.peer, &SiteAIManagerCapabilities{Version: 1, Engines: []string{"builtin", "vercel"}, Skills: []string{"test-author"}, WorkerRevision: strings.Repeat("a", 64)}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,10 +92,10 @@ func TestADM3ManagedKeyPostgres(t *testing.T) {
 		f.manager("heartbeat", "", "", map[string]any{"active": []ActiveAttempt{}, "admin": map[string]any{"freeSlots": free, "activeProvisionIds": []string{}}})
 	}
 	heartbeat(1)
-	create := func(request, key string, status int) siteAIAgentCreation {
+	create := func(request, key, engine, profile string, status int) siteAIAgentCreation {
 		t.Helper()
-		body := siteAINewAgent{RequestID: request, WorkspaceID: admWorkspaceID, Name: "Fixture Agent", Mode: siteAIManaged, Engine: "builtin",
-			ProfileID: stringPointer("adm-fixture"), Provider: "openai-responses", Model: "fixture-model", APIKey: &key}
+		body := siteAINewAgent{RequestID: request, WorkspaceID: admWorkspaceID, Name: "Fixture Agent", Mode: siteAIManaged, Engine: engine,
+			ProfileID: &profile, Provider: "openai-responses", Model: "fixture-model", APIKey: &key}
 		response := f.platform("POST", admAIPath+"/agents", jsonText(body), status)
 		if strings.Contains(response.Body.String(), key) {
 			t.Fatal("Agent response contains its Key")
@@ -102,15 +105,15 @@ func TestADM3ManagedKeyPostgres(t *testing.T) {
 		return result
 	}
 	makeRequest := NewID()
-	first := create(makeRequest, "fixture-key-a", 201).Agent
+	first := create(makeRequest, "fixture-key-a", "builtin", "adm-fixture", 201).Agent
 	if first.Status != siteAIVerifying || first.ProbeID == nil || first.ModelKey == nil || *first.ModelKey.Version != 1 {
 		t.Fatalf("unexpected initial agent: %+v", first)
 	}
-	if again := create(makeRequest, "fixture-key-a", 200); again.Agent.ID != first.ID || again.Token != "" {
+	if again := create(makeRequest, "fixture-key-a", "builtin", "adm-fixture", 200); again.Agent.ID != first.ID || again.Token != "" {
 		t.Fatalf("idempotent Agent creation: %+v", again)
 	}
-	create(makeRequest, "fixture-different-key", 409)
-	second := create(NewID(), "fixture-key-b", 201).Agent
+	create(makeRequest, "fixture-different-key", "builtin", "adm-fixture", 409)
+	second := create(NewID(), "fixture-key-b", "vercel", "adm-vercel", 201).Agent
 	if second.Status != siteAIFailed || stringValue(second.Reason) != "no_capacity" {
 		t.Fatalf("a second reservation consumed the same reported slot: %+v", second)
 	}
@@ -126,6 +129,13 @@ func TestADM3ManagedKeyPostgres(t *testing.T) {
 		f.handler.ServeHTTP(recorder, r)
 		if recorder.Code != status || recorder.Header().Get("Cache-Control") != "no-store" {
 			t.Fatalf("unexpected resolver HTTP %d, expected %d", recorder.Code, status)
+		}
+		if status == http.StatusConflict {
+			var result struct{ Error struct{ Code string } }
+			f.decode(recorder.Body.Bytes(), &result)
+			if result.Error.Code != "credential_unavailable" {
+				t.Fatalf("resolver error code = %q, want credential_unavailable", result.Error.Code)
+			}
 		}
 		var result siteAIKeyResolution
 		f.decode(recorder.Body.Bytes(), &result)
@@ -168,29 +178,50 @@ func TestADM3ManagedKeyPostgres(t *testing.T) {
 	probe(retried, "succeeded", nil, true)
 	path := admAIPath + "/workspaces/" + admWorkspaceID + "/agent-routing"
 	f.platform("PATCH", path, jsonText(map[string]any{"revision": 1, "skillId": "test-author", "agentId": second.ID}), 200)
-	_, run := f.enqueueAuthor()
+	editing, run := f.enqueueAuthor()
 	if stringValue(run.AgentID) != second.ID || run.AuthorEngine != "builtin" {
 		t.Fatalf("author route: %+v", run)
 	}
 	f.tick()
-	var found bool
+	var runKey siteAIKeyRequest
 	for _, frame := range f.peer.messages {
 		if frame.Type == "dispatch" && frame.RunID == run.ID {
 			var payload struct {
 				Credential *siteAIModelCredential `json:"modelCredential"`
+				Author     *AuthorInput           `json:"author"`
 			}
 			f.decode(frame.Payload, &payload)
 			if payload.Credential == nil || payload.Credential.AgentID != second.ID || payload.Credential.SecretVersion != 1 || strings.Contains(string(frame.Payload), "fixture-key-") {
 				t.Fatal("dispatch did not pin the nonsecret binding")
 			}
-			if resolve(siteAIKeyRequest{siteAIModelCredential: *payload.Credential, Purpose: "run", RunID: run.ID, AttemptID: frame.AttemptID}, 200) != "fixture-key-b" {
+			if payload.Author == nil || payload.Author.Runtime == nil || payload.Author.Runtime.Engine != "vercel" {
+				t.Fatal("dispatch did not use the selected Vercel engine")
+			}
+			runKey = siteAIKeyRequest{siteAIModelCredential: *payload.Credential, Purpose: "run", RunID: run.ID, AttemptID: frame.AttemptID}
+			if resolve(runKey, 200) != "fixture-key-b" {
 				t.Fatal("Agent rotation changed another Agent's key")
 			}
-			found = true
+			break
 		}
 	}
-	if !found {
+	if runKey.RunID == "" {
 		t.Fatal("managed author did not dispatch")
+	}
+
+	f.platform("DELETE", admAIPath+"/agents/"+second.ID+"/model-key", `{"expectedSecretVersion":1,"confirmed":true}`, 200)
+	resolve(runKey, http.StatusConflict)
+	f.manager("result", run.ID, runKey.AttemptID, Result{Status: "cancelled"})
+	response := f.platform("POST", "/api/tests/"+admTestID+"/messages", jsonText(map[string]any{
+		"editingSessionId": editing.ID, "revision": editing.Draft.Revision, "content": "補上付款成功的驗證",
+	}), http.StatusConflict)
+	var denied struct{ Error struct{ Code string } }
+	f.decode(response.Body.Bytes(), &denied)
+	if denied.Error.Code != "agent_not_ready" {
+		t.Fatalf("author enqueue error code = %q, want agent_not_ready", denied.Error.Code)
+	}
+	var queued bool
+	if err := f.store.DB.QueryRowContext(f.ctx, `SELECT EXISTS(SELECT 1 FROM runs WHERE test_id=$1 AND kind='author' AND status='queued')`, admTestID).Scan(&queued); err != nil || queued {
+		t.Fatalf("rejected author turn left a queued Run: queued=%t err=%v", queued, err)
 	}
 }
 
