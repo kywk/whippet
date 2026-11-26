@@ -11,6 +11,8 @@ export interface DevUser {
     createWorkspace: boolean;
     manageUsers: boolean;
     manageSuperAdmins: boolean;
+    manageSiteWorkspaces: boolean;
+    manageSiteRoles: boolean;
   };
 }
 
@@ -31,6 +33,51 @@ export interface WorkspacePermissions {
 export interface Workspace {
   id: string;
   name: string;
+}
+
+export const WORKSPACE_MANAGEMENT_STATES = ['active', 'archiving', 'archived'] as const;
+export const WORKSPACE_ARCHIVE_MODES = ['drain', 'cancel'] as const;
+export type WorkspaceManagementState = typeof WORKSPACE_MANAGEMENT_STATES[number];
+export type WorkspaceArchiveMode = typeof WORKSPACE_ARCHIVE_MODES[number];
+
+export interface WorkspaceManagement {
+  state: WorkspaceManagementState;
+  revision: number;
+  archiveMode: WorkspaceArchiveMode | null;
+  archiveStartedAt: string | null;
+  archivedAt: string | null;
+}
+
+export const DEFAULT_WORKSPACE_MANAGEMENT: Readonly<WorkspaceManagement> = {
+  state: 'active', revision: 1, archiveMode: null, archiveStartedAt: null, archivedAt: null,
+};
+
+export interface WorkspaceSummary extends Workspace {
+  lifecycle: 'draft' | 'needs_confirmation' | 'active';
+  management: WorkspaceManagement;
+  permissions: WorkspacePermissions;
+}
+
+export interface ArchiveImpact {
+  queuedRuns: number;
+  activeRuns: number;
+  externalClaims: number;
+  browserLeases: number;
+  unreleasedRunSlots: number;
+  provisionJobs: number;
+}
+
+export interface ManagedWorkspace {
+  workspace: WorkspaceSummary;
+  impact: ArchiveImpact;
+}
+
+export interface ManagedWorkspaceApi {
+  list(state: 'all' | WorkspaceManagementState, after: string | null, signal?: AbortSignal): Promise<{ items: WorkspaceSummary[]; nextAfter: string | null }>;
+  get(workspaceId: string, signal?: AbortSignal): Promise<ManagedWorkspace>;
+  rename(workspaceId: string, revision: number, name: string, signal?: AbortSignal): Promise<ManagedWorkspace>;
+  archive(workspaceId: string, revision: number, mode: WorkspaceArchiveMode, signal?: AbortSignal): Promise<ManagedWorkspace>;
+  restore(workspaceId: string, revision: number, signal?: AbortSignal): Promise<ManagedWorkspace>;
 }
 
 export interface WorkspaceConfig {
@@ -126,10 +173,8 @@ export interface WorkspaceProposal {
   createdAt: string;
 }
 
-export interface WorkspaceDetail extends Workspace, WorkspaceSettingsSnapshot {
-  permissions: WorkspacePermissions;
+export interface WorkspaceDetail extends WorkspaceSummary, WorkspaceSettingsSnapshot {
   authorEngine: AuthorEngine;
-  lifecycle: 'draft' | 'needs_confirmation' | 'active';
   revision: number;
   authorizationRevision: number;
   scopeStatus: 'unconfirmed' | 'confirmed' | 'revoking';
@@ -497,6 +542,7 @@ export interface WhippetApi {
   listMembers(workspaceId: string, signal?: AbortSignal): Promise<WorkspaceMember[]>;
   updateMember(workspaceId: string, userId: string, role: WorkspaceMemberRole, signal?: AbortSignal): Promise<WorkspaceMember>;
   listWorkspaces(signal?: AbortSignal): Promise<WorkspaceDetail[]>;
+  adminWorkspaces?: ManagedWorkspaceApi;
   listTests(workspaceId: string, signal?: AbortSignal): Promise<Test[]>;
   listArchivedTests(workspaceId: string, signal?: AbortSignal): Promise<Test[]>;
   archiveTest(testId: string, signal?: AbortSignal): Promise<void>;

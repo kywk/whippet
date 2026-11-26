@@ -1,6 +1,7 @@
 import { lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode, RefObject } from 'react';
-import { DEFAULT_DEV_USER, DEV_IDENTITIES, siteRoleNames } from './access';
+import { DEFAULT_DEV_USER, DEV_IDENTITIES, readSiteManagementRoute, siteManagementHref, siteRoleNames } from './access';
+import type { SiteManagementRoute } from './access';
 import { ApiError, errorMessage } from './api';
 import { BackgroundNotices, Loading, Notice, SurfaceBoundary } from './components';
 import { WorkspaceOverview } from './WorkspaceOverview';
@@ -16,7 +17,7 @@ import whippetIllustration from './assets/whippet-illustration.webp';
 import type { DevUser, Test, WhippetApi, WorkspaceDetail } from './types';
 
 const WorkspaceConversation = lazy(() => import('./WorkspaceConversation').then(({ WorkspaceConversation }) => ({ default: WorkspaceConversation })));
-const SiteUsers = lazy(() => import('./UserAccess').then(({ SiteUsers }) => ({ default: SiteUsers })));
+const SiteManagement = lazy(() => import('./SiteManagement').then(({ SiteManagement }) => ({ default: SiteManagement })));
 const WorkspaceMembers = lazy(() => import('./UserAccess').then(({ WorkspaceMembers }) => ({ default: WorkspaceMembers })));
 const ModuleCatalog = lazy(() => import('./ModuleCatalog').then(({ ModuleCatalog }) => ({ default: ModuleCatalog })));
 const ArchivedTests = lazy(() => import('./ArchivedTests').then(({ ArchivedTests }) => ({ default: ArchivedTests })));
@@ -33,7 +34,7 @@ interface EditingGuard {
   confirmNavigation: () => boolean;
 }
 
-type Surface = 'overview' | 'tests' | 'settings' | 'catalog' | 'users' | 'members' | 'archive';
+type Surface = 'overview' | 'tests' | 'settings' | 'catalog' | 'members' | 'archive';
 type NavigationSurface = Exclude<Surface, 'tests' | 'settings'>;
 
 export function App({ api, apiBase, mock }: AppProps) {
@@ -116,7 +117,7 @@ export function App({ api, apiBase, mock }: AppProps) {
               <div className="settings-field">
                 <label htmlFor="dev-identity">開發身分</label>
                 <select id="dev-identity" className="text-input" value={identity} disabled={loggingIn || loggingOut} onChange={(event) => setIdentity(event.target.value)}>
-                  {DEV_IDENTITIES.map(({ id, name, loginLabel }) => <option key={id} value={id}>{loginLabel ?? name}</option>)}
+                  {DEV_IDENTITIES.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
                 </select>
               </div>
               {!mock ? <label className="settings-field">管理 key（管理 gate 啟用時必填）
@@ -168,6 +169,7 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onUserUpdated, onSe
   }, [workspaces.retry]);
   const [selectedId, setSelectedId] = useState('');
   const [surface, setSurface] = useState<Surface>('overview');
+  const [siteRoute, setSiteRoute] = useState(readSiteManagementRoute);
   const [setupTarget, setSetupTarget] = useState<string>();
   const [completions, setCompletions] = useState<BackgroundCompletion[]>([]);
   const addCompletions = useCallback((batch: BackgroundCompletion[]) => setCompletions(current => [...current, ...batch]), []);
@@ -180,11 +182,11 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onUserUpdated, onSe
   const workspace = allWorkspaces.find((item) => item.id === selectedId) ?? allWorkspaces[0];
   const setupWorkspace = allWorkspaces.find((item) => item.id === setupTarget);
   const canShowSetup = setupTarget === 'create' ? user.permissions.createWorkspace : setupWorkspace?.permissions.manageSettings;
-  const canManageUsers = user.permissions.manageUsers;
+  const canOpenSiteManagement = user.permissions.manageSiteWorkspaces || user.permissions.manageSiteRoles;
   const canManageTests = workspace?.permissions.manageTests;
   const canManageMembers = workspace?.permissions.manageMembers;
   const surfaceAllowed = {
-    overview: true, users: canManageUsers, settings: canShowSetup, members: canManageMembers,
+    overview: true, settings: canShowSetup, members: canManageMembers,
     tests: canManageTests, catalog: canManageTests, archive: canManageTests,
   }[surface];
   const visibleSurface = surfaceAllowed ? surface : 'overview';
@@ -205,18 +207,42 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onUserUpdated, onSe
     if (!surfaceAllowed) setSurface('overview');
     if (setupTarget && !canShowSetup) setSetupTarget(undefined);
   }, [workspaces.data, surfaceAllowed, setupTarget, canShowSetup]);
+  useEffect(() => {
+    function syncSiteRoute() {
+      const next = readSiteManagementRoute();
+      if (next && !siteRoute) {
+        if (!confirmNavigation()) {
+          window.history.pushState(null, '', siteManagementHref());
+          return;
+        }
+        rail.close();
+        setSetupTarget(undefined);
+        setSurface('overview');
+      }
+      setSiteRoute(next);
+    }
+    window.addEventListener('popstate', syncSiteRoute);
+    return () => window.removeEventListener('popstate', syncSiteRoute);
+  }, [siteRoute, confirmNavigation, rail.close]);
 
   const updateWorkspace = useCallback((next: WorkspaceDetail) => {
     workspaces.updateData((items) => items?.map((item) => item.id === next.id ? { ...next, permissions: item.permissions } : item));
   }, [workspaces.updateData]);
+  const addWorkspace = useCallback((next: WorkspaceDetail) => {
+    workspaces.updateData((items) => [...(items ?? []).filter((item) => item.id !== next.id), next]);
+    workspaces.retry();
+  }, [workspaces.updateData, workspaces.retry]);
   const createdWorkspace = useCallback((next: WorkspaceDetail) => {
     setupReturnSurface.current = 'overview';
-    workspaces.updateData((items) => [...(items ?? []).filter((item) => item.id !== next.id), next]);
+    addWorkspace(next);
     setSelectedId(next.id);
     setSetupTarget(next.id);
     setSurface('settings');
+  }, [addWorkspace]);
+  const refreshAccess = useCallback((current?: DevUser) => {
+    if (current) onUserUpdated(current);
     workspaces.retry();
-  }, [workspaces.updateData, workspaces.retry]);
+  }, [onUserUpdated, workspaces.retry]);
   function openSetup(create = false) {
     if (create ? !user.permissions.createWorkspace : !workspace?.permissions.manageSettings) return;
     if (visibleSurface !== 'settings' && !confirmTestNavigation()) return;
@@ -238,6 +264,26 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onUserUpdated, onSe
   function openSurface(next: NavigationSurface) {
     if (visibleSurface !== next && confirmNavigation()) setSurface(next);
   }
+  function navigateSiteManagement(next?: SiteManagementRoute) {
+    const href = siteManagementHref(next);
+    if (new URL(href, window.location.href).href !== window.location.href) window.history.pushState(null, '', href);
+    setSiteRoute(next);
+  }
+  function openSiteManagement() {
+    if (!canOpenSiteManagement || !confirmNavigation()) return;
+    rail.close();
+    setSetupTarget(undefined);
+    setSurface('overview');
+    navigateSiteManagement({ page: user.permissions.manageSiteWorkspaces ? 'workspaces' : 'roles' });
+  }
+
+  if (siteRoute) return <main id="main" className="site-management" tabIndex={-1}>
+    <SurfaceBoundary loadingText="正在開啟全站管理…" confirmReload={confirmNavigation}>
+      <SiteManagement api={api} user={user} mock={mock} route={siteRoute}
+        onNavigate={navigateSiteManagement} onLogout={onLogout} onCreated={addWorkspace} onAccessChanged={refreshAccess}
+        onOpenWorkspace={(id) => { setSelectedId(id); setSurface('overview'); navigateSiteManagement(); }} />
+    </SurfaceBoundary>
+  </main>;
 
   const setupView = canShowSetup ? <div className="workspace-setup-view" hidden={visibleSurface !== 'settings'} data-surface="workspace">
     <SurfaceBoundary key={setupTarget} loadingText="正在開啟 Workspace 設定…" confirmReload={confirmNavigation}>
@@ -245,9 +291,6 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onUserUpdated, onSe
         onReturn={() => setSurface(setupReturnSurface.current)} onDirtyChange={reportSetupGuard} onCreated={createdWorkspace} onWorkspaceUpdated={updateWorkspace} onRefreshList={workspaces.retry} />
     </SurfaceBoundary>
   </div> : null;
-  const usersView = visibleSurface === 'users' ? <SurfaceBoundary loadingText="正在開啟全站使用者管理…" confirmReload={confirmNavigation}>
-    <SiteUsers api={api} user={user} onAccessChanged={workspaces.retry} />
-  </SurfaceBoundary> : null;
   const membersView = visibleSurface === 'members' && workspace ? <SurfaceBoundary key={workspace.id} loadingText="正在開啟 Workspace 成員管理…" confirmReload={confirmNavigation}>
     <WorkspaceMembers api={api} workspace={workspace} userId={user.id} onAccessChanged={workspaces.retry} />
   </SurfaceBoundary> : null;
@@ -262,8 +305,8 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onUserUpdated, onSe
         {user.permissions.createWorkspace ? <button type="button" className="button rail-primary" onClick={() => { openSetup(true); rail.close(); }}><PlusIcon />建立 Workspace</button> : null}
         <div className="rail-foot">
           <RailTools user={user} onLogout={onLogout} panel={rail.tools}>
-            {canManageUsers ? <div className="rail-tools-section">
-              <button type="button" className="rail-link wide" aria-current={visibleSurface === 'users' ? 'page' : undefined} onClick={() => { openSurface('users'); rail.close(); }}>全站使用者管理</button>
+            {canOpenSiteManagement ? <div className="rail-tools-section">
+              <button type="button" className="rail-link wide" onClick={openSiteManagement}><UsersIcon />全站管理</button>
             </div> : null}
           </RailTools>
         </div>
@@ -274,7 +317,6 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onUserUpdated, onSe
         {workspaces.loading ? <Loading text="正在載入 Workspace…" /> : null}
         {workspaces.error ? <Notice message={workspaces.error} retry={workspaces.retry} /> : null}
         {setupView}
-        {usersView}
         {visibleSurface === 'overview' && !workspaces.loading && !workspaces.error ? <Empty title="尚無可使用的 Workspace"
           text={user.permissions.createWorkspace ? '建立 Workspace 後，指定驗測目的與網站範圍。' : '請聯絡 Workspace Admin 加入成員。'}
           action={user.permissions.createWorkspace ? <button className="button primary" onClick={() => openSetup(true)}>建立 Workspace</button> : undefined} /> : null}
@@ -285,7 +327,8 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onUserUpdated, onSe
     <TestBrowser key={workspace.id} api={api} apiBase={apiBase} mock={mock} user={user} onLogout={onLogout}
       workspace={workspace} workspaces={allWorkspaces} overviewTitle={overviewTitle} switchWorkspace={switchWorkspace} openSetup={openSetup} rail={rail}
       surface={visibleSurface} setSurface={setSurface} setupTarget={setupTarget} onDirtyChange={onDirtyChange} confirmNavigation={confirmTestNavigation} confirmReload={confirmNavigation}
-      administration={<>{setupView}{usersView}{membersView}</>} onOpenSurface={openSurface} onBackgroundCompletion={addCompletions} />
+      administration={<>{setupView}{membersView}</>} onOpenSurface={openSurface} onOpenSiteManagement={canOpenSiteManagement ? openSiteManagement : undefined}
+      onBackgroundCompletion={addCompletions} />
     <BackgroundNotices completions={completions} onExpire={expireCompletion} />
   </>;
 }
@@ -352,11 +395,12 @@ interface BrowserProps extends Pick<AppProps, 'api' | 'apiBase' | 'mock'>, Editi
   surface: Surface; setSurface: (surface: Surface) => void; setupTarget?: string;
   confirmReload: () => boolean;
   administration: ReactNode; onOpenSurface: (surface: NavigationSurface) => void;
+  onOpenSiteManagement?: () => void;
   rail: ReturnType<typeof useRailDrawer>;
   onBackgroundCompletion: (batch: BackgroundCompletion[]) => void;
 }
 
-function TestBrowser({ workspace, workspaces, overviewTitle, api, apiBase, mock, user, onLogout, switchWorkspace, openSetup, surface, setSurface, setupTarget, onDirtyChange, confirmNavigation, confirmReload, administration, onOpenSurface, rail, onBackgroundCompletion }: BrowserProps) {
+function TestBrowser({ workspace, workspaces, overviewTitle, api, apiBase, mock, user, onLogout, switchWorkspace, openSetup, surface, setSurface, setupTarget, onDirtyChange, confirmNavigation, confirmReload, administration, onOpenSurface, onOpenSiteManagement, rail, onBackgroundCompletion }: BrowserProps) {
   const { manageTests, manageSettings, manageMembers } = workspace.permissions;
   const loadTests = useCallback((signal: AbortSignal) => manageTests ? api.listTests(workspace.id, signal) : Promise.resolve([]), [api, workspace.id, manageTests]);
   const tests = useResource(loadTests, true);
@@ -583,10 +627,10 @@ function TestBrowser({ workspace, workspaces, overviewTitle, api, apiBase, mock,
               <button type="button" className="rail-link wide" aria-current={surface === 'archive' ? 'page' : undefined} onClick={() => openRailSurface('archive')}><ArchiveIcon />已封存測試</button>
               <a className="rail-link wide rail-tools-text-link" href="?preview=m10" onClick={(event) => { if (!confirmNavigation()) event.preventDefault(); }}>Module / Use Case 合成預覽</a>
             </div> : null}
-            {manageSettings || manageMembers || user.permissions.manageUsers || user.permissions.createWorkspace ? <div className="rail-tools-section" role="group" aria-label="管理">
+            {manageSettings || manageMembers || onOpenSiteManagement || user.permissions.createWorkspace ? <div className="rail-tools-section" role="group" aria-label="管理">
               {manageSettings ? <button type="button" className="rail-link wide" aria-current={surface === 'settings' && setupTarget !== 'create' ? 'page' : undefined} onClick={() => { openSetup(); rail.close(); }}><GearIcon />Workspace 設定</button> : null}
               {manageMembers ? <button type="button" className="rail-link wide" aria-current={surface === 'members' ? 'page' : undefined} onClick={() => openRailSurface('members')}><UsersIcon />Workspace 成員管理</button> : null}
-              {user.permissions.manageUsers ? <button type="button" className="rail-link wide rail-tools-text-link" aria-current={surface === 'users' ? 'page' : undefined} onClick={() => openRailSurface('users')}>全站使用者管理</button> : null}
+              {onOpenSiteManagement ? <button type="button" className="rail-link wide" onClick={onOpenSiteManagement}><UsersIcon />全站管理</button> : null}
               {user.permissions.createWorkspace ? <button type="button" className="rail-link wide" onClick={() => { openSetup(true); rail.close(); }}><PlusIcon />建立 Workspace</button> : null}
             </div> : null}
             {permission === 'default' || permission === 'granted' ? <div className="rail-tools-section">
