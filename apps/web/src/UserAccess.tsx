@@ -10,14 +10,17 @@ import './access.css';
 
 type RoleEntry<Role extends string> = { id: string; name: string; role: Role };
 
-export function SiteUsers({ api, user, onAccessChanged }: { api: WhippetApi; user: DevUser; onAccessChanged: () => void }) {
-  const elevated = user.permissions.manageSuperAdmins;
-  const roles = elevated ? SITE_ROLES : SITE_ROLES.filter((role) => role !== 'superadmin');
-  return <RoleDirectory title="全站使用者管理" scope="全站角色" roleNames={siteRoleNames} roles={roles} currentUserId={user.id}
-    load={api.listUsers} save={api.updateUserRole} onAccessChanged={onAccessChanged} />;
+export function SiteUsers({ api, user, onAccessChanged }: { api: WhippetApi; user: DevUser; onAccessChanged: (user?: DevUser) => void }) {
+  async function save(id: string, role: DevUser['role'], signal: AbortSignal) {
+    const updated = await api.updateUserRole(id, role, signal);
+    if (!signal.aborted && id === user.id) onAccessChanged(updated);
+    return updated;
+  }
+  return <RoleDirectory title="全站角色管理" scope="全站角色" roleNames={siteRoleNames} roles={SITE_ROLES} currentUserId={user.id}
+    load={api.listUsers} save={save} onAccessChanged={onAccessChanged} />;
 }
 
-export function WorkspaceMembers({ api, workspace, userId, onAccessChanged }: { api: WhippetApi; workspace: WorkspaceDetail; userId: string; onAccessChanged: () => void }) {
+export function WorkspaceMembers({ api, workspace, userId, onAccessChanged }: { api: WhippetApi; workspace: Pick<WorkspaceDetail, 'id' | 'name' | 'permissions'>; userId: string; onAccessChanged: () => void }) {
   const load = useCallback((signal: AbortSignal) => api.listMembers(workspace.id, signal), [api, workspace.id]);
   const roles = workspace.permissions.manageWorkspaceAdmins ? WORKSPACE_MEMBER_ROLES : WORKSPACE_MEMBER_ROLES.filter((role) => role !== 'workspace_admin');
   return <RoleDirectory title="Workspace 成員管理" subtitle={workspace.name} scope="Workspace 角色" roleNames={workspaceMemberRoleNames} roles={roles}
@@ -39,32 +42,47 @@ interface DirectoryProps<Role extends string> {
 function RoleDirectory<Role extends string>({ title, subtitle, scope, roleNames, roles, currentUserId, load, save, onAccessChanged }: DirectoryProps<Role>) {
   const directory = useResource(load, true);
   const heading = useRef<HTMLHeadingElement>(null);
+  const searchId = useId();
+  const [search, setSearch] = useState('');
   const [note, setNote] = useState('');
+  const query = search.trim().toLocaleLowerCase();
+  const entries = directory.data?.filter((entry) =>
+    entry.name.toLocaleLowerCase().includes(query) || entry.id.toLocaleLowerCase().includes(query));
   useEffect(() => { heading.current?.focus(); }, []);
 
   function handleSave(entry: RoleEntry<Role>) {
     directory.updateData((current) => current?.map((row) => row.id === entry.id ? entry : row));
+    directory.retry();
     setNote(`已儲存 ${entry.name} 的角色（${roleNames[entry.role]}）。`);
     onAccessChanged();
   }
 
   return <section className="access-view" aria-labelledby="access-title">
     <header className="access-view-header">
-      <div>{subtitle ? <p className="muted">{subtitle}</p> : null}<h1 id="access-title" ref={heading} tabIndex={-1}>{title}</h1></div>
+      <div><h1 id="access-title" ref={heading} tabIndex={-1}>{title}</h1>{subtitle ? <p className="access-subtitle muted">{subtitle}</p> : null}</div>
       <button type="button" className="button secondary compact" disabled={directory.loading} onClick={() => { setNote(''); directory.retry(); }}>
         <RefreshIcon />重新載入
       </button>
     </header>
     {directory.error ? <Notice message={directory.error} retry={directory.retry} /> : null}
     {directory.loading && !directory.data ? <Loading text="正在載入角色…" /> : null}
-    {directory.data ? <ul className="access-list">
-      {directory.data.map((entry) => <li key={entry.id}>
-        <div className="access-person"><strong>{entry.name}</strong>{entry.id === currentUserId ? <span className="chip neutral">目前登入</span> : null}</div>
-        {roles.includes(entry.role) ? <RoleForm entry={entry} scope={scope} roleNames={roleNames} roles={roles} save={save}
-          onSaving={() => setNote('')} onSaved={handleSave} onPermissionChanged={onAccessChanged} />
-          : <p className="access-role"><span className="muted">{scope}</span>{roleNames[entry.role]}</p>}
-      </li>)}
-    </ul> : null}
+    {entries ? <>
+      <div className="settings-field access-search">
+        <label htmlFor={searchId}>搜尋帳號</label>
+        <input id={searchId} type="search" className="text-input" placeholder="輸入名稱或帳號" value={search} onChange={(event) => setSearch(event.target.value)} />
+      </div>
+      {entries.length ? <ul className="access-list">
+        {entries.map((entry) => <li key={entry.id}>
+          <div className="access-person">
+            <div className="access-person-label"><strong>{entry.name}</strong><span className="identifier muted">{entry.id}</span></div>
+            <span className="chip neutral"><span className="sr-only">目前角色 </span>{roleNames[entry.role]}</span>
+            {entry.id === currentUserId ? <span className="chip neutral">目前登入</span> : null}
+          </div>
+          {roles.includes(entry.role) ? <RoleForm entry={entry} scope={scope} roleNames={roleNames} roles={roles} save={save}
+            onSaving={() => setNote('')} onSaved={handleSave} onPermissionChanged={onAccessChanged} /> : null}
+        </li>)}
+      </ul> : <p className="muted" role="status">{query ? '找不到符合的帳號。' : '目前沒有可管理的帳號。'}</p>}
+    </> : null}
     <p className="access-note" role="status">{note}</p>
   </section>;
 }
@@ -102,7 +120,7 @@ function RoleForm<Role extends string>({ entry, scope, roleNames, roles, save, o
       }
     } catch (cause) {
       if (!controller.signal.aborted) {
-        setError(errorMessage(cause));
+        setError(cause instanceof ApiError && cause.code === 'last_super_admin' ? '至少需要保留一位 Super Admin。' : errorMessage(cause));
         if (cause instanceof ApiError && (cause.status === 401 || cause.status === 403)) onPermissionChanged();
       }
     } finally {

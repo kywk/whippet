@@ -1,11 +1,11 @@
 import { ApiError } from './api';
 import { DEFAULT_DEV_USER, DEV_IDENTITIES } from './access';
-import { isActiveRun } from './types';
+import { DEFAULT_WORKSPACE_MANAGEMENT, isActiveRun } from './types';
 import type { DevUser, Draft, Run, SiteRole, Test, Version, WhippetApi, WorkspaceDetail, WorkspaceMemberRole, WorkspaceRunActivity } from './types';
 
 // 明確 opt-in 的 UI 示範；不與真實 API 自動互相切換。
 export function createMockApi(): WhippetApi {
-  const workspace: Omit<WorkspaceDetail, 'permissions'> = { id: '00000000-0000-4000-8000-000000000001', name: '示範 Workspace', revision: 1, authorEngine: 'builtin', sites: [], defaultTestUrl: '', timeoutMs: 60000, lifecycle: 'needs_confirmation', authorizationRevision: 0, scopeStatus: 'unconfirmed', settings: null, conversationId: 'mock-unavailable', activeRunId: null, currentProposal: null, roles: [], secretsAvailable: false, executionAvailable: false, unavailableReason: 'mock_unavailable' };
+  const workspace: Omit<WorkspaceDetail, 'permissions'> = { id: '00000000-0000-4000-8000-000000000001', name: '示範 Workspace', revision: 1, authorEngine: 'builtin', sites: [], defaultTestUrl: '', timeoutMs: 60000, lifecycle: 'needs_confirmation', management: { ...DEFAULT_WORKSPACE_MANAGEMENT }, authorizationRevision: 0, scopeStatus: 'unconfirmed', settings: null, conversationId: 'mock-unavailable', activeRunId: null, currentProposal: null, roles: [], secretsAvailable: false, executionAvailable: false, unavailableReason: 'mock_unavailable' };
   let currentUserId: string | undefined;
   const siteRoles = new Map<string, SiteRole>([['dev-admin', 'superadmin'], ['dev-site-admin', 'site_admin']]);
   const workspaceRoles = new Map<string, WorkspaceMemberRole>([['dev-workspace-admin', 'workspace_admin'], [DEFAULT_DEV_USER, 'qa']]);
@@ -16,7 +16,8 @@ export function createMockApi(): WhippetApi {
     const role = siteRoles.get(identity.id) ?? 'none';
     return {
       id: identity.id, name: identity.name, role,
-      permissions: { createWorkspace: role !== 'none', manageUsers: role !== 'none', manageSuperAdmins: role === 'superadmin' },
+      permissions: { createWorkspace: role !== 'none', manageUsers: role !== 'none', manageSuperAdmins: role === 'superadmin',
+        manageSiteWorkspaces: false, manageSiteRoles: role === 'superadmin' },
     };
   }
 
@@ -141,7 +142,7 @@ test('本機頁面', async ({ page }) => {
     async updateUserRole(userId, role) {
       const actor = user(currentUserId);
       const target = user(userId);
-      if (!actor.permissions.manageUsers || (!actor.permissions.manageSuperAdmins && (target.role === 'superadmin' || role === 'superadmin'))) forbid();
+      if (!actor.permissions.manageSuperAdmins) forbid();
       if (target.role === 'superadmin' && role !== 'superadmin' && ![...siteRoles].some(([id, siteRole]) => id !== userId && siteRole === 'superadmin')) {
         throw new ApiError('必須保留至少一位 Super Admin。', 'CONFLICT', 409);
       }

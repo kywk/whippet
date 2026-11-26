@@ -1,5 +1,6 @@
 import { validRepairContent, editableStage } from './plan';
-import { AGENT_RUNTIME_SKILLS, RUN_STATUSES, SITE_ROLES, WORKSPACE_MEMBER_ROLES } from './types';
+import { AGENT_RUNTIME_SKILLS, DEFAULT_WORKSPACE_MANAGEMENT, RUN_STATUSES, SITE_ROLES, WORKSPACE_ARCHIVE_MODES, WORKSPACE_MANAGEMENT_STATES, WORKSPACE_MEMBER_ROLES } from './types';
+import type { ManagedWorkspace, WorkspaceManagement, WorkspacePermissions, WorkspaceSummary } from './types';
 import type { RunActivity, SimilarTestSuggestion, VersionConversationMessage, WorkspaceAgentRuntime, WorkspaceMember, WorkspaceRunActivity } from './types';
 import type { AgentToken, AgentToolAudit, AuthorEngine, BrowserSession, StageRetry, ModuleMetadata, Plan, PlanStage, PlanSummary, StageArgument, JsonValue, AuthorPartial, CatalogItem, AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
 
@@ -119,6 +120,8 @@ function parseUser(value: unknown): DevUser {
       createWorkspace: bool(permissions.createWorkspace),
       manageUsers: bool(permissions.manageUsers),
       manageSuperAdmins: bool(permissions.manageSuperAdmins),
+      manageSiteWorkspaces: permissions.manageSiteWorkspaces === undefined ? false : bool(permissions.manageSiteWorkspaces),
+      manageSiteRoles: permissions.manageSiteRoles === undefined ? false : bool(permissions.manageSiteRoles),
     },
   };
 }
@@ -160,21 +163,56 @@ function parseWorkspaceProposal(value: unknown): WorkspaceProposal {
   };
 }
 
+function parseWorkspacePermissions(value: unknown): WorkspacePermissions {
+  const permissions = record(value);
+  return {
+    manageTests: bool(permissions.manageTests), manageSettings: bool(permissions.manageSettings),
+    manageMembers: bool(permissions.manageMembers), manageWorkspaceAdmins: bool(permissions.manageWorkspaceAdmins),
+    manageAgentTokens: bool(permissions.manageAgentTokens),
+  };
+}
+
+function parseWorkspaceManagement(value: unknown): WorkspaceManagement {
+  const data = record(value);
+  const managementRevision = revision(data.revision);
+  if (managementRevision < 1) throw new ApiError('Workspace 管理版本格式不符。', 'INVALID_RESPONSE');
+  return {
+    state: choice(data.state, WORKSPACE_MANAGEMENT_STATES), revision: managementRevision,
+    archiveMode: data.archiveMode === null ? null : choice(data.archiveMode, WORKSPACE_ARCHIVE_MODES),
+    archiveStartedAt: nullableString(data.archiveStartedAt), archivedAt: nullableString(data.archivedAt),
+  };
+}
+
+function parseWorkspaceSummary(value: unknown): WorkspaceSummary {
+  const data = record(value);
+  return {
+    id: string(data.id), name: string(data.name), lifecycle: choice(data.lifecycle, ['draft', 'needs_confirmation', 'active'] as const),
+    management: parseWorkspaceManagement(data.management), permissions: parseWorkspacePermissions(data.permissions),
+  };
+}
+
+function parseManagedWorkspace(value: unknown, workspaceId: string): ManagedWorkspace {
+  const data = record(value);
+  const workspace = parseWorkspaceSummary(data.workspace);
+  if (workspace.id !== workspaceId) throw new ApiError('Workspace 回應不符。', 'WORKSPACE_CONFLICT');
+  const impact = record(data.impact);
+  return { workspace, impact: {
+    queuedRuns: revision(impact.queuedRuns), activeRuns: revision(impact.activeRuns), externalClaims: revision(impact.externalClaims),
+    browserLeases: revision(impact.browserLeases), unreleasedRunSlots: revision(impact.unreleasedRunSlots), provisionJobs: revision(impact.provisionJobs),
+  } };
+}
+
 function parseWorkspaceDetail(value: unknown): WorkspaceDetail {
   const data = record(value);
-  const permissions = record(data.permissions);
   const result: WorkspaceDetail = {
     ...parseWorkspaceSettings(data), authorEngine: parseAuthorEngine(data.authorEngine), lifecycle: choice(data.lifecycle, ['draft', 'needs_confirmation', 'active'] as const),
+    management: data.management === undefined ? { ...DEFAULT_WORKSPACE_MANAGEMENT } : parseWorkspaceManagement(data.management),
     authorizationRevision: revision(data.authorizationRevision), scopeStatus: choice(data.scopeStatus, ['unconfirmed', 'confirmed', 'revoking'] as const),
     settings: data.settings === null ? null : parseWorkspaceConfig(data.settings), conversationId: string(data.conversationId), activeRunId: nullableString(data.activeRunId),
     currentProposal: data.currentProposal === null ? null : parseWorkspaceProposal(data.currentProposal), roles: array(data.roles, parseWorkspaceRole),
     secretsAvailable: bool(data.secretsAvailable), executionAvailable: bool(data.executionAvailable), unavailableReason: nullableString(data.unavailableReason),
     capabilities: parseCapabilities(data.capabilities),
-    permissions: {
-      manageTests: bool(permissions.manageTests), manageSettings: bool(permissions.manageSettings),
-      manageMembers: bool(permissions.manageMembers), manageWorkspaceAdmins: bool(permissions.manageWorkspaceAdmins),
-      manageAgentTokens: bool(permissions.manageAgentTokens),
-    },
+    permissions: parseWorkspacePermissions(data.permissions),
   };
   if (result.currentProposal && result.currentProposal.workspaceId !== result.id) throw new ApiError('提案所屬 Workspace 不符。', 'WORKSPACE_CONFLICT');
   return result;
@@ -553,6 +591,7 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
   }
 
   const id = encodeURIComponent;
+  const adminWorkspacePath = (workspaceId: string) => `/admin/workspaces/${id(workspaceId)}`;
   const proposalPath = (workspaceId: string, proposalId: string) => `/workspaces/${id(workspaceId)}/proposals/${id(proposalId)}`;
   function ownedProposal(value: unknown, workspaceId: string) {
     const proposal = parseWorkspaceProposal(value);
@@ -560,6 +599,34 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     return proposal;
   }
   return {
+    adminWorkspaces: {
+      async list(state, after, signal) {
+        const query = new URLSearchParams({ state });
+        if (after) query.set('after', after);
+        const data = record(await request(`/admin/workspaces?${query}`, 'GET', signal, undefined, false, 200));
+        return { items: array(data.items, parseWorkspaceSummary), nextAfter: nullableString(data.nextAfter) };
+      },
+      async get(workspaceId, signal) {
+        return parseManagedWorkspace(await request(adminWorkspacePath(workspaceId), 'GET', signal, undefined, false, 200), workspaceId);
+      },
+      async rename(workspaceId, revision, name, signal) {
+        const updated = parseManagedWorkspace(await request(adminWorkspacePath(workspaceId), 'PATCH', signal, { revision, name }, false, 200), workspaceId);
+        if (updated.workspace.name !== name) throw new ApiError('Workspace 更新名稱回應不符。', 'INVALID_RESPONSE');
+        return updated;
+      },
+      async archive(workspaceId, revision, mode, signal) {
+        const updated = parseManagedWorkspace(await request(`${adminWorkspacePath(workspaceId)}/archive`, 'POST', signal, { revision, mode }, false, [200, 202]), workspaceId);
+        if (updated.workspace.management.state === 'active' || updated.workspace.management.archiveMode !== mode) {
+          throw new ApiError('Workspace 封存狀態回應不符。', 'INVALID_RESPONSE');
+        }
+        return updated;
+      },
+      async restore(workspaceId, revision, signal) {
+        const updated = parseManagedWorkspace(await request(`${adminWorkspacePath(workspaceId)}/restore`, 'POST', signal, { revision }, false, 200), workspaceId);
+        if (updated.workspace.management.state !== 'active') throw new ApiError('Workspace 還原狀態回應不符。', 'INVALID_RESPONSE');
+        return updated;
+      },
+    },
     setAdminToken(token) { adminToken = token; },
     async logout(signal) { await request('/dev-logout', 'POST', signal, undefined, false, 204); },
     async listAgentTokens(workspaceId, signal) {
