@@ -2,6 +2,12 @@
 
 規格已寫入；M1 三個模組首批程式已交付；M1 已完成本機真實端到端驗收：成功、斷言失敗及兩份 HTML 報告顯示皆通過。M2、M3 已完成本機驗收；M4 已完成本機驗收；M5／M6 本機功能已通過，部署與開源缺口獨立追蹤；M7–M9 對話工作區已完成本機驗收；目前優先 M10–M12 Use Case 與 Agent 平台化（見文末章節）。需求以 [MVP 規格](../requirements/mvp.md) 為準，技術邊界見 [架構設計](../architecture/design.md)，負責範圍見 [分工計畫](delegation.md)。
 
+## 外部 AI Worker 安裝（2026-11-26）
+
+完成（Codex）。`skills` CLI 可安裝 [whippet-worker](../../skills/whippet-worker/SKILL.md)，由 Workspace Agent Token 經 MCP 接單。參考 Worker 支援反向代理前綴。
+
+隔離 PostgreSQL 與真 HTTP MCP 驗證了 Codex、Claude Code、OpenCode v2 的連線，以及安裝後的工具與資源查核、錯誤 Token／技能雜湊拒絕、領單、心跳、提交與冪等重送。Vercel、Pi 皆通過前綴路由的凍結快照與提交回歸，模型使用合成回應。lab-masa 入口實測回 HTTP 503 `MCP is disabled`，正式環境接單需先啟用 MCP。
+
 ## 前後端效能盤點（2026-11-20）
 
 - Server 完成。Workspace 清單在同一個唯讀交易中批次取得可見工作區、提案及角色。隔離 PostgreSQL 16.11、30 次暖機後請求，500 個 Workspace 的管理員清單從 2,101 道 SQL 命令降至 6 道（含登入查核與交易），p95 從 408 ms 降至 11 ms。1、100、500 個 Workspace 的管理員與 QA 共六組回應逐位元組一致。

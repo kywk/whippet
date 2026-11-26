@@ -2,6 +2,8 @@
 
 本頁對應 [v11 契約](../../contracts/mvp-v11.md)。M11 限定範圍已完成集中驗收，詳見 [M11 結果](../tracking/handoff/m11-final-20261114.md)。下方各 wave 紀錄保留當時的驗證範圍；目前 M12 使用的保留環境及重開機恢復方式見本節。舊19287等隔離環境已依2026-11-16使用者指示退役。
 
+只要讓 Codex、Claude Code 或 OpenCode 加入既有 Whippet Server，請使用 [外部 AI Worker 安裝入口](../../README.md#加入外部-ai-worker)及 [MCP 接入設定](../../skills/whippet-worker/references/setup.md)。
+
 ## M12 保留環境與重開機恢復（2026-11-16）
 
 `feat/mcp` 已由使用者 merge 至 `main` 並 push，合併提交 `60498a9`。保留兩個已驗基準：

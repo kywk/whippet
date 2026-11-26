@@ -4,7 +4,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 export function mcpURL(raw: string): string {
   try {
     const u = new URL(raw);
-    if (u.username || u.password || u.search || u.hash || u.pathname !== '/mcp' ||
+    if (u.username || u.password || u.search || u.hash || !u.pathname.endsWith('/mcp') ||
       !(u.protocol === 'https:' || u.protocol === 'http:' && ['127.0.0.1', '[::1]'].includes(u.hostname))) throw new Error();
     return u.href;
   } catch { throw new BridgeError('invalid_input'); }

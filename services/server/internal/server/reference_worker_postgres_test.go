@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -75,8 +76,14 @@ func runM12ReferenceWorkerFlow(t *testing.T, frozen bool, engine string) {
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	api := NewAPI(p, files, nil, "synthetic-reference-manager", logger).WithAdminAccess("synthetic-reference-admin", "")
-	http := httptest.NewServer(api.Handler(nil))
-	defer http.Close()
+	handler := api.Handler(nil)
+	mcpPath := "/mcp"
+	if frozen {
+		handler = http.StripPrefix("/whippet", handler)
+		mcpPath = "/whippet/mcp"
+	}
+	httpServer := httptest.NewServer(handler)
+	defer httpServer.Close()
 	directory := t.TempDir()
 	if err = os.Chmod(directory, 0700); err != nil {
 		t.Fatal(err)
@@ -85,7 +92,7 @@ func runM12ReferenceWorkerFlow(t *testing.T, frozen bool, engine string) {
 	if err = os.WriteFile(tokenPath, []byte(secret), 0600); err != nil {
 		t.Fatal(err)
 	}
-	fixture := map[string]string{"url": http.URL + "/mcp", "tokenFile": tokenPath, "stateFile": statePath, "engine": engine}
+	fixture := map[string]string{"url": httpServer.URL + mcpPath, "tokenFile": tokenPath, "stateFile": statePath, "engine": engine}
 	if frozen {
 		fixture["frozen"] = "true"
 		fixture["expectedSnapshotHash"] = scriptHash(original)

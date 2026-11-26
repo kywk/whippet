@@ -24,7 +24,7 @@ npm start --prefix runtimes/agent-bridge -- \
   --state-file /absolute/private/client-state/task-001.json
 ```
 
-HTTP只接受literal loopback（127.0.0.1／::1）；其他連線須HTTPS，拒絕URL帳密、query、fragment與redirect。Token及journal需本人擁有的regular檔案、0600、單一硬連結，所在目錄0700；拒絕檔案或直接父目錄本身的symlink。新的state檔案由程式建立，父目錄須先備妥。不要重建基準Token、Vault或服務來滿足這項要求。
+`--mcp-url` 使用完整 MCP 端點，可包含反向代理前綴，例如 `/whippet/mcp`。HTTP只接受literal loopback（127.0.0.1／::1）；其他連線須HTTPS，拒絕URL帳密、query、fragment與redirect。Token及journal需本人擁有的regular檔案、0600、單一硬連結，所在目錄0700；拒絕檔案或直接父目錄本身的symlink。新的state檔案由程式建立，父目錄須先備妥。不要重建基準Token、Vault或服務來滿足這項要求。
 
 一次執行最多領一筆，沒有輪詢／背景daemon。stdout只印固定狀態、結果識別與錯誤分類，從不列印任務、草稿、模型回應或憑證。`submitted`只表示平台接受候選；正式驗證與發佈仍須沿平台流程確認。`idle`也會保存為這次操作的結果；下一筆工作使用新的state檔案。
 

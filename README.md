@@ -36,6 +36,17 @@ docker compose --env-file deploy/.env -f deploy/compose.runner.yml -f deploy/com
 
 `deploy/.env` 與 `deploy/.local/` 留在本機，請保留部署 token、穩定的 Manager ID 與 journal；重新啟動不需要重新初始化。
 
+## 加入外部 AI Worker
+
+`whippet-worker` 採用標準 Agent Skills 格式。從要使用 Agent 的工作目錄執行下列命令，將 `<Whippet checkout>` 換成 Whippet 原始碼路徑，或換成含有此 Skill 且可存取的 Git URL。 [Agent Skills 規格](https://agentskills.io/specification)
+
+```sh
+npx skills add '<Whippet checkout>' --skill whippet-worker --copy \
+  -a codex -a claude-code -a opencode
+```
+
+由管理員提供完整 MCP URL 與目標 Workspace 的 Agent Token，依 [MCP 接入設定](skills/whippet-worker/references/setup.md) 設定客戶端。Workspace 的「AI 撰寫引擎」設為「外部 Agent」後，可請已安裝 Skill 的 Agent 接一筆新任務。Whippet 負責候選驗證與發佈權限。
+
 ## 設定與證據
 
 新版 Workspace 設定以對話提出網站範圍、背景與登入角色，經使用者確認後套用；登入帳密由專用欄位保存，模型不取得值，模型金鑰仍由部署環境注入。設定變更會建立新的草稿 revision 並要求重新驗證，已發佈版本與已排入任務保留原快照。非空預設 URL 作為 Playwright baseURL；author 僅取得固定資料，不因設定自動導覽。
