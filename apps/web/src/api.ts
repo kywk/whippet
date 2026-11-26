@@ -1,7 +1,7 @@
 import { validRepairContent, editableStage } from './plan';
 import { AGENT_RUNTIME_SKILLS, DEFAULT_WORKSPACE_MANAGEMENT, RUN_STATUSES, SITE_ROLES, WORKSPACE_ARCHIVE_MODES, WORKSPACE_MANAGEMENT_STATES, WORKSPACE_MEMBER_ROLES } from './types';
 import type { ManagedWorkspace, WorkspaceManagement, WorkspacePermissions, WorkspaceSummary } from './types';
-import type { AiAgent, AiOptions, AiPage, AiReason, AiResource, AiResourceAction, AiRouting } from './aiAdminTypes';
+import type { AiAgent, AiAgentDraft, AiOptions, AiPage, AiReason, AiResource, AiResourceAction, AiRouting } from './aiAdminTypes';
 import type { RunActivity, SimilarTestSuggestion, VersionConversationMessage, WorkspaceAgentRuntime, WorkspaceMember, WorkspaceRunActivity } from './types';
 import type { AgentToken, AgentToolAudit, AuthorEngine, BrowserSession, StageRetry, ModuleMetadata, Plan, PlanStage, PlanSummary, StageArgument, JsonValue, AuthorPartial, CatalogItem, AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
 
@@ -204,6 +204,9 @@ function parseManagedWorkspace(value: unknown, workspaceId: string): ManagedWork
   } };
 }
 
+export const AI_AGENT_PROPOSAL_MAX_BYTES = 1024;
+export const AI_AGENT_MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
+const aiAgentProposalPath = '/admin/ai/agents/proposal';
 const aiEngines = ['builtin', 'vercel', 'pi'] as const;
 const aiProviders = ['opencode', 'openai-responses'] as const;
 const aiReasons = ['manager_unavailable', 'no_capacity', 'engine_mismatch', 'worker_changed', 'heartbeat_timeout', 'provider_auth_failed',
@@ -221,6 +224,9 @@ const aiErrors: Record<string, string> = {
   agent_not_ready: 'Agent 尚未就緒。', credential_unavailable: '憑證已失效、撤銷，或版本已變更。',
   idempotency_conflict: '此請求編號已有不同內容，請確認原操作的結果。', unsupported_combination: '目前未提供這個執行設定組合。',
   disabled: 'Server 尚未啟用此功能。', secrets_unavailable: 'Server 的機密儲存服務目前無法使用。', rate_limited: '請求過於頻繁，請稍候再試。',
+  proposal_rejected: 'AI Manager 無法依這段描述產生有效提案。請調整描述後重試。',
+  sensitive_input: '描述可能含有機密。請移除金鑰、Token 或密碼後再送出。',
+  proposal_unavailable: 'AI Manager 暫時無法產生提案，可以重試或手動設定。',
   HTTP_401: '登入已失效，請重新登入。', HTTP_403: '目前身分無法執行此操作。', HTTP_404: '找不到此 AI 管理介面或資源。',
 };
 
@@ -264,6 +270,26 @@ function parseAiOptions(value: unknown): AiOptions {
         skills: array(option.skills, (skill) => choice(skill, AGENT_RUNTIME_SKILLS)) };
     }),
   };
+}
+
+function parseAiAgentProposal(value: unknown, workspaceId: string): AiAgentDraft {
+  const body = record(value);
+  const proposal = record(body.proposal);
+  const fields = ['workspaceId', 'name', 'mode', 'engine', 'provider', 'model', 'profileId'];
+  const invalid = () => new ApiError('AI Manager 的提案格式不符。請重試或手動設定。', 'INVALID_RESPONSE');
+  if (Object.keys(body).length !== 1 || Object.keys(proposal).length !== fields.length || fields.some((field) => !Object.hasOwn(proposal, field))) throw invalid();
+  const name = string(proposal.name);
+  const model = string(proposal.model);
+  if (proposal.workspaceId !== workspaceId || !name.trim() || name !== name.trim() || new TextEncoder().encode(name).length > 200 || !AI_AGENT_MODEL_PATTERN.test(model)) throw invalid();
+  const fieldsForDraft = { workspaceId, name, model, provider: choice(proposal.provider, aiProviders) };
+  const mode = choice(proposal.mode, ['managed', 'self_managed'] as const);
+  if (mode === 'managed') {
+    const profileId = string(proposal.profileId);
+    if (!profileId) throw invalid();
+    return { ...fieldsForDraft, mode, profileId, engine: choice(proposal.engine, aiEngines) };
+  }
+  if (proposal.profileId !== null) throw invalid();
+  return { ...fieldsForDraft, mode, engine: choice(proposal.engine, ['vercel', 'pi'] as const) };
 }
 
 function parseAiResource(value: unknown, resourceId?: string): AiResource {
@@ -665,7 +691,8 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     signal?.addEventListener('abort', abort, { once: true });
     if (signal?.aborted) abort();
     let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 12_000);
+    // The proposal provider has its own 15-second deadline. Allow its error response to reach the form.
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, path === aiAgentProposalPath ? 20_000 : 12_000);
 
     try {
       if (adminToken && !isProtectedCredentialTransport(base, window.location.href)) throw new ApiError('管理 key 只能透過 HTTPS 或 loopback 本機連線傳送。', 'INSECURE_TRANSPORT');
@@ -775,6 +802,14 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
       async getOptions(workspaceId, signal) {
         const query = new URLSearchParams({ workspaceId });
         return parseAiOptions(await request(`${aiPath}/options?${query}`, 'GET', signal, undefined, 'ai', 200));
+      },
+      async proposeAgent(workspaceId, instruction, signal) {
+        const trimmed = instruction.trim();
+        if (!trimmed || new TextEncoder().encode(trimmed).length > AI_AGENT_PROPOSAL_MAX_BYTES) {
+          throw new ApiError('需求描述去除前後空白後須為 1 至 1024 UTF-8 bytes。', 'INVALID_REQUEST');
+        }
+        const data = await request(aiAgentProposalPath, 'POST', signal, { workspaceId, instruction: trimmed }, 'ai', 200);
+        return parseAiAgentProposal(data, workspaceId);
       },
       async createAgent(input, signal) {
         requireAiCredentialTransport();

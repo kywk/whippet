@@ -23,6 +23,10 @@
 .ai-filter { width: min(100%, 320px); }
 .ai-view .text-input, .ai-dialog .text-input { min-height: 44px; }
 .ai-inline-note { color: var(--muted); padding-block: 8px; border-block: 1px solid var(--line); }
+.ai-proposal-form { padding-block-end: 14px; border-block-end: 1px solid var(--line); }
+.ai-proposal-form textarea { resize: vertical; }
+.ai-proposal-form .settings-field p { font-weight: 400; }
+.ai-configuration-controls { min-inline-size: 0; margin: 0; padding: 0; border: 0; }
 .ai-details-list { display: grid; gap: 0; padding: 0; margin: 0; list-style: none; }
 .ai-details-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding-block: 12px; border-top: 1px solid var(--line); }
 .ai-details-list .button { min-height: 44px; }

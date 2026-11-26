@@ -60,6 +60,28 @@ try {
 
   const create = { requestId, workspaceId: wid, name: agent.name, mode: agent.mode, engine: agent.engine,
     provider: agent.provider, model: agent.model, profileId: agent.profileId, apiKey: sampleKey };
+  const proposal = { workspaceId: wid, name: agent.name, mode: agent.mode, engine: agent.engine, provider: agent.provider, model: agent.model, profileId: agent.profileId };
+  inbound = { proposal };
+  assert.deepEqual(await admin.proposeAgent(wid, '  建立付款驗收 Agent  '), proposal);
+  assert.equal(wire.url, '/whippet/api/admin/ai/agents/proposal');
+  assert.equal(wire.method, 'POST');
+  assert.deepEqual(wire.body, { workspaceId: wid, instruction: '建立付款驗收 Agent' });
+  assert.equal(wire.cache, 'no-store');
+  const beforeInvalidInstructions = calls;
+  await assert.rejects(admin.proposeAgent(wid, '　 '), (error) => error.code === 'INVALID_REQUEST');
+  await assert.rejects(admin.proposeAgent(wid, '測'.repeat(342)), (error) => error.code === 'INVALID_REQUEST');
+  assert.equal(calls, beforeInvalidInstructions);
+  inbound = { proposal: { ...proposal, workspaceId: aid } };
+  await assert.rejects(admin.proposeAgent(wid, '提案'), (error) => error.code === 'INVALID_RESPONSE');
+  inbound = { proposal: { ...proposal, apiKey: sampleKey } };
+  await assert.rejects(admin.proposeAgent(wid, '提案'), (error) => error.code === 'INVALID_RESPONSE' && !error.message.includes(sampleKey));
+  inbound = { proposal: { ...proposal, mode: 'self_managed', engine: 'pi', profileId: null } };
+  assert.equal(Object.hasOwn(await admin.proposeAgent(wid, '自管 Pi 提案'), 'profileId'), false);
+  for (const [httpStatus, code] of [[422, 'sensitive_input'], [422, 'proposal_rejected'], [503, 'proposal_unavailable']]) {
+    status = httpStatus;
+    inbound = { error: { code, message: sampleKey } };
+    await assert.rejects(admin.proposeAgent(wid, '提案'), (error) => error.code === code && !error.message.includes(sampleKey));
+  }
   status = 201;
   inbound = { agent: { ...agent, apiKey: sampleKey } };
   const created = await admin.createAgent(create);

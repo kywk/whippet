@@ -86,6 +86,7 @@ export interface AiAdminApi {
   listAgents(workspaceId: string | null, after: string | null, signal?: AbortSignal): Promise<AiPage<AiAgent>>;
   getAgent(id: string, signal?: AbortSignal): Promise<AiAgent>;
   getOptions(workspaceId: string, signal?: AbortSignal): Promise<AiOptions>;
+  proposeAgent(workspaceId: string, instruction: string, signal?: AbortSignal): Promise<AiAgentDraft>;
   createAgent(input: NewAiAgent, signal?: AbortSignal): Promise<{ agent: AiAgent; token?: string }>;
   retryAgent(id: string, revision: number, signal?: AbortSignal): Promise<AiAgent>;
   rotateKey(id: string, expectedSecretVersion: number, apiKey: string, signal?: AbortSignal): Promise<AiAgent>;
