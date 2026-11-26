@@ -35,19 +35,27 @@ Return exactly allow, clarify, refuse, or similar:<candidate-id>. Use similar on
 // This classifier is separate from the author tool loop. It sees a short
 // conversation tail and can only return an admission decision.
 func NewAuthorIntentGates(baseURL, model, key string) (AuthorIntentGate, NewTestReviewGate) {
+	gate := newAuthorIntentClient(baseURL, model, key)
+	return gate.check, gate.reviewNewTest
+}
+
+func newAuthorIntentClient(baseURL, model, key string) authorIntentClient {
 	client := &http.Client{
 		Timeout: 15 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
 	}
-	gate := authorIntentClient{client: client, baseURL: strings.TrimRight(baseURL, "/"), model: model, key: key}
-	return gate.check, gate.reviewNewTest
+	return authorIntentClient{client: client, baseURL: strings.TrimRight(baseURL, "/"), model: model, key: key}
 }
 
 type authorIntentClient struct {
 	client              *http.Client
 	baseURL, model, key string
+}
+
+func (c authorIntentClient) configured() bool {
+	return c.key != "" && c.model != "" && validRuntimeURL(c.baseURL)
 }
 
 type authorIntentContext struct {
@@ -58,7 +66,7 @@ type authorIntentContext struct {
 
 func (c authorIntentClient) transcript(skill string, messages []ChatMessage, earlierLimit int) (authorIntentContext, error) {
 	data := authorIntentContext{Mode: skill, Earlier: []ChatMessage{}}
-	if c.key == "" || c.model == "" || !validRuntimeURL(c.baseURL) || len(messages) == 0 {
+	if !c.configured() || len(messages) == 0 {
 		return data, ErrAuthorPolicy
 	}
 	latest := messages[len(messages)-1]

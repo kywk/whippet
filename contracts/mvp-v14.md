@@ -199,6 +199,7 @@ type NewAgent = {requestId: UUID, workspaceId: UUID, name: string, provider: Pro
 | HTTP（皆在 `/api/admin/ai` 下） | 請求與成功回應 |
 | --- | --- |
 | `GET /options?workspaceId={id}` | `200 {managed:[{profileId,engine,provider,model,managerIds:string[],reason:AgentReason\|null}],selfManaged:[{engine,providers:Provider[],skills:Skill[]}]}`。代管使用 v12 有完整 provider/model 的部署 profile。符合該 Workspace、engine、能力與通道且允許派工的 Manager 列於 `managerIds`，依 ID 排序。清單空時回 `manager_unavailable`，清單有值但無名額回 `no_capacity`，其餘為 `null`。自管參考端宣告 Vercel／Pi、兩種 Provider 及 `test-author`。MCP 未啟用時 `selfManaged=[]`。 |
+| `POST /agents/proposal` | `{workspaceId:UUID,instruction:string}` → `200 {proposal:{workspaceId,name,mode,engine,provider,model,profileId:string\|null}}`。自管的 `profileId` 為 `null`。顯示提案供人工修改及確認。 |
 | `POST /agents` | `NewAgent` → `201 {agent,token?}`。代管 `profileId`、provider、model、engine 必須對應同一部署 profile。代管保存 Key 並啟動探測，自管核發 Agent 專用 Workspace Token 並回 `waiting_connection`。同一請求重送回 `200 {agent}`。 |
 | `GET /agents?workspaceId={id}` | 選填 Workspace 篩選。`200 {items:Agent[],nextAfter}`。 |
 | `GET /agents/{agentId}` | `200 Agent`，輪詢連線、探測狀態及原因。 |
@@ -212,6 +213,18 @@ type NewAgent = {requestId: UUID, workspaceId: UUID, name: string, provider: Pro
 - Agent 的 `revision` 從 1 起算，重試、Key 版本或 Token 綁定異動各增加一次，心跳及探測結果更新不增加。Agent 的設定與選用使用各自 revision。Key 由獨立單調遞增版本保護，首次建立為 1。輪替及撤銷在同一交易封鎖舊版解析、取消該 Agent 固定舊版的排隊工作與探測、對尚在執行的 attempt 發取消。已經使用的 Key 不再轉交給其他 attempt。
 - 新 author Run 在入列交易依主 skill 選用 Agent，固定 `agentId` 與 `secretVersion`（代管）或 `tokenId`（自管）。代管執行路由仍是 `authorEngine=builtin`，沿用 v12 `author.runtime` 形狀並寫入該 Agent 建立時的完整非機密 profile 快照。自管路由為 `authorEngine=external`，只由指定且驗證通過的 Token 取得，contextBundle 沿 v11，客戶端使用通過驗證的本機模型設定。一般舊 Token 只領未固定 Token 的 v13 任務。專用 Token 只領固定到自己的任務。`Run` HTTP 增加可省略的 `agentId`（UUID），省略表示沿用 v13。
 - 已選用但不可用的 Agent，入列回 `409 agent_not_ready`。已入列的 Run 等待適用的執行端，依取消或撤銷規則終止。未選用的主 skill 照 v13 解析 `authorEngine`、Workspace profile 與 skill override。受控繼續沿用來源 Run 的綁定、runtime 與預算，重新檢查現行憑證與權限。調配或更改選用後，新的獨立 Run 採用新選擇。正式執行及驗證沿原本無模型 Key 的路徑。
+
+### AI Manager 自然語言提案
+
+Super Admin 在建立表單選 Workspace，再以 `instruction` 描述配置。文字 trim 後為 1–1024 UTF-8 bytes。Server 以現行 `/options` 的非機密選項及該段文字呼叫既有 Responses 模型管道。一次請求至多一次模型呼叫、15 秒及 1,024 個輸出 tokens，工具清單為空，`store=false`。模型只能產出名稱和執行設定，Workspace 由 Server 綁定。Server 確認配置仍在支援範圍內，並在回應前重驗身分與 Workspace 狀態。
+
+提案請求及回應均使用獨立的非機密欄位，Agent 的 Key 只由使用者在既有表單輸入。提案文字中辨識到憑證指定語法、常見 Key 格式或目前 Server 的授權憑證時，回 `422 sensitive_input`，並停止呼叫模型。Server 不保存提案文字或模型原文，只在稽核保留固定操作與錯誤分類。無法形成符合選項的配置回 `422 proposal_rejected`，模型未配置、錯誤或逾時回 `503 proposal_unavailable`。提案路由不建立 Agent、Token 或驗證工作。
+
+例如輸入 `{"workspaceId":"11111111-1111-4111-8111-111111111111","instruction":"用 Pi 建立自管 Agent，模型 fixture-model，名稱是付款回歸"}`，回應為下列 JSON。Web 將配置帶回既有表單。Super Admin 可以修改名稱或設定，確認後才用同一 session 送 `POST /agents`，由建立交易重新驗證。
+
+```json
+{"proposal":{"workspaceId":"11111111-1111-4111-8111-111111111111","name":"付款回歸","mode":"self_managed","engine":"pi","provider":"openai-responses","model":"fixture-model","profileId":null}}
+```
 
 ### 建立重送及秘密欄位
 
@@ -285,6 +298,8 @@ HTTP 錯誤沿用 `{error:{code,message}}`。客戶端依 `code` 分支，`messa
 | 409 | `agent_not_ready`、`credential_unavailable` | 所選 Agent 尚不可用，或憑證查核中的租約、attempt、世代、版本或期限已失效。 |
 | 409 | `idempotency_conflict` | 同一 `requestId` 對應不同輸入。 |
 | 422 | `unsupported_combination` | Agent 設定組合未列入可用方案，或 Agent 不支援該 skill。 |
+| 422 | `proposal_rejected`、`sensitive_input` | 提案未形成合法配置，或提案文字疑含憑證。 |
+| 503 | `proposal_unavailable` | 既有控制面模型未配置、呼叫失敗或逾時。 |
 | 429、503 | `rate_limited`、`disabled`、`secrets_unavailable` | MCP 既有限流與停用，或設定機密儲存不可用。MCP 429 沿用 `Retry-After: 1`。 |
 
 - MCP 工具失敗仍由 JSON-RPC `result.isError:true` 表示。v14 狀態阻擋回 `structuredContent:{error:code}` 與一筆 `content:[{type:"text",text:code}]`。新增 `claim_paused`、`agent_not_ready`、`workspace_archiving`、`workspace_archived`，保留原 `busy`、`unknown_result` 等碼。無符合資格的排隊工作仍回 `{task:null}`。暫停或 drain 時，相同 `requestId` 仍可查回已有效領取且未被取消的同一 attempt。封存完成後 `task_claim` 一律回 `workspace_archived`。已提交的相同 `submitId` 仍可依原 Token／歸屬查回收據。
