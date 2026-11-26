@@ -21,6 +21,7 @@ func TestADM3AgentProposalPostgres(t *testing.T) {
 	const serviceKey = "fixture-ai-manager-service-key"
 	const pastedKey = "fixture-pasted-key-value"
 	const instruction = "用 Pi 建立自管 Agent，模型 fixture-model，名稱是付款回歸。"
+	t.Setenv("WHIPPET_AI_RUNTIME_PROFILES_JSON", `[{"id":"adm-fixture","engine":"builtin","provider":"openai-responses","baseURL":"https://provider.example/v1","model":"fixture-model","reasoningEffort":"low","contextWindowTokens":32768,"contextInputTokens":16384}]`)
 	var calls atomic.Int64
 	provider := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
@@ -45,13 +46,16 @@ func TestADM3AgentProposalPostgres(t *testing.T) {
 			Instruction string                `json:"instruction"`
 			Options     siteAIProposalOptions `json:"options"`
 		}
-		if json.Unmarshal([]byte(req.Input), &data) != nil || data.Instruction == "" || len(data.Options.SelfManaged) == 0 {
+		if json.Unmarshal([]byte(req.Input), &data) != nil || data.Instruction == "" || len(data.Options.SelfManaged) == 0 ||
+			len(data.Options.Managed) != 1 || strings.Contains(req.Input, "baseURL") {
 			t.Error("expected a bounded instruction and selectable options")
 			http.Error(w, "fixture error", http.StatusBadRequest)
 			return
 		}
 		choice := map[string]any{"name": "付款回歸", "mode": "self_managed", "engine": "pi", "provider": "openai-responses", "model": "fixture-model", "profileId": nil}
 		switch data.Instruction {
+		case "用內建引擎建立代管付款 Agent":
+			choice["mode"], choice["engine"], choice["profileId"] = "managed", "builtin", "adm-fixture"
 		case "測試上游失敗":
 			http.Error(w, serviceKey, http.StatusBadGateway)
 			return
@@ -83,7 +87,7 @@ func TestADM3AgentProposalPostgres(t *testing.T) {
 		t.Fatal("proposal must use the existing model timeout")
 	}
 	client.client.Transport = provider.Client().Transport
-	api.siteAIProposer = client.proposeSiteAIAgent
+	api.agentProposer = client.proposeSiteAIAgent
 	f.handler = api.Handler(nil)
 	// Sessions are local to each API. Recreate the Site Manager session first.
 	f.cookie = nil
@@ -125,6 +129,12 @@ func TestADM3AgentProposalPostgres(t *testing.T) {
 		response.Header().Get("Cache-Control") != "no-store" || calls.Load() != 1 {
 		t.Fatalf("invalid proposal: %+v", out)
 	}
+	managed := f.platform("POST", proposalPath, request("用內建引擎建立代管付款 Agent"), 200)
+	var managedOut struct{ Proposal siteAIProposalChoice }
+	f.decode(managed.Body.Bytes(), &managedOut)
+	if managedOut.Proposal.Mode != siteAIManaged || stringValue(managedOut.Proposal.ProfileID) != "adm-fixture" || strings.Contains(managed.Body.String(), "apiKey") {
+		t.Fatalf("invalid managed proposal: %+v", managedOut)
+	}
 	var agents, tokens, receipts int
 	if err := f.store.DB.QueryRowContext(f.ctx, `SELECT (SELECT count(*) FROM site_ai_agents),
  (SELECT count(*) FROM agent_tokens),(SELECT count(*) FROM site_ai_requests)`).Scan(&agents, &tokens, &receipts); err != nil || agents != 0 || tokens != 1 || receipts != 0 {
@@ -134,7 +144,7 @@ func TestADM3AgentProposalPostgres(t *testing.T) {
 		Engine: out.Proposal.Engine, Provider: out.Proposal.Provider, Model: out.Proposal.Model}
 	var created siteAIAgentCreation
 	f.decode(f.platform("POST", admAIPath+"/agents", jsonText(create), 201).Body.Bytes(), &created)
-	if created.Agent.Name != create.Name || created.Token == "" || calls.Load() != 1 {
+	if created.Agent.Name != create.Name || created.Token == "" || calls.Load() != 2 {
 		t.Fatal("confirmation must create the edited configuration through the normal endpoint")
 	}
 	checkCode("測試上游失敗", "proposal_unavailable", 503)
@@ -146,7 +156,7 @@ func TestADM3AgentProposalPostgres(t *testing.T) {
 	checkCode("測試模型跨工作區", "proposal_rejected", 422)
 	checkCode("測試提出期間封存", "workspace_archived", 409)
 	checkCode(instruction, "workspace_archived", 409)
-	if calls.Load() != 7 {
+	if calls.Load() != 8 {
 		t.Fatalf("archived Workspace reached the model, calls=%d", calls.Load())
 	}
 	var audit string
