@@ -105,10 +105,10 @@ func TestM10ZWave3FakeRuntimeReconnectReplaysSameResultOnce(t *testing.T) {
 		t.Fatal("fake runtime did not complete once")
 	}
 	messageID := saved[0].ResultMessageID
-	received := make(chan Envelope, 6)
+	received := make(chan Envelope, 4)
 	server := httptest.NewServer(websocket.Handler(func(conn *websocket.Conn) {
 		defer conn.Close()
-		for i := 0; i < 3; i++ {
+		for range 4 {
 			var env Envelope
 			if websocket.JSON.Receive(conn, &env) != nil {
 				return
@@ -120,10 +120,10 @@ func TestM10ZWave3FakeRuntimeReconnectReplaysSameResultOnce(t *testing.T) {
 	m.cfg.ServerURL = server.URL
 	for session := 0; session < 2; session++ {
 		_ = m.session(ctx)
-		for _, kind := range []string{"hello", "heartbeat", "result"} {
+		for _, kind := range []string{"hello", "heartbeat", "result", "heartbeat"} {
 			select {
 			case env := <-received:
-				if env.Type != kind || kind == "result" && env.MessageID != messageID {
+				if env.Type != kind || env.ManagerID != m.cfg.ManagerID || kind == "result" && env.MessageID != messageID {
 					t.Fatal("replay sequence or immutable messageId changed")
 				}
 			case <-ctx.Done():

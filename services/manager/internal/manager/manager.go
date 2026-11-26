@@ -42,6 +42,7 @@ type Manager struct {
 	connMu                     sync.Mutex // serializes writes and connection replacement
 	conn                       *websocket.Conn
 	events                     chan Envelope
+	heartbeatWake              chan struct{} // coalesces reclamation reports between periodic heartbeats
 	liveMu                     sync.Mutex
 	diagnosticsMu              sync.Mutex
 	transport                  *managerTransportDiagnostic
@@ -71,7 +72,7 @@ func New(cfg Config) (*Manager, error) {
 		lock.Close()
 		return nil, err
 	}
-	m := &Manager{cfg: cfg, http: newHTTPClientWithTLS(tlsConfig), tlsConfig: tlsConfig, lock: lock, records: records, controls: make(map[string]context.CancelFunc), sessions: sessions, sessionControls: make(map[string]context.CancelFunc), sessionWorking: make(map[string]*sessionWorkingState), sessionIdleTimeout: 10 * time.Minute, events: make(chan Envelope, 64), secrets: make(map[string][]string)}
+	m := &Manager{cfg: cfg, http: newHTTPClientWithTLS(tlsConfig), tlsConfig: tlsConfig, lock: lock, records: records, controls: make(map[string]context.CancelFunc), sessions: sessions, sessionControls: make(map[string]context.CancelFunc), sessionWorking: make(map[string]*sessionWorkingState), sessionIdleTimeout: 10 * time.Minute, events: make(chan Envelope, 64), heartbeatWake: make(chan struct{}, 1), secrets: make(map[string][]string)}
 	m.attemptSlots = make(slotIndex)
 	for id, r := range records {
 		m.attemptSlots.update(id, r.holdsSlot())
@@ -158,23 +159,20 @@ func (m *Manager) session(ctx context.Context) error {
 	defer m.transport.connection("DISCONNECTED", connectionAttempt)
 	// JSON escapes can expand each script byte to six bytes.
 	conn.MaxPayloadBytes = maxWorkerInputBytes
-	// Publish the connection only after hello, so a concurrent completion cannot
-	// send a terminal result before the Server has registered this Manager.
-	if err := conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
-		conn.Close()
-		return err
-	}
-	if err := websocket.JSON.Send(conn, m.hello()); err != nil {
+	// Register and start reconciliation before publishing the connection for
+	// concurrent Worker events and results.
+	if err := writeManagerEnvelope(conn, m.hello()); err != nil {
 		conn.Close()
 		return err
 	}
 	m.transport.connection("HELLO_SENT", connectionAttempt)
-	m.setConn(conn)
-	defer m.setConn(nil)
-	if err := m.heartbeat(); err != nil {
+	if err := writeManagerEnvelope(conn, m.heartbeatMessage()); err != nil {
+		conn.Close()
 		return err
 	}
 	m.transport.connection("HEARTBEAT_SENT", connectionAttempt)
+	m.setConn(conn)
+	defer m.setConn(nil)
 	// v1 has no result receipt ACK. Stable terminal message IDs allow safe replay.
 	m.transport.connection("REPLAY_START", connectionAttempt)
 	for _, r := range m.snapshot() {
@@ -187,8 +185,13 @@ func (m *Manager) session(ctx context.Context) error {
 	m.transport.connection("READ_LOOP", connectionAttempt)
 	slog.Info("Manager connected", "managerId", m.cfg.ManagerID, "capacity", m.cfg.MaxWorkers)
 	done := make(chan struct{})
-	defer close(done)
+	heartbeatDone := make(chan struct{})
+	defer func() {
+		close(done)
+		<-heartbeatDone // The old sender must finish before a reconnect publishes its connection.
+	}()
 	go func() {
+		defer close(heartbeatDone)
 		ticker := time.NewTicker(heartbeatInterval)
 		defer ticker.Stop()
 		for {
@@ -199,12 +202,13 @@ func (m *Manager) session(ctx context.Context) error {
 				conn.Close()
 				return
 			case <-ticker.C:
-				if err := m.heartbeat(); err != nil {
-					conn.Close()
-					return
-				}
-				m.transport.connection("HEARTBEAT_SENT", connectionAttempt)
+			case <-m.heartbeatWake:
 			}
+			if err := m.send(m.heartbeatMessage()); err != nil {
+				conn.Close()
+				return
+			}
+			m.transport.connection("HEARTBEAT_SENT", connectionAttempt)
 		}
 	}()
 	for {
@@ -276,18 +280,25 @@ func (m *Manager) send(env Envelope) error {
 	if m.conn == nil {
 		return errors.New("Manager is offline")
 	}
-	if err := m.conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
-		return err
-	}
-	err := websocket.JSON.Send(m.conn, env)
+	err := writeManagerEnvelope(m.conn, env)
 	if err != nil {
 		m.conn.Close()
 	}
 	return err
 }
 
-func (m *Manager) heartbeat() error {
-	return m.send(m.heartbeatMessage())
+func writeManagerEnvelope(conn *websocket.Conn, env Envelope) error {
+	if err := conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		return err
+	}
+	return websocket.JSON.Send(conn, env)
+}
+
+func (m *Manager) requestHeartbeat() {
+	select {
+	case m.heartbeatWake <- struct{}{}:
+	default:
+	}
 }
 
 func (m *Manager) hello() Envelope {
@@ -574,6 +585,8 @@ func (m *Manager) sendResultWithReplay(r record, replay bool) error {
 		m.transport.result("FAILED", false)
 	} else {
 		m.transport.result("SENT", false)
+		// Server releases a Run slot on a heartbeat after its terminal result.
+		m.requestHeartbeat()
 	}
 	return err
 }

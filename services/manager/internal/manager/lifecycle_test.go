@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"golang.org/x/net/websocket"
 )
 
 type lifecycleTask struct {
@@ -235,6 +238,132 @@ func TestHeartbeatCapacityTracksPersistedSlotsAcrossRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertSlots(0, 0)
+}
+
+func TestManagerReportsReclaimedCapacityAfterCancelAndClose(t *testing.T) {
+	m, docker, workCtx := lifecycleManager(t, 2)
+	ctx, cancel := context.WithTimeout(workCtx, 5*time.Second)
+	connected := make(chan *websocket.Conn, 1)
+	frames := make(chan Envelope, 8)
+	server := httptest.NewServer(websocket.Handler(func(conn *websocket.Conn) {
+		defer conn.Close()
+		connected <- conn
+		for {
+			var env Envelope
+			if websocket.JSON.Receive(conn, &env) != nil {
+				return
+			}
+			select {
+			case frames <- env:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}))
+	defer server.Close()
+	defer cancel()
+	m.cfg.ServerURL = server.URL
+	browser := &fixtureSessionRuntime{ready: make(chan struct{}, 1), release: make(chan struct{})}
+	releaseBrowser := sync.OnceFunc(func() { close(browser.release) })
+	defer releaseBrowser()
+	m.sessionsRuntime = browser
+	run := dispatchForTest()
+	task := docker.add(run)
+	_ = m.accept(workCtx, run) // Accepted locally even though the ACK cannot be sent yet.
+	awaitAttempt(t, docker.started, run.AttemptID)
+	lease := sessionClose{SessionID: newID(), LeaseID: newID()}
+	if err := m.openSession(workCtx, sessionOpenEnvelope(lease.SessionID, lease.LeaseID, newID())); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-browser.ready:
+	case <-ctx.Done():
+		t.Fatal("browser session did not start")
+	}
+	sessionDone := make(chan struct{})
+	go func() {
+		defer close(sessionDone)
+		_ = m.session(ctx)
+	}()
+	defer func() { cancel(); <-sessionDone }()
+	var peer *websocket.Conn
+	select {
+	case peer = <-connected:
+	case <-ctx.Done():
+		t.Fatal("Manager did not connect")
+	}
+	read := func(kind string, payload any) Envelope {
+		t.Helper()
+		select {
+		case env := <-frames:
+			if env.Type != kind || env.ManagerID != m.cfg.ManagerID || json.Unmarshal(env.Payload, payload) != nil {
+				t.Fatalf("got %s, want a valid %s", env.Type, kind)
+			}
+			return env
+		case <-ctx.Done():
+			t.Fatalf("Manager did not report %s before the periodic heartbeat", kind)
+			return Envelope{}
+		}
+	}
+	assertHeartbeat := func(attempts, sessions int) {
+		t.Helper()
+		var payload struct {
+			Active   []struct{ RunID, AttemptID string }
+			Sessions []struct{ SessionID, LeaseID, State string }
+		}
+		read("heartbeat", &payload)
+		if payload.Active == nil || payload.Sessions == nil || len(payload.Active) != attempts || len(payload.Sessions) != sessions {
+			t.Fatalf("heartbeat does not report %d attempts and %d sessions: %+v", attempts, sessions, payload)
+		}
+		if attempts == 1 && (payload.Active[0].RunID != run.RunID || payload.Active[0].AttemptID != run.AttemptID) {
+			t.Fatal("heartbeat reported a different attempt")
+		}
+		if sessions == 1 && (payload.Sessions[0].SessionID != lease.SessionID || payload.Sessions[0].LeaseID != lease.LeaseID || payload.Sessions[0].State != "ready") {
+			t.Fatal("heartbeat reported a different lease")
+		}
+	}
+	send := func(env Envelope) {
+		t.Helper()
+		if err := websocket.JSON.Send(peer, env); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var hello struct{ Capacity int }
+	read("hello", &hello)
+	if hello.Capacity != 2 {
+		t.Fatalf("hello capacity = %d, want 2", hello.Capacity)
+	}
+	assertHeartbeat(1, 1)
+	send(message(m.cfg.ManagerID, "cancel", run.RunID, run.AttemptID, struct{}{}))
+	awaitAttempt(t, docker.removing, run.AttemptID)
+	if activeCount(t, m) != 1 {
+		t.Fatal("cancelled attempt disappeared before reclamation")
+	}
+	close(task.reclaim)
+	var result Result
+	env := read("result", &result)
+	if env.RunID != run.RunID || env.AttemptID != run.AttemptID || result.Status != "cancelled" {
+		t.Fatal("Manager did not report the cancelled attempt")
+	}
+	assertHeartbeat(0, 1)
+	send(message(m.cfg.ManagerID, "session.close", "", "", lease))
+	for _, reclaimed := range []bool{false, true} {
+		var closed struct {
+			sessionClose
+			Reclaimed bool
+		}
+		read("session.closed", &closed)
+		if closed.sessionClose != lease || closed.Reclaimed != reclaimed {
+			t.Fatalf("unexpected lease closure report: %+v", closed)
+		}
+		if !reclaimed {
+			if m.sessionSlotCount() != 1 {
+				t.Fatal("closing lease lost its slot before reclamation")
+			}
+			releaseBrowser()
+		}
+	}
+	assertHeartbeat(0, 0)
 }
 
 func TestM2CapacityDedupAndAbnormalCleanup(t *testing.T) {

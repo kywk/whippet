@@ -443,7 +443,9 @@ func (m *Manager) reclaimSession(ctx context.Context, id string) {
 			}
 			m.mu.Unlock()
 			if err == nil {
-				_ = m.send(message(m.cfg.ManagerID, "session.closed", "", "", map[string]any{"sessionId": r.SessionID, "leaseId": r.LeaseID, "reason": r.Reason, "reclaimed": true}))
+				if err := m.send(message(m.cfg.ManagerID, "session.closed", "", "", map[string]any{"sessionId": r.SessionID, "leaseId": r.LeaseID, "reason": r.Reason, "reclaimed": true})); err == nil {
+					m.requestHeartbeat()
+				}
 				return
 			}
 		}
@@ -453,17 +455,19 @@ func (m *Manager) reclaimSession(ctx context.Context, id string) {
 	}
 }
 func (m *Manager) recoverSessions(ctx context.Context) {
-	for _, r := range m.sessions {
-		if r.Reclaimed {
-			continue
-		}
-		m.mu.Lock()
+	m.mu.Lock()
+	pending := make([]string, 0, len(m.sessionSlots))
+	for id := range m.sessionSlots {
+		r := m.sessions[id]
 		r.State = "reclaim_pending"
 		r.Reason = "manager_restart"
 		_ = m.saveSessionLocked(r)
-		m.mu.Unlock()
+		pending = append(pending, id)
+	}
+	m.mu.Unlock()
+	for _, id := range pending {
 		m.wg.Add(1)
-		go func(id string) { defer m.wg.Done(); m.reclaimSession(ctx, id) }(r.SessionID)
+		go func() { defer m.wg.Done(); m.reclaimSession(ctx, id) }()
 	}
 }
 func (m *Manager) callSession(_ context.Context, env Envelope) error {

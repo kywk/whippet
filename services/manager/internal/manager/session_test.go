@@ -347,21 +347,26 @@ func TestSessionHardDeadlineStartsBeforeReady(t *testing.T) {
 
 func TestManagerRestartReclaimsRecordedSessionBeforeSlotRelease(t *testing.T) {
 	workDir := t.TempDir()
-	m, err := New(Config{ServerURL: "http://server.invalid", ManagerID: "manager-test", WorkerImage: "fixture", WorkDir: workDir, MaxWorkers: 1})
+	cfg := Config{ServerURL: "http://server.invalid", ManagerID: "manager-test", WorkerImage: "fixture", WorkDir: workDir, MaxWorkers: 2}
+	m, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := sessionRecord{SessionID: newID(), LeaseID: newID(), WorkspaceID: newID(), DeadlineAt: time.Now().Add(time.Minute).UnixMilli(), State: "ready"}
-	m.mu.Lock()
-	err = m.saveSessionLocked(r)
-	m.mu.Unlock()
-	if err != nil {
-		t.Fatal(err)
+	ids := []string{newID(), newID()}
+	for _, id := range ids {
+		r := sessionRecord{SessionID: id, LeaseID: newID(), WorkspaceID: newID(), DeadlineAt: time.Now().Add(time.Minute).UnixMilli(), State: "ready"}
+		m.mu.Lock()
+		err = m.saveSessionLocked(r)
+		m.mu.Unlock()
+		if err != nil {
+			m.Close()
+			t.Fatal(err)
+		}
 	}
 	if err := m.Close(); err != nil {
 		t.Fatal(err)
 	}
-	restarted, err := New(Config{ServerURL: "http://server.invalid", ManagerID: "manager-test", WorkerImage: "fixture", WorkDir: workDir, MaxWorkers: 1})
+	restarted, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,16 +376,19 @@ func TestManagerRestartReclaimsRecordedSessionBeforeSlotRelease(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	restarted.recoverSessions(ctx)
-	if restarted.sessionSlotCount() != 1 {
+	if restarted.sessionSlotCount() != len(ids) {
 		t.Fatal("restart released slot before orphan cleanup")
 	}
 	close(runtime.release)
 	restarted.wg.Wait()
-	restarted.mu.Lock()
-	final := restarted.sessions[r.SessionID]
-	restarted.mu.Unlock()
-	if final.Reason != "manager_restart" || !final.Reclaimed || runtime.starts.Load() != 0 || runtime.removes.Load() == 0 {
-		t.Fatalf("restart recovery invalid: %s %t", final.Reason, final.Reclaimed)
+	if runtime.starts.Load() != 0 || runtime.removes.Load() != int32(len(ids)) || restarted.sessionSlotCount() != 0 {
+		t.Fatal("restart did not reclaim each session without reopening it")
+	}
+	for _, id := range ids {
+		final := restarted.sessions[id]
+		if final.Reason != "manager_restart" || !final.Reclaimed {
+			t.Fatalf("restart recovery invalid: %s %t", final.Reason, final.Reclaimed)
+		}
 	}
 }
 

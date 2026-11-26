@@ -64,13 +64,13 @@ Linux 如需 `host.docker.internal`，加 `--add-host host.docker.internal:host-
 
 ## 任務生命週期
 
-1. 連 `/api/manager/connect`，帶 `Authorization: Bearer ...`，先送 `hello {capacity:MAX_WORKERS}`，每 10 秒送 heartbeat。Server 回 `heartbeat_ack {}`；35 秒未讀到 Server 訊息就關閉連線並重連，執行中的 Worker 不受影響。
+1. 連 `/api/manager/connect`，帶 `Authorization: Bearer ...`。每次連線沿用同一 `MANAGER_ID`，先送 `hello {capacity:MAX_WORKERS}` 和首份 heartbeat，再送 Worker 事件或重送結果。`heartbeat.active` 和 `heartbeat.sessions` 分別列出仍占用共用名額的 Run attempt 和瀏覽器租約。連線期間每 10 秒送 heartbeat，Server 回 `heartbeat_ack {}`。35 秒未收到 Server 訊息就重連，執行中的 Worker 繼續執行。
 2. 收到 dispatch 後，先持久化 journal 才 ACK。相同 attempt 只 ACK／重送既有結果，不重新啟動 Worker；名額忙碌時不 ACK 新 attempt。
 3. 寫入 `WORK_DIR/runs/<attemptId>/input.json`，建立帶 run／attempt／manager labels 的容器，將該任務目錄 mount 至 `/work`。
 4. 每個容器限制 1 CPU、1 GiB 記憶體、256 PID、256 MiB shm；Playwright 內部 workers=1。stdout／stderr 轉為 WS `event`。
 5. Worker 結束後檢查 Docker exit／OOM 狀態，先嘗試 `docker stop` 留 5 秒給 SIGTERM，再強制移除容器，確認回收後才讀輸出。Manager watchdog 為 `timeoutMs + 30 秒`；逾時殺掉 attach 程序後仍會移除真正的容器。OOM、意外退出與停止／回收失敗均不能成為成功。
 6. 普通 run／validation 先上傳 `data/<40位小寫hex>.png`，再上傳 `report.html`、`results.json`；全部收到 HTTP 2xx 才保存終態並送 result。檔名、數量、大小、regular file、PNG header／SHA-1 均檢查，拒絕 symlink／traversal；圖片收集失敗時扣住 HTML，避免斷圖。缺少報告、manifest 無效、非零退出碼等皆不會回報 succeeded；基礎設施故障可回傳 failed 且沒有報告。
-7. 確認容器回收並持久化 `reclaimed=true` 才釋放本機名額、從 heartbeat.active 移除；Run result 仍等可用附件上傳成功才送。Server 維持「terminal 且 absent」才釋放排程名額。最後刪除任務暫存目錄，保留精簡 journal，供重複派送與重連重送終態。
+7. 確認容器回收並持久化 `reclaimed=true` 才釋放本機名額，並從下一份 heartbeat 移除該項目。Run 等可用附件上傳成功才送出 result。送出 Run 終態或瀏覽器租約回收確認後，Manager 會補送心跳，可合併接近的回報。Server 依 Run 終態和 heartbeat 對帳釋放排程名額。最後刪除任務暫存目錄，保留精簡 journal 供重複派送與重連重送終態。
 
 上傳失敗每 3 秒補送，保留原始檔案，不重新執行測試；已回收的容器不再占本機執行名額，Server 排程名額仍等待終態。WS 斷線採 1..15 秒上限退避加 jitter；已執行 Worker 繼續受本機 timeout 控制。Server 必須允許同 attempt／附件名稱冪等補送，並以 attempt 身分去重終態。尚無 result receipt ACK，Manager 在每次重連重送已完成結果，使用相同 terminal `messageId`。
 
