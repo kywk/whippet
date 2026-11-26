@@ -61,12 +61,17 @@ func bindSiteAIAuthor(ctx context.Context, tx *sql.Tx, workspace string, input *
 	if row.WorkspaceID != workspace {
 		return nil, ErrNotFound
 	}
+	// New admissions report readiness. Continuations still check the pinned credential.
+	credentialErr := ErrCredentialUnavailable
+	if run.chainBudget == nil {
+		credentialErr = errSiteAINotReady
+	}
 	if selected.SecretVersion != nil {
 		if row.ModelKey == nil || row.ModelKey.Version == nil || !row.ModelKey.Configured || *selected.SecretVersion != *row.ModelKey.Version {
-			return nil, ErrCredentialUnavailable
+			return nil, credentialErr
 		}
 	} else if selected.TokenID == nil || row.TokenRevoked || stringValue(row.TokenID) != *selected.TokenID {
-		return nil, ErrCredentialUnavailable
+		return nil, credentialErr
 	}
 	view := presentSiteAIAgent(*row, conn, time.Now())
 	if view.Status != siteAIReady || !slices.Contains(view.Skills, input.SkillID) {
