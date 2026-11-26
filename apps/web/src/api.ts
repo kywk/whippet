@@ -1,6 +1,7 @@
 import { validRepairContent, editableStage } from './plan';
 import { AGENT_RUNTIME_SKILLS, DEFAULT_WORKSPACE_MANAGEMENT, RUN_STATUSES, SITE_ROLES, WORKSPACE_ARCHIVE_MODES, WORKSPACE_MANAGEMENT_STATES, WORKSPACE_MEMBER_ROLES } from './types';
 import type { ManagedWorkspace, WorkspaceManagement, WorkspacePermissions, WorkspaceSummary } from './types';
+import type { AiAgent, AiOptions, AiPage, AiReason, AiResource, AiResourceAction, AiRouting } from './aiAdminTypes';
 import type { RunActivity, SimilarTestSuggestion, VersionConversationMessage, WorkspaceAgentRuntime, WorkspaceMember, WorkspaceRunActivity } from './types';
 import type { AgentToken, AgentToolAudit, AuthorEngine, BrowserSession, StageRetry, ModuleMetadata, Plan, PlanStage, PlanSummary, StageArgument, JsonValue, AuthorPartial, CatalogItem, AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
 
@@ -122,6 +123,7 @@ function parseUser(value: unknown): DevUser {
       manageSuperAdmins: bool(permissions.manageSuperAdmins),
       manageSiteWorkspaces: permissions.manageSiteWorkspaces === undefined ? false : bool(permissions.manageSiteWorkspaces),
       manageSiteRoles: permissions.manageSiteRoles === undefined ? false : bool(permissions.manageSiteRoles),
+      manageAIResources: permissions.manageAIResources === undefined ? false : bool(permissions.manageAIResources),
     },
   };
 }
@@ -200,6 +202,122 @@ function parseManagedWorkspace(value: unknown, workspaceId: string): ManagedWork
     queuedRuns: revision(impact.queuedRuns), activeRuns: revision(impact.activeRuns), externalClaims: revision(impact.externalClaims),
     browserLeases: revision(impact.browserLeases), unreleasedRunSlots: revision(impact.unreleasedRunSlots), provisionJobs: revision(impact.provisionJobs),
   } };
+}
+
+const aiEngines = ['builtin', 'vercel', 'pi'] as const;
+const aiProviders = ['opencode', 'openai-responses'] as const;
+const aiReasons = ['manager_unavailable', 'no_capacity', 'engine_mismatch', 'worker_changed', 'heartbeat_timeout', 'provider_auth_failed',
+  'provider_unavailable', 'probe_failed', 'probe_timed_out', 'cleanup_pending', 'key_missing', 'verification_required', 'token_revoked',
+  'workspace_archiving', 'workspace_archived'] as const satisfies readonly AiReason[];
+const aiActions = ['assign', 'pause_dispatch', 'resume_dispatch', 'drain_remove', 'pause_claim', 'resume_claim', 'cancel_run',
+  'close_browser', 'revoke_access', 'reissue_access'] as const satisfies readonly AiResourceAction[];
+
+const aiErrors: Record<string, string> = {
+  invalid_request: '請檢查輸入欄位。', protected_transport_required: 'Server 尚未確認此連線的傳輸保護。',
+  unauthorized: '登入已失效，請重新登入。', forbidden: '目前身分無法執行此操作。', not_found: '找不到此資源。',
+  stale_revision: '資料版本已變更，請確認重新載入的狀態後再操作。', conflict: '資源目前的狀態無法執行這項操作。',
+  workspace_archiving: 'Workspace 正在封存。', workspace_archived: 'Workspace 已封存。',
+  action_unavailable: '此資源目前未開放這項操作。', resource_busy: '仍有工作或資源待結案，請等候回收。',
+  agent_not_ready: 'Agent 尚未就緒。', credential_unavailable: '憑證已失效、撤銷，或版本已變更。',
+  idempotency_conflict: '此請求編號已有不同內容，請確認原操作的結果。', unsupported_combination: '目前未提供這個執行設定組合。',
+  disabled: 'Server 尚未啟用此功能。', secrets_unavailable: 'Server 的機密儲存服務目前無法使用。', rate_limited: '請求過於頻繁，請稍候再試。',
+  HTTP_401: '登入已失效，請重新登入。', HTTP_403: '目前身分無法執行此操作。', HTTP_404: '找不到此 AI 管理介面或資源。',
+};
+
+function positiveRevision(value: unknown): number {
+  const result = revision(value);
+  if (result < 1) throw new ApiError('AI 管理版本格式不符。', 'INVALID_RESPONSE');
+  return result;
+}
+
+function parseAiAgent(value: unknown, agentId?: string): AiAgent {
+  const data = record(value);
+  const key = data.modelKey === null ? null : record(data.modelKey);
+  const agent: AiAgent = {
+    id: string(data.id), workspaceId: string(data.workspaceId), name: string(data.name), revision: positiveRevision(data.revision),
+    mode: choice(data.mode, ['managed', 'self_managed'] as const), engine: choice(data.engine, aiEngines), provider: choice(data.provider, aiProviders),
+    model: string(data.model), profileId: nullableString(data.profileId), skills: array(data.skills, (skill) => choice(skill, AGENT_RUNTIME_SKILLS)),
+    status: choice(data.status, ['waiting_connection', 'verifying', 'ready', 'failed', 'disabled'] as const),
+    reason: data.reason === null ? null : choice(data.reason, aiReasons), modelKey: key && {
+      configured: bool(key.configured), version: key.version === null ? null : positiveRevision(key.version),
+    },
+    tokenId: nullableString(data.tokenId), probeId: nullableString(data.probeId), verifiedAt: nullableString(data.verifiedAt),
+    createdAt: string(data.createdAt), updatedAt: string(data.updatedAt),
+  };
+  if ((agentId && agent.id !== agentId) || (agent.mode === 'self_managed' && (agent.modelKey || agent.profileId !== null || agent.engine === 'builtin'))) {
+    throw new ApiError('Agent 設定或識別不符。', 'INVALID_RESPONSE');
+  }
+  return agent;
+}
+
+function parseAiOptions(value: unknown): AiOptions {
+  const data = record(value);
+  return {
+    managed: array(data.managed, (value) => {
+      const profile = record(value);
+      return { profileId: string(profile.profileId), engine: choice(profile.engine, aiEngines), provider: choice(profile.provider, aiProviders),
+        model: string(profile.model), managerIds: array(profile.managerIds, string), reason: profile.reason === null ? null : choice(profile.reason, aiReasons) };
+    }),
+    selfManaged: array(data.selfManaged, (value) => {
+      const option = record(value);
+      return { engine: choice(option.engine, ['vercel', 'pi'] as const), providers: array(option.providers, (provider) => choice(provider, aiProviders)),
+        skills: array(option.skills, (skill) => choice(skill, AGENT_RUNTIME_SKILLS)) };
+    }),
+  };
+}
+
+function parseAiResource(value: unknown, resourceId?: string): AiResource {
+  const data = record(value);
+  const id = string(data.id);
+  const source = choice(data.source, ['manager', 'mcp'] as const);
+  if (!id.startsWith(`${source}:`) || id.length === source.length + 1 || (resourceId && id !== resourceId)) {
+    throw new ApiError('AI 資源識別不符。', 'INVALID_RESPONSE');
+  }
+  const capabilities = record(data.capabilities);
+  const capacity = record(data.capacity);
+  return {
+    id, source, name: string(data.name), agentId: nullableString(data.agentId), revision: positiveRevision(data.revision),
+    workspaceIds: data.workspaceIds === null ? null : array(data.workspaceIds, string),
+    control: choice(data.control, ['enabled', 'paused', 'draining', 'removed', 'revoked'] as const),
+    connection: choice(data.connection, ['waiting_connection', 'online', 'offline'] as const), lastActivityAt: nullableString(data.lastActivityAt),
+    interactiveAt: nullableString(data.interactiveAt), claimAt: nullableString(data.claimAt),
+    capabilities: {
+      modes: array(capabilities.modes, (mode) => choice(mode, ['managed', 'mcp_interactive', 'mcp_claim'] as const)),
+      engines: capabilities.engines === null ? null : array(capabilities.engines, (engine) => choice(engine, aiEngines)),
+      skills: capabilities.skills === null ? null : array(capabilities.skills, (skill) => choice(skill, AGENT_RUNTIME_SKILLS)),
+    },
+    capacity: { total: capacity.total === null ? null : revision(capacity.total), occupied: revision(capacity.occupied),
+      available: capacity.available === null ? null : revision(capacity.available) },
+    attempts: array(data.attempts, (value) => {
+      const attempt = record(value);
+      return { runId: string(attempt.runId), attemptId: string(attempt.attemptId), workspaceId: string(attempt.workspaceId),
+        agentId: nullableString(attempt.agentId), status: parseStatus(attempt.status), leaseId: nullableString(attempt.leaseId) };
+    }),
+    browserLeases: array(data.browserLeases, (value) => {
+      const lease = record(value);
+      return { sessionId: string(lease.sessionId), leaseId: string(lease.leaseId), workspaceId: string(lease.workspaceId),
+        runId: nullableString(lease.runId), state: choice(lease.state, ['opening', 'ready', 'closing', 'reclaim_pending'] as const), deadlineAt: string(lease.deadlineAt) };
+    }),
+    allowedActions: array(data.allowedActions, (action) => choice(action, aiActions)),
+  };
+}
+
+function parseAiPage<T>(value: unknown, parse: (item: unknown) => T): AiPage<T> {
+  const data = record(value);
+  return { items: array(data.items, parse), nextAfter: nullableString(data.nextAfter) };
+}
+
+function parseAiRouting(value: unknown, workspaceId: string): AiRouting {
+  const data = record(value);
+  if (data.workspaceId !== workspaceId) throw new ApiError('Agent 選用所屬 Workspace 不符。', 'INVALID_RESPONSE');
+  return { workspaceId, revision: positiveRevision(data.revision), agents: Object.fromEntries(Object.entries(record(data.agents))
+    .map(([skill, agentId]) => [choice(skill, AGENT_RUNTIME_SKILLS), string(agentId)])) };
+}
+
+function aiReceiptToken(value: unknown, mayIssue: boolean): string | undefined {
+  if (mayIssue && typeof value === 'string' && value.length > 0) return value;
+  if (!mayIssue && value === undefined) return undefined;
+  throw new ApiError('一次性憑證回應格式不符。請從管理端確認操作結果。', 'INVALID_RESPONSE');
 }
 
 function parseWorkspaceDetail(value: unknown): WorkspaceDetail {
@@ -382,6 +500,7 @@ function parseRun(value: unknown): Run {
   return {
     ...parseRunActivityFields(data),
     testId: nullableString(data.testId), workspaceId: string(data.workspaceId), error: optionalString(data.error),
+    ...(data.agentId === undefined ? {} : { agentId: string(data.agentId) }),
     versionId: optionalString(data.versionId), feedbackReportUrl: optionalString(data.feedbackReportUrl),
     workspaceSettings: data.workspaceSettings == null ? undefined : parseWorkspaceSnapshot(data.workspaceSettings),
     scriptOrigin: data.scriptOrigin == null ? undefined : choice(data.scriptOrigin, ['ai', 'manual', 'legacy'] as const),
@@ -539,7 +658,8 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
   const base = apiBase.replace(/\/+$/, '');
   let adminToken = '';
 
-  async function request(path: string, method = 'GET', signal?: AbortSignal, body?: unknown, sensitive = false, expectedStatus?: number | number[]): Promise<unknown> {
+  async function request(path: string, method = 'GET', signal?: AbortSignal, body?: unknown, sensitive: boolean | 'ai' = false,
+    expectedStatus?: number | number[], reportStatus?: (status: number) => void): Promise<unknown> {
     const controller = new AbortController();
     const abort = () => controller.abort();
     signal?.addEventListener('abort', abort, { once: true });
@@ -566,6 +686,10 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
       if (!response.ok) {
         const body = data && typeof data === 'object' ? (data as Record<string, unknown>).error : null;
         const details = body && typeof body === 'object' ? body as Record<string, unknown> : {};
+        if (sensitive === 'ai') {
+          const code = typeof details.code === 'string' && Object.hasOwn(aiErrors, details.code) ? details.code : `HTTP_${response.status}`;
+          throw new ApiError(aiErrors[code] ?? 'AI 管理請求失敗，請確認目前狀態後再試。', code, response.status);
+        }
         if (sensitive) {
           if (details.code === 'protected_transport_required') throw new ApiError('Server 尚未確認此連線的傳輸保護，無法保存或撤銷登入資料。', 'PROTECTED_TRANSPORT_REQUIRED', response.status);
           throw new ApiError(response.status === 409 ? '登入資料版本已變更，請重新載入角色狀態後再試。' : response.status === 503 ? '機密保存服務目前不可用。' : '登入資料操作失敗，請重新載入角色狀態確認結果。', 'CREDENTIALS_ERROR', response.status);
@@ -578,6 +702,7 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
       }
       if (expectedStatus !== undefined && !(Array.isArray(expectedStatus) ? expectedStatus : [expectedStatus]).includes(response.status)) throw new ApiError('API 未依契約接受請求，請重新載入確認。', 'INVALID_RESPONSE', response.status);
       if (data === null && response.status !== 204) throw new ApiError('API 未回傳 JSON，請確認 /api 代理設定。', 'INVALID_RESPONSE');
+      reportStatus?.(response.status);
       return data;
     } catch (error) {
       if (signal?.aborted) throw new DOMException('請求已取消', 'AbortError');
@@ -591,6 +716,15 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
   }
 
   const id = encodeURIComponent;
+  const aiPath = '/admin/ai';
+  const resourcePath = (resourceId: string) => `${aiPath}/resources/${id(resourceId)}`;
+  const agentPath = (agentId: string) => `${aiPath}/agents/${id(agentId)}`;
+  const routingPath = (workspaceId: string) => `${aiPath}/workspaces/${id(workspaceId)}/agent-routing`;
+  function requireAiCredentialTransport() {
+    if (!isProtectedCredentialTransport(base, window.location.href)) {
+      throw new ApiError('憑證操作需要 HTTPS 或雙端 loopback 連線。', 'INSECURE_TRANSPORT');
+    }
+  }
   const adminWorkspacePath = (workspaceId: string) => `/admin/workspaces/${id(workspaceId)}`;
   const proposalPath = (workspaceId: string, proposalId: string) => `/workspaces/${id(workspaceId)}/proposals/${id(proposalId)}`;
   function ownedProposal(value: unknown, workspaceId: string) {
@@ -599,6 +733,80 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
     return proposal;
   }
   return {
+    aiAdmin: {
+      async listResources(after, signal) {
+        const query = new URLSearchParams({ limit: '100' });
+        if (after) query.set('after', after);
+        return parseAiPage(await request(`${aiPath}/resources?${query}`, 'GET', signal, undefined, 'ai', 200), (value) => parseAiResource(value));
+      },
+      async getResource(resourceId, signal) {
+        return parseAiResource(await request(resourcePath(resourceId), 'GET', signal, undefined, 'ai', 200), resourceId);
+      },
+      async changeResource(resourceId, change, signal) {
+        const { action, ...body } = change;
+        const status = action === 'drain_remove' || action === 'close_browser' ? [200, 202] : 200;
+        return parseAiResource(await request(`${resourcePath(resourceId)}/actions/${action}`, 'POST', signal, body, 'ai', status), resourceId);
+      },
+      async reissueAccess(resourceId, input, signal) {
+        requireAiCredentialTransport();
+        let status = 0;
+        const data = record(await request(`${resourcePath(resourceId)}/actions/reissue_access`, 'POST', signal, input, 'ai', [200, 201], (value) => { status = value; }));
+        const resource = parseAiResource(data.resource);
+        const agent = data.agent === null ? null : parseAiAgent(data.agent);
+        if (resource.source !== 'mcp' || resource.id === resourceId || resource.workspaceIds?.length !== 1 || resource.workspaceIds[0] !== input.workspaceId ||
+            resource.agentId !== (agent?.id ?? null) || (agent && (agent.workspaceId !== input.workspaceId || (status === 201 && resource.id !== `mcp:${agent.tokenId}`)))) {
+          throw new ApiError('換發憑證與目標 Workspace 不符。', 'INVALID_RESPONSE');
+        }
+        return { resource, agent, token: aiReceiptToken(data.token, status === 201) };
+      },
+      async listAgents(workspaceId, after, signal) {
+        const query = new URLSearchParams({ limit: '100' });
+        if (workspaceId) query.set('workspaceId', workspaceId);
+        if (after) query.set('after', after);
+        return parseAiPage(await request(`${aiPath}/agents?${query}`, 'GET', signal, undefined, 'ai', 200), (value) => {
+          const agent = parseAiAgent(value);
+          if (workspaceId && agent.workspaceId !== workspaceId) throw new ApiError('Agent 所屬 Workspace 不符。', 'INVALID_RESPONSE');
+          return agent;
+        });
+      },
+      async getAgent(agentId, signal) {
+        return parseAiAgent(await request(agentPath(agentId), 'GET', signal, undefined, 'ai', 200), agentId);
+      },
+      async getOptions(workspaceId, signal) {
+        const query = new URLSearchParams({ workspaceId });
+        return parseAiOptions(await request(`${aiPath}/options?${query}`, 'GET', signal, undefined, 'ai', 200));
+      },
+      async createAgent(input, signal) {
+        requireAiCredentialTransport();
+        let status = 0;
+        const data = record(await request(`${aiPath}/agents`, 'POST', signal, input, 'ai', [200, 201], (value) => { status = value; }));
+        const agent = parseAiAgent(data.agent);
+        if (agent.workspaceId !== input.workspaceId || agent.mode !== input.mode || agent.name !== input.name || agent.engine !== input.engine ||
+            agent.provider !== input.provider || agent.model !== input.model || (input.mode === 'managed' && agent.profileId !== input.profileId)) {
+          throw new ApiError('建立 Agent 的回應與所送設定不符。', 'INVALID_RESPONSE');
+        }
+        return { agent, token: aiReceiptToken(data.token, status === 201 && input.mode === 'self_managed') };
+      },
+      async retryAgent(agentId, revision, signal) {
+        return parseAiAgent(await request(`${agentPath(agentId)}/retry`, 'POST', signal, { revision }, 'ai', [200, 202]), agentId);
+      },
+      async rotateKey(agentId, expectedSecretVersion, apiKey, signal) {
+        requireAiCredentialTransport();
+        return parseAiAgent(await request(`${agentPath(agentId)}/model-key`, 'PUT', signal, { expectedSecretVersion, apiKey }, 'ai', 200), agentId);
+      },
+      async revokeKey(agentId, expectedSecretVersion, signal) {
+        requireAiCredentialTransport();
+        return parseAiAgent(await request(`${agentPath(agentId)}/model-key`, 'DELETE', signal, { expectedSecretVersion, confirmed: true }, 'ai', 200), agentId);
+      },
+      async getRouting(workspaceId, signal) {
+        return parseAiRouting(await request(routingPath(workspaceId), 'GET', signal, undefined, 'ai', 200), workspaceId);
+      },
+      async changeRouting(workspaceId, input, signal) {
+        const routing = parseAiRouting(await request(routingPath(workspaceId), 'PATCH', signal, input, 'ai', 200), workspaceId);
+        if ((routing.agents[input.skillId] ?? null) !== input.agentId) throw new ApiError('Agent 選用回應不符。', 'INVALID_RESPONSE');
+        return routing;
+      },
+    },
     adminWorkspaces: {
       async list(state, after, signal) {
         const query = new URLSearchParams({ state });
@@ -946,6 +1154,17 @@ export function isProtectedCredentialTransport(apiBase: string, pageUrl: string)
     const loopback = (url: URL) => ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname.toLowerCase());
     return !api.username && !api.password && (page.protocol === 'https:' || (page.protocol === 'http:' && loopback(page))) && (api.protocol === 'https:' || (api.protocol === 'http:' && loopback(api) && loopback(page)));
   } catch { return false; }
+}
+
+export function resolveMcpEndpoint(apiBase: string, pageUrl: string): string | null {
+  try {
+    const endpoint = new URL(apiBase, pageUrl);
+    if (!['http:', 'https:'].includes(endpoint.protocol) || endpoint.username || endpoint.password || !/\/api\/?$/.test(endpoint.pathname)) return null;
+    endpoint.pathname = endpoint.pathname.replace(/\/api\/?$/, '/mcp');
+    endpoint.search = '';
+    endpoint.hash = '';
+    return endpoint.href;
+  } catch { return null; }
 }
 
 export function resolveReportUrl(reportUrl: string | undefined, apiBase: string, pageUrl: string): string | null {

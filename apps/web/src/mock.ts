@@ -17,7 +17,7 @@ export function createMockApi(): WhippetApi {
     return {
       id: identity.id, name: identity.name, role,
       permissions: { createWorkspace: role !== 'none', manageUsers: role !== 'none', manageSuperAdmins: role === 'superadmin',
-        manageSiteWorkspaces: false, manageSiteRoles: role === 'superadmin' },
+        manageSiteWorkspaces: false, manageSiteRoles: role === 'superadmin', manageAIResources: false },
     };
   }
 

@@ -1,3 +1,5 @@
+import type { AiAdminApi } from './aiAdminTypes';
+
 export const SITE_ROLES = ['none', 'site_admin', 'superadmin'] as const;
 export const WORKSPACE_MEMBER_ROLES = ['none', 'qa', 'workspace_admin'] as const;
 export type SiteRole = typeof SITE_ROLES[number];
@@ -13,6 +15,7 @@ export interface DevUser {
     manageSuperAdmins: boolean;
     manageSiteWorkspaces: boolean;
     manageSiteRoles: boolean;
+    manageAIResources: boolean;
   };
 }
 
@@ -132,6 +135,10 @@ export type AuthorEngine = 'builtin' | 'external';
 export type AgentRuntimeEngine = 'builtin' | 'vercel' | 'pi';
 export const AGENT_RUNTIME_SKILLS = ['test-author', 'workspace-author', 'acceptance-summary', 'module-authoring', 'usecase-planner'] as const;
 export type AgentRuntimeSkill = typeof AGENT_RUNTIME_SKILLS[number];
+export const AGENT_RUNTIME_SKILL_LABELS: Record<AgentRuntimeSkill, string> = {
+  'test-author': '測試產稿', 'workspace-author': 'Workspace 訪談', 'acceptance-summary': '驗收摘要',
+  'module-authoring': 'Module 產稿', 'usecase-planner': 'Use Case 規劃',
+};
 export interface AgentRuntimeSelection {
   profileId: string;
   skillProfiles: Partial<Record<AgentRuntimeSkill, string>>;
@@ -371,6 +378,7 @@ export interface WorkspaceRunActivity extends RunActivity {
 export interface Run extends RunActivity {
   feedbackReportUrl?: string;
   workspaceId?: string;
+  agentId?: string;
   error?: string;
   versionId?: string;
   workspaceSettings?: WorkspaceSettingsSnapshot;
@@ -543,6 +551,7 @@ export interface WhippetApi {
   updateMember(workspaceId: string, userId: string, role: WorkspaceMemberRole, signal?: AbortSignal): Promise<WorkspaceMember>;
   listWorkspaces(signal?: AbortSignal): Promise<WorkspaceDetail[]>;
   adminWorkspaces?: ManagedWorkspaceApi;
+  aiAdmin?: AiAdminApi;
   listTests(workspaceId: string, signal?: AbortSignal): Promise<Test[]>;
   listArchivedTests(workspaceId: string, signal?: AbortSignal): Promise<Test[]>;
   archiveTest(testId: string, signal?: AbortSignal): Promise<void>;

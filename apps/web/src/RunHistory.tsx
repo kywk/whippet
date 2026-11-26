@@ -42,6 +42,7 @@ export function RunHistory({ api, apiBase, runs, group, loading, error, polling,
           <RunStatusBadge run={latest} />
           {formal ? null : <span>{runKindLabel(latest)}</span>}
           {latest.kind === 'author' ? <AuthorEngineStatus engine={latest.authorEngine ?? 'builtin'} status={latest.status} /> : null}
+          {latest.agentId ? <span>Agent <code className="identifier">{latest.agentId}</code></span> : null}
           <time dateTime={latest.createdAt}>{formatDate(latest.createdAt)}</time>
           {formal && latest.startedAt ? <span className="latest-duration">{duration(latest)}</span> : null}
           {latest.kind === 'author' ? <span>{latest.authorMode === 'summary' ? '結果見驗收摘要' : '撰寫結果見對話'}</span> : <ReportLink reportUrl={latest.reportUrl} apiBase={apiBase} />}
@@ -63,6 +64,7 @@ export function RunHistory({ api, apiBase, runs, group, loading, error, polling,
             <RunStatusBadge run={run} /><span className="table-run-id identifier mono" title={run.id}>{shortRunId(run.id)}</span>
             <span className="run-origin">{scriptOriginLabel(run.scriptOrigin)}</span>
             {run.kind === 'author' ? <AuthorEngineStatus engine={run.authorEngine ?? 'builtin'} status={run.status} /> : null}
+            {run.agentId ? <span className="run-origin" title={run.agentId}>Agent <code className="identifier">{shortRunId(run.agentId)}</code></span> : null}
             {isBadStatus(run.status) ? <details className="error-details">
               <summary>查看處理建議</summary>
               <RunProblem run={run} />
