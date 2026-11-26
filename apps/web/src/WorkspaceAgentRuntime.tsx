@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, errorMessage } from './api';
 import { Notice } from './components';
-import { AGENT_RUNTIME_SKILLS } from './types';
+import { AGENT_RUNTIME_SKILL_LABELS as skillLabels, AGENT_RUNTIME_SKILLS } from './types';
 import type { AgentRuntimeProfile, AgentRuntimeSelection, AgentRuntimeSkill, WhippetApi, WorkspaceAgentRuntime } from './types';
 
-const skillLabels: Record<AgentRuntimeSkill, string> = {
-  'test-author': '測試產稿', 'workspace-author': 'Workspace 訪談', 'acceptance-summary': '驗收摘要',
-  'module-authoring': 'Module 產稿', 'usecase-planner': 'Use Case 規劃',
-};
 const engineLabels: Record<AgentRuntimeProfile['engine'], string> = {
   builtin: 'builtin（內建）', vercel: 'vercel（Vercel AI SDK）', pi: 'pi（Pi Agent Core）',
 };

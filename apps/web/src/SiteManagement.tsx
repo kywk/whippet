@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { lazy, useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import { siteManagementHref } from './access';
 import type { SiteManagementRoute } from './access';
-import { Loading, Notice } from './components';
+import { Loading, Notice, SurfaceBoundary } from './components';
 import { useResource } from './hooks';
 import { LogOutIcon, PlusIcon, RefreshIcon } from './icons';
 import { SiteWorkspaceDetail } from './SiteWorkspaceDetail';
@@ -13,9 +13,11 @@ import './access.css';
 
 interface Props {
   api: WhippetApi;
+  apiBase: string;
   user: DevUser;
   mock: boolean;
   route: SiteManagementRoute;
+  workspaces: { data?: WorkspaceDetail[]; loading: boolean; error?: string; retry: () => void };
   onNavigate: (next?: SiteManagementRoute) => void;
   onLogout: () => void;
   onCreated: (workspace: WorkspaceDetail) => void;
@@ -25,6 +27,8 @@ interface Props {
 
 const workspaceListRoute = { page: 'workspaces' } as const;
 const rolesRoute = { page: 'roles' } as const;
+const aiRoute = { page: 'ai', route: { view: 'resources' } } as const;
+const AiManager = lazy(() => import('./AiManager').then(({ AiManager }) => ({ default: AiManager })));
 
 function followLink(event: MouseEvent<HTMLAnchorElement>, navigate: () => void) {
   if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
@@ -32,17 +36,22 @@ function followLink(event: MouseEvent<HTMLAnchorElement>, navigate: () => void) 
   navigate();
 }
 
-export function SiteManagement({ api, user, mock, route, onNavigate, onLogout, onCreated, onAccessChanged, onOpenWorkspace }: Props) {
-  const { manageSiteWorkspaces: workspaceAccess, manageSiteRoles: rolesAccess } = user.permissions;
+export function SiteManagement({ api, apiBase, user, mock, route, workspaces, onNavigate, onLogout, onCreated, onAccessChanged, onOpenWorkspace }: Props) {
+  const { manageSiteWorkspaces: workspaceAccess, manageSiteRoles: rolesAccess, manageAIResources: aiAccess } = user.permissions;
   const adminApi = api.adminWorkspaces;
-  const allowed = route.page === 'roles' ? rolesAccess : workspaceAccess && (route.page !== 'create' || user.permissions.createWorkspace);
+  const allowed = route.page === 'ai' ? aiAccess : route.page === 'roles' ? rolesAccess : workspaceAccess && (route.page !== 'create' || user.permissions.createWorkspace);
   let content: ReactNode;
 
   if (!allowed) {
     content = <section className="access-view"><ManagementHeading>無法開啟管理頁面</ManagementHeading>
-      <Notice message={route.page === 'roles' ? '全站角色由 Super Admin 管理。'
+      <Notice message={route.page === 'ai' ? 'AI Manager 由 Super Admin 管理。' : route.page === 'roles' ? '全站角色由 Super Admin 管理。'
         : route.page === 'create' && workspaceAccess ? '目前登入的身分無法建立 Workspace。' : '目前登入的身分沒有全站 Workspace 管理權限。'} />
     </section>;
+  } else if (route.page === 'ai') {
+    content = api.aiAdmin ? <SurfaceBoundary loadingText="正在開啟 AI Manager…">
+      <AiManager api={api.aiAdmin} apiBase={apiBase} route={route.route} workspaces={workspaces} onAccessChanged={onAccessChanged}
+        onNavigate={(next) => onNavigate({ page: 'ai', route: next })} />
+    </SurfaceBoundary> : <section className="access-view"><ManagementHeading>AI Manager</ManagementHeading><Notice message="目前無法連線至 AI 管理介面。" /></section>;
   } else if (route.page === 'roles') {
     content = <SiteUsers api={api} user={user} onAccessChanged={onAccessChanged} />;
   } else if (!adminApi) {
@@ -86,11 +95,13 @@ export function SiteManagement({ api, user, mock, route, onNavigate, onLogout, o
       </div>
     </header>
     {mock ? <div className="mock-banner" role="status">示範模式：使用本機 mock 資料，重新整理後資料會清除。</div> : null}
-    {workspaceAccess || rolesAccess ? <nav aria-label="全站管理導覽" className="site-management-nav">
+    {workspaceAccess || rolesAccess || aiAccess ? <nav aria-label="全站管理導覽" className="site-management-nav">
       {workspaceAccess ? <a href={siteManagementHref(workspaceListRoute)} aria-current={route.page === 'workspaces' ? 'page' : undefined}
-        className={route.page !== 'roles' ? 'current' : undefined} onClick={(event) => followLink(event, () => onNavigate(workspaceListRoute))}>Workspace 管理</a> : null}
+        className={route.page !== 'roles' && route.page !== 'ai' ? 'current' : undefined} onClick={(event) => followLink(event, () => onNavigate(workspaceListRoute))}>Workspace 管理</a> : null}
       {rolesAccess ? <a href={siteManagementHref(rolesRoute)} aria-current={route.page === 'roles' ? 'page' : undefined}
         className={route.page === 'roles' ? 'current' : undefined} onClick={(event) => followLink(event, () => onNavigate(rolesRoute))}>全站角色</a> : null}
+      {aiAccess ? <a href={siteManagementHref(aiRoute)} aria-current={route.page === 'ai' ? 'page' : undefined}
+        className={route.page === 'ai' ? 'current' : undefined} onClick={(event) => followLink(event, () => onNavigate(aiRoute))}>AI Manager</a> : null}
     </nav> : null}
     {content}
   </>;

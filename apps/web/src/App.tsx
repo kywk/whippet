@@ -182,7 +182,7 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onUserUpdated, onSe
   const workspace = allWorkspaces.find((item) => item.id === selectedId) ?? allWorkspaces[0];
   const setupWorkspace = allWorkspaces.find((item) => item.id === setupTarget);
   const canShowSetup = setupTarget === 'create' ? user.permissions.createWorkspace : setupWorkspace?.permissions.manageSettings;
-  const canOpenSiteManagement = user.permissions.manageSiteWorkspaces || user.permissions.manageSiteRoles;
+  const canOpenSiteManagement = user.permissions.manageSiteWorkspaces || user.permissions.manageSiteRoles || user.permissions.manageAIResources;
   const canManageTests = workspace?.permissions.manageTests;
   const canManageMembers = workspace?.permissions.manageMembers;
   const surfaceAllowed = {
@@ -274,12 +274,13 @@ function WorkspaceView({ api, apiBase, mock, user, onLogout, onUserUpdated, onSe
     rail.close();
     setSetupTarget(undefined);
     setSurface('overview');
-    navigateSiteManagement({ page: user.permissions.manageSiteWorkspaces ? 'workspaces' : 'roles' });
+    navigateSiteManagement(user.permissions.manageSiteWorkspaces ? { page: 'workspaces' } : user.permissions.manageSiteRoles
+      ? { page: 'roles' } : { page: 'ai', route: { view: 'resources' } });
   }
 
   if (siteRoute) return <main id="main" className="site-management" tabIndex={-1}>
     <SurfaceBoundary loadingText="正在開啟全站管理…" confirmReload={confirmNavigation}>
-      <SiteManagement api={api} user={user} mock={mock} route={siteRoute}
+      <SiteManagement api={api} apiBase={apiBase} user={user} mock={mock} route={siteRoute} workspaces={workspaces}
         onNavigate={navigateSiteManagement} onLogout={onLogout} onCreated={addWorkspace} onAccessChanged={refreshAccess}
         onOpenWorkspace={(id) => { setSelectedId(id); setSurface('overview'); navigateSiteManagement(); }} />
     </SurfaceBoundary>
