@@ -90,11 +90,21 @@ export function useAiMutation(onAccessChanged: () => void, refresh?: () => void)
         if (cause.status === 409) refresh?.();
       }
     } finally {
-      request.current = null;
-      if (!controller.signal.aborted) setBusy(false);
+      if (request.current === controller) {
+        request.current = null;
+        if (!controller.signal.aborted) setBusy(false);
+      }
     }
   }
-  return { busy, error, setError, submit };
+
+  function cancel() {
+    request.current?.abort();
+    request.current = null;
+    setBusy(false);
+    setError(undefined);
+  }
+
+  return { busy, error, setError, submit, cancel };
 }
 
 export function outcomeUncertain(cause: unknown): boolean {
