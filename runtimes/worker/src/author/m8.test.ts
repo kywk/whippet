@@ -110,6 +110,26 @@ test("WLA-1 proposal accepts unfinished accounts but rejects unsupplied IDs and 
   }), { code: "invalid_response" });
 });
 
+test("WLA-3 first proposal can map a frozen Workspace role to its original account ID", () => {
+  const context = input(true).workspaceContext!;
+  const alias = { ...context.config!.loginRoles[0]!, roleId: id };
+  context.config!.loginRoles = [alias];
+  const proposal = guestProposal();
+  proposal.targets[0]!.testScope = "authenticated";
+  proposal.loginRoles = [alias];
+  proposal.testAccounts = [{ accountId: id, name: "原會員", role: "會員", purpose: "驗證既有登入",
+    sites: [{ targetOrigin: proposal.targets[0]!.origin, loginMethod: null, entryUrl: null, form: null, success: null }] }];
+  const output = { message: "待補登入驗證", proposal };
+  assert.deepEqual(parseWorkspaceAuthorOutput(output, context, null), output);
+  assert.throws(() => parseWorkspaceAuthorOutput(output, { ...context, roleRefs: [] }, null), { code: "invalid_response" });
+  assert.throws(() => parseWorkspaceAuthorOutput({ ...output, proposal: { ...proposal,
+    testAccounts: [{ ...proposal.testAccounts[0]!, accountId: other }],
+  } }, context, null), { code: "invalid_response" });
+  assert.throws(() => parseWorkspaceAuthorOutput({ ...output, proposal: { ...proposal,
+    loginRoles: [{ ...alias, loginOrigin: proposal.targets[0]!.origin }],
+  } }, context, null), { code: "invalid_response" });
+});
+
 test("M8 workspace interview captures packaged skill and flat nullable context without browser/tools",async()=>{
   for(const configured of [false,true]){
     const task=input(configured);const output={message:"請檢視候選，尚未造訪或測試網站",proposal:config(),conversationSummary:"待明確確認設定"};
