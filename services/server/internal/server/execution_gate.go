@@ -93,7 +93,7 @@ func selectedContext(w Workspace, proposalFirst bool) (*WorkspaceContext, *strin
 	c := workspaceContext(w)
 	var proposal *string
 	if proposalFirst && confirmedProposal(w) {
-		c.Config = &w.CurrentProposal.Content
+		c.Config = workspaceScopeConfig(&w.CurrentProposal.Content)
 		proposal = stringPointer(w.CurrentProposal.ID)
 	} else if !confirmedCanonical(w) {
 		c.Config = nil
@@ -389,11 +389,12 @@ func workspaceRunScopeValid(ctx context.Context, q queryDB, w Workspace, id stri
 	_, _, err = scopeBinding(w, snapshot, proposal)
 	return err == nil
 }
-func cancelScopedRuns(ctx context.Context, tx *sql.Tx, workspace, except string) error {
+func cancelScopedRuns(ctx context.Context, tx *sql.Tx, workspace, except string, proposalID *string) error {
 	_, err := tx.ExecContext(ctx, `UPDATE runs SET status=CASE WHEN status='queued' THEN 'cancelled' ELSE 'cancelling' END,
  finished_at=CASE WHEN status='queued' THEN now() ELSE finished_at END,error='scope_confirmation_required'
  WHERE workspace_id=$1 AND id::text<>$2 AND status IN ('queued','dispatched','running','collecting') AND
+ ($3::uuid IS NULL OR scope_proposal_id=$3) AND
  ((kind IN ('run','validation') AND (script_origin<>'manual' OR jsonb_typeof(workspace_context->'config')='object')) OR (kind='author' AND
- author_payload->'allowedTools' ?| ARRAY['browser_navigate','browser_snapshot','browser_click','browser_fill','browser_login','update_module_candidate','commit_module_candidate','edit_module_candidate']))`, workspace, except)
+ author_payload->'allowedTools' ?| ARRAY['browser_navigate','browser_snapshot','browser_click','browser_fill','browser_login','update_module_candidate','commit_module_candidate','edit_module_candidate']))`, workspace, except, proposalID)
 	return err
 }

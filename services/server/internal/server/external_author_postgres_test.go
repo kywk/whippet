@@ -248,6 +248,20 @@ func TestM11ExternalWorkspaceTaskHasNullTestID(t *testing.T) {
 	}
 	assertExternalTaskTestID(t, *task, nil)
 	assertExternalTaskToolDefinitions(t, *task)
+	if !strings.Contains(jsonText(task.ContextBundle.Author), `"workspaceProposal":null`) {
+		t.Fatal("first Workspace claim omitted the prior proposal field")
+	}
+	config := m8Config()
+	config.LoginRoles = nil
+	config.Targets[0].TestScope = testScopeGuest
+	output := jsonText(workspaceAuthorOutput{Message: "候選設定", Proposal: &config})
+	if _, err := p.SubmitExternalAuthor(ctx, token, task.RunID, task.AttemptID, task.LeaseID, NewID(), []byte(output)); err != nil {
+		t.Fatal(err)
+	}
+	w, err = p.Workspace(ctx, w.ID)
+	if err != nil || w.CurrentProposal == nil || len(w.CurrentProposal.SiteReadiness) != 1 || !w.CurrentProposal.SiteReadiness[0].Ready {
+		t.Fatal("external author did not save a ready guest proposal", err)
+	}
 }
 
 func assertExternalTaskToolDefinitions(t *testing.T, task ExternalTask) {

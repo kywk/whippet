@@ -4,6 +4,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -152,20 +153,21 @@ func TestM8WorkspaceSliceA(t *testing.T) {
 		}
 	}
 	config := m8Config()
+	config.Targets[0].TestScope = testScopeGuest
 	a := submit(w1)
 	complete(a, &config)
 	pending, err := p.Workspace(ctx, w1.ID)
-	if err != nil || pending.CurrentProposal == nil || pending.CurrentProposal.Status != "pending" || pending.Settings != nil || len(pending.Roles) != 1 {
+	if err != nil || pending.CurrentProposal == nil || pending.CurrentProposal.Status != "pending" || pending.Settings != nil || len(pending.Roles) != 0 {
 		t.Fatalf("result auto-applied or missing proposal: %+v %v", pending, err)
 	}
-	proposal := *pending.CurrentProposal
+	proposal := seedLegacyProposalRole(t, p, ctx, *pending.CurrentProposal, config.LoginRoles[0])
 	if _, err := p.WorkspaceProposal(ctx, w2.ID, proposal.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatal("cross-workspace proposal exposed")
 	}
 	if _, _, err := p.ActWorkspaceProposal(ctx, w2.ID, proposal.ID, "confirm", 1); !errors.Is(err, ErrNotFound) {
 		t.Fatal("cross-workspace confirmation accepted")
 	}
-	role := pending.Roles[0].RoleID
+	role := *proposal.Content.LoginRoles[0].RoleID
 	if _, err := p.SaveWorkspaceCredentials(ctx, w2.ID, role, 0, credentialValues{"synthetic", "synthetic"}); !errors.Is(err, ErrNotFound) {
 		t.Fatal("cross-workspace role accepted")
 	}
@@ -326,4 +328,20 @@ func TestM8WorkspaceSliceA(t *testing.T) {
 	if bytes.Contains(public, []byte(values.Password)) || bytes.Contains(public, []byte(values.Username)) {
 		t.Fatal("credential values exposed")
 	}
+}
+
+func seedLegacyProposalRole(t *testing.T, p *Postgres, ctx context.Context, proposal WorkspaceProposal, role WorkspaceRole) WorkspaceProposal {
+	t.Helper()
+	// Existing v8 drafts may already have an assigned role. v15 author output
+	// can retain that role, but no longer creates aliases for new accounts.
+	role.RoleID = stringPointer(NewID())
+	if _, err := p.DB.ExecContext(ctx, `INSERT INTO workspace_roles(id,workspace_id) VALUES($1,$2)`, role.RoleID, proposal.WorkspaceID); err != nil {
+		t.Fatal(err)
+	}
+	proposal.Content.LoginRoles = append(proposal.Content.LoginRoles, role)
+	if _, err := p.DB.ExecContext(ctx, `UPDATE workspace_proposals SET content=$2,scope_hash=$3 WHERE id=$1`,
+		proposal.ID, jsonText(proposal.Content), workspaceScopeHash(proposal.Content)); err != nil {
+		t.Fatal(err)
+	}
+	return proposal
 }

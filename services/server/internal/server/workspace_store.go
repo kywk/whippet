@@ -22,6 +22,37 @@ func readWorkspaceCore(ctx context.Context, q queryDB, id string, lock bool) (Wo
 	return scanWorkspaceCore(q.QueryRowContext(ctx, stmt, id))
 }
 
+func lockWorkspaceSettings(ctx context.Context, tx *sql.Tx, id string) (Workspace, *string, error) {
+	if err := authorizeWorkspace(ctx, id); err != nil {
+		return Workspace{}, nil, err
+	}
+	actor := actorFromContext(ctx)
+	if actor.user.ID == "" {
+		return readWorkspaceCore(ctx, tx, id, true)
+	}
+	// Match membership writes: lock the directory role before the Workspace.
+	role, err := lockActorSiteRole(ctx, tx, actor)
+	if err != nil {
+		return Workspace{}, nil, err
+	}
+	w, proposalID, err := readWorkspaceCore(ctx, tx, id, true)
+	if err != nil || role.admin() {
+		return w, proposalID, err
+	}
+	member, err := readMemberRole(ctx, tx, id, actor.user.ID)
+	if err != nil {
+		return w, proposalID, err
+	}
+	permissions := permissionsForWorkspace(role, member)
+	if !permissions.ManageTests {
+		return w, proposalID, ErrNotFound
+	}
+	if !permissions.ManageSettings {
+		return w, proposalID, errForbidden
+	}
+	return w, proposalID, nil
+}
+
 func scanWorkspaceCore(row scanner, extra ...any) (Workspace, *string, error) {
 	var w Workspace
 	var legacy, config []byte
@@ -40,6 +71,8 @@ func scanWorkspaceCore(row scanner, extra ...any) (Workspace, *string, error) {
 	if len(config) > 0 && json.Unmarshal(config, &w.Settings) != nil {
 		return w, nil, fmt.Errorf("invalid saved Workspace configuration")
 	}
+	setWorkspaceTestDefaults(w.Settings)
+	w.SiteReadiness = workspaceSiteReadiness(w.Settings, confirmedCanonical(w))
 	w.Roles = []RoleRef{}
 	w.ExecutionAvailable = true
 	return w, proposalID, nil
@@ -63,6 +96,12 @@ func scanWorkspaceProposal(row scanner) (WorkspaceProposal, error) {
 	}
 	if json.Unmarshal(raw, &p.Content) != nil {
 		return p, fmt.Errorf("invalid saved Workspace proposal")
+	}
+	setWorkspaceTestDefaults(&p.Content)
+	p.SiteReadiness = workspaceSiteReadiness(&p.Content, p.ScopeConfirmed)
+	p.AccountCredentials = make([]AccountCredentialStatus, 0, len(p.Content.TestAccounts))
+	for _, account := range p.Content.TestAccounts {
+		p.AccountCredentials = append(p.AccountCredentials, AccountCredentialStatus{AccountID: stringValue(account.AccountID)})
 	}
 	p.CreatedAt = p.CreatedAt.UTC()
 	return p, nil
@@ -144,7 +183,7 @@ func setWorkspaceAvailability(w *Workspace, secrets, tls bool) {
 }
 
 func workspaceContext(w Workspace) *WorkspaceContext {
-	return &WorkspaceContext{SchemaVersion: "1", WorkspaceID: w.ID, SettingsRevision: w.Revision, Config: w.Settings, RoleRefs: w.Roles}
+	return &WorkspaceContext{SchemaVersion: "1", WorkspaceID: w.ID, SettingsRevision: w.Revision, Config: workspaceScopeConfig(w.Settings), RoleRefs: w.Roles}
 }
 
 func decodeWorkspaceContext(raw []byte) (*WorkspaceContext, error) {

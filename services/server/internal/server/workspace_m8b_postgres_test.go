@@ -197,7 +197,8 @@ func TestM8BServerLifecycle(t *testing.T) {
 		return *w.CurrentProposal
 	}
 	config := m8Config()
-	proposal := interview(workspace.ID, config)
+	config.Targets[0].TestScope = testScopeGuest
+	proposal := seedLegacyProposalRole(t, p, ctx, interview(workspace.ID, config), config.LoginRoles[0])
 	role := *proposal.Content.LoginRoles[0].RoleID
 	ref, err := p.SaveWorkspaceCredentials(ctx, workspace.ID, role, 0, credentialValues{"synthetic-user", "synthetic-password"})
 	if err != nil {
@@ -305,7 +306,7 @@ func TestM8BServerLifecycle(t *testing.T) {
 	if _, err := p.CreateRun(ctx, seedTest); !errors.Is(err, ErrScopeConfirmation) {
 		t.Fatal("legacy treated as manual")
 	}
-	seedProposal := interview(seedWorkspace, m8Config())
+	seedProposal := interview(seedWorkspace, config)
 	if _, _, err := p.ActWorkspaceProposal(ctx, seedWorkspace, seedProposal.ID, "confirm", 1); err != nil {
 		t.Fatal(err)
 	}

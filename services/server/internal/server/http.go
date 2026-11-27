@@ -492,6 +492,8 @@ func (a *API) fail(w http.ResponseWriter, err error) {
 		writeError(w, 409, "history_unavailable", "Conversation history is unavailable for this attempt")
 	case errors.Is(err, ErrScopeConfirmation):
 		writeError(w, 409, "scope_confirmation_required", "請先確認 Workspace 的網站範圍。")
+	case errors.Is(err, ErrWorkspaceSetupIncomplete):
+		writeError(w, 409, "workspace_setup_incomplete", "請補齊逐站驗證。")
 	case errors.Is(err, ErrAuthorOffTopic):
 		writeError(w, 422, "author_off_topic", "這裡只處理 Playwright 測試、執行結果與測試相關的 Workspace 設定。請描述你要驗證的行為。")
 	case errors.Is(err, ErrAuthorClarification):

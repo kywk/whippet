@@ -20,15 +20,23 @@ func decodeWorkspaceAuthorOutput(data []byte) (workspaceAuthorOutput, error) {
 	var out workspaceAuthorOutput
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
-	if len(data) > int(MaxAuthorArtifactBytes) || !utf8.Valid(data) || dec.Decode(&out) != nil || dec.Decode(new(any)) != io.EOF || validateUserMessage(out.Message) != nil ||
+	if len(data) > int(MaxAuthorArtifactBytes) || !utf8.Valid(data) || strictJSONNoDuplicates(data) != nil || dec.Decode(&out) != nil || dec.Decode(new(any)) != io.EOF || validateUserMessage(out.Message) != nil ||
 		(out.ConversationSummary != nil && !configText(*out.ConversationSummary, 8192)) {
 		return out, fmt.Errorf("invalid Workspace author output")
 	}
+	fields, ok := workspaceJSONFields(data, "message", "proposal", "conversationSummary")
+	if !ok {
+		return out, configError()
+	}
 	if out.Proposal != nil {
+		if !validWorkspaceProposalFields(fields["proposal"]) {
+			return out, configError()
+		}
 		c, err := normalizeConfig(*out.Proposal, false)
 		if err != nil {
 			return out, err
 		}
+		setWorkspaceTestDefaults(&c)
 		out.Proposal = &c
 	}
 	return out, nil
@@ -84,7 +92,7 @@ func (p *Postgres) CreateWorkspaceAuthor(ctx context.Context, id, content string
 		return AuthorSubmission{}, err
 	}
 	defer tx.Rollback()
-	w, pid, err := readWorkspaceCore(ctx, tx, id, true)
+	w, pid, err := lockWorkspaceSettings(ctx, tx, id)
 	if err != nil {
 		return AuthorSubmission{}, err
 	}
@@ -111,6 +119,9 @@ func (p *Postgres) CreateWorkspaceAuthor(ctx context.Context, id, content string
 	}
 	input := AuthorInput{SkillID: "workspace-author", SkillVersion: "1", AllowedTools: []string{}, ConversationID: c.ID, BaseRevision: w.Revision, ContextRevision: contextRevision + 1,
 		SourceVersion: nil, ConversationSummary: c.ConversationSummary, Messages: authorContext(newest)}
+	if previous := w.CurrentProposal; previous != nil {
+		input.WorkspaceProposal = &WorkspaceInterviewProposal{Content: previous.Content, SiteReadiness: previous.SiteReadiness}
+	}
 	if err = p.checkAuthorIntent(ctx, input.SkillID, input.Messages); err != nil {
 		return AuthorSubmission{}, err
 	}
@@ -169,30 +180,20 @@ func (p *Postgres) CreateWorkspaceAuthor(ctx context.Context, id, content string
 	return AuthorSubmission{Run: run, ConversationID: c.ID}, nil
 }
 
-func assignWorkspaceRoles(ctx context.Context, tx *sql.Tx, id string, c *WorkspaceConfig) error {
-	// Validate all supplied references before allocating any new role. Invalid
-	// model output must not leave even unused role metadata behind.
-	for _, r := range c.LoginRoles {
-		if r.RoleID != nil {
-			var exists bool
-			if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM workspace_roles WHERE id=$1 AND workspace_id=$2)`, *r.RoleID, id).Scan(&exists); err != nil {
-				return err
-			}
-			if !exists {
-				return configError()
+func retainLegacyWorkspaceRoles(w Workspace, proposal *WorkspaceConfig) {
+	source := w.Settings
+	if previous := w.CurrentProposal; source == nil && previous != nil && previous.BaseRevision == w.Revision &&
+		(previous.Status == "pending" || previous.Status == "stale" && stringValue(previous.InvalidationReason) == "context_changed") {
+		source = &previous.Content
+	}
+	proposal.LoginRoles = []WorkspaceRole{}
+	if source != nil {
+		for _, role := range source.LoginRoles {
+			if role.RoleID != nil && loginOriginAllowed(proposal, role.LoginOrigin) {
+				proposal.LoginRoles = append(proposal.LoginRoles, role)
 			}
 		}
 	}
-	for i := range c.LoginRoles {
-		r := &c.LoginRoles[i]
-		if r.RoleID == nil {
-			r.RoleID = stringPointer(NewID())
-			if _, err := tx.ExecContext(ctx, `INSERT INTO workspace_roles(id,workspace_id) VALUES($1,$2)`, *r.RoleID, id); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 func (p *Postgres) completeWorkspaceAuthor(ctx context.Context, workspaceID, managerID, runID, attemptID string, incoming Result) error {
@@ -250,7 +251,8 @@ func (p *Postgres) completeWorkspaceAuthorWith(ctx context.Context, workspaceID,
 				output, outputErr = decodeWorkspaceAuthorOutput(data)
 			}
 			if outputErr == nil && output.Proposal != nil {
-				outputErr = assignWorkspaceRoles(ctx, tx, workspaceID, output.Proposal)
+				retainLegacyWorkspaceRoles(w, output.Proposal)
+				outputErr = assignWorkspaceTestAccounts(output.Proposal, input.WorkspaceProposal)
 			}
 			if outputErr != nil {
 				result = Result{Status: "failed", Error: "Workspace interview output was invalid; saved settings are unchanged."}
@@ -266,11 +268,8 @@ func (p *Postgres) completeWorkspaceAuthorWith(ctx context.Context, workspaceID,
 					proposalID := NewID()
 					hash := workspaceScopeHash(*output.Proposal)
 					confirmed := (w.Settings != nil && workspaceScopeHash(*w.Settings) == hash && w.ScopeStatus == "confirmed") || (w.CurrentProposal != nil && w.CurrentProposal.ScopeConfirmed && w.CurrentProposal.ScopeHash == hash && (w.CurrentProposal.Status == "pending" || w.CurrentProposal.Status == "applied" || (w.CurrentProposal.Status == "stale" && stringValue(w.CurrentProposal.InvalidationReason) == "context_changed")))
-					if w.CurrentProposal != nil && w.CurrentProposal.ScopeConfirmed && w.CurrentProposal.ScopeHash != hash {
-						if _, err = tx.ExecContext(ctx, `UPDATE workspaces SET authorization_revision=authorization_revision+1 WHERE id=$1`, workspaceID); err != nil {
-							return err
-						}
-						if err = cancelScopedRuns(ctx, tx, workspaceID, runID); err != nil {
+					if previous := w.CurrentProposal; previous != nil && previous.ScopeConfirmed && previous.ScopeHash != hash {
+						if err = cancelScopedRuns(ctx, tx, workspaceID, runID, &previous.ID); err != nil {
 							return err
 						}
 					}
@@ -305,7 +304,7 @@ func (p *Postgres) ActWorkspaceProposal(ctx context.Context, id, proposalID, act
 		return Workspace{}, WorkspaceProposal{}, err
 	}
 	defer tx.Rollback()
-	w, pid, err := readWorkspaceCore(ctx, tx, id, true)
+	w, pid, err := lockWorkspaceSettings(ctx, tx, id)
 	if err != nil {
 		return w, WorkspaceProposal{}, err
 	}
@@ -351,18 +350,18 @@ func (p *Postgres) ActWorkspaceProposal(ctx context.Context, id, proposalID, act
 			if _, err = tx.ExecContext(ctx, `UPDATE workspace_proposals SET scope_confirmed=true WHERE id=$1`, proposal.ID); err != nil {
 				return w, proposal, err
 			}
-			if _, err = tx.ExecContext(ctx, `UPDATE workspaces SET scope_status='confirmed',authorization_revision=authorization_revision+1 WHERE id=$1`, id); err != nil {
+			if _, err = tx.ExecContext(ctx, `UPDATE workspaces SET scope_status='confirmed',authorization_revision=authorization_revision+1 WHERE id=$1 AND canonical_config IS NULL`, id); err != nil {
 				return w, proposal, err
 			}
 		}
 	case "cancel":
-		if err = cancelScopedRuns(ctx, tx, id, ""); err != nil {
+		if err = cancelScopedRuns(ctx, tx, id, "", &proposal.ID); err != nil {
 			return w, proposal, err
 		}
 		if _, err = tx.ExecContext(ctx, `UPDATE workspace_proposals SET status='cancelled',scope_confirmed=false,invalidation_reason='cancelled' WHERE id=$1`, proposal.ID); err != nil {
 			return w, proposal, err
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE workspaces SET scope_status=CASE WHEN canonical_config IS NULL THEN 'unconfirmed' ELSE 'confirmed' END,authorization_revision=authorization_revision+1 WHERE id=$1`, id); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE workspaces SET scope_status='unconfirmed',authorization_revision=authorization_revision+1 WHERE id=$1 AND canonical_config IS NULL`, id); err != nil {
 			return w, proposal, err
 		}
 	case "confirm":
@@ -370,10 +369,15 @@ func (p *Postgres) ActWorkspaceProposal(ctx context.Context, id, proposalID, act
 		if err != nil {
 			return w, proposal, err
 		}
+		for _, site := range proposal.SiteReadiness {
+			if !site.Ready {
+				return w, proposal, ErrWorkspaceSetupIncomplete
+			}
+		}
 		changed := w.Settings == nil || jsonText(w.Settings) != jsonText(config) || w.Lifecycle != "active"
 		if changed {
 			if w.Settings != nil && workspaceScopeHash(*w.Settings) != workspaceScopeHash(config) {
-				if err = cancelScopedRuns(ctx, tx, id, ""); err != nil {
+				if err = cancelScopedRuns(ctx, tx, id, "", nil); err != nil {
 					return w, proposal, err
 				}
 			}

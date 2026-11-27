@@ -77,6 +77,7 @@ func TestPostgresWorkspaceSettingsSnapshots(t *testing.T) {
 		// M8 replaced direct settings PATCH with confirmed proposals. Seed an
 		// already-confirmed canonical configuration before snapshot testing.
 		baseConfig := m8Config()
+		baseConfig.Targets[0].TestScope = testScopeGuest
 		baseConfig.Name = w.Name
 		baseConfig.TimeoutMS = w.TimeoutMS
 		baseConfig.DefaultTestURL = w.DefaultTestURL
@@ -197,7 +198,7 @@ func TestPostgresWorkspaceSettingsSnapshots(t *testing.T) {
 		}
 		newURL, timeout := "https://example.test/new", 23456
 		changedConfig := baseConfig
-		changedConfig.Targets = []WorkspaceOrigin{{Name: " New site ", Origin: "https://example.test/", Purpose: "測試"}}
+		changedConfig.Targets = []WorkspaceOrigin{{Name: " New site ", Origin: "https://example.test/", Purpose: "測試", TestScope: testScopeGuest}}
 		changedConfig.DefaultTestURL, changedConfig.TimeoutMS = newURL, timeout
 		changedID := proposalFixture(queued.ID, w.Revision, changedConfig)
 		updated, _, err := p.ActWorkspaceProposal(ctx, w.ID, changedID, "confirm", w.Revision)
