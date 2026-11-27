@@ -224,6 +224,21 @@ func retainLegacyWorkspaceRoles(w Workspace, proposal *WorkspaceConfig, explicit
 	}
 }
 
+func bindWorkspaceAuthorProposal(w Workspace, previous *WorkspaceInterviewProposal, snapshot *WorkspaceContext, output workspaceAuthorOutput) error {
+	var roles []RoleRef
+	if snapshot != nil {
+		if snapshot.WorkspaceID != w.ID {
+			return configError()
+		}
+		roles = snapshot.RoleRefs
+	}
+	if err := assignWorkspaceTestAccounts(output.Proposal, previous, roles); err != nil {
+		return err
+	}
+	retainLegacyWorkspaceRoles(w, output.Proposal, output.testAccountsProvided)
+	return nil
+}
+
 func (p *Postgres) completeWorkspaceAuthor(ctx context.Context, workspaceID, managerID, runID, attemptID string, incoming Result) error {
 	return p.completeWorkspaceAuthorWith(ctx, workspaceID, runID, attemptID, incoming,
 		func(tx *sql.Tx) (string, error) { return lockAttempt(ctx, tx, managerID, runID, attemptID) }, nil, nil)
@@ -249,8 +264,9 @@ func (p *Postgres) completeWorkspaceAuthorWith(ctx context.Context, workspaceID,
 		return err
 	}
 	var reported sql.NullString
-	var raw []byte
-	if err = tx.QueryRowContext(ctx, `SELECT author_reported_status,author_payload FROM runs WHERE id=$1 AND workspace_id=$2 AND test_id IS NULL`, runID, workspaceID).Scan(&reported, &raw); err != nil {
+	var raw, frozenScope []byte
+	if err = tx.QueryRowContext(ctx, `SELECT author_reported_status,author_payload,workspace_context FROM runs WHERE id=$1 AND workspace_id=$2 AND test_id IS NULL`,
+		runID, workspaceID).Scan(&reported, &raw, &frozenScope); err != nil {
 		return err
 	}
 	result, duplicate, err := authorResultDisposition(status, reported.String, incoming)
@@ -286,12 +302,11 @@ func (p *Postgres) completeWorkspaceAuthorWith(ctx context.Context, workspaceID,
 				output, outputErr = decodeWorkspaceAuthorOutput(data)
 			}
 			if outputErr == nil && output.Proposal != nil {
-				known := input.WorkspaceProposal
-				if known == nil && confirmedCanonical(w) && w.CurrentProposal == nil {
-					known = &WorkspaceInterviewProposal{Content: *w.Settings}
+				var snapshot *WorkspaceContext
+				snapshot, outputErr = decodeWorkspaceContext(frozenScope)
+				if outputErr == nil {
+					outputErr = bindWorkspaceAuthorProposal(w, input.WorkspaceProposal, snapshot, output)
 				}
-				outputErr = assignWorkspaceTestAccounts(output.Proposal, known)
-				retainLegacyWorkspaceRoles(w, output.Proposal, output.testAccountsProvided)
 			}
 			if outputErr != nil {
 				result = Result{Status: "failed", Error: "Workspace interview output was invalid; saved settings are unchanged."}
