@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "16.0",
+  "version": "17.0",
   "tools": [
     {
       "name": "read_conversation_history",
@@ -310,6 +310,33 @@
           "usernameSelector",
           "passwordSelector",
           "submitSelector"
+        ],
+        "additionalProperties": false
+      },
+      "side": "worker",
+      "effect": "browser",
+      "limits": {
+        "timeoutMs": 15000,
+        "maxInputBytes": 16384,
+        "maxOutputBytes": 131072
+      }
+    },
+    {
+      "name": "browser_login_account",
+      "description": "Submit the approved login form for a specific test account and target origin from the authorized workspace catalog. Check the resulting page state before treating login as successful.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "targetOrigin": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "targetOrigin"
         ],
         "additionalProperties": false
       },

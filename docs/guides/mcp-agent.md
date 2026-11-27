@@ -163,6 +163,12 @@ validation_request只能排正式驗證；Use Case未人工確認回awaiting_hum
 Wave6必要真MCP/隔離PG檢查已通過；使用合成validation artifact，不等於本次真Docker或完整UI驗收。本機已更新；此段核心測試仍只代表合成狀態機證據。
 
 
+## 使用 Workspace 的測試帳號
+
+互動模式從已就緒的 `browser_session_open` 或 `browser_session_status` 讀取 `testAccounts`。接單模式從 `task_claim.task.contextBundle.workspaceContext.testAccounts` 讀取本次授權目錄。先比對目標站台、角色、用途與逐站驗證結果。若案例需要兩名會員，分別選取兩個帳號識別碼，在獨立的瀏覽器工作階段執行。
+
+使用 `browser_login_account` 時傳入目錄中的 `accountId` 與 `targetOrigin`。腳本使用 `loginAsAccount(page, accountId, targetOrigin)`，接著斷言登入後可用的功能。訪客流程從未登入的工作階段開始。若目錄缺少測試需要的角色或站台，請 QA 在 Workspace 設定補充並驗證該帳號。[逐站登入契約](../../contracts/mvp-v15.md)
+
 ## Wave7 登入與監看
 
 browser_login沿原schema只傳roleId與三個selector；username/password只經Manager可信HTTPS resolver與Worker私有IPC，成功回submitted不表示網站已登入。Manager連線自簽Server時設定SERVER_CA_FILE指向公開CA，控制WSS、credential與live連線均驗證憑證，不能關TLS驗證。
