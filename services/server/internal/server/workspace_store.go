@@ -12,7 +12,7 @@ func jsonText(value any) string { data, _ := json.Marshal(value); return string(
 
 const workspaceCoreColumns = `w.id,COALESCE(w.management_name,w.name),w.settings,w.lifecycle,w.canonical_config,w.authorization_revision,w.scope_status,
  (SELECT c.id FROM conversations c WHERE c.workspace_id=w.id AND c.owner_type='workspace'),
- (SELECT r.id FROM runs r WHERE r.workspace_id=w.id AND r.test_id IS NULL AND r.kind='author' AND r.status IN ('queued','dispatched','running','collecting','cancelling')),w.current_proposal_id,w.author_engine,` + workspaceManagementColumns
+ (SELECT r.id FROM runs r WHERE r.workspace_id=w.id AND r.test_id IS NULL AND r.kind='author' AND r.status IN ('queued','dispatched','running','collecting','cancelling')),w.current_proposal_id,w.author_engine,w.login_state,` + workspaceManagementColumns
 
 func readWorkspaceCore(ctx context.Context, q queryDB, id string, lock bool) (Workspace, *string, error) {
 	stmt := `SELECT ` + workspaceCoreColumns + ` FROM workspaces w WHERE w.id=$1`
@@ -55,9 +55,9 @@ func lockWorkspaceSettings(ctx context.Context, tx *sql.Tx, id string) (Workspac
 
 func scanWorkspaceCore(row scanner, extra ...any) (Workspace, *string, error) {
 	var w Workspace
-	var legacy, config []byte
+	var legacy, config, loginState []byte
 	var proposalID *string
-	fields := []any{&w.ID, &w.Name, &legacy, &w.Lifecycle, &config, &w.AuthorizationRevision, &w.ScopeStatus, &w.ConversationID, &w.ActiveRunID, &proposalID, &w.AuthorEngine}
+	fields := []any{&w.ID, &w.Name, &legacy, &w.Lifecycle, &config, &w.AuthorizationRevision, &w.ScopeStatus, &w.ConversationID, &w.ActiveRunID, &proposalID, &w.AuthorEngine, &loginState}
 	fields = append(fields, w.Management.scanFields()...)
 	if err := row.Scan(append(fields, extra...)...); err != nil {
 		return w, nil, dbError(err)
@@ -71,43 +71,61 @@ func scanWorkspaceCore(row scanner, extra ...any) (Workspace, *string, error) {
 	if len(config) > 0 && json.Unmarshal(config, &w.Settings) != nil {
 		return w, nil, fmt.Errorf("invalid saved Workspace configuration")
 	}
-	setWorkspaceTestDefaults(w.Settings)
+	if err := json.Unmarshal(loginState, &w.loginState); err != nil {
+		return w, nil, fmt.Errorf("invalid saved Workspace login state")
+	}
+	setSavedWorkspaceTestDefaults(w.Settings)
 	w.SiteReadiness = workspaceSiteReadiness(w.Settings, confirmedCanonical(w))
 	w.Roles = []RoleRef{}
 	w.ExecutionAvailable = true
 	return w, proposalID, nil
 }
 
-const workspaceProposalColumns = `id,workspace_id,conversation_id,source_run_id,base_revision,context_revision,status,content,scope_hash,scope_confirmed,invalidation_reason,applied_revision,created_at`
+const workspaceProposalColumns = `id,workspace_id,conversation_id,source_run_id,base_revision,context_revision,status,content,scope_hash,scope_confirmed,invalidation_reason,applied_revision,created_at,login_state`
 
 func readProposal(ctx context.Context, q queryDB, workspaceID, id string, lock bool) (WorkspaceProposal, error) {
 	stmt := `SELECT ` + workspaceProposalColumns + ` FROM workspace_proposals WHERE id=$1 AND workspace_id=$2`
 	if lock {
 		stmt += " FOR UPDATE"
 	}
-	return scanWorkspaceProposal(q.QueryRowContext(ctx, stmt, id, workspaceID))
+	p, err := scanWorkspaceProposal(q.QueryRowContext(ctx, stmt, id, workspaceID))
+	if err != nil {
+		return p, err
+	}
+	err = populateProposalLogin(ctx, q, &p)
+	return p, err
 }
 
 func scanWorkspaceProposal(row scanner) (WorkspaceProposal, error) {
 	var p WorkspaceProposal
-	var raw []byte
-	if err := row.Scan(&p.ID, &p.WorkspaceID, &p.ConversationID, &p.SourceRunID, &p.BaseRevision, &p.ContextRevision, &p.Status, &raw, &p.ScopeHash, &p.ScopeConfirmed, &p.InvalidationReason, &p.AppliedRevision, &p.CreatedAt); err != nil {
+	var raw, loginState []byte
+	if err := row.Scan(&p.ID, &p.WorkspaceID, &p.ConversationID, &p.SourceRunID, &p.BaseRevision, &p.ContextRevision, &p.Status, &raw, &p.ScopeHash, &p.ScopeConfirmed, &p.InvalidationReason, &p.AppliedRevision, &p.CreatedAt, &loginState); err != nil {
 		return p, dbError(err)
 	}
-	if json.Unmarshal(raw, &p.Content) != nil {
+	if json.Unmarshal(raw, &p.Content) != nil || json.Unmarshal(loginState, &p.loginState) != nil {
 		return p, fmt.Errorf("invalid saved Workspace proposal")
 	}
-	setWorkspaceTestDefaults(&p.Content)
-	p.SiteReadiness = workspaceSiteReadiness(&p.Content, p.ScopeConfirmed)
-	p.AccountCredentials = make([]AccountCredentialStatus, 0, len(p.Content.TestAccounts))
-	for _, account := range p.Content.TestAccounts {
-		p.AccountCredentials = append(p.AccountCredentials, AccountCredentialStatus{AccountID: stringValue(account.AccountID)})
-	}
+	setSavedWorkspaceTestDefaults(&p.Content)
 	p.CreatedAt = p.CreatedAt.UTC()
 	return p, nil
 }
 
+func populateProposalLogin(ctx context.Context, q queryDB, p *WorkspaceProposal) error {
+	var err error
+	p.SiteReadiness, p.AccountCredentials, _, err = projectWorkspaceLogin(ctx, q, p.WorkspaceID, &p.Content, p.loginState, p.ScopeConfirmed)
+	return err
+}
+
+func populateWorkspaceLogin(ctx context.Context, q queryDB, w *Workspace) error {
+	var err error
+	w.SiteReadiness, _, w.accountBindings, err = projectWorkspaceLogin(ctx, q, w.ID, w.Settings, w.loginState, confirmedCanonical(*w))
+	return err
+}
+
 func fillWorkspace(ctx context.Context, q queryDB, w Workspace, proposalID *string, secrets bool, tls ...bool) (Workspace, error) {
+	if err := populateWorkspaceLogin(ctx, q, &w); err != nil {
+		return w, err
+	}
 	w.SecretsAvailable = secrets
 	if proposalID != nil {
 		p, err := readProposal(ctx, q, w.ID, *proposalID, false)
@@ -183,7 +201,9 @@ func setWorkspaceAvailability(w *Workspace, secrets, tls bool) {
 }
 
 func workspaceContext(w Workspace) *WorkspaceContext {
-	return &WorkspaceContext{SchemaVersion: "1", WorkspaceID: w.ID, SettingsRevision: w.Revision, Config: workspaceScopeConfig(w.Settings), RoleRefs: w.Roles}
+	scope := &WorkspaceContext{WorkspaceID: w.ID, SettingsRevision: w.Revision, Config: workspaceScopeConfig(w.Settings), RoleRefs: w.Roles}
+	setAccountSnapshot(scope, w.Settings, w.accountBindings)
+	return scope
 }
 
 func decodeWorkspaceContext(raw []byte) (*WorkspaceContext, error) {
@@ -257,7 +277,16 @@ VALUES($1,$2,$3),($1,$4,$5)`, id, developmentWorkspaceAdmin, workspaceAdmin, dev
 }
 
 func (p *Postgres) WorkspaceProposal(ctx context.Context, workspaceID, id string) (WorkspaceProposal, error) {
-	return readProposal(ctx, p.DB, workspaceID, id, false)
+	tx, err := p.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		return WorkspaceProposal{}, err
+	}
+	defer tx.Rollback()
+	proposal, err := readProposal(ctx, tx, workspaceID, id, false)
+	if err != nil {
+		return proposal, err
+	}
+	return proposal, tx.Commit()
 }
 
 func roleEligible(w Workspace, id string) bool {
@@ -278,7 +307,7 @@ func roleEligible(w Workspace, id string) bool {
 	return false
 }
 func lockCredentialRole(ctx context.Context, tx *sql.Tx, workspaceID, roleID string, expected int, secrets bool) (Workspace, RoleRef, error) {
-	w, pid, err := readWorkspaceCore(ctx, tx, workspaceID, true)
+	w, pid, err := lockWorkspaceSettings(ctx, tx, workspaceID)
 	if err != nil {
 		return w, RoleRef{}, err
 	}
@@ -322,20 +351,15 @@ func (p *Postgres) SaveWorkspaceCredentials(ctx context.Context, workspaceID, ro
 	if err := w.Management.State.workError(); err != nil {
 		return ref, err
 	}
-	if ref.SecretRef == nil {
-		ref.SecretRef = stringPointer(NewID())
-	}
-	version := expected + 1
-	nonce, sealed, err := p.Secrets.seal(workspaceID, roleID, *ref.SecretRef, version, values)
-	if err != nil {
-		return ref, err
-	}
+	workspaceID, roleID = w.ID, ref.RoleID
 	if _, err = tx.ExecContext(ctx, `UPDATE workspace_secrets SET revoked_at=COALESCE(revoked_at,now()) WHERE role_id=$1 AND workspace_id=$2`, roleID, workspaceID); err != nil {
 		return ref, err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO workspace_secrets(workspace_id,role_id,secret_ref,secret_version,nonce,ciphertext) VALUES($1,$2,$3,$4,$5,$6)`, workspaceID, roleID, *ref.SecretRef, version, nonce, sealed); err != nil {
+	secretRef, version, err := p.sealAccountSecret(ctx, tx, workspaceID, roleID, values)
+	if err != nil {
 		return ref, err
 	}
+	ref.SecretRef = &secretRef
 	if _, err = tx.ExecContext(ctx, `UPDATE workspace_roles SET secret_ref=$3,secret_version=$4,configured=true WHERE id=$1 AND workspace_id=$2`, roleID, workspaceID, *ref.SecretRef, version); err != nil {
 		return ref, err
 	}
@@ -343,6 +367,9 @@ func (p *Postgres) SaveWorkspaceCredentials(ctx context.Context, workspaceID, ro
 		return ref, err
 	}
 	if err = cancelRoleRuns(ctx, tx, workspaceID, roleID); err != nil {
+		return ref, err
+	}
+	if err = cancelAccountConsumers(ctx, tx, workspaceID, roleID, "", true); err != nil {
 		return ref, err
 	}
 	if err = refreshWorkspaceDrafts(ctx, tx, workspaceID, true); err != nil {
@@ -376,6 +403,9 @@ func (p *Postgres) RevokeWorkspaceCredentials(ctx context.Context, workspaceID, 
 	}
 	if ref.Configured {
 		if err = cancelRoleRuns(ctx, tx, workspaceID, roleID); err != nil {
+			return ref, err
+		}
+		if err = cancelAccountConsumers(ctx, tx, workspaceID, roleID, "", true); err != nil {
 			return ref, err
 		}
 		if err = refreshWorkspaceDrafts(ctx, tx, workspaceID, true); err != nil {

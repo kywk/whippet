@@ -3,8 +3,12 @@ package server
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"strings"
+	"time"
 )
 
 type CredentialRequest struct {
@@ -17,6 +21,26 @@ type CredentialResolution struct {
 	RunID         string `json:"runId"`
 	AttemptID     string `json:"attemptId"`
 	RoleID        string `json:"roleId"`
+	SecretRef     string `json:"secretRef"`
+	SecretVersion int    `json:"secretVersion"`
+	LoginOrigin   string `json:"loginOrigin"`
+	Username      string `json:"username"`
+	Password      string `json:"password"`
+}
+
+type AccountCredentialRequest struct {
+	AccountID     string `json:"accountId"`
+	TargetOrigin  string `json:"targetOrigin"`
+	SecretRef     string `json:"secretRef"`
+	SecretVersion int    `json:"secretVersion"`
+}
+
+type AccountCredentialResolution struct {
+	WorkspaceID   string `json:"workspaceId"`
+	RunID         string `json:"runId"`
+	AttemptID     string `json:"attemptId"`
+	AccountID     string `json:"accountId"`
+	TargetOrigin  string `json:"targetOrigin"`
 	SecretRef     string `json:"secretRef"`
 	SecretVersion int    `json:"secretVersion"`
 	LoginOrigin   string `json:"loginOrigin"`
@@ -43,14 +67,37 @@ func (a *API) resolveCredentials(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, ErrInvalid)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	var request CredentialRequest
-	if err := decodeBody(w, r, &request); err != nil {
-		a.fail(w, err)
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))
+	if err != nil || strictJSONNoDuplicates(raw) != nil {
+		a.fail(w, ErrInvalid)
 		return
 	}
-	if !ValidID(request.RoleID) || !ValidID(request.SecretRef) || request.SecretVersion < 1 {
+	var account AccountCredentialRequest
+	var legacy CredentialRequest
+	switch {
+	case requiredJSONFields(raw, "accountId", "targetOrigin", "secretRef", "secretVersion"):
+		if json.Unmarshal(raw, &account) != nil || !ValidID(account.AccountID) || !ValidID(account.SecretRef) || account.SecretVersion < 1 {
+			a.fail(w, ErrInvalid)
+			return
+		}
+		target, err := normalizedOrigin(account.TargetOrigin)
+		if err != nil {
+			a.fail(w, ErrInvalid)
+			return
+		}
+		account.TargetOrigin, account.AccountID = target, strings.ToLower(account.AccountID)
+		account.SecretRef = strings.ToLower(account.SecretRef)
+	case requiredJSONFields(raw, "roleId", "secretRef", "secretVersion"):
+		if json.Unmarshal(raw, &legacy) != nil || !ValidID(legacy.RoleID) || !ValidID(legacy.SecretRef) || legacy.SecretVersion < 1 {
+			a.fail(w, ErrInvalid)
+			return
+		}
+	default:
 		a.fail(w, ErrInvalid)
+		return
+	}
+	if a.engine == nil {
+		a.fail(w, ErrCredentialUnavailable)
 		return
 	}
 	manager, epoch, ready := a.engine.credentialManager()
@@ -58,7 +105,17 @@ func (a *API) resolveCredentials(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, ErrCredentialUnavailable)
 		return
 	}
-	value, err := a.store.ResolveWorkspaceCredentials(r.Context(), manager, id, attempt, request)
+	var value any
+	if account.AccountID != "" {
+		p, ok := a.store.(*Postgres)
+		if !ok {
+			a.fail(w, ErrCredentialUnavailable)
+			return
+		}
+		value, err = p.resolveRunAccountCredentials(r.Context(), manager, id, attempt, account)
+	} else {
+		value, err = a.store.ResolveWorkspaceCredentials(r.Context(), manager, id, attempt, legacy)
+	}
 	if err != nil {
 		a.fail(w, err)
 		return
@@ -69,6 +126,116 @@ func (a *API) resolveCredentials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, value)
+}
+
+func (p *Postgres) openAccountSecret(ctx context.Context, q queryDB, workspace string, binding LoginBinding) (credentialValues, error) {
+	var nonce, encrypted []byte
+	err := q.QueryRowContext(ctx, `SELECT nonce,ciphertext FROM workspace_secrets WHERE workspace_id=$1 AND role_id=$2
+ AND secret_ref=$3 AND secret_version=$4 AND revoked_at IS NULL`,
+		workspace, binding.AccountID, binding.SecretRef, binding.SecretVersion).Scan(&nonce, &encrypted)
+	if errors.Is(err, sql.ErrNoRows) {
+		return credentialValues{}, ErrCredentialUnavailable
+	}
+	if err != nil {
+		return credentialValues{}, err
+	}
+	values, err := p.Secrets.open(workspace, binding.AccountID, binding.SecretRef, binding.SecretVersion, nonce, encrypted)
+	if err != nil || !validOutputText(values.Username, 4096) || !validOutputText(values.Password, 4096) {
+		return credentialValues{}, ErrSecretsUnavailable
+	}
+	return values, nil
+}
+
+func (p *Postgres) resolveRunAccountCredentials(ctx context.Context, manager, run, attempt string, request AccountCredentialRequest) (AccountCredentialResolution, error) {
+	var result AccountCredentialResolution
+	if p.Secrets == nil {
+		return result, ErrSecretsUnavailable
+	}
+	if !p.readyForWorkspaceLogin() {
+		return result, ErrCredentialUnavailable
+	}
+	tx, err := p.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return result, err
+	}
+	defer tx.Rollback()
+	var workspace, kind string
+	if err := tx.QueryRowContext(ctx, `SELECT workspace_id,kind FROM runs WHERE id=$1 AND manager_id=$2 AND attempt_id=$3`, run, manager, attempt).
+		Scan(&workspace, &kind); err != nil {
+		return result, dbError(err)
+	}
+	var saved persistedWorkspaceLogin
+	if kind == workspaceLoginVerificationKind {
+		saved, err = readPersistedWorkspaceLogin(ctx, tx, run)
+		if err != nil {
+			return result, err
+		}
+		if _, err := lockActorSiteRole(ctx, tx, saved.Actor); err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return result, ErrCredentialUnavailable
+			}
+			return result, err
+		}
+	}
+	w, current, err := readWorkspaceCore(ctx, tx, workspace, true)
+	if err != nil {
+		return result, err
+	}
+	var status string
+	var released bool
+	var raw []byte
+	if err := tx.QueryRowContext(ctx, `SELECT status,slot_released,workspace_context FROM runs
+ WHERE id=$1 AND manager_id=$2 AND attempt_id=$3 FOR UPDATE`, run, manager, attempt).Scan(&status, &released, &raw); err != nil {
+		return result, dbError(err)
+	}
+	if released || status != "running" && status != "dispatched" {
+		return result, ErrCredentialUnavailable
+	}
+	var binding LoginBinding
+	if kind == workspaceLoginVerificationKind {
+		if saved.Deadline == nil || !time.Now().Before(*saved.Deadline) {
+			return result, ErrCredentialUnavailable
+		}
+		binding = saved.Login.Binding
+		if binding.AccountID != request.AccountID || binding.TargetOrigin != request.TargetOrigin {
+			return result, ErrCredentialUnavailable
+		}
+		if _, err := activeWorkspaceLogin(ctx, tx, w, current, run, saved.Login, saved.Actor); err != nil {
+			if workspaceLoginInactive(err) {
+				return result, ErrCredentialUnavailable
+			}
+			return result, err
+		}
+	} else {
+		snapshot, err := decodeWorkspaceContext(raw)
+		if err != nil {
+			return result, err
+		}
+		allowed := snapshotAccountBinding(snapshot, workspace, request.AccountID, request.TargetOrigin)
+		if allowed == nil {
+			return result, ErrCredentialUnavailable
+		}
+		binding = *allowed
+		if err := formalAccountBindingAllowed(ctx, tx, w, binding); err != nil {
+			return result, err
+		}
+	}
+	if binding.SecretRef != request.SecretRef || binding.SecretVersion != request.SecretVersion {
+		return result, ErrCredentialUnavailable
+	}
+	values, err := p.openAccountSecret(ctx, tx, workspace, binding)
+	if err != nil {
+		return result, err
+	}
+	origin, err := workspaceURLOrigin(binding.EntryURL)
+	if err != nil {
+		return result, ErrCredentialUnavailable
+	}
+	if err := recordResolvedAccount(ctx, tx, run, attempt, binding); err != nil {
+		return result, err
+	}
+	result = AccountCredentialResolution{workspace, run, attempt, binding.AccountID, binding.TargetOrigin, binding.SecretRef, binding.SecretVersion, origin, values.Username, values.Password}
+	return result, tx.Commit()
 }
 
 func taskRole(snapshot *WorkspaceContext, request CredentialRequest) (*WorkspaceRole, error) {

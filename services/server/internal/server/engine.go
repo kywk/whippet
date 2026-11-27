@@ -314,6 +314,8 @@ func (e *Engine) Handle(ctx context.Context, s *Session, m Envelope) error {
 		if json.Unmarshal(m.Payload, &result) != nil || !result.Valid() || len(result.Error) > 64*1024 {
 			return fmt.Errorf("%w: invalid result", ErrInvalid)
 		}
+		_, allowedLoginFields := workspaceJSONFields(m.Payload, "status", "loginVerification")
+		result.loginShapeInvalid = !allowedLoginFields || strictJSONNoDuplicates(m.Payload) != nil
 		err = e.store.Complete(ctx, s.managerID, m.RunID, m.AttemptID, result)
 		if err == nil {
 			endedRun = m.RunID
@@ -429,8 +431,8 @@ func (e *Engine) send(s *Session, a Assignment, kind string) error {
 			return nil
 		}
 		taskKind := "run"
-		if a.Kind == "author" {
-			taskKind = "author"
+		if a.Kind == "author" || a.Kind == workspaceLoginVerificationKind {
+			taskKind = a.Kind
 		}
 		payload = struct {
 			ScriptOrigin      string                 `json:"scriptOrigin"`
@@ -446,7 +448,8 @@ func (e *Engine) send(s *Session, a Assignment, kind string) error {
 			Author            *AuthorInput           `json:"author,omitempty"`
 			WorkspaceSettings *WorkspaceSettings     `json:"workspaceSettings,omitempty"`
 			ModelCredential   *siteAIModelCredential `json:"modelCredential,omitempty"`
-		}{effectiveScriptOrigin(a.ScriptOrigin), a.WorkspaceID, a.TestID, a.WorkspaceContext, taskKind, a.Script, a.Files, a.ModuleABI, a.Retest, a.TimeoutMS, a.Author, a.WorkspaceSettings, a.modelCredential}
+			LoginVerification *LoginVerification     `json:"loginVerification,omitempty"`
+		}{effectiveScriptOrigin(a.ScriptOrigin), a.WorkspaceID, a.TestID, a.WorkspaceContext, taskKind, a.Script, a.Files, a.ModuleABI, a.Retest, a.TimeoutMS, a.Author, a.WorkspaceSettings, a.modelCredential, a.LoginVerification}
 	}
 	if err := s.peer.Send(NewEnvelope(kind, s.managerID, a.ID, a.AttemptID, payload)); err != nil {
 		// The committed attempt is preserved, including when the write outcome is unknown.

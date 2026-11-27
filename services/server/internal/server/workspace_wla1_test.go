@@ -1,9 +1,28 @@
 package server
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
+
+func TestWLA1WorkspaceProposalPresence(t *testing.T) {
+	for _, source := range []string{
+		`{"skillId":"workspace-author"}`,
+		`{"skillId":"workspace-author","workspaceProposal":null}`,
+		`{"skillId":"workspace-author","workspaceProposal":{"content":{"name":"draft"},"siteReadiness":[]}}`,
+	} {
+		var input AuthorInput
+		if err := json.Unmarshal([]byte(source), &input); err != nil {
+			t.Fatal(err)
+		}
+		got := jsonText(input)
+		if strings.Contains(got, `"workspaceProposal":`) != strings.Contains(source, `"workspaceProposal":`) ||
+			strings.Contains(got, `"workspaceProposal":null`) != strings.Contains(source, `"workspaceProposal":null`) {
+			t.Fatalf("changed workspaceProposal presence: %s", got)
+		}
+	}
+}
 
 func TestWLA1ProposalConfig(t *testing.T) {
 	const payload = `{"message":"候選設定","proposal":{

@@ -8,6 +8,7 @@ import (
 )
 
 type browserCallFlight struct {
+	name      string
 	done      chan struct{}
 	result    json.RawMessage
 	code      string
@@ -44,6 +45,14 @@ func (e *Engine) SendBrowserOpen(ctx context.Context, lease BrowserLease) error 
 			return nil
 		}
 	}
+	allowed := browserAllowedTools
+	snapshot, err := decodeWorkspaceContext(lease.WorkspaceContext)
+	if err != nil {
+		return err
+	}
+	if snapshot != nil && len(snapshot.AccountBindings) != 0 && lease.accountToolPinned() {
+		allowed = append(append([]string(nil), allowed...), browserLoginAccountTool)
+	}
 	payload := struct {
 		SessionID           string          `json:"sessionId"`
 		LeaseID             string          `json:"leaseId"`
@@ -54,7 +63,7 @@ func (e *Engine) SendBrowserOpen(ctx context.Context, lease BrowserLease) error 
 		ToolRegistrySHA256  string          `json:"toolRegistrySha256"`
 		IdleTimeoutMS       int             `json:"idleTimeoutMs"`
 		MaxLifetimeMS       int             `json:"maxLifetimeMs"`
-	}{lease.SessionID, lease.LeaseID, lease.WorkspaceID, lease.WorkspaceContext, browserAllowedTools,
+	}{lease.SessionID, lease.LeaseID, lease.WorkspaceID, lease.WorkspaceContext, allowed,
 		lease.RegistryVersion, lease.RegistrySHA256, browserIdleTimeoutMS, browserMaxLifetimeMS}
 	if err := s.peer.Send(NewEnvelope("session.open", s.managerID, "", "", payload)); err != nil {
 		s.ready = false
@@ -81,7 +90,7 @@ func (e *Engine) SendBrowserCall(lease BrowserLease, callID, name string, args j
 	if _, exists := e.browserCalls[key]; exists {
 		return nil, ErrConflict
 	}
-	flight := &browserCallFlight{done: make(chan struct{}), createdAt: time.Now()}
+	flight := &browserCallFlight{name: name, done: make(chan struct{}), createdAt: time.Now()}
 	e.browserCalls[key] = flight
 	payload := struct {
 		SessionID string          `json:"sessionId"`
@@ -270,6 +279,14 @@ func (e *Engine) handleBrowserMessageLocked(ctx context.Context, s *Session, m E
 			return nil
 		}
 		result := append(json.RawMessage(nil), values["result"]...)
+		if flight.name == browserLoginAccountTool && code == "" {
+			var reply struct {
+				Submitted bool `json:"submitted"`
+			}
+			if !requiredJSONFields(result, "submitted") || json.Unmarshal(result, &reply) != nil || !reply.Submitted {
+				result, code = nil, "tool_unavailable"
+			}
+		}
 		if len(result) > 131072 {
 			result, code = nil, "unknown_result"
 		}

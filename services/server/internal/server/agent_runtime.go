@@ -223,7 +223,7 @@ func (p *Postgres) SetAgentRuntime(ctx context.Context, workspace string, revisi
 		return nil, err
 	}
 	defer tx.Rollback()
-	w, _, err := readWorkspaceCore(ctx, tx, workspace, true)
+	w, currentProposal, err := readWorkspaceCore(ctx, tx, workspace, true)
 	if err != nil {
 		return nil, err
 	}
@@ -243,6 +243,9 @@ func (p *Postgres) SetAgentRuntime(ctx context.Context, workspace string, revisi
 	}
 	if jsonText(previous) != jsonText(selection) {
 		if _, err = tx.ExecContext(ctx, `UPDATE workspaces SET agent_runtime=$2,settings=jsonb_set(settings,'{revision}',to_jsonb($3::integer)) WHERE id=$1`, workspace, jsonText(selection), revision+1); err != nil {
+			return nil, err
+		}
+		if err := invalidateWorkspaceLoginProposal(ctx, tx, workspace, currentProposal); err != nil {
 			return nil, err
 		}
 	}

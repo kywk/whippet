@@ -38,7 +38,7 @@ func mcpToolConnected(tool ToolDefinition) bool {
 		return tool.Side == "server" && tool.Effect == "read"
 	case "browser_session_open", "browser_session_close":
 		return tool.Side == "server" && tool.Effect == "queue"
-	case "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login":
+	case "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login", browserLoginAccountTool:
 		return tool.Side == "worker" && tool.Effect == "browser"
 	case "task_claim", "task_heartbeat", "task_tool_call", "task_submit":
 		return tool.Side == "server" && tool.Effect == "queue"
@@ -63,7 +63,11 @@ func (a *API) newMCPHandler() http.Handler {
 			writeError(w, http.StatusServiceUnavailable, "disabled", "MCP unavailable")
 		})
 	}
-	for _, name := range mcpExposedTools {
+	exposed := append([]string(nil), mcpExposedTools...)
+	if tool, found := registry.tool(browserLoginAccountTool); p.readyForWorkspaceLogin() && found && mcpToolConnected(tool) {
+		exposed = append(exposed, tool.Name)
+	}
+	for _, name := range exposed {
 		tool, found := registry.tool(name)
 		if !found || !mcpToolConnected(tool) {
 			return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -83,9 +87,9 @@ func (a *API) newMCPHandler() http.Handler {
 			}
 			name := "unknown"
 			if params, ok := request.GetParams().(*mcp.CallToolParamsRaw); ok {
-				for _, exposed := range mcpExposedTools {
-					if params.Name == exposed {
-						name = exposed
+				for _, tool := range exposed {
+					if params.Name == tool {
+						name = tool
 						break
 					}
 				}
@@ -118,7 +122,7 @@ func (a *API) newMCPHandler() http.Handler {
 			return result, err
 		}
 	})
-	for _, name := range mcpExposedTools {
+	for _, name := range exposed {
 		tool, found := registry.tool(name)
 		if !found {
 			continue

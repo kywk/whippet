@@ -18,9 +18,11 @@ var (
 )
 
 type Workspace struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	AuthorEngine string `json:"authorEngine"`
+	loginState      workspaceLoginState
+	accountBindings []LoginBinding
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	AuthorEngine    string `json:"authorEngine"`
 	WorkspaceSettings
 	Management            workspaceManagement   `json:"management"`
 	Lifecycle             string                `json:"lifecycle"`
@@ -118,6 +120,26 @@ type Version struct {
 	WorkspaceSettings *WorkspaceSettings `json:"workspaceSettings,omitempty"`
 }
 
+// Run, Draft and Version are public status views. Dispatch serializes the
+// immutable WorkspaceContext directly for the trusted Manager.
+func (r Run) MarshalJSON() ([]byte, error) {
+	type publicRun Run
+	r.WorkspaceContext = publicWorkspaceAccountContext(r.WorkspaceContext)
+	return json.Marshal(publicRun(r))
+}
+
+func (d Draft) MarshalJSON() ([]byte, error) {
+	type publicDraft Draft
+	d.WorkspaceContext = publicWorkspaceAccountContext(d.WorkspaceContext)
+	return json.Marshal(publicDraft(d))
+}
+
+func (v Version) MarshalJSON() ([]byte, error) {
+	type publicVersion Version
+	v.WorkspaceContext = publicWorkspaceAccountContext(v.WorkspaceContext)
+	return json.Marshal(publicVersion(v))
+}
+
 type Conversation struct {
 	EditingSessionID string                 `json:"editingSessionId"`
 	ID               string                 `json:"id"`
@@ -161,31 +183,32 @@ type ChatMessage struct {
 }
 
 type AuthorInput struct {
-	WorkspaceProposal   *WorkspaceInterviewProposal `json:"workspaceProposal,omitempty"`
-	SkillFiles          SkillFileSnapshot           `json:"skillFiles,omitempty"`
-	ModuleSummary       *ModuleSummarySnapshot      `json:"moduleSummary,omitempty"`
-	Batch               *AuthorBatch                `json:"batch,omitempty"`
-	Platform            *AuthorPlatform             `json:"platform,omitempty"`
-	Skills              []SkillSnapshot             `json:"skills,omitempty"`
-	Budget              *AuthorBudget               `json:"budget,omitempty"`
-	Model               *AuthorModel                `json:"model,omitempty"`
-	Runtime             *AuthorRuntime              `json:"runtime,omitempty"`
-	ToolRegistryVersion string                      `json:"toolRegistryVersion,omitempty"`
-	ToolRegistrySHA256  string                      `json:"toolRegistrySha256,omitempty"`
-	SkillID             string                      `json:"skillId,omitempty"`
-	SkillVersion        string                      `json:"skillVersion,omitempty"`
-	AllowedTools        []string                    `json:"allowedTools"`
-	EditingSessionID    string                      `json:"editingSessionId,omitempty"`
-	ContextRevision     int64                       `json:"contextRevision"`
-	TestName            string                      `json:"testName,omitempty"`
-	SourceVersion       *SourceVersion              `json:"sourceVersion"`
-	ConversationSummary *string                     `json:"conversationSummary"`
-	ValidationEvidence  *ValidationEvidence         `json:"validationEvidence,omitempty"`
-	ConversationID      string                      `json:"conversationId"`
-	BaseRevision        int                         `json:"baseRevision"`
-	Messages            []ChatMessage               `json:"messages"`
-	Validation          *AuthorValidation           `json:"validation,omitempty"`
-	History             *AuthorHistory              `json:"history,omitempty"`
+	workspaceProposalPresent bool
+	WorkspaceProposal        *WorkspaceInterviewProposal `json:"workspaceProposal,omitempty"`
+	SkillFiles               SkillFileSnapshot           `json:"skillFiles,omitempty"`
+	ModuleSummary            *ModuleSummarySnapshot      `json:"moduleSummary,omitempty"`
+	Batch                    *AuthorBatch                `json:"batch,omitempty"`
+	Platform                 *AuthorPlatform             `json:"platform,omitempty"`
+	Skills                   []SkillSnapshot             `json:"skills,omitempty"`
+	Budget                   *AuthorBudget               `json:"budget,omitempty"`
+	Model                    *AuthorModel                `json:"model,omitempty"`
+	Runtime                  *AuthorRuntime              `json:"runtime,omitempty"`
+	ToolRegistryVersion      string                      `json:"toolRegistryVersion,omitempty"`
+	ToolRegistrySHA256       string                      `json:"toolRegistrySha256,omitempty"`
+	SkillID                  string                      `json:"skillId,omitempty"`
+	SkillVersion             string                      `json:"skillVersion,omitempty"`
+	AllowedTools             []string                    `json:"allowedTools"`
+	EditingSessionID         string                      `json:"editingSessionId,omitempty"`
+	ContextRevision          int64                       `json:"contextRevision"`
+	TestName                 string                      `json:"testName,omitempty"`
+	SourceVersion            *SourceVersion              `json:"sourceVersion"`
+	ConversationSummary      *string                     `json:"conversationSummary"`
+	ValidationEvidence       *ValidationEvidence         `json:"validationEvidence,omitempty"`
+	ConversationID           string                      `json:"conversationId"`
+	BaseRevision             int                         `json:"baseRevision"`
+	Messages                 []ChatMessage               `json:"messages"`
+	Validation               *AuthorValidation           `json:"validation,omitempty"`
+	History                  *AuthorHistory              `json:"history,omitempty"`
 }
 
 type AuthorValidation struct {
@@ -209,11 +232,12 @@ func Terminal(status string) bool {
 }
 
 type Assignment struct {
-	modelCredential *siteAIModelCredential
-	archiveStatus   workspaceArchiveStatus
-	Retest          *retestTarget
-	Files           []RunFile
-	ModuleABI       *ModuleABI
+	LoginVerification *LoginVerification
+	modelCredential   *siteAIModelCredential
+	archiveStatus     workspaceArchiveStatus
+	Retest            *retestTarget
+	Files             []RunFile
+	ModuleABI         *ModuleABI
 	Run
 	ManagerID string
 	AttemptID string
@@ -239,13 +263,37 @@ func stringValue(value *string) string {
 func (a AuthorInput) MarshalJSON() ([]byte, error) {
 	type wire AuthorInput
 	if a.SkillID == "workspace-author" {
+		var proposal **WorkspaceInterviewProposal
+		if a.workspaceProposalPresent || a.WorkspaceProposal != nil {
+			proposal = &a.WorkspaceProposal
+		}
 		return json.Marshal(struct {
 			wire
-			EditingSessionID  *string                     `json:"editingSessionId"`
-			WorkspaceProposal *WorkspaceInterviewProposal `json:"workspaceProposal"`
-		}{wire(a), nil, a.WorkspaceProposal})
+			EditingSessionID  *string                      `json:"editingSessionId"`
+			WorkspaceProposal **WorkspaceInterviewProposal `json:"workspaceProposal,omitempty"`
+		}{wire(a), nil, proposal})
 	}
 	return json.Marshal(wire(a))
+}
+
+func (a *AuthorInput) UnmarshalJSON(data []byte) error {
+	type wire AuthorInput
+	var fields wire
+	body := struct {
+		*wire
+		Proposal json.RawMessage `json:"workspaceProposal"`
+	}{wire: &fields}
+	if err := json.Unmarshal(data, &body); err != nil {
+		return err
+	}
+	if body.Proposal != nil {
+		fields.workspaceProposalPresent = true
+		if err := json.Unmarshal(body.Proposal, &fields.WorkspaceProposal); err != nil {
+			return err
+		}
+	}
+	*a = AuthorInput(fields)
+	return nil
 }
 
 type ActiveAttempt struct {
@@ -260,11 +308,13 @@ type Event struct {
 }
 
 type Result struct {
-	Retest       *retestObservation `json:"retest,omitempty"`
-	TargetOrigin string             `json:"targetOrigin,omitempty"`
-	Assertion    string             `json:"assertion,omitempty"`
-	Status       string             `json:"status"`
-	Error        string             `json:"error,omitempty"`
+	LoginVerification json.RawMessage `json:"loginVerification,omitempty"`
+	loginShapeInvalid bool
+	Retest            *retestObservation `json:"retest,omitempty"`
+	TargetOrigin      string             `json:"targetOrigin,omitempty"`
+	Assertion         string             `json:"assertion,omitempty"`
+	Status            string             `json:"status"`
+	Error             string             `json:"error,omitempty"`
 }
 
 func (r Result) Valid() bool {

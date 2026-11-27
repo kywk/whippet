@@ -38,6 +38,17 @@ func (p *Postgres) listWorkspaces(ctx context.Context, userID *string) ([]Worksp
 	if err := loadWorkspaceListRoles(ctx, tx, items); err != nil {
 		return nil, err
 	}
+	for i := range items {
+		w := &items[i].workspace
+		if err := populateWorkspaceLogin(ctx, tx, w); err != nil {
+			return nil, err
+		}
+		if w.CurrentProposal != nil {
+			if err := populateProposalLogin(ctx, tx, w.CurrentProposal); err != nil {
+				return nil, err
+			}
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
