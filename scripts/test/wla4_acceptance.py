@@ -50,18 +50,21 @@ def configure(server, manager, docker, image, *, final=False):
         expected = [hashlib.sha256(contents).hexdigest() for contents in (registry, (HERE / "wla4-fixture.mjs").read_bytes())]
         if bundled.returncode != 0 or bundled.stdout.splitlines() != expected:
             raise RuntimeError("rebuild the final Worker and WLA model image from the merged checkout")
+    # Leave room for frozen proposals, conversation turns and browser tool results.
+    context_window_tokens, context_input_tokens = 131072, 65536
+    context_env = {"WHIPPET_AI_CONTEXT_WINDOW_TOKENS": str(context_window_tokens),
+                   "WHIPPET_AI_CONTEXT_INPUT_TOKENS": str(context_input_tokens)}
     server["WHIPPET_AI_RUNTIME_PROFILES_JSON"] = json.dumps([
         {"id": f"wla4-{engine}", "engine": engine, "provider": "openai-responses", "model": f"wla4-{engine}",
-         "baseURL": MODEL_ORIGIN, "reasoningEffort": "low", "contextWindowTokens": 32768, "contextInputTokens": 16384}
+         "baseURL": MODEL_ORIGIN, "reasoningEffort": "low", "contextWindowTokens": context_window_tokens,
+         "contextInputTokens": context_input_tokens}
         for engine in MANAGED_ENGINES
     ])
     # The Server checks its default model against the packaged skill before selecting a runtime profile.
-    server.update(WHIPPET_AI_BASE_URL=MODEL_ORIGIN, WHIPPET_AI_CONTEXT_WINDOW_TOKENS="32768",
-                  WHIPPET_AI_CONTEXT_INPUT_TOKENS="16384", WHIPPET_WORKSPACE_LOGIN_ENABLED="true")
+    server.update(WHIPPET_AI_BASE_URL=MODEL_ORIGIN, WHIPPET_WORKSPACE_LOGIN_ENABLED="true", **context_env)
     manager.update(WHIPPET_AI_ENABLED="true", WHIPPET_AI_PROVIDER="openai-responses",
                    WHIPPET_AI_API_KEY="wla4-provider-key", OPENCODE_API_KEY="wla4-provider-key", WHIPPET_AI_BASE_URL=MODEL_ORIGIN,
-                   WHIPPET_AI_MODEL="wla4-builtin", WHIPPET_AI_CONTEXT_WINDOW_TOKENS="32768",
-                   WHIPPET_AI_CONTEXT_INPUT_TOKENS="16384")
+                   WHIPPET_AI_MODEL="wla4-builtin", **context_env)
 
 
 def prepare(stack, wave, services, root, env, token, database, image, api_url, cert, manager_env):
@@ -560,6 +563,15 @@ class Acceptance:
         run = self.api("POST", route + "/messages", 202, request)["run"]
         return route, run["id"]
 
+    def expect_author_marker(self, route, run_id, marker):
+        run = self.terminal(run_id, {"succeeded"})
+        if (partial := run.get("authorPartial")) is not None:
+            requests = (partial.get("usage") or {}).get("modelRequests", "unknown")
+            raise AssertionError(f"Run {run_id} returned {partial['reason']} after {requests} model requests")
+        messages = self.api("GET", route + "/conversation")["messages"]
+        check(any(row["role"] == "assistant" and row.get("runId") == run_id and row["content"] == marker
+                  for row in messages), f"Run {run_id} did not deliver the expected assistant marker {marker}")
+
     def managed_entrypoints(self, workspace, empty, purposes, engines):
         payload = {"target": self.origins["orders"], "wrongTarget": self.origins["support"],
                    "ownerPurpose": purposes[0], "otherPurpose": purposes[1]}
@@ -567,19 +579,11 @@ class Acceptance:
             self.stage = f"A5 {engine}"
             self.runtime(workspace, engine)
             route, run_id = self.author(workspace, f"WLA4 {engine} 會員工具", payload)
-            self.terminal(run_id, {"succeeded"})
-            messages = self.api("GET", route + "/conversation")["messages"]
-            marker = f"WLA4 {engine}：錯站拒絕，已讀到受保護商品頁。"
-            check(any(row["content"] == marker and row["role"] == "assistant" for row in messages),
-                  f"{engine} must read a protected page after allowed login and denied wrong-site call")
+            self.expect_author_marker(route, run_id, f"WLA4 {engine}：錯站拒絕，已讀到受保護商品頁。")
 
             self.runtime(empty, engine)
             route, missing_run = self.author(empty, f"WLA4 {engine} 缺少帳號", {"missing": True})
-            self.terminal(missing_run, {"succeeded"})
-            messages = self.api("GET", route + "/conversation")["messages"]
-            marker = f"WLA4 {engine}：缺少適用的會員測試帳號，請補充。"
-            check(any(row["content"] == marker and row["role"] == "assistant" for row in messages),
-                  f"{engine} must report the absence of a suitable account")
+            self.expect_author_marker(route, missing_run, f"WLA4 {engine}：缺少適用的會員測試帳號，請補充。")
             dispatches = [json.loads(line) for line in self.root.joinpath("wla4-author-dispatches.jsonl").read_text().splitlines()]
             attempts = {row["runId"]: row for row in dispatches if row["runId"] in (run_id, missing_run)}
             check(set(attempts) == {run_id, missing_run} and all(row["engine"] == engine for row in attempts.values()),
