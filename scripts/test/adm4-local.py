@@ -5,9 +5,11 @@ import argparse
 import base64
 from contextlib import ExitStack
 import hashlib
+from io import BytesIO
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import socket
 import ssl
@@ -88,8 +90,9 @@ def create_tls(root):
     return cert, key
 
 
-def start_intent_fixture(stack, name, network, image, cert, tls_key, env, secret):
-    script = REPO / "scripts/test/adm4-intent-fixture.mjs"
+def start_intent_fixture(stack, name, network, image, cert, tls_key, env, secret, *, wla=False):
+    script = REPO / "scripts/test" / ("wla4-fixture.mjs" if wla else "adm4-intent-fixture.mjs")
+    arguments = ["--intent"] if wla else []
     evidence = cert.parent / "intent-fixture"
     evidence.mkdir(mode=0o700)
     docker("run", "--rm", "--detach", "--pull=never", "--name", name, "--network", network,
@@ -98,7 +101,8 @@ def start_intent_fixture(stack, name, network, image, cert, tls_key, env, secret
            "--mount", f"type=bind,src={tls_key},dst=/adm-tls/server.key,readonly",
            "--mount", f"type=bind,src={script},dst=/adm-intent.mjs,readonly",
            "--mount", f"type=bind,src={evidence},dst=/adm-evidence",
-           "--entrypoint", "node", image, "/adm-intent.mjs", env={**env, "ADM4_INTENT_KEY": secret}, check=True)
+           "--entrypoint", "node", image, "/adm-intent.mjs", *arguments,
+           env={**env, "ADM4_INTENT_KEY": secret}, check=True)
     stack.callback(docker, "stop", name)
     await_ready(lambda: docker("exec", name, "node", "-e", "const s=require('node:net').connect(8443,'127.0.0.1');"
                                "s.on('connect',()=>s.end());s.on('error',()=>process.exit(1));").returncode == 0,
@@ -195,7 +199,7 @@ def remove_leftover_workers(manager):
         docker("rm", "-f", *listing.stdout.split(), check=True)
 
 
-def scan_managed_evidence(root):
+def scan_managed_evidence(root, sentinels=FIXTURE_KEYS, *, embedded_reports=False):
     scanned, hits = [], []
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.is_symlink() or path.name in {"server.key", "keys-scan.json"}:
@@ -203,13 +207,17 @@ def scan_managed_evidence(root):
         name = str(path.relative_to(root))
         scanned.append(name)
         raw = path.read_bytes()
-        if any(key in raw for key in FIXTURE_KEYS):
+        if any(key in raw for key in sentinels):
             hits.append(name)
-        elif path.suffix == ".zip" and is_zipfile(path):
-            with ZipFile(path) as archive:
+        archives = [path] if path.suffix == ".zip" and is_zipfile(path) else []
+        if embedded_reports and path.suffix == ".html":
+            for encoded in re.findall(rb'<template id="playwrightReportBase64">data:application/zip;base64,([A-Za-z0-9+/=]+)</template>', raw):
+                archives.append(BytesIO(base64.b64decode(encoded, validate=True)))
+        for source in archives:
+            with ZipFile(source) as archive:
                 for member in archive.infolist():
                     payload = archive.read(member)
-                    if any(key in payload for key in FIXTURE_KEYS):
+                    if any(key in payload for key in sentinels):
                         hits.append(f"{name}/{member.filename}")
     (root / "keys-scan.json").write_text(json.dumps({"scanned": scanned, "hits": hits}, indent=2) + "\n")
     if hits:
@@ -217,6 +225,10 @@ def scan_managed_evidence(root):
 
 
 def run(args):
+    if args.wla:
+        sys.dont_write_bytecode = True
+        from wla4_acceptance import configure, prepare
+
     token = uuid4().hex[:12]
     database, manager = f"whippet-adm4-db-{token}", f"whippet-adm4-manager-{token}"
     root = args.out.resolve()
@@ -230,6 +242,8 @@ def run(args):
     }}
     registry = str(REPO / "contracts/tools/registry.json")
     with ExitStack() as stack:
+        if args.wla:
+            stack.callback(scan_managed_evidence, root, (b"wla4-secret-", b"wla4-provider-key"), embedded_reports=True)
         network = f"whippet-adm4-net-{token}"
         db_network = []
         if args.server_in_docker:
@@ -262,10 +276,12 @@ def run(args):
             server_env.update(TLS_CERT_FILE=str(cert), TLS_KEY_FILE=str(tls_key))
             web_env["NODE_EXTRA_CA_CERTS"] = str(cert)
             manager_env["SERVER_CA_FILE"] = str(cert)
-        if args.live_ai or args.live_a3:
+        if args.wla:
+            configure(server_env, manager_env, docker, worker)
+        if args.live_ai or args.live_a3 or args.wla:
             intent_key = secrets.token_urlsafe(32)
             intent_url = start_intent_fixture(stack, f"whippet-adm4-intent-{token}", network, worker,
-                                              cert, tls_key, env, intent_key)
+                                              cert, tls_key, env, intent_key, wla=bool(args.wla))
             server_env.update(WHIPPET_AUTHOR_INTENT_BASE_URL=intent_url,
                               WHIPPET_AUTHOR_INTENT_MODEL="adm-intent-fixture",
                               WHIPPET_AUTHOR_INTENT_API_KEY=intent_key)
@@ -287,6 +303,10 @@ def run(args):
         wait_http(web_url, web, "Web")
         driver_env = {**env, "ADM_SMOKE_ADMIN_KEY": admin_key}
         if args.manager:
+            if args.wla:
+                services = (docker, start, wait_http, await_ready)
+                driver_env.update(prepare(stack, args.wla, services, root, env, token, database,
+                                          worker, api_url, cert, manager_env))
             if args.live_a2:
                 seed_a2(database)
             if args.live_a3:
@@ -306,7 +326,7 @@ def run(args):
                                   ADM4_MANAGER_ENV=json.dumps(manager_env))
             (root / "runtime.json").write_text(json.dumps({"managerId": manager, "workerImage": args.worker_image,
                                                            "workerDigest": worker, "tls": args.tls}) + "\n")
-        driver = args.driver or REPO / "scripts/test/adm1-ui-smoke.py"
+        driver = args.driver or REPO / "scripts/test" / ("wla4_acceptance.py" if args.wla else "adm1-ui-smoke.py")
         test_args = [sys.executable, str(driver.resolve()), "--base-url", web_url,
                      "--evidence-dir", str(root)]
         if args.browser_executable:
@@ -317,8 +337,10 @@ def run(args):
             test_args += ["--live-ai", "--managed-case", args.managed_case]
         if args.live_a3:
             test_args += ["--live-a3"]
+        if args.wla:
+            test_args += ["--wave", args.wla]
         try:
-            subprocess.run(test_args, env=driver_env, check=True, timeout=420)
+            subprocess.run(test_args, env=driver_env, check=True, timeout=900 if args.wla == "final" else 420)
         finally:
             if args.live_a2 or args.live_a3 or args.live_ai:
                 queries = {
@@ -362,6 +384,7 @@ def main():
     stages.add_argument("--live-a2", action="store_true", help="use Manager and a real Docker Worker for archive drain and cancel")
     stages.add_argument("--live-ai", action="store_true", help="use the synthetic Worker for proposals, probes and authors")
     stages.add_argument("--live-a3", action="store_true", help="exercise real Manager and MCP resource concurrency")
+    stages.add_argument("--wla", choices=("w1", "final"), help="run Workspace login acceptance against isolated services")
     parser.add_argument("--manager", type=Path)
     parser.add_argument("--worker-image", help="existing Docker image provided by Runtime")
     parser.add_argument("--tls", action="store_true", help="use HTTPS for Server and WSS for Manager")
@@ -377,6 +400,9 @@ def main():
         parser.error("AI scenarios require --server-in-docker for the isolated HTTPS classifier")
     if args.server_in_docker and not args.tls:
         parser.error("--server-in-docker requires --tls")
+    if args.wla and (not (args.manager and args.worker_image and args.server_in_docker and args.tls)
+                     or args.fixture_profiles or args.driver):
+        parser.error("--wla requires --manager, --worker-image, --server-in-docker and --tls, using its own profiles and driver")
     if args.managed_case != "full" and not args.live_ai:
         parser.error("--managed-case requires --live-ai")
     if bool(args.manager) != bool(args.worker_image):
