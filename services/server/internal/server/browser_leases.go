@@ -215,7 +215,7 @@ func browserLeaseScope(ctx context.Context, q queryDB, w Workspace, lease Browse
 		return nil, errBrowserScopeInvalid
 	}
 	if lease.AuthorRunID == nil {
-		if w.ScopeStatus != "confirmed" || !confirmedCanonical(w) || jsonText(w.Settings) != jsonText(snapshot.Config) {
+		if w.ScopeStatus != "confirmed" || !confirmedCanonical(w) || jsonText(workspaceScopeConfig(w.Settings)) != jsonText(snapshot.Config) {
 			return nil, errBrowserScopeInvalid
 		}
 		return snapshot, nil

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -12,9 +13,10 @@ import (
 )
 
 type WorkspaceOrigin struct {
-	Name    string `json:"name"`
-	Purpose string `json:"purpose"`
-	Origin  string `json:"origin"`
+	Name      string    `json:"name"`
+	Purpose   string    `json:"purpose"`
+	Origin    string    `json:"origin"`
+	TestScope TestScope `json:"testScope,omitempty"`
 }
 type WorkspaceRole struct {
 	RoleID      *string `json:"roleId"`
@@ -31,9 +33,23 @@ type WorkspaceConfig struct {
 	ExcludedOrigins   []string          `json:"excludedOrigins"`
 	Exclusions        string            `json:"exclusions"`
 	LoginRoles        []WorkspaceRole   `json:"loginRoles"`
+	TestAccounts      []TestAccount     `json:"testAccounts,omitempty"`
 	DefaultTestURL    string            `json:"defaultTestUrl"`
 	TimeoutMS         int               `json:"timeoutMs"`
 }
+
+func (c WorkspaceConfig) MarshalJSON() ([]byte, error) {
+	type fields WorkspaceConfig
+	var accounts *[]TestAccount
+	if c.TestAccounts != nil {
+		accounts = &c.TestAccounts
+	}
+	return json.Marshal(struct {
+		fields
+		TestAccounts *[]TestAccount `json:"testAccounts,omitempty"`
+	}{fields(c), accounts})
+}
+
 type RoleRef struct {
 	RoleID        string  `json:"roleId"`
 	SecretRef     *string `json:"secretRef"`
@@ -48,19 +64,21 @@ type WorkspaceContext struct {
 	RoleRefs         []RoleRef        `json:"roleRefs"`
 }
 type WorkspaceProposal struct {
-	ID                 string          `json:"id"`
-	WorkspaceID        string          `json:"workspaceId"`
-	ConversationID     string          `json:"conversationId"`
-	SourceRunID        string          `json:"sourceRunId"`
-	BaseRevision       int             `json:"baseRevision"`
-	ContextRevision    int64           `json:"contextRevision"`
-	Status             string          `json:"status"`
-	Content            WorkspaceConfig `json:"content"`
-	ScopeHash          string          `json:"scopeHash"`
-	ScopeConfirmed     bool            `json:"scopeConfirmed"`
-	InvalidationReason *string         `json:"invalidationReason"`
-	AppliedRevision    *int            `json:"appliedRevision"`
-	CreatedAt          time.Time       `json:"createdAt"`
+	ID                 string                    `json:"id"`
+	WorkspaceID        string                    `json:"workspaceId"`
+	ConversationID     string                    `json:"conversationId"`
+	SourceRunID        string                    `json:"sourceRunId"`
+	BaseRevision       int                       `json:"baseRevision"`
+	ContextRevision    int64                     `json:"contextRevision"`
+	Status             string                    `json:"status"`
+	Content            WorkspaceConfig           `json:"content"`
+	ScopeHash          string                    `json:"scopeHash"`
+	ScopeConfirmed     bool                      `json:"scopeConfirmed"`
+	InvalidationReason *string                   `json:"invalidationReason"`
+	AppliedRevision    *int                      `json:"appliedRevision"`
+	CreatedAt          time.Time                 `json:"createdAt"`
+	SiteReadiness      []SiteReadiness           `json:"siteReadiness"`
+	AccountCredentials []AccountCredentialStatus `json:"accountCredentials"`
 }
 type WorkspaceConversation struct {
 	ID                  string    `json:"id"`
@@ -111,6 +129,14 @@ func normalizedOrigin(raw string) (string, error) {
 	}
 	return u.Scheme + "://" + host, nil
 }
+func workspaceURLOrigin(raw string) (string, error) {
+	if !validWebsiteURL(raw) {
+		return "", configError()
+	}
+	u, _ := url.Parse(raw)
+	return normalizedOrigin(u.Scheme + "://" + u.Host)
+}
+
 func configText(value string, limit int) bool {
 	return utf8.ValidString(value) && len(value) <= limit && !strings.ContainsRune(value, '\x00')
 }
@@ -145,7 +171,7 @@ func normalizeConfig(c WorkspaceConfig, confirm bool) (WorkspaceConfig, error) {
 			if err != nil || !configName(items[i].Name) || !configText(items[i].Purpose, 8192) || all[origin] {
 				return c, configError()
 			}
-			if group == 1 && items[i].Purpose != "login" && items[i].Purpose != "api" && items[i].Purpose != "cdn" {
+			if group == 1 && (items[i].TestScope != "" || items[i].Purpose != "login" && items[i].Purpose != "api" && items[i].Purpose != "cdn") {
 				return c, configError()
 			}
 			items[i].Origin = origin
@@ -184,14 +210,13 @@ func normalizeConfig(c WorkspaceConfig, confirm bool) (WorkspaceConfig, error) {
 		}
 	}
 	if c.DefaultTestURL != "" {
-		if !validWebsiteURL(c.DefaultTestURL) {
-			return c, configError()
-		}
-		u, _ := url.Parse(c.DefaultTestURL)
-		origin, err := normalizedOrigin(u.Scheme + "://" + u.Host)
+		origin, err := workspaceURLOrigin(c.DefaultTestURL)
 		if err != nil || !targets[origin] {
 			return c, configError()
 		}
+	}
+	if err := normalizeWorkspaceTestAccounts(&c, targets); err != nil {
+		return c, err
 	}
 	return c, nil
 }

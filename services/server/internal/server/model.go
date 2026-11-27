@@ -27,6 +27,7 @@ type Workspace struct {
 	AuthorizationRevision int64                 `json:"authorizationRevision"`
 	ScopeStatus           string                `json:"scopeStatus"`
 	Settings              *WorkspaceConfig      `json:"settings"`
+	SiteReadiness         []SiteReadiness       `json:"siteReadiness"`
 	ConversationID        string                `json:"conversationId"`
 	ActiveRunID           *string               `json:"activeRunId"`
 	CurrentProposal       *WorkspaceProposal    `json:"currentProposal"`
@@ -160,30 +161,31 @@ type ChatMessage struct {
 }
 
 type AuthorInput struct {
-	SkillFiles          SkillFileSnapshot      `json:"skillFiles,omitempty"`
-	ModuleSummary       *ModuleSummarySnapshot `json:"moduleSummary,omitempty"`
-	Batch               *AuthorBatch           `json:"batch,omitempty"`
-	Platform            *AuthorPlatform        `json:"platform,omitempty"`
-	Skills              []SkillSnapshot        `json:"skills,omitempty"`
-	Budget              *AuthorBudget          `json:"budget,omitempty"`
-	Model               *AuthorModel           `json:"model,omitempty"`
-	Runtime             *AuthorRuntime         `json:"runtime,omitempty"`
-	ToolRegistryVersion string                 `json:"toolRegistryVersion,omitempty"`
-	ToolRegistrySHA256  string                 `json:"toolRegistrySha256,omitempty"`
-	SkillID             string                 `json:"skillId,omitempty"`
-	SkillVersion        string                 `json:"skillVersion,omitempty"`
-	AllowedTools        []string               `json:"allowedTools"`
-	EditingSessionID    string                 `json:"editingSessionId,omitempty"`
-	ContextRevision     int64                  `json:"contextRevision"`
-	TestName            string                 `json:"testName,omitempty"`
-	SourceVersion       *SourceVersion         `json:"sourceVersion"`
-	ConversationSummary *string                `json:"conversationSummary"`
-	ValidationEvidence  *ValidationEvidence    `json:"validationEvidence,omitempty"`
-	ConversationID      string                 `json:"conversationId"`
-	BaseRevision        int                    `json:"baseRevision"`
-	Messages            []ChatMessage          `json:"messages"`
-	Validation          *AuthorValidation      `json:"validation,omitempty"`
-	History             *AuthorHistory         `json:"history,omitempty"`
+	WorkspaceProposal   *WorkspaceInterviewProposal `json:"workspaceProposal,omitempty"`
+	SkillFiles          SkillFileSnapshot           `json:"skillFiles,omitempty"`
+	ModuleSummary       *ModuleSummarySnapshot      `json:"moduleSummary,omitempty"`
+	Batch               *AuthorBatch                `json:"batch,omitempty"`
+	Platform            *AuthorPlatform             `json:"platform,omitempty"`
+	Skills              []SkillSnapshot             `json:"skills,omitempty"`
+	Budget              *AuthorBudget               `json:"budget,omitempty"`
+	Model               *AuthorModel                `json:"model,omitempty"`
+	Runtime             *AuthorRuntime              `json:"runtime,omitempty"`
+	ToolRegistryVersion string                      `json:"toolRegistryVersion,omitempty"`
+	ToolRegistrySHA256  string                      `json:"toolRegistrySha256,omitempty"`
+	SkillID             string                      `json:"skillId,omitempty"`
+	SkillVersion        string                      `json:"skillVersion,omitempty"`
+	AllowedTools        []string                    `json:"allowedTools"`
+	EditingSessionID    string                      `json:"editingSessionId,omitempty"`
+	ContextRevision     int64                       `json:"contextRevision"`
+	TestName            string                      `json:"testName,omitempty"`
+	SourceVersion       *SourceVersion              `json:"sourceVersion"`
+	ConversationSummary *string                     `json:"conversationSummary"`
+	ValidationEvidence  *ValidationEvidence         `json:"validationEvidence,omitempty"`
+	ConversationID      string                      `json:"conversationId"`
+	BaseRevision        int                         `json:"baseRevision"`
+	Messages            []ChatMessage               `json:"messages"`
+	Validation          *AuthorValidation           `json:"validation,omitempty"`
+	History             *AuthorHistory              `json:"history,omitempty"`
 }
 
 type AuthorValidation struct {
@@ -239,8 +241,9 @@ func (a AuthorInput) MarshalJSON() ([]byte, error) {
 	if a.SkillID == "workspace-author" {
 		return json.Marshal(struct {
 			wire
-			EditingSessionID *string `json:"editingSessionId"`
-		}{wire(a), nil})
+			EditingSessionID  *string                     `json:"editingSessionId"`
+			WorkspaceProposal *WorkspaceInterviewProposal `json:"workspaceProposal"`
+		}{wire(a), nil, a.WorkspaceProposal})
 	}
 	return json.Marshal(wire(a))
 }

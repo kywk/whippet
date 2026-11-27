@@ -428,6 +428,7 @@ func TestM9SettingsResumeAndRevocation(t *testing.T) {
 	}
 	a := h.claim(submission.Run.ID)
 	config := m8Config()
+	config.Targets[0].TestScope = testScopeGuest
 	config.BackgroundSummary = "M9 new confirmed background"
 	h.upload(a, "author.json", jsonText(workspaceAuthorOutput{Message: "proposal", Proposal: &config}))
 	h.complete(a, "succeeded")
@@ -436,7 +437,8 @@ func TestM9SettingsResumeAndRevocation(t *testing.T) {
 	if err != nil || w.CurrentProposal == nil {
 		t.Fatal("proposal", err)
 	}
-	w, proposal, err := p.ActWorkspaceProposal(ctx, w.ID, w.CurrentProposal.ID, "confirm", w.Revision)
+	legacyProposal := seedLegacyProposalRole(t, p, ctx, *w.CurrentProposal, config.LoginRoles[0])
+	w, proposal, err := p.ActWorkspaceProposal(ctx, w.ID, legacyProposal.ID, "confirm", w.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
