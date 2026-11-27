@@ -50,7 +50,7 @@ func (p *Postgres) SetAuthorEngine(ctx context.Context, id string, revision int,
 		return Workspace{}, err
 	}
 	defer tx.Rollback()
-	w, _, err := readWorkspaceCore(ctx, tx, id, true)
+	w, currentProposal, err := readWorkspaceCore(ctx, tx, id, true)
 	if err != nil {
 		return Workspace{}, err
 	}
@@ -61,6 +61,9 @@ func (p *Postgres) SetAuthorEngine(ctx context.Context, id string, revision int,
 		return Workspace{}, err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE workspaces SET author_engine=$2,settings=jsonb_set(settings,'{revision}',to_jsonb($3::integer)) WHERE id=$1`, id, engine, revision+1); err != nil {
+		return Workspace{}, err
+	}
+	if err := invalidateWorkspaceLoginProposal(ctx, tx, id, currentProposal); err != nil {
 		return Workspace{}, err
 	}
 	if err = tx.Commit(); err != nil {

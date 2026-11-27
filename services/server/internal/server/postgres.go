@@ -16,13 +16,14 @@ import (
 )
 
 type Postgres struct {
-	AuthorIntent  AuthorIntentGate
-	NewTestReview NewTestReviewGate
-	DB            *sql.DB
-	Artifacts     ArtifactStorage
-	Secrets       *SecretVault
-	CredentialTLS bool
-	siteAIConn    atomic.Pointer[siteAIConnectionView]
+	AuthorIntent          AuthorIntentGate
+	NewTestReview         NewTestReviewGate
+	DB                    *sql.DB
+	Artifacts             ArtifactStorage
+	Secrets               *SecretVault
+	CredentialTLS         bool
+	WorkspaceLoginEnabled bool
+	siteAIConn            atomic.Pointer[siteAIConnectionView]
 }
 
 // Migrate serializes startup migrations and records each file in the same transaction.
@@ -302,14 +303,18 @@ func (p *Postgres) Cancel(ctx context.Context, id string) (Run, error) {
 		return Run{}, err
 	}
 	defer tx.Rollback()
-	var workspace string
-	if err := tx.QueryRowContext(ctx, `SELECT workspace_id FROM runs WHERE id=$1`, id).Scan(&workspace); err != nil {
+	var workspace, kind string
+	if err := tx.QueryRowContext(ctx, `SELECT workspace_id,kind FROM runs WHERE id=$1`, id).Scan(&workspace, &kind); err != nil {
 		return Run{}, dbError(err)
 	}
 	if err := authorizeWorkspace(ctx, workspace); err != nil {
 		return Run{}, err
 	}
-	if _, err := lockWorkspaceWorkStatus(ctx, tx, workspace); err != nil {
+	if kind == workspaceLoginVerificationKind {
+		if _, _, err := lockWorkspaceSettings(ctx, tx, workspace); err != nil {
+			return Run{}, err
+		}
+	} else if _, err := lockWorkspaceWorkStatus(ctx, tx, workspace); err != nil {
 		return Run{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE external_author_claims SET state='cancelled' WHERE run_id=$1 AND state='active'`, id); err != nil {
@@ -403,7 +408,7 @@ func (p *Postgres) Assignments(ctx context.Context, managerID string) ([]Assignm
 				return nil, err
 			}
 		}
-		if permissionErr := p.assignmentAllowed(ctx, p.DB, items[i]); permissionErr != nil {
+		if permissionErr := p.assignmentAllowed(ctx, p.DB, &items[i]); permissionErr != nil {
 			if permissionErr != ErrScopeConfirmation {
 				return nil, permissionErr
 			}
@@ -485,11 +490,12 @@ func (p *Postgres) claimManagedRun(ctx context.Context, tx *sql.Tx, managerID st
 	err := tx.QueryRowContext(ctx, `SELECT r.id,r.script_snapshot,r.timeout_ms,r.kind,COALESCE(r.author_payload::text,''),r.workspace_settings,r.workspace_id,r.test_id,r.workspace_context,r.script_origin,r.authorization_revision,r.scope_proposal_id,r.files_snapshot,r.bundle_hash,r.bundle_metadata,b.agent_id,b.secret_version
         FROM runs r LEFT JOIN site_ai_run_bindings b ON b.run_id=r.id LEFT JOIN site_ai_agents ag ON ag.id=b.agent_id
         WHERE r.status='queued' AND r.author_engine='builtin' AND r.workspace_id=ANY($1::uuid[])
+        AND (r.kind<>'workspace_login_verification' OR $7)
         AND (b.run_id IS NULL OR ($2 AND ag.status='ready' AND ag.key_configured AND ag.key_version=b.secret_version
           AND ag.verified_manager_id=$3 AND ag.verified_worker_revision=$4 AND ag.engine=ANY($5::text[])
           AND r.author_payload->>'skillId'=ANY(ag.verified_skills) AND r.author_payload->>'skillId'=ANY($6::text[])))
         ORDER BY r.queue_seq FOR UPDATE OF r SKIP LOCKED LIMIT 1`, workspaces, conn.online(time.Now()) && conn.Nonce != "", managerID, advertised.WorkerRevision,
-		pq.Array(advertised.Engines), pq.Array(advertised.Skills)).Scan(&a.ID, &a.Script, &a.TimeoutMS, &a.Kind, &authorPayload, &settings, &a.WorkspaceID, &a.TestID, &context, &a.ScriptOrigin, &a.authorizationRevision, &a.scopeProposalID, &files, &bundleHash, &metadata, &a.AgentID, &secretVersion)
+		pq.Array(advertised.Engines), pq.Array(advertised.Skills), p.readyForWorkspaceLogin()).Scan(&a.ID, &a.Script, &a.TimeoutMS, &a.Kind, &authorPayload, &settings, &a.WorkspaceID, &a.TestID, &context, &a.ScriptOrigin, &a.authorizationRevision, &a.scopeProposalID, &files, &bundleHash, &metadata, &a.AgentID, &secretVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false, nil
 	}
@@ -517,7 +523,7 @@ func (p *Postgres) claimManagedRun(ctx context.Context, tx *sql.Tx, managerID st
 	if err := decodeAssignmentAuthor(&a, authorPayload); err != nil {
 		return nil, false, err
 	}
-	if permissionErr := p.assignmentAllowed(ctx, tx, a); permissionErr != nil {
+	if permissionErr := p.assignmentAllowed(ctx, tx, &a); permissionErr != nil {
 		if permissionErr != ErrScopeConfirmation {
 			return nil, false, permissionErr
 		}
@@ -537,7 +543,8 @@ func (p *Postgres) claimManagedRun(ctx context.Context, tx *sql.Tx, managerID st
 	} else if !allowed {
 		return nil, true, nil
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE runs SET status='dispatched',manager_id=$2,attempt_id=$3,slot_released=false WHERE id=$1`, a.ID, managerID, a.AttemptID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE runs SET status='dispatched',manager_id=$2,attempt_id=$3,slot_released=false,
+ login_attempt_deadline=CASE WHEN kind='workspace_login_verification' THEN now()+timeout_ms * interval '1 millisecond' END WHERE id=$1`, a.ID, managerID, a.AttemptID); err != nil {
 		return nil, false, err
 	}
 	a.Status = "dispatched"
@@ -590,6 +597,15 @@ func (p *Postgres) AddEvent(ctx context.Context, managerID, runID, attemptID str
 	if Terminal(status) {
 		return nil
 	}
+	if event.Kind == "log" {
+		var kind string
+		if err := tx.QueryRowContext(ctx, `SELECT kind FROM runs WHERE id=$1`, runID).Scan(&kind); err != nil {
+			return err
+		}
+		if kind == workspaceLoginVerificationKind {
+			return nil
+		}
+	}
 	res, err := tx.ExecContext(ctx, `INSERT INTO run_events(run_id,event_id,attempt_id,kind,message)
         VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`, runID, event.EventID, attemptID, event.Kind, event.Message)
 	if err != nil {
@@ -627,6 +643,12 @@ func (p *Postgres) Complete(ctx context.Context, managerID, runID, attemptID str
 			return p.completeWorkspaceAuthor(ctx, workspaceID, managerID, runID, attemptID, result)
 		}
 		return p.completeAuthor(ctx, *testID, managerID, runID, attemptID, result)
+	}
+	if kind == workspaceLoginVerificationKind {
+		return p.completeWorkspaceLogin(ctx, workspaceID, managerID, runID, attemptID, result)
+	}
+	if len(result.LoginVerification) > 0 {
+		return ErrInvalid
 	}
 	tx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {

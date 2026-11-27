@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"time"
 )
 
 var ErrScopeConfirmation = errors.New("scope_confirmation_required")
@@ -95,8 +96,18 @@ func selectedContext(w Workspace, proposalFirst bool) (*WorkspaceContext, *strin
 	if proposalFirst && confirmedProposal(w) {
 		c.Config = workspaceScopeConfig(&w.CurrentProposal.Content)
 		proposal = stringPointer(w.CurrentProposal.ID)
+		bindings := []LoginBinding{}
+		for _, binding := range c.AccountBindings {
+			formal, _ := accountSite(w.Settings, binding.AccountID, binding.TargetOrigin)
+			draft, scope := accountSite(&w.CurrentProposal.Content, binding.AccountID, binding.TargetOrigin)
+			if draft != nil && testsAuthenticated(scope) && jsonText(formal) == jsonText(draft) {
+				bindings = append(bindings, binding)
+			}
+		}
+		setAccountSnapshot(c, w.Settings, bindings)
 	} else if !confirmedCanonical(w) {
 		c.Config = nil
+		setAccountSnapshot(c, nil, nil)
 	}
 	c.RoleRefs = []RoleRef{}
 	for _, ref := range w.Roles {
@@ -118,6 +129,10 @@ func workspaceCapabilities(w Workspace, secrets, tls bool) WorkspaceCapabilities
 	case !exploration:
 		reason = "scope_confirmation_required"
 	default:
+		if len(w.accountBindings) != 0 {
+			c.CredentialLogin = capability(true, "")
+			return c
+		}
 		for _, r := range w.Roles {
 			if r.Configured {
 				for _, config := range []*WorkspaceConfig{w.Settings, proposalConfig(w)} {
@@ -233,7 +248,7 @@ func hasBrowserTools(input *AuthorInput) bool {
 					return true
 				}
 			}
-			if t == "browser_login" || t == "update_module_candidate" || t == "commit_module_candidate" || t == "edit_module_candidate" {
+			if t == "browser_login" || t == browserLoginAccountTool || t == "update_module_candidate" || t == "commit_module_candidate" || t == "edit_module_candidate" {
 				return true
 			}
 		}
@@ -257,6 +272,9 @@ func (p *Postgres) prepareAuthor(ctx context.Context, q queryDB, d draftState, i
 		if p.CredentialTLS && p.Secrets != nil {
 			input.AllowedTools = append(input.AllowedTools, "browser_login")
 		}
+		if p.readyForWorkspaceLogin() && d.WorkspaceContext != nil && len(d.WorkspaceContext.AccountBindings) > 0 {
+			input.AllowedTools = append(input.AllowedTools, browserLoginAccountTool)
+		}
 	}
 	if _, _, err := executionBinding(w, d.ScriptOrigin, d.WorkspaceContext); err == nil {
 		input.AllowedTools = append(input.AllowedTools, "request_validation")
@@ -266,7 +284,34 @@ func (p *Postgres) prepareAuthor(ctx context.Context, q queryDB, d draftState, i
 	}
 	return rev, pid, nil
 }
-func (p *Postgres) assignmentAllowed(ctx context.Context, q queryDB, a Assignment) error {
+func (p *Postgres) assignmentAllowed(ctx context.Context, q queryDB, a *Assignment) error {
+	if a.Kind == workspaceLoginVerificationKind {
+		if Terminal(a.Status) || a.Status == "cancelling" {
+			return nil
+		}
+		if !p.readyForWorkspaceLogin() {
+			return ErrScopeConfirmation
+		}
+		saved, err := readPersistedWorkspaceLogin(ctx, q, a.ID)
+		if err != nil {
+			return err
+		}
+		if a.Status == "dispatched" && !a.Acked && saved.Deadline != nil && !time.Now().Before(*saved.Deadline) {
+			return ErrScopeConfirmation
+		}
+		w, proposal, err := readWorkspaceCore(ctx, q, a.WorkspaceID, false)
+		if err != nil {
+			return err
+		}
+		if _, err = activeWorkspaceLogin(ctx, q, w, proposal, a.ID, saved.Login, saved.Actor); err != nil {
+			if workspaceLoginInactive(err) {
+				return ErrScopeConfirmation
+			}
+			return err
+		}
+		a.LoginVerification = saved.Login
+		return nil
+	}
 	if a.Kind == "author" && !hasBrowserTools(a.Author) {
 		return nil
 	}
@@ -292,7 +337,7 @@ func (p *Postgres) assignmentAllowed(ctx context.Context, q queryDB, a Assignmen
 // Unacknowledged network/AI work already being cancelled must not be started
 // solely to explain cancellation; Manager can persist an unknown cancel result.
 func (p *Postgres) CanDispatch(a Assignment) bool {
-	return a.modelCredential == nil && a.archiveStatus.workError() == nil &&
+	return a.Kind != workspaceLoginVerificationKind && a.modelCredential == nil && a.archiveStatus.workError() == nil &&
 		((a.Kind != "author" && offlineManualExecution(a.ScriptOrigin, a.WorkspaceContext)) || (a.Kind == "author" && !hasBrowserTools(a.Author)))
 }
 func offlineAuthorAllowed(a Assignment) bool {
@@ -331,7 +376,7 @@ func loadRunRoles(ctx context.Context, q queryDB, id string) error {
 		return ErrCredentialUnavailable
 	}
 	if len(roles) == 0 {
-		return nil
+		return loadRunAccounts(ctx, q, id)
 	}
 	snapshot, err := decodeWorkspaceContext(raw)
 	if err != nil {
@@ -355,7 +400,7 @@ func loadRunRoles(ctx context.Context, q queryDB, id string) error {
 			return ErrCredentialUnavailable
 		}
 	}
-	return nil
+	return loadRunAccounts(ctx, q, id)
 }
 func cancelRoleRuns(ctx context.Context, tx *sql.Tx, workspace, role string) error {
 	_, err := tx.ExecContext(ctx, `UPDATE runs SET status=CASE WHEN status='queued' THEN 'cancelled' ELSE 'cancelling' END,
@@ -366,7 +411,7 @@ func cancelRoleRuns(ctx context.Context, tx *sql.Tx, workspace, role string) err
 
 func workspaceAuthorToolsValid(tools []string) bool {
 	for _, tool := range tools {
-		found := tool == "browser_login" || tool == "read_conversation_history" || tool == "read_skill_reference" || tool == "record_conversation_memory"
+		found := tool == "browser_login" || tool == browserLoginAccountTool || tool == "read_conversation_history" || tool == "read_skill_reference" || tool == "record_conversation_memory"
 		for _, allowed := range browserTools {
 			found = found || tool == allowed
 		}
@@ -395,6 +440,6 @@ func cancelScopedRuns(ctx context.Context, tx *sql.Tx, workspace, except string,
  WHERE workspace_id=$1 AND id::text<>$2 AND status IN ('queued','dispatched','running','collecting') AND
  ($3::uuid IS NULL OR scope_proposal_id=$3) AND
  ((kind IN ('run','validation') AND (script_origin<>'manual' OR jsonb_typeof(workspace_context->'config')='object')) OR (kind='author' AND
- author_payload->'allowedTools' ?| ARRAY['browser_navigate','browser_snapshot','browser_click','browser_fill','browser_login','update_module_candidate','commit_module_candidate','edit_module_candidate']))`, workspace, except, proposalID)
+ author_payload->'allowedTools' ?| ARRAY['browser_navigate','browser_snapshot','browser_click','browser_fill','browser_login','browser_login_account','update_module_candidate','commit_module_candidate','edit_module_candidate']))`, workspace, except, proposalID)
 	return err
 }

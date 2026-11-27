@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -86,6 +87,39 @@ type BrowserSessionCredentials struct {
 	Password    string `json:"password"`
 }
 
+func (p *Postgres) lockBrowserCredentialLease(ctx context.Context, tx *sql.Tx, managerID, epoch, sessionID, leaseID string) (Workspace, BrowserLease, *WorkspaceContext, error) {
+	var tokenID, workspaceID string
+	if err := tx.QueryRowContext(ctx, `SELECT token_id,workspace_id FROM agent_browser_leases WHERE session_id=$1 AND lease_id=$2`, sessionID, leaseID).Scan(&tokenID, &workspaceID); err != nil {
+		return Workspace{}, BrowserLease{}, nil, dbError(err)
+	}
+	w, proposalID, err := readWorkspaceCore(ctx, tx, workspaceID, true)
+	if err != nil {
+		return w, BrowserLease{}, nil, err
+	}
+	var tokenWorkspace string
+	var revoked sql.NullTime
+	if err := tx.QueryRowContext(ctx, `SELECT workspace_id,revoked_at FROM agent_tokens WHERE id=$1 FOR UPDATE`, tokenID).Scan(&tokenWorkspace, &revoked); err != nil || revoked.Valid || tokenWorkspace != workspaceID {
+		return w, BrowserLease{}, nil, ErrCredentialUnavailable
+	}
+	w, err = fillWorkspace(ctx, tx, w, proposalID, true, p.CredentialTLS)
+	if err != nil {
+		return w, BrowserLease{}, nil, err
+	}
+	lease, err := scanBrowserLease(tx.QueryRowContext(ctx, `SELECT `+browserLeaseColumns+`
+ FROM agent_browser_leases WHERE session_id=$1 AND lease_id=$2 AND token_id=$3 AND workspace_id=$4 FOR UPDATE`, sessionID, leaseID, tokenID, workspaceID))
+	if err != nil {
+		return w, lease, nil, err
+	}
+	if lease.State != "ready" || lease.Reclaimed || !lease.DeadlineAt.After(time.Now()) || lease.ManagerID != managerID || lease.ManagerEpoch != epoch {
+		return w, lease, nil, ErrCredentialUnavailable
+	}
+	snapshot, err := browserLeaseScope(ctx, tx, w, lease)
+	if err != nil {
+		return w, lease, nil, ErrCredentialUnavailable
+	}
+	return w, lease, snapshot, nil
+}
+
 func (p *Postgres) ResolveBrowserSessionCredentials(ctx context.Context, managerID, epoch, sessionID, leaseID, roleID string) (BrowserSessionCredentials, error) {
 	var result BrowserSessionCredentials
 	if p.Secrets == nil {
@@ -99,35 +133,11 @@ func (p *Postgres) ResolveBrowserSessionCredentials(ctx context.Context, manager
 		return result, err
 	}
 	defer tx.Rollback()
-	var tokenID, workspaceID string
-	if err := tx.QueryRowContext(ctx, `SELECT token_id,workspace_id FROM agent_browser_leases WHERE session_id=$1 AND lease_id=$2`, sessionID, leaseID).Scan(&tokenID, &workspaceID); err != nil {
-		return result, dbError(err)
-	}
-	w, proposalID, err := readWorkspaceCore(ctx, tx, workspaceID, true)
+	w, lease, snapshot, err := p.lockBrowserCredentialLease(ctx, tx, managerID, epoch, sessionID, leaseID)
 	if err != nil {
 		return result, err
 	}
-	var tokenWorkspace string
-	var revoked sql.NullTime
-	if err := tx.QueryRowContext(ctx, `SELECT workspace_id,revoked_at FROM agent_tokens WHERE id=$1 FOR UPDATE`, tokenID).Scan(&tokenWorkspace, &revoked); err != nil || revoked.Valid || tokenWorkspace != workspaceID {
-		return result, ErrCredentialUnavailable
-	}
-	w, err = fillWorkspace(ctx, tx, w, proposalID, true, p.CredentialTLS)
-	if err != nil {
-		return result, err
-	}
-	lease, err := scanBrowserLease(tx.QueryRowContext(ctx, `SELECT `+browserLeaseColumns+`
- FROM agent_browser_leases WHERE session_id=$1 AND lease_id=$2 AND token_id=$3 AND workspace_id=$4 FOR UPDATE`, sessionID, leaseID, tokenID, workspaceID))
-	if err != nil {
-		return result, err
-	}
-	if lease.State != "ready" || lease.Reclaimed || !lease.DeadlineAt.After(time.Now()) || lease.ManagerID != managerID || lease.ManagerEpoch != epoch {
-		return result, ErrCredentialUnavailable
-	}
-	snapshot, err := browserLeaseScope(ctx, tx, w, lease)
-	if err != nil {
-		return result, ErrCredentialUnavailable
-	}
+	workspaceID := lease.WorkspaceID
 	var request CredentialRequest
 	request.RoleID = roleID
 	for _, ref := range snapshot.RoleRefs {
@@ -169,4 +179,72 @@ func (p *Postgres) ResolveBrowserSessionCredentials(ctx context.Context, manager
 		return result, err
 	}
 	return BrowserSessionCredentials{sessionID, leaseID, workspaceID, roleID, role.LoginOrigin, values.Username, values.Password}, nil
+}
+
+type BrowserSessionAccountCredentials struct {
+	SessionID    string `json:"sessionId"`
+	LeaseID      string `json:"leaseId"`
+	WorkspaceID  string `json:"workspaceId"`
+	CallID       string `json:"callId"`
+	AccountID    string `json:"accountId"`
+	TargetOrigin string `json:"targetOrigin"`
+	LoginOrigin  string `json:"loginOrigin"`
+	Username     string `json:"username"`
+	Password     string `json:"password"`
+}
+
+func (p *Postgres) resolveBrowserSessionAccountCredentials(ctx context.Context, manager, epoch, sessionID, leaseID, callID, accountID, target string) (BrowserSessionAccountCredentials, error) {
+	var result BrowserSessionAccountCredentials
+	if p.Secrets == nil {
+		return result, ErrSecretsUnavailable
+	}
+	if !p.readyForWorkspaceLogin() {
+		return result, ErrCredentialUnavailable
+	}
+	tx, err := p.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return result, err
+	}
+	defer tx.Rollback()
+	w, lease, snapshot, err := p.lockBrowserCredentialLease(ctx, tx, manager, epoch, sessionID, leaseID)
+	if err != nil {
+		return result, err
+	}
+	binding := snapshotAccountBinding(snapshot, w.ID, accountID, target)
+	if binding == nil || !lease.accountToolPinned() {
+		return result, ErrCredentialUnavailable
+	}
+	var prior []byte
+	var callState string
+	if err := tx.QueryRowContext(ctx, `SELECT request_hash,state FROM agent_browser_calls WHERE session_id=$1 AND call_id=$2 FOR UPDATE`,
+		sessionID, callID).Scan(&prior, &callState); err != nil {
+		return result, dbError(err)
+	}
+	expected := browserCallHash(browserLoginAccountTool, accountToolPayload(accountID, target))
+	if callState != "sent" || !bytes.Equal(prior, expected[:]) {
+		return result, ErrCredentialUnavailable
+	}
+	if err := formalAccountBindingAllowed(ctx, tx, w, *binding); err != nil {
+		return result, err
+	}
+	values, err := p.openAccountSecret(ctx, tx, w.ID, *binding)
+	if err != nil {
+		return result, err
+	}
+	origin, err := workspaceURLOrigin(binding.EntryURL)
+	if err != nil {
+		return result, ErrCredentialUnavailable
+	}
+	if lease.AuthorRunID != nil {
+		var attemptID string
+		if err := tx.QueryRowContext(ctx, `SELECT attempt_id FROM runs WHERE id=$1 AND workspace_id=$2 AND status='running' FOR UPDATE`,
+			*lease.AuthorRunID, w.ID).Scan(&attemptID); err != nil {
+			return result, dbError(err)
+		}
+		if err := recordResolvedAccount(ctx, tx, *lease.AuthorRunID, attemptID, *binding); err != nil {
+			return result, err
+		}
+	}
+	result = BrowserSessionAccountCredentials{sessionID, leaseID, w.ID, callID, accountID, target, origin, values.Username, values.Password}
+	return result, tx.Commit()
 }

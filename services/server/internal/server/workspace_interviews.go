@@ -11,9 +11,10 @@ import (
 )
 
 type workspaceAuthorOutput struct {
-	Message             string           `json:"message"`
-	Proposal            *WorkspaceConfig `json:"proposal,omitempty"`
-	ConversationSummary *string          `json:"conversationSummary,omitempty"`
+	testAccountsProvided bool
+	Message              string           `json:"message"`
+	Proposal             *WorkspaceConfig `json:"proposal,omitempty"`
+	ConversationSummary  *string          `json:"conversationSummary,omitempty"`
 }
 
 func decodeWorkspaceAuthorOutput(data []byte) (workspaceAuthorOutput, error) {
@@ -36,6 +37,7 @@ func decodeWorkspaceAuthorOutput(data []byte) (workspaceAuthorOutput, error) {
 		if err != nil {
 			return out, err
 		}
+		out.testAccountsProvided = c.TestAccounts != nil
 		setWorkspaceTestDefaults(&c)
 		out.Proposal = &c
 	}
@@ -118,9 +120,12 @@ func (p *Postgres) CreateWorkspaceAuthor(ctx context.Context, id, content string
 		newest = append(newest, ChatMessage{Role: c.Messages[i].Role, Content: c.Messages[i].Content})
 	}
 	input := AuthorInput{SkillID: "workspace-author", SkillVersion: "1", AllowedTools: []string{}, ConversationID: c.ID, BaseRevision: w.Revision, ContextRevision: contextRevision + 1,
-		SourceVersion: nil, ConversationSummary: c.ConversationSummary, Messages: authorContext(newest)}
+		SourceVersion: nil, ConversationSummary: c.ConversationSummary, Messages: authorContext(newest), workspaceProposalPresent: true}
 	if previous := w.CurrentProposal; previous != nil {
 		input.WorkspaceProposal = &WorkspaceInterviewProposal{Content: previous.Content, SiteReadiness: previous.SiteReadiness}
+		if previous.Status == "applied" && w.Settings != nil {
+			input.WorkspaceProposal = &WorkspaceInterviewProposal{Content: *w.Settings, SiteReadiness: w.SiteReadiness}
+		}
 	}
 	if err = p.checkAuthorIntent(ctx, input.SkillID, input.Messages); err != nil {
 		return AuthorSubmission{}, err
@@ -138,6 +143,9 @@ func (p *Postgres) CreateWorkspaceAuthor(ctx context.Context, id, content string
 		input.AllowedTools = append(input.AllowedTools, browserTools...)
 		if p.Secrets != nil && p.CredentialTLS {
 			input.AllowedTools = append(input.AllowedTools, "browser_login")
+		}
+		if p.readyForWorkspaceLogin() && len(snapshot.AccountBindings) > 0 {
+			input.AllowedTools = append(input.AllowedTools, browserLoginAccountTool)
 		}
 	}
 	if err = snapshotAuthor(&input); err != nil {
@@ -170,6 +178,11 @@ func (p *Postgres) CreateWorkspaceAuthor(ctx context.Context, id, content string
 	if _, err = tx.ExecContext(ctx, `UPDATE workspace_proposals SET status='stale',invalidation_reason='context_changed' WHERE workspace_id=$1 AND status='pending'`, id); err != nil {
 		return AuthorSubmission{}, err
 	}
+	if previous := w.CurrentProposal; previous != nil && previous.Status == "pending" {
+		if err := cancelProposalLoginRuns(ctx, tx, id, previous.ID, ""); err != nil {
+			return AuthorSubmission{}, err
+		}
+	}
 	run, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs r WHERE r.id=$1`, runID))
 	if err != nil {
 		return AuthorSubmission{}, err
@@ -180,7 +193,7 @@ func (p *Postgres) CreateWorkspaceAuthor(ctx context.Context, id, content string
 	return AuthorSubmission{Run: run, ConversationID: c.ID}, nil
 }
 
-func retainLegacyWorkspaceRoles(w Workspace, proposal *WorkspaceConfig) {
+func retainLegacyWorkspaceRoles(w Workspace, proposal *WorkspaceConfig, explicitAccounts bool) {
 	source := w.Settings
 	if previous := w.CurrentProposal; source == nil && previous != nil && previous.BaseRevision == w.Revision &&
 		(previous.Status == "pending" || previous.Status == "stale" && stringValue(previous.InvalidationReason) == "context_changed") {
@@ -189,8 +202,23 @@ func retainLegacyWorkspaceRoles(w Workspace, proposal *WorkspaceConfig) {
 	proposal.LoginRoles = []WorkspaceRole{}
 	if source != nil {
 		for _, role := range source.LoginRoles {
+			id := stringValue(role.RoleID)
+			account, before := findTestAccount(proposal, id), findTestAccount(source, id)
+			if explicitAccounts && before != nil && account == nil {
+				continue
+			}
 			if role.RoleID != nil && loginOriginAllowed(proposal, role.LoginOrigin) {
 				proposal.LoginRoles = append(proposal.LoginRoles, role)
+				if !explicitAccounts && before != nil && account == nil {
+					legacy := *before
+					legacy.Sites = []SiteLogin{}
+					for _, site := range before.Sites {
+						if _, scope := accountSite(proposal, "", site.TargetOrigin); scope != "" {
+							legacy.Sites = append(legacy.Sites, site)
+						}
+					}
+					proposal.TestAccounts = append(proposal.TestAccounts, legacy)
+				}
 			}
 		}
 	}
@@ -229,13 +257,20 @@ func (p *Postgres) completeWorkspaceAuthorWith(ctx context.Context, workspaceID,
 	if err != nil || duplicate {
 		return err
 	}
+	var input AuthorInput
+	inputErr := json.Unmarshal(raw, &input)
+	var carried workspaceLoginState
+	var prior *WorkspaceProposal
+	if previous := w.CurrentProposal; previous != nil && previous.Status == "stale" && stringValue(previous.InvalidationReason) == "context_changed" &&
+		previous.BaseRevision == input.BaseRevision && previous.ContextRevision+1 == input.ContextRevision && previous.ConversationID == input.ConversationID {
+		prior = previous
+	}
 	if result.Status == "succeeded" {
-		var input AuthorInput
 		c, err := readWorkspaceConversation(ctx, tx, workspaceID)
 		if err != nil {
 			return err
 		}
-		if json.Unmarshal(raw, &input) != nil || input.SkillID != "workspace-author" || input.SkillVersion != "1" || !workspaceAuthorToolsValid(input.AllowedTools) || input.EditingSessionID != "" || input.SourceVersion != nil || input.ConversationID != c.ID {
+		if inputErr != nil || input.SkillID != "workspace-author" || input.SkillVersion != "1" || !workspaceAuthorToolsValid(input.AllowedTools) || input.EditingSessionID != "" || input.SourceVersion != nil || input.ConversationID != c.ID {
 			result = Result{Status: "failed", Error: "Workspace interview input was invalid."}
 		} else if hasBrowserTools(&input) && !workspaceRunScopeValid(ctx, tx, w, runID) {
 			result = Result{Status: "failed", Error: "scope_confirmation_required: the interview scope was revoked."}
@@ -251,8 +286,12 @@ func (p *Postgres) completeWorkspaceAuthorWith(ctx context.Context, workspaceID,
 				output, outputErr = decodeWorkspaceAuthorOutput(data)
 			}
 			if outputErr == nil && output.Proposal != nil {
-				retainLegacyWorkspaceRoles(w, output.Proposal)
-				outputErr = assignWorkspaceTestAccounts(output.Proposal, input.WorkspaceProposal)
+				known := input.WorkspaceProposal
+				if known == nil && confirmedCanonical(w) && w.CurrentProposal == nil {
+					known = &WorkspaceInterviewProposal{Content: *w.Settings}
+				}
+				outputErr = assignWorkspaceTestAccounts(output.Proposal, known)
+				retainLegacyWorkspaceRoles(w, output.Proposal, output.testAccountsProvided)
 			}
 			if outputErr != nil {
 				result = Result{Status: "failed", Error: "Workspace interview output was invalid; saved settings are unchanged."}
@@ -276,8 +315,12 @@ func (p *Postgres) completeWorkspaceAuthorWith(ctx context.Context, workspaceID,
 					if _, err = tx.ExecContext(ctx, `UPDATE workspace_proposals SET status='superseded',invalidation_reason='superseded' WHERE workspace_id=$1 AND status='pending'`, workspaceID); err != nil {
 						return err
 					}
-					if _, err = tx.ExecContext(ctx, `INSERT INTO workspace_proposals(id,workspace_id,conversation_id,source_run_id,base_revision,context_revision,status,content,scope_hash,scope_confirmed)
- VALUES($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9)`, proposalID, workspaceID, c.ID, runID, w.Revision, nextContext, jsonText(output.Proposal), hash, confirmed); err != nil {
+					carried, err = deriveProposalLoginState(ctx, tx, w, output.Proposal, prior)
+					if err != nil {
+						return err
+					}
+					if _, err = tx.ExecContext(ctx, `INSERT INTO workspace_proposals(id,workspace_id,conversation_id,source_run_id,base_revision,context_revision,status,content,scope_hash,scope_confirmed,login_state)
+ VALUES($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10)`, proposalID, workspaceID, c.ID, runID, w.Revision, nextContext, jsonText(output.Proposal), hash, confirmed, jsonText(carried)); err != nil {
 						return err
 					}
 					if _, err = tx.ExecContext(ctx, `UPDATE workspaces SET current_proposal_id=$2,scope_status=CASE WHEN canonical_config IS NULL THEN $3 ELSE scope_status END WHERE id=$1`, workspaceID, proposalID, map[bool]string{true: "confirmed", false: "unconfirmed"}[confirmed]); err != nil {
@@ -285,6 +328,11 @@ func (p *Postgres) completeWorkspaceAuthorWith(ctx context.Context, workspaceID,
 					}
 				}
 			}
+		}
+	}
+	if prior != nil {
+		if err := retireProposalLogin(ctx, tx, *prior, carried); err != nil {
+			return err
 		}
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE runs SET status=$2,error=$3,finished_at=now(),author_reported_status=$4,acknowledged_at=COALESCE(acknowledged_at,now()) WHERE id=$1`, runID, result.Status, result.Error, incoming.Status); err != nil {
@@ -336,6 +384,9 @@ func (p *Postgres) ActWorkspaceProposal(ctx context.Context, id, proposalID, act
 		if _, err = tx.ExecContext(ctx, `UPDATE workspace_proposals SET status='stale',invalidation_reason=$2 WHERE id=$1`, proposal.ID, reason); err != nil {
 			return w, proposal, err
 		}
+		if err := retireProposalLogin(ctx, tx, proposal, workspaceLoginState{}); err != nil {
+			return w, proposal, err
+		}
 		if err = tx.Commit(); err != nil {
 			return w, proposal, err
 		}
@@ -358,6 +409,9 @@ func (p *Postgres) ActWorkspaceProposal(ctx context.Context, id, proposalID, act
 		if err = cancelScopedRuns(ctx, tx, id, "", &proposal.ID); err != nil {
 			return w, proposal, err
 		}
+		if err := retireProposalLogin(ctx, tx, proposal, workspaceLoginState{}); err != nil {
+			return w, proposal, err
+		}
 		if _, err = tx.ExecContext(ctx, `UPDATE workspace_proposals SET status='cancelled',scope_confirmed=false,invalidation_reason='cancelled' WHERE id=$1`, proposal.ID); err != nil {
 			return w, proposal, err
 		}
@@ -369,12 +423,32 @@ func (p *Postgres) ActWorkspaceProposal(ctx context.Context, id, proposalID, act
 		if err != nil {
 			return w, proposal, err
 		}
+		for accountID, draft := range proposal.loginState.Credentials {
+			current, err := accountCredential(ctx, tx, id, accountID)
+			if err != nil {
+				return w, proposal, err
+			}
+			if !draft.matchesBase(current) {
+				return w, proposal, ErrConflict
+			}
+		}
 		for _, site := range proposal.SiteReadiness {
 			if !site.Ready {
 				return w, proposal, ErrWorkspaceSetupIncomplete
 			}
 		}
-		changed := w.Settings == nil || jsonText(w.Settings) != jsonText(config) || w.Lifecycle != "active"
+		formal, err := promoteWorkspaceLoginState(ctx, tx, proposal)
+		if err != nil {
+			return w, proposal, err
+		}
+		if err := retireRemovedAccountAccess(ctx, tx, w, &config, formal); err != nil {
+			return w, proposal, err
+		}
+		if err := cancelProposalLoginRuns(ctx, tx, id, proposal.ID, ""); err != nil {
+			return w, proposal, err
+		}
+		changed := w.Settings == nil || jsonText(w.Settings) != jsonText(config) || w.Lifecycle != "active" ||
+			jsonText(w.loginState) != jsonText(formal) || len(proposal.loginState.Credentials) != 0
 		if changed {
 			if w.Settings != nil && workspaceScopeHash(*w.Settings) != workspaceScopeHash(config) {
 				if err = cancelScopedRuns(ctx, tx, id, "", nil); err != nil {
@@ -386,14 +460,15 @@ func (p *Postgres) ActWorkspaceProposal(ctx context.Context, id, proposalID, act
 			for _, target := range config.Targets {
 				projection.Sites = append(projection.Sites, WorkspaceSite{Name: target.Name, URL: target.Origin})
 			}
-			if _, err = tx.ExecContext(ctx, `UPDATE workspaces SET name=$2,settings=$3,canonical_config=$4,lifecycle='active',scope_status='confirmed',authorization_revision=authorization_revision+1 WHERE id=$1`, id, config.Name, settingsJSON(&projection), jsonText(config)); err != nil {
+			if _, err = tx.ExecContext(ctx, `UPDATE workspaces SET name=$2,settings=$3,canonical_config=$4,lifecycle='active',scope_status='confirmed',
+ login_state=$5,authorization_revision=authorization_revision+1 WHERE id=$1`, id, config.Name, settingsJSON(&projection), jsonText(config), jsonText(formal)); err != nil {
 				return w, proposal, err
 			}
 			if err = refreshWorkspaceDrafts(ctx, tx, id, p.Secrets != nil); err != nil {
 				return w, proposal, err
 			}
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE workspace_proposals SET status='applied',scope_confirmed=true,applied_revision=$2 WHERE id=$1`, proposal.ID, w.Revision); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE workspace_proposals SET status='applied',scope_confirmed=true,applied_revision=$2,login_state=$3 WHERE id=$1`, proposal.ID, w.Revision, jsonText(formal)); err != nil {
 			return w, proposal, err
 		}
 	default:

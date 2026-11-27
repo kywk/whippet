@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 )
 
 func (a *API) listBrowserSessions(w http.ResponseWriter, r *http.Request) {
@@ -58,18 +59,35 @@ func (a *API) resolveBrowserSessionCredentials(w http.ResponseWriter, r *http.Re
 		a.fail(w, ErrInvalid)
 		return
 	}
-	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 2048))
-	if err != nil {
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))
+	if err != nil || strictJSONNoDuplicates(raw) != nil {
 		a.fail(w, ErrInvalid)
 		return
 	}
-	fields, err := strictBrowserPayload(raw, "roleId")
-	if err != nil {
-		a.fail(w, ErrInvalid)
-		return
+	var request struct {
+		RoleID       string `json:"roleId"`
+		CallID       string `json:"callId"`
+		AccountID    string `json:"accountId"`
+		TargetOrigin string `json:"targetOrigin"`
 	}
-	var roleID string
-	if json.Unmarshal(fields["roleId"], &roleID) != nil || !ValidID(roleID) {
+	switch {
+	case requiredJSONFields(raw, "roleId"):
+		if json.Unmarshal(raw, &request) != nil || !ValidID(request.RoleID) {
+			a.fail(w, ErrInvalid)
+			return
+		}
+	case requiredJSONFields(raw, "callId", "accountId", "targetOrigin"):
+		if json.Unmarshal(raw, &request) != nil || !ValidID(request.CallID) || !ValidID(request.AccountID) {
+			a.fail(w, ErrInvalid)
+			return
+		}
+		target, parseErr := normalizedOrigin(request.TargetOrigin)
+		if parseErr != nil {
+			a.fail(w, ErrInvalid)
+			return
+		}
+		request.TargetOrigin, request.AccountID = target, strings.ToLower(request.AccountID)
+	default:
 		a.fail(w, ErrInvalid)
 		return
 	}
@@ -83,7 +101,12 @@ func (a *API) resolveBrowserSessionCredentials(w http.ResponseWriter, r *http.Re
 		a.fail(w, ErrCredentialUnavailable)
 		return
 	}
-	value, err := p.ResolveBrowserSessionCredentials(r.Context(), manager, epoch, sessionID, leaseID, roleID)
+	var value any
+	if request.RoleID != "" {
+		value, err = p.ResolveBrowserSessionCredentials(r.Context(), manager, epoch, sessionID, leaseID, request.RoleID)
+	} else {
+		value, err = p.resolveBrowserSessionAccountCredentials(r.Context(), manager, epoch, sessionID, leaseID, request.CallID, request.AccountID, request.TargetOrigin)
+	}
 	if err != nil {
 		a.fail(w, err)
 		return

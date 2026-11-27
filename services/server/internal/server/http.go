@@ -125,6 +125,10 @@ func (a *API) Handler(managerConnect http.Handler) http.Handler {
 	workspace("POST /api/workspaces/{id}/messages", manageSettings, a.workspaceMessage)
 	workspace("GET /api/workspaces/{id}/proposals/{proposalId}", manageSettings, a.workspaceProposal)
 	workspace("POST /api/workspaces/{id}/proposals/{proposalId}/{action}", manageSettings, a.workspaceProposalAction)
+	workspace("POST /api/workspaces/{id}/proposals/{proposalId}/verify-login", manageSettings, a.verifyWorkspaceLogin)
+	workspace("PUT /api/workspaces/{id}/proposals/{proposalId}/test-accounts/{accountId}/credentials", manageSettings, a.workspaceProposalCredentials)
+	workspace("DELETE /api/workspaces/{id}/proposals/{proposalId}/test-accounts/{accountId}/credentials", manageSettings, a.workspaceProposalCredentials)
+	workspace("PATCH /api/workspaces/{id}/test-accounts/{accountId}", manageSettings, a.patchWorkspaceTestAccount)
 	workspace("PUT /api/workspaces/{id}/roles/{roleId}/credentials", manageSettings, a.workspaceCredentials)
 	workspace("DELETE /api/workspaces/{id}/roles/{roleId}/credentials", manageSettings, a.workspaceCredentials)
 	workspace("GET /api/workspaces/{id}", useTests, a.workspace)
@@ -481,7 +485,10 @@ func (a *API) fail(w http.ResponseWriter, err error) {
 	if writeSiteAIError(w, err) {
 		return
 	}
+	var loginRequirement loginPrecondition
 	switch {
+	case errors.As(err, &loginRequirement):
+		writeError(w, 409, string(loginRequirement), "請先補齊該站的登入驗證資料。")
 	case errors.Is(err, ErrContinuationBudget):
 		writeError(w, 409, "continuation_budget_exhausted", "此續接鏈已達總嘗試上限，或剩餘模型、工具及執行時間額度不足，無法再繼續；已保存的草稿與證據仍保留。")
 	case errors.Is(err, ErrContinuationUsage):

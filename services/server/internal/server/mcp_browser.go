@@ -56,7 +56,7 @@ func (a *API) callMCPBrowser(ctx context.Context, p *Postgres, tool ToolDefiniti
 		}
 		previous, err := p.BrowserLeaseByRequest(ctx, token.ID, args.RequestID)
 		if err == nil {
-			return mcpBrowserResult(previous, tool.Limits.MaxOutputBytes)
+			return p.browserLeaseResult(ctx, previous, tool.Limits.MaxOutputBytes)
 		}
 		if !errors.Is(err, ErrNotFound) || a.engine == nil {
 			return mcpToolFailure(ctx)
@@ -81,13 +81,13 @@ func (a *API) callMCPBrowser(ctx context.Context, p *Postgres, tool ToolDefiniti
 			return mcpWorkspaceWorkError(err)
 		}
 		if existed {
-			return mcpBrowserResult(lease, tool.Limits.MaxOutputBytes)
+			return p.browserLeaseResult(ctx, lease, tool.Limits.MaxOutputBytes)
 		}
 		if err := a.engine.SendBrowserOpen(ctx, lease); err != nil {
 			_ = p.MarkBrowserLeaseReclaimPending(ctx, lease.ManagerID)
 			a.engine.Wake()
 			lease.State = "reclaim_pending"
-			return mcpBrowserResult(lease, tool.Limits.MaxOutputBytes)
+			return p.browserLeaseResult(ctx, lease, tool.Limits.MaxOutputBytes)
 		}
 		wait, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
@@ -96,7 +96,7 @@ func (a *API) callMCPBrowser(ctx context.Context, p *Postgres, tool ToolDefiniti
 		for lease.State == "opening" {
 			select {
 			case <-wait.Done():
-				return mcpBrowserResult(lease, tool.Limits.MaxOutputBytes)
+				return p.browserLeaseResult(ctx, lease, tool.Limits.MaxOutputBytes)
 			case <-ticker.C:
 				current, err := p.BrowserLeaseOwned(wait, token, lease.SessionID, lease.LeaseID)
 				if err != nil {
@@ -105,7 +105,7 @@ func (a *API) callMCPBrowser(ctx context.Context, p *Postgres, tool ToolDefiniti
 				lease = current
 			}
 		}
-		return mcpBrowserResult(lease, tool.Limits.MaxOutputBytes)
+		return p.browserLeaseResult(ctx, lease, tool.Limits.MaxOutputBytes)
 	case "browser_session_status", "browser_session_close":
 		var args struct {
 			SessionID string `json:"sessionId"`
@@ -128,12 +128,40 @@ func (a *API) callMCPBrowser(ctx context.Context, p *Postgres, tool ToolDefiniti
 		if err != nil {
 			return mcpToolError()
 		}
-		return mcpBrowserResult(lease, tool.Limits.MaxOutputBytes)
-	case "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login":
+		return p.browserLeaseResult(ctx, lease, tool.Limits.MaxOutputBytes)
+	case "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login", browserLoginAccountTool:
 		return a.callMCPBrowserAction(ctx, p, tool, token, req, canonical)
 	default:
 		return mcpToolError()
 	}
+}
+
+func (p *Postgres) browserLeaseResult(ctx context.Context, lease BrowserLease, limit int) *mcp.CallToolResult {
+	lease.TestAccounts = []AccountDescriptor{}
+	if lease.State == "ready" && !lease.Reclaimed && lease.DeadlineAt.After(time.Now()) &&
+		p.readyForWorkspaceLogin() && lease.accountToolPinned() {
+		w, _, err := readWorkspaceCore(ctx, p.DB, lease.WorkspaceID, false)
+		if err != nil {
+			return mcpToolFailure(ctx)
+		}
+		snapshot, err := browserLeaseScope(ctx, p.DB, w, lease)
+		if err == nil {
+			for _, descriptor := range snapshot.TestAccounts {
+				filtered := descriptor
+				filtered.Sites = []AccountSiteDescriptor{}
+				for _, site := range descriptor.Sites {
+					binding := snapshotAccountBinding(snapshot, w.ID, descriptor.AccountID, site.TargetOrigin)
+					if binding != nil && formalAccountBindingAllowed(ctx, p.DB, w, *binding) == nil {
+						filtered.Sites = append(filtered.Sites, site)
+					}
+				}
+				if len(filtered.Sites) > 0 {
+					lease.TestAccounts = append(lease.TestAccounts, filtered)
+				}
+			}
+		}
+	}
+	return mcpBrowserResult(lease, limit)
 }
 
 func (a *API) callMCPBrowserAction(ctx context.Context, p *Postgres, tool ToolDefinition, token AgentToken, req *mcp.CallToolRequest, canonical []byte) *mcp.CallToolResult {
@@ -147,6 +175,13 @@ func (a *API) callMCPBrowserAction(ctx context.Context, p *Postgres, tool ToolDe
 func (a *API) callMCPBrowserActionOwned(ctx context.Context, p *Postgres, tool ToolDefinition, token AgentToken, sessionID, leaseID, callID string, canonical []byte, authorRunID *string) *mcp.CallToolResult {
 	if a.engine == nil {
 		return mcpToolError()
+	}
+	if tool.Name == browserLoginAccountTool {
+		account, target, err := decodeAccountToolArguments(canonical)
+		if err != nil {
+			return mcpToolError()
+		}
+		canonical = accountToolPayload(account, target)
 	}
 	lease, err := p.BrowserLeaseOwned(ctx, token, sessionID, leaseID)
 	if err != nil || lease.State != "ready" || lease.Reclaimed {

@@ -18,20 +18,21 @@ var errBrowserBusy = errors.New("browser call busy")
 var errBrowserScopeInvalid = errors.New("browser scope changed")
 
 type BrowserLease struct {
-	SessionID             string          `json:"sessionId"`
-	LeaseID               string          `json:"leaseId"`
-	State                 string          `json:"state"`
-	Reclaimed             bool            `json:"reclaimed"`
-	TokenID               string          `json:"-"`
-	WorkspaceID           string          `json:"-"`
-	ManagerID             string          `json:"-"`
-	ManagerEpoch          string          `json:"-"`
-	RegistryVersion       string          `json:"-"`
-	RegistrySHA256        string          `json:"-"`
-	WorkspaceContext      json.RawMessage `json:"-"`
-	AuthorizationRevision int64           `json:"-"`
-	DeadlineAt            time.Time       `json:"-"`
-	AuthorRunID           *string         `json:"-"`
+	SessionID             string              `json:"sessionId"`
+	LeaseID               string              `json:"leaseId"`
+	State                 string              `json:"state"`
+	Reclaimed             bool                `json:"reclaimed"`
+	TestAccounts          []AccountDescriptor `json:"testAccounts"`
+	TokenID               string              `json:"-"`
+	WorkspaceID           string              `json:"-"`
+	ManagerID             string              `json:"-"`
+	ManagerEpoch          string              `json:"-"`
+	RegistryVersion       string              `json:"-"`
+	RegistrySHA256        string              `json:"-"`
+	WorkspaceContext      json.RawMessage     `json:"-"`
+	AuthorizationRevision int64               `json:"-"`
+	DeadlineAt            time.Time           `json:"-"`
+	AuthorRunID           *string             `json:"-"`
 }
 
 const browserLeaseColumns = `session_id,lease_id,state,reclaimed,token_id,workspace_id,manager_id,manager_epoch,registry_version,registry_sha256,workspace_context,authorization_revision,deadline_at,author_run_id`
@@ -344,6 +345,19 @@ func browserCallHash(name string, args []byte) [32]byte {
 	return sha256.Sum256(append(append([]byte(name), 0), args...))
 }
 
+func (lease BrowserLease) accountToolPinned() bool {
+	registry, err := loadToolRegistry()
+	if err != nil || registry.Version != lease.RegistryVersion || registry.SHA256 != lease.RegistrySHA256 {
+		return false
+	}
+	tool, ok := registry.tool(browserLoginAccountTool)
+	return ok && mcpToolConnected(tool)
+}
+
+func accountToolPayload(account, target string) []byte {
+	return []byte(jsonText(map[string]string{"accountId": account, "targetOrigin": target}))
+}
+
 func (p *Postgres) ReserveBrowserCall(ctx context.Context, token AgentToken, lease BrowserLease, callID, name string, args []byte, authorRunID *string) (bool, error) {
 	if !ValidID(callID) || !ValidID(lease.SessionID) || !ValidID(lease.LeaseID) {
 		return false, ErrInvalid
@@ -372,8 +386,23 @@ func (p *Postgres) ReserveBrowserCall(ctx context.Context, token AgentToken, lea
 	if !locked.DeadlineAt.After(time.Now()) {
 		return false, errBrowserScopeInvalid
 	}
-	if _, err := browserLeaseScope(ctx, tx, w, locked); err != nil {
+	snapshot, err := browserLeaseScope(ctx, tx, w, locked)
+	if err != nil {
 		return false, err
+	}
+	if name == browserLoginAccountTool {
+		account, target, err := decodeAccountToolArguments(args)
+		if err != nil || !p.readyForWorkspaceLogin() || !locked.accountToolPinned() {
+			return false, ErrCredentialUnavailable
+		}
+		binding := snapshotAccountBinding(snapshot, w.ID, account, target)
+		if binding == nil {
+			return false, ErrCredentialUnavailable
+		}
+		if err := formalAccountBindingAllowed(ctx, tx, w, *binding); err != nil {
+			return false, err
+		}
+		args = accountToolPayload(account, target)
 	}
 	hash := browserCallHash(name, args)
 	var prior []byte

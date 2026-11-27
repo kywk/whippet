@@ -57,13 +57,16 @@ type RoleRef struct {
 	Configured    bool    `json:"configured"`
 }
 type WorkspaceContext struct {
-	SchemaVersion    string           `json:"schemaVersion"`
-	WorkspaceID      string           `json:"workspaceId"`
-	SettingsRevision int              `json:"settingsRevision"`
-	Config           *WorkspaceConfig `json:"config"`
-	RoleRefs         []RoleRef        `json:"roleRefs"`
+	SchemaVersion    string              `json:"schemaVersion"`
+	WorkspaceID      string              `json:"workspaceId"`
+	SettingsRevision int                 `json:"settingsRevision"`
+	Config           *WorkspaceConfig    `json:"config"`
+	RoleRefs         []RoleRef           `json:"roleRefs"`
+	TestAccounts     []AccountDescriptor `json:"testAccounts,omitempty"`
+	AccountBindings  []LoginBinding      `json:"accountBindings,omitempty"`
 }
 type WorkspaceProposal struct {
+	loginState         workspaceLoginState
 	ID                 string                    `json:"id"`
 	WorkspaceID        string                    `json:"workspaceId"`
 	ConversationID     string                    `json:"conversationId"`

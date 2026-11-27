@@ -58,6 +58,39 @@ func (p *Postgres) ReserveExternalToolCall(ctx context.Context, token AgentToken
 	if _, err = validateToolArguments(tool, args); err != nil {
 		return c, empty, false, err
 	}
+	if name == browserLoginAccountTool {
+		account, target, err := decodeAccountToolArguments(args)
+		if err != nil || !p.readyForWorkspaceLogin() {
+			return c, empty, false, ErrCredentialUnavailable
+		}
+		var rawAuthor []byte
+		if err := tx.QueryRowContext(ctx, `SELECT author_payload FROM runs WHERE id=$1`, runID).Scan(&rawAuthor); err != nil {
+			return c, empty, false, err
+		}
+		var author AuthorInput
+		if json.Unmarshal(rawAuthor, &author) != nil || validateToolSnapshot(author, registry, name) != nil {
+			return c, empty, false, ErrCredentialUnavailable
+		}
+		w, proposal, err := readWorkspaceCore(ctx, tx, token.WorkspaceID, false)
+		if err != nil {
+			return c, empty, false, err
+		}
+		w, err = fillWorkspace(ctx, tx, w, proposal, false)
+		if err != nil {
+			return c, empty, false, err
+		}
+		snapshot, err := externalBrowserSnapshot(ctx, tx, w, token.ID, runID, c.BrowserSessionID)
+		if err != nil {
+			return c, empty, false, ErrCredentialUnavailable
+		}
+		binding := snapshotAccountBinding(snapshot, w.ID, account, target)
+		if binding == nil {
+			return c, empty, false, ErrCredentialUnavailable
+		}
+		if err := formalAccountBindingAllowed(ctx, tx, w, *binding); err != nil {
+			return c, empty, false, err
+		}
+	}
 	digest := sha256.Sum256(append(append([]byte(name), 0), args...))
 	var priorHash, raw []byte
 	var state string

@@ -123,7 +123,8 @@ func run(log *slog.Logger) error {
 	authorModelID := env("WHIPPET_AUTHOR_INTENT_MODEL", env("WHIPPET_AI_MODEL", "muse-spark-1.3-contributor"))
 	authorModelKey := env("WHIPPET_AUTHOR_INTENT_API_KEY", os.Getenv("OPENCODE_API_KEY"))
 	intent, review := server.NewAuthorIntentGates(authorModelURL, authorModelID, authorModelKey)
-	store := &server.Postgres{DB: db, CredentialTLS: certFile != "", AuthorIntent: intent, NewTestReview: review}
+	store := &server.Postgres{DB: db, CredentialTLS: certFile != "", AuthorIntent: intent, NewTestReview: review,
+		WorkspaceLoginEnabled: os.Getenv("WHIPPET_WORKSPACE_LOGIN_ENABLED") == "true"}
 	store.Secrets, err = loadSecretVault(os.Getenv("WHIPPET_SECRET_MASTER_KEY"), os.Getenv("WHIPPET_SECRET_MASTER_KEY_FILE"), defaultSecretMasterKeyFile)
 	if err != nil {
 		log.Warn("Workspace credential storage unavailable", "reason", err)

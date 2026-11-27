@@ -213,7 +213,7 @@ func (a *API) executeExternalTool(ctx context.Context, p *Postgres, token AgentT
 		}
 		raw, _ := json.Marshal(map[string]any{"items": page.Items, "nextCursor": page.NextCursor})
 		return externalToolReceipt{Value: raw}
-	case "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login":
+	case "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login", browserLoginAccountTool:
 		if a.engine == nil {
 			return externalToolReceipt{Error: "tool_unavailable"}
 		}
