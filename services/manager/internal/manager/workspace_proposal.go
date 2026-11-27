@@ -282,8 +282,13 @@ func validWorkspaceProposalOutput(raw, previous json.RawMessage, context *worksp
 			aliases[*role.RoleID], _ = workspaceOrigin(role.LoginOrigin)
 		}
 	}
+	// The frozen Workspace also authorizes a legacy role's original ID as an account ID.
+	legacyAccounts := make(map[string]bool, len(context.RoleRefs))
+	for _, ref := range context.RoleRefs {
+		legacyAccounts[strings.ToLower(ref.RoleID)] = true
+	}
 	for id := range proposal.accounts {
-		if prior == nil || prior.accounts[id] == nil {
+		if !legacyAccounts[id] && (prior == nil || prior.accounts[id] == nil) {
 			return false
 		}
 	}

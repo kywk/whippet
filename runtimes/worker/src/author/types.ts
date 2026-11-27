@@ -109,6 +109,8 @@ export function parseWorkspaceAuthorOutput(value: unknown, context: WorkspaceCon
       }
     }
     const accountIDs = new Set(previous?.content.testAccounts.map(account => account.accountId?.toLowerCase()));
+    // The frozen Workspace also authorizes a legacy role's original ID as an account ID.
+    for (const ref of context.roleRefs) accountIDs.add(ref.roleId.toLowerCase());
     if (proposal.testAccounts.some(account => account.accountId !== null && !accountIDs.has(account.accountId.toLowerCase())) ||
         proposal.loginRoles.some(role => role.roleId === null || aliases.get(role.roleId) !== origin(role.loginOrigin))) throw new AuthorError("invalid_response");
   } catch { throw new AuthorError("invalid_response"); }

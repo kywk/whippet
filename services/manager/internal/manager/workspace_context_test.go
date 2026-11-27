@@ -137,6 +137,43 @@ func TestWLA1WorkspaceProposalReadinessCannotAuthorizeBrowserOrForgeEvidence(t *
 	}
 }
 
+func TestWLA3WorkspaceProposalRetainsFrozenLegacyAccountID(t *testing.T) {
+	id, ref := newID(), newID()
+	base := m8Config()
+	base["loginRoles"] = []any{map[string]any{"roleId": id, "name": "原會員", "loginMethod": "form", "loginOrigin": "https://example.test"}}
+	config, _ := json.Marshal(base)
+	version := int64(1)
+	context := &workspaceContext{Config: config, RoleRefs: []workspaceRoleRef{{RoleID: id, SecretRef: &ref, SecretVersion: &version, Configured: true}}}
+	proposal := wlaProposal("authenticated")
+	proposal["loginRoles"] = base["loginRoles"]
+	account := map[string]any{"accountId": id, "name": "原會員", "role": "會員", "purpose": "驗證既有登入", "sites": []any{
+		map[string]any{"targetOrigin": "https://example.test", "loginMethod": nil, "entryUrl": nil, "form": nil, "success": nil},
+	}}
+	proposal["testAccounts"] = []any{account}
+	check := func(scope *workspaceContext) bool {
+		body, _ := json.Marshal(proposal)
+		return validWorkspaceProposalOutput(body, json.RawMessage("null"), scope)
+	}
+	if !check(context) {
+		t.Fatal("rejected the Workspace's frozen legacy role as an account ID")
+	}
+	ungranted := *context
+	ungranted.RoleRefs = []workspaceRoleRef{}
+	if check(&ungranted) {
+		t.Fatal("accepted a legacy account ID absent from roleRefs")
+	}
+	account["accountId"] = newID()
+	if check(context) {
+		t.Fatal("accepted a foreign account ID")
+	}
+	account["accountId"] = id
+	proposal["dependencies"] = []any{map[string]string{"name": "Other login", "purpose": "login", "origin": "https://other.test"}}
+	proposal["loginRoles"] = []any{map[string]any{"roleId": id, "name": "原會員", "loginMethod": "form", "loginOrigin": "https://other.test"}}
+	if check(context) {
+		t.Fatal("repointed the legacy alias to a different origin")
+	}
+}
+
 func TestM8WorkspaceAuthorFlatInputJournalDedupCancel(t *testing.T) {
 	m, driver, ctx := lifecycleManager(t, 1)
 	d := m8Dispatch(t)
