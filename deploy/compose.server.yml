@@ -26,6 +26,7 @@ services:
       dockerfile: services/server/Dockerfile
     restart: unless-stopped
     environment:
+      WHIPPET_WORKSPACE_LOGIN_ENABLED: ${WHIPPET_WORKSPACE_LOGIN_ENABLED:-false}
       DATABASE_URL: postgres://${POSTGRES_USER:-whippet}:${POSTGRES_PASSWORD:?Run sh deploy/init-local.sh first}@postgres:5432/${POSTGRES_DB:-whippet}?sslmode=disable
       MANAGER_TOKEN: ${MANAGER_TOKEN:?Run sh deploy/init-local.sh first}
       ARTIFACT_DIR: /data/artifacts

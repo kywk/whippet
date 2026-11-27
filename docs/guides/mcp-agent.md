@@ -165,6 +165,8 @@ Wave6必要真MCP/隔離PG檢查已通過；使用合成validation artifact，�
 
 ## 使用 Workspace 的測試帳號
 
+部署時請一起更新 Server、Manager、Worker 與工具註冊表 17.0，並在 Server 設定 `WHIPPET_WORKSPACE_LOGIN_ENABLED=true`。登入能力沿用 Manager 與 Server 之間的 TLS 及 Workspace 機密主金鑰。
+
 互動模式從已就緒的 `browser_session_open` 或 `browser_session_status` 讀取 `testAccounts`。接單模式從 `task_claim.task.contextBundle.workspaceContext.testAccounts` 讀取本次授權目錄。先比對目標站台、角色、用途與逐站驗證結果。若案例需要兩名會員，分別選取兩個帳號識別碼，在獨立的瀏覽器工作階段執行。
 
 使用 `browser_login_account` 時傳入目錄中的 `accountId` 與 `targetOrigin`。腳本使用 `loginAsAccount(page, accountId, targetOrigin)`，接著斷言登入後可用的功能。訪客流程從未登入的工作階段開始。若目錄缺少測試需要的角色或站台，請 QA 在 Workspace 設定補充並驗證該帳號。[逐站登入契約](../../contracts/mvp-v15.md)
