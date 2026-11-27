@@ -1187,6 +1187,14 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
       if (workspace.id !== workspaceId) throw new ApiError('Workspace 回應不符。', 'WORKSPACE_CONFLICT');
       return workspace;
     },
+    async updateWorkspaceTestAccount(workspaceId, accountId, { revision, name, role, purpose }, signal) {
+      const workspace = parseWorkspaceDetail(await request(`/workspaces/${id(workspaceId)}/test-accounts/${id(accountId)}`, 'PATCH', signal,
+        { revision, name, role, purpose }, false, 200));
+      if (workspace.id !== workspaceId || !workspace.settings?.testAccounts.some((account) => account.accountId === accountId)) {
+        throw new ApiError('測試帳號或所屬 Workspace 不符。', 'WORKSPACE_CONFLICT');
+      }
+      return workspace;
+    },
     async updateWorkspaceAuthorEngine(workspaceId, revision, authorEngine, signal) {
       const workspace = parseWorkspaceDetail(await request(`/workspaces/${id(workspaceId)}/author-engine`, 'PATCH', signal, { revision, authorEngine }));
       if (workspace.id !== workspaceId) throw new ApiError('Workspace 回應不符。', 'WORKSPACE_CONFLICT');

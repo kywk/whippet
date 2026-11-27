@@ -4,6 +4,7 @@ import type { useActivity } from './activity';
 import { Loading, Notice, ReportLink, RunStatusBadge } from './components';
 import { BookIcon, CheckIcon, ChevronRightIcon, GearIcon, HomeIcon, PlayIcon, PlusIcon, RefreshIcon, ReportIcon } from './icons';
 import { WorkspaceAvailability } from './WorkspaceSettings';
+import { WorkspaceAccountDescriptions } from './WorkspaceTestAccounts';
 import type { Test, WorkspaceDetail, WorkspaceRunActivity } from './types';
 import './workspace-overview.css';
 
@@ -125,6 +126,7 @@ export function WorkspaceOverview({ workspace, titleRef, tests, testsLoading, te
 
         <div className="workspace-overview-context">
           <WorkspaceScope workspace={workspace} />
+          <WorkspaceAccountDescriptions workspace={workspace} />
           <WorkspaceAvailability workspace={workspace} heading="h2" />
         </div>
       </div>
@@ -165,7 +167,11 @@ function WorkspaceScope({ workspace }: { workspace: WorkspaceDetail }) {
       <dl className="workspace-scope-meta">
         <div className="workspace-scope-url"><dt>預設測試網址</dt><dd>{workspace.defaultTestUrl || '尚未設定'}</dd></div>
         <div><dt>單次執行逾時</dt><dd>{number.format(workspace.timeoutMs / 1000)} 秒</dd></div>
-        {config ? <><div><dt>必要相依服務</dt><dd>{number.format(config.dependencies.length)} 個</dd></div><div><dt>登入角色</dt><dd>{number.format(config.loginRoles.length)} 個</dd></div></> : null}
+        {config ? <>
+          <div><dt>必要相依服務</dt><dd>{number.format(config.dependencies.length)} 個</dd></div>
+          {config.testAccounts.length ? <div><dt>測試帳號</dt><dd>{number.format(config.testAccounts.length)} 組</dd></div>
+            : <div><dt>登入角色</dt><dd>{number.format(config.loginRoles.length)} 個</dd></div>}
+        </> : null}
       </dl>
     </div>
   </section>;

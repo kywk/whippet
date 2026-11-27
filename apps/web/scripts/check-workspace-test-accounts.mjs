@@ -69,3 +69,41 @@ response = { ...run, status: 'cancelled' };
 assert.equal((await api.cancelRun(runId)).kind, 'workspace_login_verification');
 assert.equal(calls.at(-1).url, `/api/runs/${runId}/cancel`);
 console.log('PASS WLA-2 proposal credentials, verification Run and cancellation API');
+
+const sameRoleId = '15000000-0000-4000-8000-000000000002';
+const site = { targetOrigin, loginMethod: 'form', entryUrl: `${targetOrigin}/login`,
+  form: { usernameSelector: '#signin-name', passwordSelector: '#signin-password', submitSelector: '#signin-submit' },
+  success: { url: `${targetOrigin}/members`, visibleSelector: '#account-menu' } };
+const accounts = [
+  { accountId, name: '下單會員', role: '會員', purpose: '開立測試訂單', sites: [site] },
+  { accountId: sameRoleId, name: '另一位會員', role: '會員', purpose: '驗證其他會員訂單不可見', sites: [site] },
+];
+const siteReadiness = [{ targetOrigin, testScope: 'authenticated', ready: true, reason: null, accounts: [
+  { accountId, state: 'verified', reason: null, runId, verifiedAt: run.createdAt },
+  { accountId: sameRoleId, state: 'pending', reason: 'credentials_required', runId: null, verifiedAt: null },
+] }];
+const workspace = { id: workspaceId, name: '會員站', lifecycle: 'active', revision: 4, authorizationRevision: 2,
+  sites: [], defaultTestUrl: targetOrigin, timeoutMs: 60_000, scopeStatus: 'confirmed', conversationId: proposalId,
+  activeRunId: null, currentProposal: null, roles: [], secretsAvailable: true, executionAvailable: true, unavailableReason: null,
+  settings: { name: '會員站', purpose: '驗證會員流程', backgroundSummary: '測試訂單', targets: [
+    { name: '會員站', purpose: '會員流程', origin: targetOrigin, testScope: 'authenticated' },
+  ], dependencies: [], excludedOrigins: [], exclusions: '', loginRoles: [], testAccounts: accounts, defaultTestUrl: targetOrigin, timeoutMs: 60_000 },
+  siteReadiness, permissions: { manageTests: true, manageSettings: true, manageMembers: false, manageWorkspaceAdmins: false, manageAgentTokens: false } };
+const update = { revision: 3, name: '下單會員', role: '會員', purpose: '建立與取消測試訂單' };
+response = { ...workspace, settings: { ...workspace.settings, testAccounts: [{ ...accounts[0], purpose: update.purpose }, accounts[1]] } };
+const updated = await api.updateWorkspaceTestAccount(workspaceId, accountId, { ...update, expectedSecretVersion: 1 });
+assert.equal(updated.revision, 4);
+assert.equal(updated.settings.testAccounts[0].purpose, update.purpose);
+assert.equal(updated.settings.testAccounts[1].accountId, sameRoleId);
+assert.deepEqual(updated.siteReadiness, siteReadiness);
+assert.deepEqual(calls.at(-1), { url: `/api/workspaces/${workspaceId}/test-accounts/${accountId}`, method: 'PATCH', body: update, cache: 'default', redirect: 'follow' });
+response = { ...workspace, settings: { ...workspace.settings, testAccounts: [accounts[1]] } };
+await assert.rejects(api.updateWorkspaceTestAccount(workspaceId, accountId, update), { code: 'WORKSPACE_CONFLICT' });
+const beforeDenials = calls.length;
+for (const [denial, code] of [[403, 'forbidden'], [409, 'conflict']]) {
+  status = denial;
+  response = { error: { code, message: 'Server rejected the update' } };
+  await assert.rejects(api.updateWorkspaceTestAccount(workspaceId, accountId, update), { code, status: denial });
+}
+assert.equal(calls.length, beforeDenials + 2);
+console.log('PASS WLA-3 account metadata CAS, same-role identity, verification status and refusal API');

@@ -115,6 +115,8 @@ export interface WorkspaceTestAccount {
   sites: WorkspaceSiteLogin[];
 }
 
+export type WorkspaceTestAccountUpdate = Pick<WorkspaceTestAccount, 'name' | 'role' | 'purpose'> & { revision: number };
+
 export const WORKSPACE_VERIFICATION_REASONS = [
   'scope_confirmation_required', 'login_setup_required', 'credentials_required', 'unsupported_login_method',
   'login_rejected', 'mfa_required', 'guest_accessible', 'login_not_verified', 'credential_unavailable',
@@ -664,6 +666,7 @@ export interface WhippetApi {
   replaceDraftWithNewTest(testId: string, sessionId: string, revision: number, replyId: string, signal?: AbortSignal): Promise<{ sourceTest: Test; test: Test }>;
   requestSummary(testId: string, editingSessionId: string, revision: number, validationRunId: string, signal?: AbortSignal): Promise<Run>;
   getWorkspace(workspaceId: string, signal?: AbortSignal): Promise<WorkspaceDetail>;
+  updateWorkspaceTestAccount(workspaceId: string, accountId: string, input: WorkspaceTestAccountUpdate, signal?: AbortSignal): Promise<WorkspaceDetail>;
   updateWorkspaceAuthorEngine(workspaceId: string, revision: number, authorEngine: AuthorEngine, signal?: AbortSignal): Promise<WorkspaceDetail>;
   getWorkspaceAgentRuntime?: (workspaceId: string, signal?: AbortSignal) => Promise<WorkspaceAgentRuntime>;
   updateWorkspaceAgentRuntime?: (workspaceId: string, revision: number, selection: AgentRuntimeSelection, signal?: AbortSignal) => Promise<WorkspaceAgentRuntime>;
