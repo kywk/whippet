@@ -37,8 +37,8 @@ def configure(server, manager, docker, image):
          "baseURL": MODEL_ORIGIN, "reasoningEffort": "low", "contextWindowTokens": 32768, "contextInputTokens": 16384}
         for engine in ("builtin", "vercel", "pi")
     ])
-    server.update(WHIPPET_AI_PROVIDER="openai-responses", WHIPPET_AI_BASE_URL=MODEL_ORIGIN,
-                  WHIPPET_AI_MODEL="wla4-builtin", WHIPPET_AI_CONTEXT_WINDOW_TOKENS="32768",
+    # The Server checks its default model against the packaged skill before selecting a runtime profile.
+    server.update(WHIPPET_AI_BASE_URL=MODEL_ORIGIN, WHIPPET_AI_CONTEXT_WINDOW_TOKENS="32768",
                   WHIPPET_AI_CONTEXT_INPUT_TOKENS="16384")
     manager.update(WHIPPET_AI_ENABLED="true", WHIPPET_AI_PROVIDER="openai-responses",
                    WHIPPET_AI_API_KEY="wla4-provider-key", OPENCODE_API_KEY="wla4-provider-key", WHIPPET_AI_BASE_URL=MODEL_ORIGIN,
