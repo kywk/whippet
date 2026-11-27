@@ -291,11 +291,11 @@ func verifyWorkspaceAccountMCP(t *testing.T, ctx context.Context, p *Postgres, e
 		t.Log("set WHIPPET_TOOL_REGISTRY_PATH to registry 17.0 for account tool coverage")
 		return
 	}
-	_, token, err := p.CreateAgentToken(ctx, w.ID, "synthetic WLA agent")
+	_, token, err := p.CreateAgentToken(ctx, w.ID, "synthetic interactive agent")
 	if err != nil {
 		t.Fatal(err)
 	}
-	mcp := func(name string, args, meta map[string]any) []byte {
+	mcp := func(token, name string, args, meta map[string]any) []byte {
 		params := map[string]any{"name": name, "arguments": args}
 		if meta != nil {
 			params["_meta"] = map[string]any{"whippet": meta}
@@ -307,6 +307,9 @@ func verifyWorkspaceAccountMCP(t *testing.T, ctx context.Context, p *Postgres, e
 		request.Header.Set("Authorization", "Bearer "+token)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Errorf("MCP %s returned HTTP %d", name, response.Code)
+		}
 		return response.Body.Bytes()
 	}
 	manager := func(kind string, payload any) {
@@ -372,72 +375,138 @@ func verifyWorkspaceAccountMCP(t *testing.T, ctx context.Context, p *Postgres, e
 			t.Fatal("MCP did not return only the approved submission result")
 		}
 	}
+	denied := func(scenario string, raw []byte) {
+		t.Helper()
+		var wire struct {
+			Result struct {
+				IsError    bool              `json:"isError"`
+				Structured map[string]string `json:"structuredContent"`
+			} `json:"result"`
+		}
+		if err := json.Unmarshal(raw, &wire); err != nil {
+			t.Errorf("%s did not return an MCP tool result: %v", scenario, err)
+			return
+		}
+		if !wire.Result.IsError || len(wire.Result.Structured) != 1 || wire.Result.Structured["error"] != "tool_unavailable" {
+			t.Errorf("%s: isError = %t, structured error = %q; want true and tool_unavailable", scenario, wire.Result.IsError, wire.Result.Structured["error"])
+		}
+	}
 	opened := make(chan []byte, 1)
-	go func() { opened <- mcp("browser_session_open", map[string]any{"requestId": NewID()}, nil) }()
+	go func() { opened <- mcp(token, "browser_session_open", map[string]any{"requestId": NewID()}, nil) }()
 	lease := open()
 	if raw := <-opened; !bytes.Contains(raw, []byte(`"testAccounts":[`)) || !bytes.Contains(raw, []byte(`"查詢既有訂單"`)) ||
 		bytes.Contains(raw, []byte("secretRef")) || bytes.Contains(raw, []byte("accountBindings")) {
 		t.Fatal("interactive MCP exposed an incorrect account directory")
 	}
 	meta := map[string]any{"sessionId": lease.SessionID, "leaseId": lease.LeaseID, "callId": NewID()}
-	if raw := mcp(browserLoginAccountTool, map[string]any{"accountId": second, "targetOrigin": support}, meta); !bytes.Contains(raw, []byte(`"isError":true`)) {
-		t.Fatal("interactive MCP accepted wrong site")
-	}
+	denied("interactive wrong site", mcp(token, browserLoginAccountTool, map[string]any{"accountId": second, "targetOrigin": support}, meta))
+	meta["callId"] = NewID()
+	denied("interactive unknown account", mcp(token, browserLoginAccountTool, map[string]any{"accountId": NewID(), "targetOrigin": orders}, meta))
 	callID := NewID()
 	meta["callId"] = callID
 	called := make(chan []byte, 1)
+	loginArgs := map[string]any{"accountId": first, "targetOrigin": orders}
 	go func() {
-		called <- mcp(browserLoginAccountTool, map[string]any{"accountId": first, "targetOrigin": orders}, meta)
+		called <- mcp(token, browserLoginAccountTool, loginArgs, meta)
 	}()
 	respond(lease, first, orders, callID)
 	reply(<-called)
+	// Invalidate one site's proof after opening the lease, keeping the pinned binding intact.
+	if _, err := p.DB.ExecContext(ctx, `UPDATE workspaces SET login_state=login_state #- ARRAY['sites',$2,$3,'proof']::text[] WHERE id=$1`, w.ID, first, orders); err != nil {
+		t.Fatal(err)
+	}
+	denied("interactive revoked binding", mcp(token, browserLoginAccountTool, loginArgs, meta))
 	args := map[string]any{"sessionId": lease.SessionID, "leaseId": lease.LeaseID}
-	if raw := mcp("browser_session_close", args, nil); bytes.Contains(raw, []byte(`"isError":true`)) {
+	if raw := mcp(token, "browser_session_close", args, nil); bytes.Contains(raw, []byte(`"isError":true`)) {
 		t.Fatal("interactive MCP could not close")
 	}
 	manager("session.closed", map[string]any{"sessionId": lease.SessionID, "leaseId": lease.LeaseID, "reason": "closed", "reclaimed": true})
+	meta["callId"] = NewID()
+	denied("interactive closed lease", mcp(token, browserLoginAccountTool, loginArgs, meta))
 
 	enableWorkspaceLoginTestSkill(t)
-	w, err = p.SetAuthorEngine(ctx, w.ID, w.Revision, "external")
-	if err != nil {
-		t.Fatal(err)
-	}
-	test, err := p.CreateTest(ctx, w.ID, "同角色帳號", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	edit, _, err := p.StartEditingSession(ctx, test.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := p.CreateAuthor(ctx, test.ID, edit.ID, "驗證這組帳號可以看到自己的訂單", edit.Draft.Revision); err != nil {
-		t.Fatal(err)
-	}
-	var claim struct {
-		Result struct {
-			Structured struct{ Task ExternalTask } `json:"structuredContent"`
+	claim := func(workspace Workspace, token string) ExternalTask {
+		t.Helper()
+		if _, err := p.SetAuthorEngine(ctx, workspace.ID, workspace.Revision, "external"); err != nil {
+			t.Fatal(err)
 		}
+		test, err := p.CreateTest(ctx, workspace.ID, "訂單頁驗證", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		edit, _, err := p.StartEditingSession(ctx, test.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		author, err := p.CreateAuthor(ctx, test.ID, edit.ID, "驗證這組帳號可以看到自己的訂單", edit.Draft.Revision)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var wire struct {
+			Result struct {
+				Structured struct{ Task ExternalTask } `json:"structuredContent"`
+			} `json:"result"`
+		}
+		raw := mcp(token, "task_claim", map[string]any{"requestId": NewID()}, nil)
+		if json.Unmarshal(raw, &wire) != nil || wire.Result.Structured.Task.RunID != author.Run.ID || !ValidID(author.Run.ID) ||
+			bytes.Contains(raw, []byte("secretRef")) || bytes.Contains(raw, []byte("accountBindings")) {
+			t.Fatal("external claim did not return the queued task with redacted bindings")
+		}
+		return wire.Result.Structured.Task
 	}
-	raw := mcp("task_claim", map[string]any{"requestId": NewID()}, nil)
-	if json.Unmarshal(raw, &claim) != nil || bytes.Contains(raw, []byte("secretRef")) || bytes.Contains(raw, []byte("accountBindings")) {
-		t.Fatal("external claim did not redact private login bindings")
+	_, claimToken, err := p.CreateAgentToken(ctx, w.ID, "synthetic claim agent")
+	if err != nil {
+		t.Fatal(err)
 	}
-	task := claim.Result.Structured.Task
-	if task.RunID == "" || task.ContextBundle.WorkspaceContext == nil ||
+	task := claim(w, claimToken)
+	if task.ContextBundle.WorkspaceContext == nil ||
 		len(task.ContextBundle.WorkspaceContext.TestAccounts) != 2 || !slices.Contains(task.ContextBundle.Author.AllowedTools, browserLoginAccountTool) {
 		t.Fatal("external claim did not retain its pinned account directory and tool")
 	}
 	callID = NewID()
 	taskArgs := map[string]any{"runId": task.RunID, "attemptId": task.AttemptID, "leaseId": task.LeaseID, "callId": callID, "name": browserLoginAccountTool,
 		"arguments": map[string]any{"accountId": second, "targetOrigin": support}}
-	if raw := mcp("task_tool_call", taskArgs, nil); !bytes.Contains(raw, []byte(`"isError":true`)) {
-		t.Fatal("MCP claim accepted wrong site")
-	}
+	denied("claimed wrong site", mcp(claimToken, "task_tool_call", taskArgs, nil))
 	taskArgs["arguments"] = map[string]any{"accountId": second, "targetOrigin": orders}
-	go func() { called <- mcp("task_tool_call", taskArgs, nil) }()
+	go func() { called <- mcp(claimToken, "task_tool_call", taskArgs, nil) }()
 	lease = open()
 	respond(lease, second, orders, callID)
 	reply(<-called)
+	successfulCallID := callID
+	callID = NewID()
+	taskArgs["callId"] = callID
+	go func() { called <- mcp(claimToken, "task_tool_call", taskArgs, nil) }()
+	nextBrowserMessage(t, peer, "session.call")
+	manager("session.reply", map[string]any{"sessionId": lease.SessionID, "leaseId": lease.LeaseID,
+		"callId": callID, "error": "tool_unavailable"})
+	denied("claimed browser denial", <-called)
+	denied("claimed browser denial replay", mcp(claimToken, "task_tool_call", taskArgs, nil))
+	if _, err := p.DB.ExecContext(ctx, `UPDATE workspace_secrets SET revoked_at=now() WHERE workspace_id=$1 AND role_id=$2`, w.ID, second); err != nil {
+		t.Fatal(err)
+	}
+	taskArgs["callId"] = successfulCallID
+	denied("claimed revoked account", mcp(claimToken, "task_tool_call", taskArgs, nil))
+
+	guest, err := p.CreateWorkspace(ctx, "訪客訂單")
+	if err != nil {
+		t.Fatal(err)
+	}
+	guestConfig := WorkspaceConfig{Name: guest.Name, TimeoutMS: 60000,
+		Targets: []WorkspaceOrigin{{Name: "訂單", Origin: orders, TestScope: testScopeGuest}}, TestAccounts: []TestAccount{}}
+	if _, err := p.DB.ExecContext(ctx, `UPDATE workspaces SET lifecycle='active',scope_status='confirmed',authorization_revision=1,canonical_config=$2 WHERE id=$1`,
+		guest.ID, jsonText(guestConfig)); err != nil {
+		t.Fatal(err)
+	}
+	_, guestToken, err := p.CreateAgentToken(ctx, guest.ID, "synthetic guest agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	guestTask := claim(guest, guestToken)
+	if slices.Contains(guestTask.ContextBundle.Author.AllowedTools, browserLoginAccountTool) {
+		t.Fatal("guest task was offered the account login tool")
+	}
+	taskArgs["runId"], taskArgs["attemptId"], taskArgs["leaseId"], taskArgs["callId"] = guestTask.RunID, guestTask.AttemptID, guestTask.LeaseID, NewID()
+	denied("guest claim without tool grant", mcp(guestToken, "task_tool_call", taskArgs, nil))
 }
 
 func enableWorkspaceLoginTestSkill(t *testing.T) {

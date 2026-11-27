@@ -116,7 +116,7 @@ func (a *API) callExternalTool(ctx context.Context, p *Postgres, token AgentToke
 	}
 	nested, ok := registry.tool(name)
 	if !ok {
-		return mcpToolError()
+		return mcpToolDenial(name)
 	}
 	canonical, err := validateToolArguments(nested, args)
 	if err != nil {
@@ -124,10 +124,10 @@ func (a *API) callExternalTool(ctx context.Context, p *Postgres, token AgentToke
 	}
 	c, prior, replay, err := p.ReserveExternalToolCall(ctx, token, runID, attemptID, leaseID, callID, name, canonical, registry)
 	if err != nil {
-		return mcpToolError()
+		return mcpToolDenial(name)
 	}
 	if replay {
-		return externalToolMCPResult(prior, outer.Limits.MaxOutputBytes)
+		return externalToolMCPResult(prior, name, outer.Limits.MaxOutputBytes)
 	}
 	toolCtx, cancel := context.WithTimeout(ctx, time.Duration(nested.Limits.TimeoutMS)*time.Millisecond)
 	defer cancel()
@@ -140,14 +140,16 @@ func (a *API) callExternalTool(ctx context.Context, p *Postgres, token AgentToke
 		receipt = externalToolReceipt{Error: "unknown_result"}
 	}
 	done()
-	return externalToolMCPResult(receipt, outer.Limits.MaxOutputBytes)
+	return externalToolMCPResult(receipt, name, outer.Limits.MaxOutputBytes)
 }
 
-func externalToolMCPResult(receipt externalToolReceipt, limit int) *mcp.CallToolResult {
+func externalToolMCPResult(receipt externalToolReceipt, name string, limit int) *mcp.CallToolResult {
 	if receipt.Error != "" {
 		switch receipt.Error {
 		case "busy", "unknown_result", "workspace_archiving", "workspace_archived":
 			return mcpErrorCode(receipt.Error)
+		case "tool_unavailable":
+			return mcpToolDenial(name)
 		}
 		return mcpToolError()
 	}
