@@ -3,6 +3,7 @@
 
 import argparse
 import copy
+import hashlib
 import importlib.util
 import ipaddress
 import json
@@ -25,21 +26,38 @@ AUTHENTICATED = "Authenticated synthetic customer"
 DENIED = "tool_unavailable"
 TERMINAL = {"succeeded", "failed", "timed_out", "cancelled", "interrupted"}
 SENTINEL = re.compile(r"wla4-(?:secret-[a-z0-9-]+|provider-key)")
+MANAGED_ENGINES = ("builtin", "vercel", "pi")
+A5_ENTRIES = (*MANAGED_ENGINES, "mcp-interactive", "mcp-claim")
+FINAL_FOCUS = ("a2", "a3", "a4", "a5", "a6", *A5_ENTRIES)
+ACCOUNT_PURPOSES = ("建立訂單", "檢查他人的訂單不可見")
 
 
-def configure(server, manager, docker, image):
+def configure(server, manager, docker, image, *, final=False):
     label = docker("image", "inspect", image, "--format", '{{index .Config.Labels "org.whippet.acceptance"}}',
                    check=True).stdout.strip()
     if label != "wla4":
         raise RuntimeError("--wla requires the derived image from scripts/test/wla4-worker.Dockerfile")
+    if final:
+        registry = (HERE.parents[1] / "contracts/tools/registry.json").read_bytes()
+        if not any(tool["name"] == "browser_login_account" for tool in json.loads(registry)["tools"]):
+            raise RuntimeError("run final from the merged checkout with the scoped login registry")
+        probe = """const fs = require('node:fs'), crypto = require('node:crypto');
+          const files = ['/app/contracts/tools/registry.json', '/opt/wla4/fixture.mjs'];
+          for (const path of files) console.log(crypto.createHash('sha256').update(fs.readFileSync(path)).digest('hex'));
+          if (!fs.existsSync('/opt/whippet/worker/dist/login/verification-main.js')) process.exitCode = 1;
+        """
+        bundled = docker("run", "--rm", "--pull=never", "--network", "none", "--entrypoint", "node", image, "-e", probe)
+        expected = [hashlib.sha256(contents).hexdigest() for contents in (registry, (HERE / "wla4-fixture.mjs").read_bytes())]
+        if bundled.returncode != 0 or bundled.stdout.splitlines() != expected:
+            raise RuntimeError("rebuild the final Worker and WLA model image from the merged checkout")
     server["WHIPPET_AI_RUNTIME_PROFILES_JSON"] = json.dumps([
         {"id": f"wla4-{engine}", "engine": engine, "provider": "openai-responses", "model": f"wla4-{engine}",
          "baseURL": MODEL_ORIGIN, "reasoningEffort": "low", "contextWindowTokens": 32768, "contextInputTokens": 16384}
-        for engine in ("builtin", "vercel", "pi")
+        for engine in MANAGED_ENGINES
     ])
     # The Server checks its default model against the packaged skill before selecting a runtime profile.
     server.update(WHIPPET_AI_BASE_URL=MODEL_ORIGIN, WHIPPET_AI_CONTEXT_WINDOW_TOKENS="32768",
-                  WHIPPET_AI_CONTEXT_INPUT_TOKENS="16384")
+                  WHIPPET_AI_CONTEXT_INPUT_TOKENS="16384", WHIPPET_WORKSPACE_LOGIN_ENABLED="true")
     manager.update(WHIPPET_AI_ENABLED="true", WHIPPET_AI_PROVIDER="openai-responses",
                    WHIPPET_AI_API_KEY="wla4-provider-key", OPENCODE_API_KEY="wla4-provider-key", WHIPPET_AI_BASE_URL=MODEL_ORIGIN,
                    WHIPPET_AI_MODEL="wla4-builtin", WHIPPET_AI_CONTEXT_WINDOW_TOKENS="32768",
@@ -62,16 +80,20 @@ def prepare(stack, wave, services, root, env, token, database, image, api_url, c
                "--mount", f"type=bind,src={shop},dst=/wla-shop.mjs,readonly",
                "--entrypoint", "node", image, "/opt/wla4/fixture.mjs", "--shop", env=site_env, check=True)
         stack.callback(docker, "stop", name, check=True)
-        await_ready(lambda: docker("exec", name, "node", "-e",
-                                   "require('node:http').get('http://127.0.0.1:8080/healthz',r=>{r.resume();"
-                                   "process.exitCode=Number(r.statusCode!==200)}).on('error',()=>process.exit(1))")
-                    .returncode == 0, f"isolated shop {site} did not start")
+        listening_ports = [8080, 8081, 8082] if site == "orders" else [8080]
+        probe = f"""for (const port of {listening_ports}) {{
+          require('node:http').get(`http://127.0.0.1:${{port}}/healthz`, r => {{
+            r.resume(); if (r.statusCode !== 200) process.exitCode = 1;
+          }}).on('error', () => process.exit(1));
+        }}"""
+        await_ready(lambda: docker("exec", name, "node", "-e", probe).returncode == 0,
+                    f"isolated shop {site} did not open all required ports")
         ip = docker("inspect", name, "--format", "{{.NetworkSettings.Networks.bridge.IPAddress}}", check=True).stdout.strip()
         if not ipaddress.IPv4Address(ip).is_private:
             raise RuntimeError("shop must use a private Docker bridge address")
         if site == "orders":
             origins.update(auth=f"http://{ip}:8080", orders=f"http://{ip}:8081", support=f"http://{ip}:8082")
-            containers.update(orders=name, support=name)
+            containers.update(auth=name, orders=name, support=name)
         else:
             origins[site], containers[site] = f"http://{ip}:8080", name
 
@@ -161,6 +183,7 @@ class Acceptance:
                   ipaddress.IPv4Address(target.hostname).is_private,
                   "fixture origin must be on the isolated Docker bridge")
         self.checks = {}
+        self.stage = "setup"
 
     def api(self, method, path, status=200, data=None, code=None, page=None):
         return clean(self.adm.api(page or self.admin, self.base, method, path, status, data, code))
@@ -231,23 +254,30 @@ class Acceptance:
                         {"baseRevision": base_revision if base_revision is not None else proposal["baseRevision"],
                          "confirmed": True}, code)
 
-    def card(self, proposal):
-        card = self.admin.locator(f'[data-proposal-id="{proposal["id"]}"]')
+    def panel(self, tab):
+        button = self.admin.locator(f"#ws-tab-{tab}")
         toggle = self.admin.get_by_role("button", name="提案與登入資料", exact=True)
-        if toggle.is_visible():
+        if not button.is_visible() and toggle.is_visible():
             toggle.click()
+        button.click()
+        return self.admin.locator(f"#ws-panel-{tab}")
+
+    def card(self, proposal):
+        card = self.panel("proposal").locator(f'[data-proposal-id="{proposal["id"]}"]')
         card.wait_for()
         return card
 
-    def apply_from_web(self, proposal):
+    def confirm_from_web(self, proposal, action):
+        label = {"confirm": "確認並套用提案", "confirm-scope": "確認提案範圍"}[action]
         card = self.card(proposal)
-        checkbox = card.get_by_role("checkbox", name=re.compile("我已檢視"))
-        if checkbox.count():
-            checkbox.check()
-        with self.admin.expect_response(lambda response: response.url.endswith(self.proposal_path(proposal) + "/confirm") and
-                                        response.request.method == "POST") as saved:
-            card.get_by_role("button", name="確認並套用提案", exact=True).click()
-        return clean(self.adm.checked(saved.value, 200))["workspace"]
+        card.get_by_role("checkbox", name=re.compile("我已檢視")).check()
+        path = self.proposal_path(proposal) + "/" + action
+        with self.admin.expect_response(lambda response: response.url.endswith(path) and response.request.method == "POST") as saved:
+            card.get_by_role("button", name=label, exact=True).click()
+        return clean(self.adm.checked(saved.value, 200))
+
+    def apply_from_web(self, proposal):
+        return self.confirm_from_web(proposal, "confirm")["workspace"]
 
     @staticmethod
     def site(subject, origin):
@@ -261,10 +291,17 @@ class Acceptance:
         check(len(matches) == 1, "site must expose the selected account status")
         return matches[0]
 
-    def w1(self):
+    def w1(self, *, guest_only=False):
         name = "WLA4 訪客說明站"
         workspace = self.create_from_web(name)
         origin = self.origins["guest"]
+        if guest_only:
+            ready = self.propose(workspace, configuration(name, [("公開登入入口", origin, "guest")]),
+                                 "這次只測訪客。", web=True)
+            applied = self.apply_from_web(ready)
+            check(applied["lifecycle"] == "active" and not applied["settings"]["testAccounts"],
+                  "A5 needs an active visitor Workspace with zero accounts")
+            return workspace
         proposal = self.propose(workspace, configuration(name, [("公開登入入口", origin, "unknown")]),
                                 "這個站要測訪客或登入後流程？", web=True)
         row = self.site(proposal, origin)
@@ -293,27 +330,52 @@ class Acceptance:
         self.checks["A1"] = {"workspaceId": workspace, "unknown": 409, "missingEvidence": 409, "guestApply": 200}
         return workspace
 
-    def save_credentials(self, proposal, account, credentials):
+    def save_credentials(self, proposal, account, credentials, *, web=False):
         state = next(row for row in self.proposal(proposal)["accountCredentials"] if row["accountId"] == account)
         path = self.proposal_path(proposal) + f"/test-accounts/{account}/credentials"
-        result = self.api("PUT", path, data={"baseRevision": proposal["baseRevision"],
-                                            "expectedSecretVersion": state["secretVersion"] or 0,
-                                            "username": credentials[0], "password": credentials[1]})
+        if web:
+            from playwright.sync_api import expect
+            form = self.panel("credentials")
+            form.get_by_role("combobox", name="測試帳號", exact=True).select_option(account)
+            username = form.get_by_label("登入帳號", exact=True)
+            username.fill(credentials[0])
+            form.get_by_label("登入密碼", exact=True).fill(credentials[1])
+            with self.admin.expect_response(lambda response: response.url.endswith(path) and response.request.method == "PUT") as saved:
+                form.get_by_role("button", name="保存登入資料", exact=True).click()
+            result = clean(self.adm.checked(saved.value, 200))
+            expect(username).to_have_value("")
+        else:
+            result = self.api("PUT", path, data={"baseRevision": proposal["baseRevision"],
+                                                "expectedSecretVersion": state["secretVersion"] or 0,
+                                                "username": credentials[0], "password": credentials[1]})
         check(result["configured"] and result["secretVersion"] > (state["secretVersion"] or 0), "new credential version")
         return result["secretVersion"]
 
-    def enqueue(self, proposal, account, site, *, check_replay=False):
-        request = {"baseRevision": proposal["baseRevision"], "requestId": str(uuid4()),
-                   "accountId": account, "targetOrigin": self.origins[site]}
+    def enqueue(self, proposal, account, site, *, check_replay=False, web=False):
+        target = self.origins[site]
         path = self.proposal_path(proposal) + "/verify-login"
-        run = self.api("POST", path, 202, request)["run"]
+        fields = {"baseRevision": proposal["baseRevision"], "accountId": account, "targetOrigin": target}
+        if web:
+            current = self.proposal(proposal)
+            site_name = next(row["name"] for row in current["content"]["targets"] if row["origin"] == target)
+            account_name = next(row["name"] for row in current["content"]["testAccounts"] if row["accountId"] == account)
+            action = "重試登入驗證" if self.account(current, target, account)["state"] == "failed" else "驗證登入"
+            button = self.card(proposal).get_by_role("button", name=f"{action} · {site_name} · {account_name}", exact=True)
+            with self.admin.expect_response(lambda response: response.url.endswith(path) and response.request.method == "POST") as queued:
+                button.click()
+            run = clean(self.adm.checked(queued.value, 202))["run"]
+            request = queued.value.request.post_data_json
+            check(all(request.get(field) == value for field, value in fields.items()), "Web queued a different login binding")
+        else:
+            request = {**fields, "requestId": str(uuid4())}
+            run = self.api("POST", path, 202, request)["run"]
         check(run["kind"] == "workspace_login_verification" and run["testId"] is None, "expected Workspace verification Run")
         if check_replay:
             check(self.api("POST", path, 202, request)["run"]["id"] == run["id"], "request replay queued another Run")
         return run["id"]
 
-    def verify(self, proposal, account, site, expected, reason=None, *, check_replay=False):
-        run_id = self.enqueue(proposal, account, site, check_replay=check_replay)
+    def verify(self, proposal, account, site, expected, reason=None, *, check_replay=False, web=False):
+        run_id = self.enqueue(proposal, account, site, check_replay=check_replay, web=web)
         run = self.terminal(run_id, expected)
         state = self.account(self.proposal(proposal), self.origins[site], account)
         check(state["runId"] == run_id and (state["state"] == "verified") == (run["status"] == "succeeded"),
@@ -324,18 +386,20 @@ class Acceptance:
 
     def shop_count(self, site, line):
         result = subprocess.run(["docker", "logs", self.containers[site]], capture_output=True, text=True, check=True, timeout=10)
-        return result.stdout.splitlines().count(line)
+        return result.stdout.splitlines().count(f"{urlsplit(self.origins[site]).port} {line}")
 
-    def multi_site(self):
+    def multi_site(self, *, exercise_partial=True):
         guest, orders, support, auth = (self.origins[key] for key in ("guest", "orders", "support", "auth"))
         name = "WLA4 商店與客服"
         workspace = self.create_from_web(name)
         accounts = [
-            {"accountId": None, "name": "會員 A", "role": "會員", "purpose": "建立訂單",
+            {"accountId": None, "name": "會員 A", "role": "會員", "purpose": ACCOUNT_PURPOSES[0],
              "sites": [binding(orders, login_origin=auth)]},
-            {"accountId": None, "name": "會員 B", "role": "會員", "purpose": "檢查他人的訂單不可見",
-             "sites": [binding(orders, login_origin=auth), binding(support, "#absent-after-submit", login_origin=auth)]},
+            {"accountId": None, "name": "會員 B", "role": "會員", "purpose": ACCOUNT_PURPOSES[1],
+             "sites": [binding(orders, login_origin=auth), binding(support, login_origin=auth)]},
         ]
+        if exercise_partial:
+            accounts[1]["sites"][1]["success"]["visibleSelector"] = "#absent-after-submit"
         config = configuration(name, [("訪客站", guest, "guest"), ("訂單站", orders, "authenticated"),
                                       ("客服站", support, "both")], accounts)
         config["dependencies"] = [{"name": "共用登入", "origin": auth, "purpose": "login"}]
@@ -343,14 +407,20 @@ class Acceptance:
         ids = {row["name"]: row["accountId"] for row in proposal["content"]["testAccounts"]}
         owner, other = ids["會員 A"], ids["會員 B"]
         check(str(owner) != str(other), "same-role choices need two different IDs")
-        self.save_credentials(proposal, owner, self.credentials[0])
-        self.save_credentials(proposal, other, self.credentials[1])
-        proposal = self.act(proposal, "confirm-scope")
-        orders_run = self.verify(proposal, owner, "orders", {"succeeded"}, check_replay=True)
-        self.verify(proposal, other, "orders", {"succeeded"})
-        submissions = self.shop_count("support", "POST /login 303")
-        submit_only = self.verify(proposal, other, "support", {"failed", "timed_out"}, {"login_not_verified", "timed_out"})
-        check(self.shop_count("support", "POST /login 303") > submissions, "partial failure must follow a real form submit")
+        self.save_credentials(proposal, owner, self.credentials[0], web=exercise_partial)
+        self.save_credentials(proposal, other, self.credentials[1], web=exercise_partial)
+        proposal = self.confirm_from_web(proposal, "confirm-scope") if exercise_partial else self.act(proposal, "confirm-scope")
+        orders_run = self.verify(proposal, owner, "orders", {"succeeded"}, check_replay=exercise_partial, web=exercise_partial)
+        self.verify(proposal, other, "orders", {"succeeded"}, web=exercise_partial)
+        if not exercise_partial:
+            self.verify(proposal, other, "support", {"succeeded"})
+            self.act(proposal, "confirm")
+            return workspace, owner, other
+        submissions = self.shop_count("auth", "POST /login 303")
+        checks = self.shop_count("support", "GET /products 200")
+        submit_only = self.verify(proposal, other, "support", {"failed"}, {"login_not_verified"}, web=True)
+        check(self.shop_count("auth", "POST /login 303") > submissions and self.shop_count("support", "GET /products 200") > checks,
+              "partial failure must submit at the shared IdP and reach the correct target")
         draft = self.proposal(proposal)
         check(self.site(draft, orders)["ready"] and not self.site(draft, support)["ready"], "readiness may not cross origins")
         self.act(draft, "confirm", 409, "workspace_setup_incomplete")
@@ -365,9 +435,9 @@ class Acceptance:
         target["sites"][1] = binding(support, login_origin=auth)
         proposal = self.propose(workspace, fixed, "客服站改驗登入後的身分標記。", web=True)
         if not proposal["scopeConfirmed"]:
-            proposal = self.act(proposal, "confirm-scope")
+            proposal = self.confirm_from_web(proposal, "confirm-scope")
         check(self.site(proposal, orders)["ready"], "untouched site evidence must carry to the next proposal")
-        support_run = self.verify(proposal, other, "support", {"succeeded"})
+        support_run = self.verify(proposal, other, "support", {"succeeded"}, web=True)
         self.open_settings(name)
         confirmed = self.apply_from_web(self.proposal(proposal))
         check(all(site["ready"] for site in confirmed["siteReadiness"]), "all three sites must be ready after apply")
@@ -397,14 +467,16 @@ class Acceptance:
             proposal = self.act(proposal, "confirm-scope")
         wrong = self.credentials[1][0], f"wla4-secret-{uuid4().hex}"
         self.save_credentials(proposal, account, wrong)
-        rejects = self.shop_count("support", "POST /login 401")
+        rejects = self.shop_count("auth", "POST /login 401")
         failed = self.verify(proposal, account, "support", {"failed"}, {"login_rejected"})
-        check(self.shop_count("support", "POST /login 401") > rejects, "fixture must reject the submitted wrong password")
+        check(self.shop_count("auth", "POST /login 401") > rejects, "shared IdP must reject the submitted wrong password")
         self.open_settings(config["name"])
-        check(self.card(proposal).is_visible(), "failed verification must be visible after reopening the draft")
+        from playwright.sync_api import expect
+        row = self.card(proposal).get_by_role("button", name="重試登入驗證 · 客服站 · 會員 B", exact=True).locator("..")
+        expect(row.get_by_text("登入資料遭站台拒絕。請更新帳密後重試。", exact=True)).to_be_visible()
         self.act(proposal, "confirm", 409, "workspace_setup_incomplete")
-        self.save_credentials(proposal, account, self.credentials[1])
-        succeeded = self.verify(proposal, account, "support", {"succeeded"})
+        self.save_credentials(proposal, account, self.credentials[1], web=True)
+        succeeded = self.verify(proposal, account, "support", {"succeeded"}, web=True)
         check(self.workspace(workspace)["revision"] == active["revision"], "draft retry must preserve the confirmed version")
 
         self.root.joinpath("wla4-arm.json").write_text(json.dumps({"targetOrigin": support, "accountId": account}))
@@ -440,13 +512,19 @@ class Acceptance:
         qa = self.adm.login(self.browser, self.base, self.key, "dev-qa")
         initial = self.workspace(workspace)
         self.api("GET", workspace_path, page=qa)
+        self.open_settings(initial["name"])
+        panel = self.panel("settings").get_by_role("region", name="測試帳號維護", exact=True)
         purposes = ("建立驗收訂單", "檢查別的會員看不到驗收訂單")
         for account, name, purpose in zip((owner, other), ("會員 A", "會員 B"), purposes):
             before = self.workspace(workspace)
             path = workspace_path + f"/test-accounts/{account}"
             patch = {"revision": before["revision"], "name": name, "role": "會員", "purpose": purpose}
             self.api("PATCH", path, 403, patch, "forbidden", page=qa)
-            after = self.api("PATCH", path, data=patch)
+            panel.locator(f'[data-account-id="{account}"]').get_by_role("button", name=f"編輯 {name} 的說明", exact=True).click()
+            panel.get_by_label("用途", exact=True).fill(purpose)
+            with self.admin.expect_response(lambda response: response.url.endswith(path) and response.request.method == "PATCH") as saved:
+                panel.get_by_role("button", name="保存帳號說明", exact=True).click()
+            after = clean(self.adm.checked(saved.value, 200))
             check(after["revision"] > before["revision"], "account metadata needs a new Workspace revision")
         check(initial["siteReadiness"] == self.workspace(workspace)["siteReadiness"], "metadata edit must preserve evidence")
         self.checks["A4"] = {"metadataUpdated": True, "qaWrite": 403}
@@ -482,10 +560,11 @@ class Acceptance:
         run = self.api("POST", route + "/messages", 202, request)["run"]
         return route, run["id"]
 
-    def managed_entrypoints(self, workspace, empty, purposes):
+    def managed_entrypoints(self, workspace, empty, purposes, engines):
         payload = {"target": self.origins["orders"], "wrongTarget": self.origins["support"],
                    "ownerPurpose": purposes[0], "otherPurpose": purposes[1]}
-        for engine in ("builtin", "vercel", "pi"):
+        for engine in engines:
+            self.stage = f"A5 {engine}"
             self.runtime(workspace, engine)
             route, run_id = self.author(workspace, f"WLA4 {engine} 會員工具", payload)
             self.terminal(run_id, {"succeeded"})
@@ -567,9 +646,10 @@ class Acceptance:
         self.checks["A5"]["mcpInteractive"] = {"allowed": True, "wrongSite": DENIED, "foreignAccount": DENIED,
                                                 "missingAccounts": True, "sessionId": ids["sessionId"]}
 
-    def set_external(self, workspace):
+    def set_author_engine(self, workspace, engine):
         prior = self.workspace(workspace)
-        self.api("PATCH", f"/api/workspaces/{workspace}/author-engine", data={"revision": prior["revision"], "authorEngine": "external"})
+        if prior["authorEngine"] != engine:
+            self.api("PATCH", f"/api/workspaces/{workspace}/author-engine", data={"revision": prior["revision"], "authorEngine": engine})
 
     def claim(self, mcp, run_id):
         task = self.tool(mcp, "task_claim", {"requestId": str(uuid4())})["task"]
@@ -590,11 +670,13 @@ class Acceptance:
 
     def claimed_mcp(self, mcp, foreign, workspace, empty, owner, other, purposes):
         orders, support = self.origins["orders"], self.origins["support"]
-        self.set_external(workspace)
+        self.set_author_engine(workspace, "external")
         route, run_id = self.author(workspace, "WLA4 外部雙身分訂單", {"target": orders})
         task, ids = self.claim(mcp, run_id)
-        context = task["contextBundle"]["workspaceContext"]
+        bundle = task["contextBundle"]
+        context = bundle["workspaceContext"]
         check("accountBindings" not in context, "MCP claim exposed private binding information")
+        check("browser_login_account" in bundle["author"]["allowedTools"], "claim is missing the scoped login tool")
         self.assert_directory(context["testAccounts"], owner, other, purposes, orders)
         self.tool(mcp, "task_heartbeat", ids)
         self.task_tool(mcp, ids, "browser_login_account", {"accountId": owner, "targetOrigin": support}, DENIED)
@@ -610,10 +692,13 @@ class Acceptance:
         self.report(validation)
         check(self.api("GET", route + "/draft")["script"] == candidate, "verified draft must be the submitted account-ID script")
 
-        self.set_external(empty)
+        self.set_author_engine(empty, "external")
         route, missing_run = self.author(empty, "WLA4 外部帳號缺項", {"missing": True})
         task, missing_ids = self.claim(foreign, missing_run)
-        check(task["contextBundle"]["workspaceContext"]["testAccounts"] == [], "claim on guest scope must show no accounts")
+        bundle = task["contextBundle"]
+        context = bundle["workspaceContext"]
+        check(context.get("testAccounts", []) == [] and "accountBindings" not in context and
+              "browser_login_account" not in bundle["author"]["allowedTools"], "claim on guest scope must grant no account access")
         self.task_tool(foreign, missing_ids, "browser_login_account", {"accountId": owner, "targetOrigin": orders}, DENIED)
         missing = "缺少適用的會員測試帳號，請補充。"
         self.tool(foreign, "task_submit", {**missing_ids, "submitId": str(uuid4()), "output": {
@@ -621,6 +706,8 @@ class Acceptance:
         self.terminal(missing_run, {"succeeded"})
         messages = self.api("GET", route + "/conversation")["messages"]
         check(any(row["content"] == missing and row["role"] == "assistant" for row in messages), "external account gap must reach the user")
+        self.set_author_engine(workspace, "builtin")
+        self.set_author_engine(empty, "builtin")
         self.checks["A5"]["mcpClaim"] = {"runId": run_id, "validationRunId": validation, "wrongSite": DENIED,
                                          "missingAccountRunId": missing_run, "foreignAccount": DENIED}
 
@@ -671,17 +758,49 @@ test('original v8 role', async ({{page}}) => {{
                               "proposalVerificationRunId": evidence, "upgradedValidationRunId": rerun,
                               "missingEvidence": 409, "staleRevision": 409}
 
-    def final(self, empty):
-        workspace, owner, other = self.multi_site()
-        self.retry_and_late_result(workspace, other)
-        purposes = self.update_account_metadata(workspace, owner, other)
-        self.checks["A5"] = {}
-        self.managed_entrypoints(workspace, empty, purposes)
-        mcp, foreign = self.mcp_client(workspace), self.mcp_client(empty)
-        self.interactive_mcp(mcp, foreign, owner, other, purposes)
-        self.claimed_mcp(mcp, foreign, workspace, empty, owner, other, purposes)
-        self.rotation(workspace, owner, other)
-        self.legacy()
+    def final(self, focus):
+        if focus == "a6":
+            self.stage = "A6"
+            self.legacy()
+            return
+        entries = A5_ENTRIES if focus in (None, "a5") else ()
+        if focus in A5_ENTRIES:
+            entries = (focus,)
+        empty = None
+        if entries:
+            self.stage = "A1" if focus is None else "prepare guest Workspace"
+            empty = self.w1(guest_only=focus is not None)
+        exercise_partial = focus in (None, "a2")
+        self.stage = "A2" if exercise_partial else "prepare verified accounts"
+        workspace, owner, other = self.multi_site(exercise_partial=exercise_partial)
+        if focus == "a2":
+            return
+        if focus in (None, "a3"):
+            self.stage = "A3"
+            self.retry_and_late_result(workspace, other)
+        if focus == "a3":
+            return
+        purposes = ACCOUNT_PURPOSES
+        if focus in (None, "a4"):
+            self.stage = "A4 metadata"
+            purposes = self.update_account_metadata(workspace, owner, other)
+        if entries:
+            self.checks["A5"] = {}
+            self.managed_entrypoints(workspace, empty, purposes, [entry for entry in entries if entry in MANAGED_ENGINES])
+            if "mcp-interactive" in entries or "mcp-claim" in entries:
+                mcp, foreign = self.mcp_client(workspace), self.mcp_client(empty)
+                if "mcp-interactive" in entries:
+                    self.stage = "A5 MCP interactive"
+                    self.interactive_mcp(mcp, foreign, owner, other, purposes)
+                if "mcp-claim" in entries:
+                    self.stage = "A5 MCP claim"
+                    self.claimed_mcp(mcp, foreign, workspace, empty, owner, other, purposes)
+        if focus in (None, "a4"):
+            self.stage = "A4 rotation"
+            self.rotation(workspace, owner, other)
+        if focus is None:
+            self.stage = "A6"
+            self.legacy()
 
 
 def order_script(origin, owner, other):
@@ -714,7 +833,10 @@ def main():
     parser.add_argument("--evidence-dir", type=Path, required=True)
     parser.add_argument("--browser-executable", type=Path)
     parser.add_argument("--wave", choices=("w1", "final"), required=True)
+    parser.add_argument("--focus", choices=FINAL_FOCUS, help="run one final acceptance case and its prerequisites")
     args = parser.parse_args()
+    if args.focus and args.wave != "final":
+        parser.error("--focus requires --wave final")
     base = urlsplit(args.base_url)
     if base.scheme != "http" or base.hostname != "127.0.0.1" or not base.port or base.path or base.query or base.fragment:
         parser.error("use the ephemeral loopback Web URL from adm4-local.py --wla")
@@ -724,6 +846,8 @@ def main():
 
     acceptance = None
     summary = {"wave": args.wave, "status": "failed", "checks": {}}
+    if args.focus:
+        summary["focus"] = args.focus
     summary_path = args.evidence_dir / "wla4-acceptance.json"
     try:
         with sync_playwright() as playwright:
@@ -732,13 +856,16 @@ def main():
             try:
                 acceptance = Acceptance(load_adm_web(), browser, args.base_url, os.environ["ADM_SMOKE_ADMIN_KEY"], args.evidence_dir)
                 summary["checks"] = acceptance.checks
-                guest = acceptance.w1()
                 if args.wave == "final":
-                    acceptance.final(guest)
+                    acceptance.final(args.focus)
+                else:
+                    acceptance.stage = "A1"
+                    acceptance.w1()
             finally:
                 browser.close()
         summary["status"] = "passed"
     except Exception as error:
+        summary["stage"] = acceptance.stage if acceptance else "setup"
         summary["failure"] = SENTINEL.sub("[redacted]", str(error))[:800]
     finally:
         summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")

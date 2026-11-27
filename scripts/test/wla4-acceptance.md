@@ -23,7 +23,7 @@ docker build --network=none -f scripts/test/wla4-worker.Dockerfile \
   --build-arg WORKER_IMAGE="whippet-worker:$WLA_TAG" -t "whippet-worker:$WLA_TAG-model" .
 ~~~
 
-測試映像保留正式 Worker，僅用 preload 回應 `.invalid` 的 Responses 呼叫。Go Server 的意圖檢查走隔離網路內的 HTTPS 合成供應商。`adm4-local.py` 每次啟用獨立 PostgreSQL、loopback Web、TLS Server、Manager、Docker bridge 商店及工作目錄，離開時按該次資源名稱與 Manager label 清理。兩個登入目標用不同連接埠形成不同 origin，共用第三個登入 origin 與 `m10-shop` 帳密表單。
+測試映像保留正式 Worker，僅用 preload 回應 `.invalid` 的 Responses 呼叫。Go Server 的意圖檢查走隔離網路內的 HTTPS 合成供應商。`final` 會核對 checkout 與 Worker 映像內的工具 registry、合成供應商檔案及登入驗證入口。`adm4-local.py` 每次啟用獨立 PostgreSQL、loopback Web、TLS Server、Manager、Docker bridge 商店及工作目錄，離開時按該次資源名稱與 Manager label 清理。兩個登入目標用不同連接埠形成不同 origin，共用第三個登入 origin 與 `m10-shop` 帳密表單。
 
 ## 執行
 
@@ -40,6 +40,8 @@ python3 scripts/test/adm4-local.py \
   --web-root "$WLA_BUILD/apps/web" --manager "$WLA_BUILD/manager" \
   --worker-image "whippet-worker:$WLA_TAG-model" --out "$WLA_BUILD/final"
 ~~~
+
+定向重跑時，在 `--wla final` 指令加 `--wla-focus` 並使用新 `--out`。可選 `a2`、`a3`、`a4`、`a5`、`a6` 或 A5 的單一入口 `builtin`、`vercel`、`pi`、`mcp-interactive`、`mcp-claim`。例如 `--wla-focus mcp-claim --out "$WLA_BUILD/retry-claim"` 只驗 MCP 接單與它需要的已驗證帳號、訪客 Workspace。每次使用新的隔離環境，結果標示 `focus`，失敗時另記 `stage`。
 
 | 情境 | 實際檢查 |
 | --- | --- |

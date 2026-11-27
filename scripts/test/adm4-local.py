@@ -277,7 +277,7 @@ def run(args):
             web_env["NODE_EXTRA_CA_CERTS"] = str(cert)
             manager_env["SERVER_CA_FILE"] = str(cert)
         if args.wla:
-            configure(server_env, manager_env, docker, worker)
+            configure(server_env, manager_env, docker, worker, final=args.wla == "final")
         if args.live_ai or args.live_a3 or args.wla:
             intent_key = secrets.token_urlsafe(32)
             intent_url = start_intent_fixture(stack, f"whippet-adm4-intent-{token}", network, worker,
@@ -339,6 +339,8 @@ def run(args):
             test_args += ["--live-a3"]
         if args.wla:
             test_args += ["--wave", args.wla]
+            if args.wla_focus:
+                test_args += ["--focus", args.wla_focus]
         try:
             subprocess.run(test_args, env=driver_env, check=True, timeout=900 if args.wla == "final" else 420)
         finally:
@@ -385,6 +387,8 @@ def main():
     stages.add_argument("--live-ai", action="store_true", help="use the synthetic Worker for proposals, probes and authors")
     stages.add_argument("--live-a3", action="store_true", help="exercise real Manager and MCP resource concurrency")
     stages.add_argument("--wla", choices=("w1", "final"), help="run Workspace login acceptance against isolated services")
+    parser.add_argument("--wla-focus", choices=("a2", "a3", "a4", "a5", "a6", "builtin", "vercel", "pi", "mcp-interactive", "mcp-claim"),
+                        help="run one final acceptance case and its prerequisites")
     parser.add_argument("--manager", type=Path)
     parser.add_argument("--worker-image", help="existing Docker image provided by Runtime")
     parser.add_argument("--tls", action="store_true", help="use HTTPS for Server and WSS for Manager")
@@ -403,6 +407,8 @@ def main():
     if args.wla and (not (args.manager and args.worker_image and args.server_in_docker and args.tls)
                      or args.fixture_profiles or args.driver):
         parser.error("--wla requires --manager, --worker-image, --server-in-docker and --tls, using its own profiles and driver")
+    if args.wla_focus and args.wla != "final":
+        parser.error("--wla-focus requires --wla final")
     if args.managed_case != "full" and not args.live_ai:
         parser.error("--managed-case requires --live-ai")
     if bool(args.manager) != bool(args.worker_image):
