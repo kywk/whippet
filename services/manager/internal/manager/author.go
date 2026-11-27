@@ -18,7 +18,7 @@ var authorEnvNames = []string{
 // Existing fixed Worker observations are opt-in metadata, never arbitrary logs.
 var authorObservationPattern = regexp.MustCompile(`^author:observe:[1-8]:(started|fetchInvoked|headersReceived|bodyParsed|responseAccepted|failed|timeoutProviderWait|timeoutBodyWait|cancelled|timeoutToolWait|toolCancelled|timeoutOther|feedbackFrameAccepted|feedbackQueued|feedbackIncludedAtFetch|toolsIncludedAtFetch|functionCallObserved)$`)
 
-var authorProgressPattern = regexp.MustCompile(`^author:(model:([1-9]|1[0-2]):(started|succeeded|failed|heartbeat)|tool:([1-9]|1[0-9]|20):(read_draft|record_conversation_memory|read_author_snapshot|read_validation_report|update_draft|browser_navigate|browser_snapshot|browser_click|browser_fill|browser_login|request_validation|read_conversation_history|read_skill_reference|catalog_search|catalog_get|read_module_draft|read_usecase_draft|read_plan|propose_plan|update_module_candidate|stage_module_candidate_part|commit_module_candidate|read_module_candidate_part|edit_module_candidate|request_module_validation|unknown):(started|succeeded|failed|heartbeat))$`)
+var authorProgressPattern = regexp.MustCompile(`^author:(model:([1-9]|1[0-2]):(started|succeeded|failed|heartbeat)|tool:([1-9]|1[0-9]|20):(read_draft|record_conversation_memory|read_author_snapshot|read_validation_report|update_draft|browser_navigate|browser_snapshot|browser_click|browser_fill|browser_login(_account)?|request_validation|read_conversation_history|read_skill_reference|catalog_search|catalog_get|read_module_draft|read_usecase_draft|read_plan|propose_plan|update_module_candidate|stage_module_candidate_part|commit_module_candidate|read_module_candidate_part|edit_module_candidate|request_module_validation|unknown):(started|succeeded|failed|heartbeat))$`)
 var authorContextPattern = regexp.MustCompile(`^author:context:compacted:([1-9]|1[0-2])$`)
 
 const maxAuthorTimeoutMS = 900000
@@ -42,6 +42,15 @@ func validDispatch(d Dispatch) error {
 	if len(d.Script) > maxScriptBytes || d.TimeoutMS < 1 || d.TimeoutMS > 3600000 {
 		return errors.New("dispatch script/timeout out of range")
 	}
+	if d.Kind == workspaceLoginVerificationKind {
+		if !dispatchVerificationValid(d) {
+			return errWorkspaceSnapshot
+		}
+		return nil
+	}
+	if len(d.LoginVerification) > 0 {
+		return errWorkspaceSnapshot
+	}
 	if err := validWorkspaceOwner(d.WorkspaceID, d.TestID, d.WorkspaceContext, d.Author); err != nil {
 		return err
 	}
@@ -56,6 +65,9 @@ func validDispatch(d Dispatch) error {
 		var config workspaceConfig
 		if json.Unmarshal(scope.Config, &config) != nil || len(config.Targets) == 0 {
 			return errors.New("scope_confirmation_required")
+		}
+		if d.Author != nil && d.Author.AllowedTools != nil && hasAllowedTool(d.Author, "browser_login_account") && scope.SchemaVersion != "2" {
+			return errWorkspaceSnapshot
 		}
 	}
 	if d.Kind == "run" && d.Author == nil && strings.TrimSpace(d.Script) != "" {
@@ -109,6 +121,9 @@ func validDispatch(d Dispatch) error {
 }
 
 func artifactAllowed(r record, name string) bool {
+	if r.Kind == workspaceLoginVerificationKind {
+		return false
+	}
 	if r.Kind == "author" {
 		return name == "author.json"
 	}

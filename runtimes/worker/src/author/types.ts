@@ -9,7 +9,7 @@ import { validSequence, hasHistory, type HistoryPin } from "./history.js";
 import { validRuntime, type AuthorRuntime } from "./runtime.js";
 import { validModelCredential, type ModelCredential } from "./model-key.js";
 
-export const EDIT_TOOLS = ["read_draft", "read_author_snapshot", "read_validation_report", "update_draft", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login", "request_validation", "read_conversation_history"] as const;
+export const EDIT_TOOLS = ["read_draft", "read_author_snapshot", "read_validation_report", "update_draft", "browser_navigate", "browser_snapshot", "browser_click", "browser_fill", "browser_login", "browser_login_account", "request_validation", "read_conversation_history"] as const;
 export interface ValidationEvidence {
   runId: string; attemptId: string; draftRevision: number; scriptHash: string; timeoutMs: number;
   status: "succeeded"; reportsReady: true;
@@ -160,6 +160,7 @@ export function validateAuthorInput(value: unknown): AuthorInput {
   }
   if (Object.hasOwn(a, "testName") && (a.skillId !== "test-author" || !boundedText(a.testName, 200, true))) throw new AuthorError("invalid_input");
   const capability = capabilitySnapshot(a);
+  if (a.allowedTools?.includes("browser_login_account") && (!capability || v.workspaceContext?.schemaVersion !== "2")) throw new AuthorError("invalid_input");
   if (Array.isArray(a.allowedTools) && a.allowedTools.includes("read_author_snapshot") && !capability) throw new AuthorError("invalid_input");
   if (Object.hasOwn(a, "runtime") && (!capability || !validRuntime(a.runtime))) throw new AuthorError("invalid_input");
   if (Object.hasOwn(v, "modelCredential") && (!v.workspaceId || !validModelCredential(v.modelCredential) || !a.runtime)) throw new AuthorError("invalid_input");

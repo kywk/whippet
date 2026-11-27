@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 const credentialFrameLimit = 64 << 10
@@ -18,7 +19,9 @@ type credentialRequest struct {
 	Kind          string `json:"kind"`
 	RequestID     string `json:"requestId"`
 	AttemptID     string `json:"attemptId"`
-	RoleID        string `json:"roleId"`
+	RoleID        string `json:"roleId,omitempty"`
+	AccountID     string `json:"accountId,omitempty"`
+	TargetOrigin  string `json:"targetOrigin,omitempty"`
 	SecretRef     string `json:"secretRef"`
 	SecretVersion int64  `json:"secretVersion"`
 }
@@ -26,7 +29,9 @@ type credentialValues struct {
 	WorkspaceID   string `json:"workspaceId"`
 	RunID         string `json:"runId"`
 	AttemptID     string `json:"attemptId"`
-	RoleID        string `json:"roleId"`
+	RoleID        string `json:"roleId,omitempty"`
+	AccountID     string `json:"accountId,omitempty"`
+	TargetOrigin  string `json:"targetOrigin,omitempty"`
 	SecretRef     string `json:"secretRef"`
 	SecretVersion int64  `json:"secretVersion"`
 	LoginOrigin   string `json:"loginOrigin"`
@@ -52,28 +57,77 @@ func resolveCredentials(ctx context.Context, cfg Config, r record, q credentialR
 	if err != nil || snapshot == nil {
 		return values, errCredentials
 	}
+	body := map[string]any{"secretRef": q.SecretRef, "secretVersion": q.SecretVersion}
+	fields := []string{"workspaceId", "runId", "attemptId", "secretRef", "secretVersion", "loginOrigin", "username", "password"}
+	var loginOrigin string
+	if q.AccountID != "" {
+		var binding loginBinding
+		var ok bool
+		if r.Kind == workspaceLoginVerificationKind {
+			binding, ok = parseVerificationBinding(r.LoginVerification, snapshot)
+		} else {
+			binding, ok = snapshot.accountBinding(q.AccountID, q.TargetOrigin)
+		}
+		if !ok || q.RoleID != "" || q.AccountID != binding.AccountID || q.TargetOrigin != binding.TargetOrigin ||
+			q.SecretRef != binding.SecretRef || q.SecretVersion != binding.SecretVersion {
+			return values, errCredentials
+		}
+		loginOrigin, _ = workspaceURLOrigin(binding.EntryURL)
+		body["accountId"], body["targetOrigin"] = q.AccountID, q.TargetOrigin
+		fields = append(fields, "accountId", "targetOrigin")
+	} else {
+		ref, origin, ok := snapshot.configuredRole(q.RoleID)
+		if !ok || r.Kind == workspaceLoginVerificationKind || q.TargetOrigin != "" || *ref.SecretRef != q.SecretRef || *ref.SecretVersion != q.SecretVersion {
+			return values, errCredentials
+		}
+		loginOrigin = origin
+		body["roleId"] = q.RoleID
+		fields = append(fields, "roleId")
+	}
+	path := "/api/manager/runs/" + r.RunID + "/attempts/" + r.AttemptID + "/credentials/resolve"
+	raw, err := fetchCredentialJSON(ctx, cfg, path, body, client)
+	if err != nil || !exactWorkspaceObject(raw, fields...) || json.Unmarshal(raw, &values) != nil {
+		return credentialValues{}, errCredentials
+	}
+	actual, ok := workspaceOrigin(values.LoginOrigin)
+	if !ok || loginOrigin != actual || values.WorkspaceID != r.WorkspaceID || values.RunID != r.RunID || values.AttemptID != r.AttemptID ||
+		values.RoleID != q.RoleID || values.AccountID != q.AccountID || values.TargetOrigin != q.TargetOrigin || values.SecretRef != q.SecretRef ||
+		values.SecretVersion != q.SecretVersion || !boundedAuthorText(values.Username, 4096, true) || !boundedAuthorText(values.Password, 4096, true) {
+		return credentialValues{}, errCredentials
+	}
+	return values, nil
+}
+
+func (c *workspaceContext) configuredRole(id string) (workspaceRoleRef, string, bool) {
 	var config workspaceConfig
-	if json.Unmarshal(snapshot.Config, &config) != nil {
-		return values, errCredentials
+	if c == nil || json.Unmarshal(c.Config, &config) != nil {
+		return workspaceRoleRef{}, "", false
 	}
-	foundRef, loginOrigin := false, ""
-	for _, ref := range snapshot.RoleRefs {
-		if ref.RoleID == q.RoleID && ref.Configured && ref.SecretRef != nil && *ref.SecretRef == q.SecretRef && ref.SecretVersion != nil && *ref.SecretVersion == q.SecretVersion {
-			foundRef = true
+	for _, ref := range c.RoleRefs {
+		if ref.RoleID != id || !ref.Configured || ref.SecretRef == nil || ref.SecretVersion == nil {
+			continue
+		}
+		for _, role := range config.LoginRoles {
+			if role.RoleID != nil && *role.RoleID == id && role.LoginMethod == "form" {
+				origin, ok := workspaceOrigin(role.LoginOrigin)
+				return ref, origin, ok
+			}
 		}
 	}
-	for _, role := range config.LoginRoles {
-		if role.RoleID != nil && *role.RoleID == q.RoleID {
-			loginOrigin = role.LoginOrigin
-		}
+	return workspaceRoleRef{}, "", false
+}
+
+func fetchCredentialJSON(ctx context.Context, cfg Config, path string, fields any, client *http.Client) ([]byte, error) {
+	if !strings.HasPrefix(cfg.ServerURL, "https://") {
+		return nil, errCredentials
 	}
-	if !foundRef || loginOrigin == "" {
-		return values, errCredentials
-	}
-	body, _ := json.Marshal(map[string]any{"roleId": q.RoleID, "secretRef": q.SecretRef, "secretVersion": q.SecretVersion})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.ServerURL+"/api/manager/runs/"+r.RunID+"/attempts/"+r.AttemptID+"/credentials/resolve", bytes.NewReader(body))
+	body, err := json.Marshal(fields)
 	if err != nil {
-		return values, errCredentials
+		return nil, errCredentials
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.ServerURL+path, bytes.NewReader(body))
+	if err != nil {
+		return nil, errCredentials
 	}
 	req.Header.Set("Authorization", "Bearer "+cfg.Token)
 	req.Header.Set("Content-Type", "application/json")
@@ -83,25 +137,17 @@ func resolveCredentials(ctx context.Context, cfg Config, r record, q credentialR
 	isolated.CheckRedirect = func(*http.Request, []*http.Request) error { return errCredentials }
 	resp, err := isolated.Do(req)
 	if err != nil {
-		return values, errCredentials
+		return nil, errCredentials
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK || !hasNoStore(resp.Header.Get("Cache-Control")) {
-		return values, errCredentials
+		return nil, errCredentials
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, credentialFrameLimit+1))
-	if err != nil || len(raw) > credentialFrameLimit || !exactWorkspaceObject(raw, "workspaceId", "runId", "attemptId", "roleId", "secretRef", "secretVersion", "loginOrigin", "username", "password") {
-		return values, errCredentials
+	if err != nil || len(raw) > credentialFrameLimit || !utf8.Valid(raw) {
+		return nil, errCredentials
 	}
-	if json.Unmarshal(raw, &values) != nil {
-		return credentialValues{}, errCredentials
-	}
-	expected, ok := workspaceOrigin(loginOrigin)
-	actual, actualOK := workspaceOrigin(values.LoginOrigin)
-	if !ok || !actualOK || expected != actual || values.WorkspaceID != r.WorkspaceID || values.RunID != r.RunID || values.AttemptID != r.AttemptID || values.RoleID != q.RoleID || values.SecretRef != q.SecretRef || values.SecretVersion != q.SecretVersion || !boundedAuthorText(values.Username, 4096, true) || !boundedAuthorText(values.Password, 4096, true) {
-		return credentialValues{}, errCredentials
-	}
-	return values, nil
+	return raw, nil
 }
 
 // A resolver is attempt-local. Stdout metadata is consumed before any log path;
@@ -127,9 +173,16 @@ func (c *credentialChannel) handle(line string) bool {
 		return false
 	}
 	var q credentialRequest
-	decoder := json.NewDecoder(strings.NewReader(line))
-	decoder.DisallowUnknownFields()
-	if len(line) > credentialFrameLimit || decoder.Decode(&q) != nil {
+	if len(line)+1 > credentialFrameLimit || json.Unmarshal([]byte(line), &q) != nil {
+		return true
+	}
+	fields := []string{"kind", "requestId", "attemptId", "secretRef", "secretVersion"}
+	if q.AccountID != "" {
+		fields = append(fields, "accountId", "targetOrigin")
+	} else {
+		fields = append(fields, "roleId")
+	}
+	if !exactWorkspaceObject([]byte(line), fields...) {
 		return true
 	}
 	c.mu.Lock()

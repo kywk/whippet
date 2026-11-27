@@ -211,6 +211,9 @@ func (m *Manager) upload(ctx context.Context, r record, name string) error {
 }
 
 func collectAttemptResult(r record, taskDir string, outcome execution, observations ...*m109Diagnostic) (Result, []string) {
+	if r.Kind == workspaceLoginVerificationKind {
+		return collectLoginVerification(r, taskDir, outcome), nil
+	}
 	if r.Kind != "author" {
 		return collectResult(taskDir, outcome)
 	}

@@ -9,10 +9,10 @@ import { AuthorError } from "./types.js";
 import { LiveObserver } from "../live/observer.js";
 import { fixtureBridge } from "../live/fixture-bridge.js";
 import {AIOriginGate,installAIOriginGate,unconfirmedBrowserScope} from "./scope.js";
-import type {WorkspaceConfig} from "../workspace-context.js";
+import { findAccountBinding, type WorkspaceConfig, type WorkspaceContext } from "../workspace-context.js";
 import {CredentialClient,KnownSecrets,type CredentialResolver} from '../login/client.js';
 import {loginBroker} from '../login/broker.js';
-import {submitLogin} from '../login/helper.js';
+import {loginWithAccountBinding,submitLogin} from '../login/helper.js';
 import {installLoginPrivacy} from '../login/privacy.js';
 import type { RuntimeSummary } from "../result.js";
 import { installModuleABI, type ModuleABI } from "../module-abi.js";
@@ -49,11 +49,12 @@ export interface ExplorationBrowser {
   click(selector: string): Promise<unknown>;
   fill(selector: string, value: string): Promise<unknown>;
   login?(roleId:string,usernameSelector:string,passwordSelector:string,submitSelector:string,callId?:string):Promise<unknown>;
+  loginAccount?(accountId: string, targetOrigin: string, callId?: string): Promise<{ submitted: true }>;
   verifyDraft?(script: string, options?: { signal?: AbortSignal; moduleFile?: ModuleABI & {content:string}; onSelfTestFailure?: (value:SelfTestFailureClass)=>void; onSelfTestObservation?: (value:SelfTestObservation)=>void }): Promise<DraftSelfTestResult>;
   close(): Promise<void>;
 }
 
-export function explorationBrowser(env: Readonly<Record<string, string | undefined>>,options:{scope?:WorkspaceConfig;executablePath?:string;credentials?:CredentialResolver;knownSecrets?:Pick<KnownSecrets,"add"|"clean">;defaultTestUrl?:string;timeoutMs?:number}={}): ExplorationBrowser {
+export function explorationBrowser(env: Readonly<Record<string, string | undefined>>,options:{scope?:WorkspaceConfig;workspaceContext?:WorkspaceContext|null;executablePath?:string;credentials?:CredentialResolver;knownSecrets?:Pick<KnownSecrets,"add"|"clean">;defaultTestUrl?:string;timeoutMs?:number}={}): ExplorationBrowser {
   let browser: Browser | undefined;
   let context:BrowserContext|undefined;
   let page: Page | undefined;
@@ -170,6 +171,12 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
       try{return await gate.duringLogin(values.loginOrigin,async()=>{const p=await getPage();if(new URL(p.url()).origin!==new URL(values.loginOrigin).origin)await p.goto(values.loginOrigin,{waitUntil:'domcontentloaded'});const result=await submitLogin(p,values,usernameSelector,passwordSelector,submitSelector);return {...result,page:await snapshot()};});}
       finally{values.username='';values.password='';}
     },
+    async loginAccount(accountId, targetOrigin, callId) {
+      const binding = findAccountBinding(options.workspaceContext, accountId, targetOrigin);
+      const credentials = options.credentials;
+      if (!binding || !credentials?.resolveAccount || !gate) throw new AuthorError("tool_failed");
+      return loginWithAccountBinding(await getPage(), binding, () => credentials.resolveAccount!(accountId, targetOrigin, callId));
+    },
     async verifyDraft(script, runOptions = {}) {
       const failure=(value:SelfTestFailureClass)=>{try{runOptions.onSelfTestFailure?.(value);}catch{/* Diagnostic observers never change execution. */}};
       const observe=(value:SelfTestObservation)=>{try{runOptions.onSelfTestObservation?.(value);}catch{/* Diagnostic observers never change execution. */}};
@@ -231,7 +238,7 @@ export function explorationBrowser(env: Readonly<Record<string, string | undefin
         const loginShim = join(taskDir, "login.cjs");
         await writeFile(
           loginShim,
-          `exports.loginAs=async(...args)=>(await import(${JSON.stringify(new URL("../login/helper.js", import.meta.url).href)})).loginAs(...args);\n`,
+          `const helper=()=>import(${JSON.stringify(new URL("../login/helper.js", import.meta.url).href)});\nexports.loginAs=async(...args)=>(await helper()).loginAs(...args);\nexports.loginAsAccount=async(...args)=>(await helper()).loginAsAccount(...args);\n`,
           "utf8",
         );
         const tsconfigPath = join(taskDir, "tsconfig.json");

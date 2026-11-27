@@ -104,9 +104,13 @@ func (d *dockerSessionRuntime) Start(ctx context.Context, r sessionRecord, taskD
 			result(sessionToolResult{SessionID: r.SessionID, LeaseID: r.LeaseID, CallID: frame.CallID, Result: frame.Result, Error: frame.Error})
 		case "credential_request":
 			var frame sessionCredentialRequest
-			if d.credential == nil || len(line)+1 > credentialFrameLimit || !exactWorkspaceObject(line, "kind", "sessionId", "leaseId", "callId", "requestId", "roleId") ||
+			base := []string{"kind", "sessionId", "leaseId", "callId", "requestId"}
+			legacy := exactWorkspaceObject(line, append(base, "roleId")...)
+			account := exactWorkspaceObject(line, append(base, "accountId", "targetOrigin")...)
+			if d.credential == nil || len(line)+1 > credentialFrameLimit || (!legacy && !account) ||
 				json.Unmarshal(line, &frame) != nil || frame.Kind != "credential_request" || frame.SessionID != r.SessionID || frame.LeaseID != r.LeaseID ||
-				!uuidPattern.MatchString(frame.CallID) || !uuidPattern.MatchString(frame.RequestID) || !uuidPattern.MatchString(frame.RoleID) {
+				!uuidPattern.MatchString(frame.CallID) || !uuidPattern.MatchString(frame.RequestID) || (legacy && !uuidPattern.MatchString(frame.RoleID)) ||
+				(account && !uuidPattern.MatchString(frame.AccountID)) {
 				stop()
 				break
 			}

@@ -436,7 +436,7 @@ func (m *Manager) accept(ctx context.Context, env Envelope) error {
 		return errors.New("Worker slot is occupied; MAX_WORKERS reached, including cleanup")
 	}
 	r := record{RunID: env.RunID, AttemptID: env.AttemptID, Phase: "accepted", TimeoutMS: dispatch.TimeoutMS, ResultMessageID: newID(), Kind: dispatch.Kind, Author: dispatch.Author, ScriptOrigin: normalizedScriptOrigin(dispatch.ScriptOrigin),
-		WorkspaceID: dispatch.WorkspaceID, TestID: dispatch.TestID, WorkspaceContext: dispatch.WorkspaceContext, ModelCredential: dispatch.ModelCredential}
+		WorkspaceID: dispatch.WorkspaceID, TestID: dispatch.TestID, WorkspaceContext: dispatch.WorkspaceContext, ModelCredential: dispatch.ModelCredential, LoginVerification: dispatch.LoginVerification}
 	// Recovery tracks this attempt by its pins; only its Worker needs inline content.
 	if r.Author != nil && r.Author.SkillFiles != nil {
 		journalAuthor := *r.Author
@@ -519,7 +519,7 @@ func (m *Manager) runAttempt(ctx, executionCtx context.Context, r record, dispat
 	r.CredentialsUsed = r.CredentialsUsed || m.records[r.AttemptID].CredentialsUsed
 	values := append([]string{}, m.secrets[r.AttemptID]...)
 	m.mu.Unlock()
-	if r.CredentialsUsed && !r.CredentialsSanitized {
+	if r.CredentialsUsed && !r.CredentialsSanitized && r.Kind != workspaceLoginVerificationKind {
 		if err := sanitizeCredentialOutputs(m.taskDir(r), values, r.Author); err != nil {
 			r.Result = &Result{Status: "failed", Error: "Credential evidence could not be safely retained"}
 			r.Artifacts = nil
@@ -532,10 +532,16 @@ func (m *Manager) runAttempt(ctx, executionCtx context.Context, r record, dispat
 		result, artifacts := collectAttemptResult(r, m.taskDir(r), outcome, diagnostic)
 		if ctx.Err() != nil {
 			result = Result{Status: "cancelled", Error: "Manager shutdown interrupted the Worker"}
+			if r.Kind == workspaceLoginVerificationKind {
+				result.Error = ""
+			}
 		}
 		r.Result, r.Artifacts = &result, artifacts
 	} else if r.Result == nil {
 		result := Result{Status: "failed", Error: "Manager restarted before terminal state was saved; previous attempt was stopped and will not be rerun"}
+		if r.Kind == workspaceLoginVerificationKind {
+			result = failedVerification("invalid_evidence")
+		}
 		_, r.Artifacts = collectAttemptResult(r, m.taskDir(r), outcome, diagnostic)
 		r.Result = &result
 	}
@@ -614,10 +620,11 @@ func (m *Manager) prepare(r record, dispatch Dispatch) error {
 		return err
 	}
 	input := WorkerInput{
-		Retest:    dispatch.Retest,
-		Files:     dispatch.Files,
-		ModuleABI: dispatch.ModuleABI,
-		RunID:     r.RunID, AttemptID: r.AttemptID, Script: dispatch.Script, TimeoutMS: dispatch.TimeoutMS,
+		LoginVerification: dispatch.LoginVerification,
+		Retest:            dispatch.Retest,
+		Files:             dispatch.Files,
+		ModuleABI:         dispatch.ModuleABI,
+		RunID:             r.RunID, AttemptID: r.AttemptID, Script: dispatch.Script, TimeoutMS: dispatch.TimeoutMS,
 		Kind: dispatch.Kind, Author: dispatch.Author, ScriptOrigin: normalizedScriptOrigin(dispatch.ScriptOrigin),
 		WorkspaceSettings: dispatch.WorkspaceSettings,
 		ModelCredential:   r.ModelCredential,
@@ -631,6 +638,12 @@ func (m *Manager) prepare(r record, dispatch Dispatch) error {
 }
 
 func (m *Manager) emit(r record, kind, text string) {
+	if r.Kind == workspaceLoginVerificationKind {
+		if kind != "started" {
+			return
+		}
+		text = "Workspace login verification started"
+	}
 	text = m.redactCredentialLog(r.AttemptID, text)
 	if r.Kind == "author" {
 		if kind == "started" {
@@ -689,6 +702,9 @@ func (m *Manager) store(r record) error {
 	}
 	if r.CancelRequested && r.Result != nil {
 		result := Result{Status: "cancelled", Error: "Server requested cancellation of this attempt"}
+		if r.Kind == workspaceLoginVerificationKind || r.Kind == "" {
+			result.Error = ""
+		}
 		r.Result = &result
 	}
 	return m.saveRecordLocked(r)

@@ -51,7 +51,8 @@ func credentialFixture(t *testing.T) (record, credentialRequest, credentialValue
 	d.WorkspaceContext, _ = json.Marshal(map[string]any{"schemaVersion": "1", "workspaceId": d.WorkspaceID, "settingsRevision": 1, "config": config, "roleRefs": []any{map[string]any{"roleId": role, "secretRef": ref, "secretVersion": 1, "configured": true}}})
 	r := record{RunID: newID(), AttemptID: newID(), WorkspaceID: d.WorkspaceID, WorkspaceContext: d.WorkspaceContext}
 	q := credentialRequest{Kind: "credential_request", RequestID: newID(), AttemptID: r.AttemptID, RoleID: role, SecretRef: ref, SecretVersion: 1}
-	v := credentialValues{r.WorkspaceID, r.RunID, r.AttemptID, role, ref, 1, "https://example.test", "synthetic-user", "synthetic-secret"}
+	v := credentialValues{WorkspaceID: r.WorkspaceID, RunID: r.RunID, AttemptID: r.AttemptID, RoleID: role,
+		SecretRef: ref, SecretVersion: 1, LoginOrigin: "https://example.test", Username: "synthetic-user", Password: "synthetic-secret"}
 	return r, q, v
 }
 func TestM8BCredentialResolveRequiresTLSOwnerOriginNoStoreAndRejectsRedirect(t *testing.T) {

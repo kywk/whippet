@@ -25,6 +25,7 @@ type Envelope struct {
 }
 
 type Dispatch struct {
+	LoginVerification json.RawMessage  `json:"loginVerification,omitempty"`
 	Retest            json.RawMessage  `json:"retest,omitempty"`
 	Files             []RunFile        `json:"files,omitempty"`
 	ModuleABI         *ModuleABI       `json:"moduleAbi,omitempty"`
@@ -53,6 +54,23 @@ func (d *Dispatch) UnmarshalJSON(data []byte) error {
 	var keys map[string]json.RawMessage
 	if json.Unmarshal(data, &keys) != nil {
 		return errBundle
+	}
+	if d.Kind == workspaceLoginVerificationKind {
+		keys, unique := uniqueBudgetFields(data)
+		if !unique {
+			return errWorkspaceSnapshot
+		}
+		for _, field := range []string{"kind", "script", "scriptOrigin", "timeoutMs", "workspaceId", "testId", "workspaceContext", "loginVerification"} {
+			if keys[field] == nil {
+				return errWorkspaceSnapshot
+			}
+		}
+		delete(keys, "workspaceSettings")
+		if len(keys) != 8 || !bytes.Equal(keys["script"], []byte(`""`)) {
+			return errWorkspaceSnapshot
+		}
+	} else if len(d.LoginVerification) > 0 {
+		return errWorkspaceSnapshot
 	}
 	if _, exists := keys["modelCredential"]; exists || d.ModelCredential != nil {
 		if _, unique := uniqueBudgetFields(data); !unique || !exists || d.ModelCredential == nil {
@@ -238,6 +256,7 @@ type AuthorValidation struct {
 }
 
 type WorkerInput struct {
+	LoginVerification json.RawMessage  `json:"loginVerification,omitempty"`
 	Retest            json.RawMessage  `json:"retest,omitempty"`
 	Files             []RunFile        `json:"files,omitempty"`
 	ModuleABI         *ModuleABI       `json:"moduleAbi,omitempty"`
@@ -256,15 +275,16 @@ type WorkerInput struct {
 }
 
 type Result struct {
-	Retest       json.RawMessage `json:"retest,omitempty"`
-	TargetOrigin string          `json:"targetOrigin,omitempty"`
-	Assertion    string          `json:"assertion,omitempty"`
-	Status       string          `json:"status"`
-	Error        string          `json:"error,omitempty"`
+	LoginVerification json.RawMessage `json:"loginVerification,omitempty"`
+	Retest            json.RawMessage `json:"retest,omitempty"`
+	TargetOrigin      string          `json:"targetOrigin,omitempty"`
+	Assertion         string          `json:"assertion,omitempty"`
+	Status            string          `json:"status"`
+	Error             string          `json:"error,omitempty"`
 }
 
 func (r Result) valid() bool {
-	return len(r.Retest) <= 16<<10 && (r.Status == "succeeded" || r.Status == "failed" || r.Status == "timed_out" || r.Status == "cancelled")
+	return len(r.LoginVerification) == 0 && len(r.Retest) <= 16<<10 && (r.Status == "succeeded" || r.Status == "failed" || r.Status == "timed_out" || r.Status == "cancelled")
 }
 
 func newID() string {

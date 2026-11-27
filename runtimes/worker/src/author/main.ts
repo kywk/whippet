@@ -50,7 +50,7 @@ async function main(): Promise<void> {
     config = input.modelCredential && input.author.runtime
       ? managedModelConfig(input.author.runtime, await requestModelKey(input.modelCredential, stop.signal))
       : readAuthorConfig(process.env, input.author.runtime);
-    if (authorNeedsBrowser(input)) browser = explorationBrowser(process.env,{scope:input.workspaceContext?.config??unconfirmedBrowserScope(),credentials,defaultTestUrl:input.workspaceContext?.config?.defaultTestUrl||input.workspaceSettings?.defaultTestUrl,timeoutMs:input.workspaceContext?.config?.timeoutMs||input.workspaceSettings?.timeoutMs});
+    if (authorNeedsBrowser(input)) browser = explorationBrowser(process.env,{scope:input.workspaceContext?.config??unconfirmedBrowserScope(),workspaceContext:input.workspaceContext,credentials,defaultTestUrl:input.workspaceContext?.config?.defaultTestUrl||input.workspaceSettings?.defaultTestUrl,timeoutMs:input.workspaceContext?.config?.timeoutMs||input.workspaceSettings?.timeoutMs});
     const output = await runAuthor(input, config, browser, {
       signal: stop.signal,
       ...(diagnostics?{moduleDiagnostics:diagnostics}:{}),

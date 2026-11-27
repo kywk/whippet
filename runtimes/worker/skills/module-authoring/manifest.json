@@ -15,6 +15,7 @@
     "browser_click",
     "browser_fill",
     "browser_login",
+    "browser_login_account",
     "record_conversation_memory",
     "read_module_candidate_part",
     "edit_module_candidate"
@@ -39,7 +40,7 @@
     {
       "id": "external-mcp",
       "path": "references/external-mcp.md",
-      "sha256": "d888bf97a6c2d34ac4abf3b4f48a3ded88eb4aebadd2e7f58976442d601d4717"
+      "sha256": "67b69e2762c1476f0f818686b60aeb5f959948c6f1ad5a460083a23bd9d00c28"
     }
   ]
 }

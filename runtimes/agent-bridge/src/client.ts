@@ -4,15 +4,16 @@ import { buildResponsesRequest } from '../../worker/dist/ai/responses.js';
 import { capabilitySnapshot, loadSkillBundle } from '../../worker/dist/author/manifest.js';
 import type { AuthorInput } from '../../worker/dist/author/types.js';
 import { boundedText } from '../../worker/dist/author/types.js';
-import { loadToolRegistry, modelTool, sha256, type ToolDefinition } from '../../worker/dist/author/registry.js';
+import { loadToolRegistry, modelTool, sha256, validateToolArguments, type ToolDefinition } from '../../worker/dist/author/registry.js';
 import { selectAgentEngine } from '../../worker/dist/author/engines/select.js';
 import { FrozenAuthorSnapshot } from '../../worker/dist/author/snapshot.js';
+import { validatePublicWorkspaceContext } from '../../worker/dist/workspace-context.js';
 import { BridgeError, boundedJSON, canonical, object, secretGuard, strictJSON, uuid } from './safety.js';
 import { MCPClient } from './transport.js';
 import { PrivateState, readToken, type Identity, type Journal } from './state.js';
 import { registerAgent } from './registration.js';
 
-const connected = new Set(['read_draft', 'read_author_snapshot', 'read_validation_report', 'read_conversation_history', 'browser_navigate', 'browser_snapshot', 'browser_click', 'browser_fill', 'browser_login']);
+const connected = new Set(['read_draft', 'read_author_snapshot', 'read_validation_report', 'read_conversation_history', 'browser_navigate', 'browser_snapshot', 'browser_click', 'browser_fill', 'browser_login', 'browser_login_account']);
 export interface Options {
   url: string; tokenFile: string; stateFile: string; config: AIConfig;
   signal?: AbortSignal; mcpFetch?: typeof fetch; modelFetch?: typeof fetch;
@@ -95,6 +96,12 @@ async function work(task: Record<string, any>, identity: Identity, journal: Jour
   const registry = loadToolRegistry(), local = loadSkillBundle(snapshot, registry);
   if (!Array.isArray(bundle.toolDefinitions) || bundle.toolDefinitions.length !== input.allowedTools.length || new Set(input.allowedTools).size !== input.allowedTools.length) throw new BridgeError('invalid_response');
   const allowedTools = input.allowedTools;
+  const workspace = bundle.workspaceContext;
+  if (workspace?.schemaVersion === '2' || workspace?.accountBindings !== undefined || workspace?.testAccounts !== undefined || allowedTools.includes('browser_login_account')) {
+    try {
+      if (validatePublicWorkspaceContext(workspace)?.schemaVersion !== '2') throw new Error();
+    } catch { throw new BridgeError('invalid_response'); }
+  }
   const definitions: ToolDefinition[] = allowedTools.map((name: string) => {
     const known = registry.tools.find(definition => definition.name === name);
     const offered = bundle.toolDefinitions.filter((definition: any) => definition?.name === name);
@@ -151,10 +158,22 @@ async function work(task: Record<string, any>, identity: Identity, journal: Jour
         if (++executions > snapshot.budget.maxToolCalls) throw new BridgeError('incomplete_task');
         if (typeof call.name !== 'string' || typeof call.arguments !== 'string' || !allowedTools.includes(call.name)) throw new BridgeError('invalid_response');
         const args = object(strictJSON(call.arguments)); guard(args);
+        const accountLogin = call.name === 'browser_login_account';
+        if (accountLogin) {
+          const definition = definitions.find(tool => tool.name === call.name)!;
+          try { validateToolArguments(definition, args); }
+          catch { return { error: 'tool_unavailable' }; }
+        }
         try {
           const value = await client.call('task_tool_call', { ...identity, callId: randomUUID(), name: call.name, arguments: args }, signal);
-          guard(value); return value;
-        } catch (error) { controller.abort(error); throw error; }
+          guard(value);
+          if (accountLogin && (Object.keys(value).length !== 1 || value.submitted !== true)) throw new BridgeError('invalid_response');
+          return value;
+        } catch (error) {
+          if (accountLogin && error instanceof BridgeError && error.code === 'tool_unavailable') return { error: 'tool_unavailable' };
+          controller.abort(error);
+          throw error;
+        }
       },
     });
     signal.throwIfAborted();

@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { readAIConfig } from '../../worker/dist/ai/config.js';
 import { loadToolRegistry, sha256 } from '../../worker/dist/author/registry.js';
 import { call, envelope, text } from '../../worker/dist/author/spike/fixture.js';
+import type { PublicWorkspaceContext } from '../../worker/dist/workspace-context.js';
 import { BridgeError, strictJSON } from './safety.js';
 import { MCPClient, mcpURL } from './transport.js';
 import { PrivateState, readToken } from './state.js';
@@ -24,7 +25,7 @@ function fixture(t: { after(fn: () => void): void }) {
   const main = readFileSync(new URL('SKILL.md', root), 'utf8'), reference = readFileSync(new URL('references/external-mcp.md', root), 'utf8');
   const deadline = new Date(Date.now() + 180000).toISOString();
   const task = { runId: randomUUID(), attemptId: randomUUID(), leaseId: randomUUID(), testId: randomUUID(), state: 'active', expiresAt: new Date(Date.now() + 120000).toISOString(), deadlineAt: deadline,
-    contextBundle: { script: '', workspaceSettings: null, workspaceContext: null, skillUri: 'whippet://skill/test-author/main', externalReferenceUri: 'whippet://skill/test-author/references/external-mcp',
+    contextBundle: { script: '', workspaceSettings: null, workspaceContext: null as PublicWorkspaceContext | null, skillUri: 'whippet://skill/test-author/main', externalReferenceUri: 'whippet://skill/test-author/references/external-mcp',
       author: { conversationId: randomUUID(), baseRevision: 1, skillId: 'test-author', skillVersion: '1', allowedTools: ['read_draft'], messages: [{ role: 'user', content: 'Write a synthetic spec' }], sourceVersion: null, conversationSummary: null,
         skills: [{ id: manifest.id, version: manifest.version, sha256: sha256(main), manifestSha256: sha256(bytes), referenceHashes: Object.fromEntries(manifest.references.map((r: any) => [r.id, r.sha256])) }],
         budget: manifest.budget, model: manifest.model, toolRegistryVersion: registry.version, toolRegistrySha256: registry.sha256 },
@@ -107,6 +108,55 @@ test('MCP reference worker forwards the saved test and submits a new test recomm
   assert.equal(result.validationRunId, null);
   assert.deepEqual(f.submissions.map(item => item.output), [output]);
   assert.equal(f.calls.filter(c => c.params?.name === 'task_tool_call').length, 0);
+});
+
+const accountLogin = 'browser_login_account';
+const accountTool = loadToolRegistry().tools.find(tool => tool.name === accountLogin);
+test('WLA-3 reference claim exposes the public account directory and forwards authorized and refused login calls', { skip: !accountTool }, async t => {
+  const f = fixture(t);
+  const id = randomUUID(), target = 'https://orders.example', other = 'https://help.example';
+  const workspace: PublicWorkspaceContext = { schemaVersion: '2', workspaceId: randomUUID(), settingsRevision: 1, roleRefs: [], config: {
+    name: 'Fixture', purpose: 'Orders', backgroundSummary: '', targets: [target, other].map(origin => ({ name: origin, purpose: '', origin })),
+    dependencies: [], excludedOrigins: [], exclusions: '', defaultTestUrl: target, timeoutMs: 30000, loginRoles: [],
+  }, testAccounts: [{ accountId: id, name: 'Member', role: 'member', purpose: 'Inspect an order', sites: [{ targetOrigin: target, state: 'verified' }] }] };
+  f.task.contextBundle.workspaceContext = workspace;
+  f.task.contextBundle.author.allowedTools = [accountLogin];
+  f.task.contextBundle.toolDefinitions = [accountTool!];
+  let calls = 0, modelRequests = 0;
+  const result = await runOnce({ ...f.options,
+    async mcpFetch(url, init) {
+      const request = strictJSON(String(init?.body));
+      if (request.params?.name !== 'task_tool_call') return f.options.mcpFetch!(url, init);
+      const args = request.params.arguments;
+      assert.equal(args.runId, f.task.runId); assert.equal(args.attemptId, f.task.attemptId); assert.equal(args.leaseId, f.task.leaseId);
+      assert.equal(args.name, accountLogin);
+      assert.deepEqual(args.arguments, { accountId: id, targetOrigin: calls++ ? target : other });
+      const allowed = args.arguments.targetOrigin === target;
+      return Response.json({ jsonrpc: '2.0', id: request.id, result: { isError: !allowed, structuredContent: allowed ? { submitted: true } : { error: 'tool_unavailable' } } });
+    },
+    async modelFetch(_url, init) {
+      const body = strictJSON(String(init?.body));
+      const raw = JSON.stringify(body);
+      assert.ok(raw.includes('Inspect an order'));
+      assert.ok(!raw.includes('accountBindings'));
+      assert.deepEqual(body.tools.map((tool: { name: string }) => tool.name), [accountLogin]);
+      modelRequests++;
+      if (modelRequests === 1) return Response.json(envelope([call(accountLogin, 'wrong-target', { accountId: id, targetOrigin: other })]));
+      const feedback = body.input.filter((item: { type: string }) => item.type === 'function_call_output').at(-1);
+      if (modelRequests === 2) {
+        assert.deepEqual(JSON.parse(feedback.output), { error: 'tool_unavailable' });
+        return Response.json(envelope([call(accountLogin, 'correct-target', { accountId: id, targetOrigin: target })]));
+      }
+      assert.deepEqual(JSON.parse(feedback.output), { submitted: true });
+      return Response.json(envelope([text('{"message":"表單已送出","requestValidation":false}') ]));
+    },
+  });
+  assert.equal(result.state, 'submitted');
+  assert.equal(calls, 2);
+  const bad = fixture(t);
+  bad.task.contextBundle.workspaceContext = { ...workspace, accountBindings: [] } as PublicWorkspaceContext;
+  await assert.rejects(runOnce(bad.options), { code: 'invalid_response' });
+  assert.equal(bad.models(), 0);
 });
 test('lost submit resumes identical body without model or tool replay', async t => {
   const f = fixture(t); f.loseSubmit();

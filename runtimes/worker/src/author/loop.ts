@@ -11,6 +11,7 @@ import { runtimeConfig } from "./runtime.js";
 import { AIError, type AIConfig } from "../ai/config.js";
 import { availableModelCapacity } from "../ai/capacity.js";
 import { parseUniqueJSON } from "../strict-json.js";
+import { findAccountBinding, publicWorkspaceContext } from "../workspace-context.js";
 import { FrozenAuthorSnapshot } from "./snapshot.js";
 import { buildResponsesRequest } from "../ai/responses.js";
 import { classifyDiagnosticError, type ExplorationBrowser } from "./tools.js";
@@ -81,7 +82,7 @@ export async function runAuthor(
     if (input.author.allowedTools?.some(name => !bundle!.defaultTools.has(name))) throw new AuthorError("invalid_input");
   }
   const implementedTools = new Set<string>([...EDIT_TOOLS, ...(bundle ? ["read_skill_reference", "record_conversation_memory", ...(module || planner ? PLATFORM_TOOLS : [])] : [])]);
-  const allowedDefinitions = registry.tools.filter(tool => implementedTools.has(tool.name)).filter((tool) => tool.name !== "read_skill_reference" || !!bundle).filter((tool) => tool.name !== "read_author_snapshot" || !!capability && ["test-author", "module-authoring"].includes(input.author.skillId ?? "")).filter(tool => tool.name !== "record_conversation_memory" || !!capability && hasHistory(input) && !!options.history).filter((tool) => tool.name === "read_conversation_history" ? hasHistory(input) && !!options.history : input.author.allowedTools === undefined ? tool.name!=='browser_login' : input.author.allowedTools.includes(tool.name));
+  const allowedDefinitions = registry.tools.filter(tool => implementedTools.has(tool.name)).filter((tool) => tool.name !== "read_skill_reference" || !!bundle).filter((tool) => tool.name !== "read_author_snapshot" || !!capability && ["test-author", "module-authoring"].includes(input.author.skillId ?? "")).filter(tool => tool.name !== "record_conversation_memory" || !!capability && hasHistory(input) && !!options.history).filter((tool) => tool.name === "read_conversation_history" ? hasHistory(input) && !!options.history : input.author.allowedTools === undefined ? !["browser_login", "browser_login_account"].includes(tool.name) : input.author.allowedTools.includes(tool.name));
   const allowedTools = allowedDefinitions.map(modelTool);
   const guardMemory = (value: unknown): void => {
     noSecret(value, config);
@@ -129,10 +130,8 @@ export async function runAuthor(
   let pendingModel = 0;
   const callsSeen = new Set<string>();
   const workspaceProposal = input.author.workspaceProposal;
-  const workspaceContext = workspaceProposal !== undefined && input.workspaceContext ? {
-    ...input.workspaceContext,
-    roleRefs: input.workspaceContext.roleRefs.map(ref => ({ ...ref, secretRef: null, secretVersion: null })),
-  } : input.workspaceContext;
+  const workspaceContext = input.workspaceContext && (workspaceProposal !== undefined || input.workspaceContext.schemaVersion === "2")
+    ? publicWorkspaceContext(input.workspaceContext) : input.workspaceContext;
   const savedSnapshot = {
       baseRevision: input.author.baseRevision, script, ...(input.author.platform ? {platform:input.author.platform} : {}),
       ...(moduleEditing ? {moduleCandidateRef:moduleCandidates!.reference()} : {}),
@@ -389,6 +388,11 @@ export async function runAuthor(
           else if(call.name==='browser_login'){
             if(!browser?.login)throw new AuthorError('tool_failed');
             result=await withHeartbeat(browser.login(args.roleId as string,args.usernameSelector as string,args.passwordSelector as string,args.submitSelector as string), `author:tool:${toolCount}:${safeToolName}:heartbeat`, toolSignal);
+          } else if (call.name === "browser_login_account") {
+            const accountId = args.accountId as string, targetOrigin = args.targetOrigin as string;
+            if (!browser?.loginAccount || !findAccountBinding(input.workspaceContext, accountId, targetOrigin)) throw new AuthorError("tool_failed");
+            await withHeartbeat(browser.loginAccount(accountId, targetOrigin), `author:tool:${toolCount}:${safeToolName}:heartbeat`, toolSignal);
+            result = { submitted: true };
           }
           if(options.secrets)result=options.secrets.clean(result);
           noSecret(result, config);
@@ -403,7 +407,9 @@ export async function runAuthor(
           toolStatus = "succeeded";
         } catch (error) {
           if (signal.aborted || error instanceof AuthorError && ["sensitive_output", "limit"].includes(error.code)) throw error;
-          if (call.name === "catalog_search" && error instanceof HarnessError && error.code === "catalog_search_invalid_request") {
+          if (call.name === "browser_login_account") {
+            result = { error: "tool_unavailable" };
+          } else if (call.name === "catalog_search" && error instanceof HarnessError && error.code === "catalog_search_invalid_request") {
             observation.emit('feedbackFrameAccepted');
             result = {error:"catalog_search_invalid_request", message:"Catalog search parameters were rejected. Check query and limit, then retry within the existing budget. catalog_search accepts only query and limit."};
           if(options.observer){feedback.set(call.call_id as string,JSON.stringify(result));observation.emit('feedbackQueued');}

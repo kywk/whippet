@@ -1,12 +1,9 @@
 package manager
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -16,14 +13,19 @@ type sessionCredentialRequest struct {
 	LeaseID   string `json:"leaseId"`
 	CallID    string `json:"callId"`
 	RequestID string `json:"requestId"`
-	RoleID    string `json:"roleId"`
+	RoleID    string `json:"roleId,omitempty"`
+	AccountID string `json:"accountId,omitempty"`
+	Target    string `json:"targetOrigin,omitempty"`
 }
 
 type sessionCredentialValues struct {
 	SessionID   string `json:"sessionId"`
 	LeaseID     string `json:"leaseId"`
 	WorkspaceID string `json:"workspaceId"`
-	RoleID      string `json:"roleId"`
+	RoleID      string `json:"roleId,omitempty"`
+	CallID      string `json:"callId,omitempty"`
+	AccountID   string `json:"accountId,omitempty"`
+	Target      string `json:"targetOrigin,omitempty"`
 	LoginOrigin string `json:"loginOrigin"`
 	Username    string `json:"username"`
 	Password    string `json:"password"`
@@ -41,41 +43,31 @@ type sessionCredentialReply struct {
 
 func resolveSessionCredentials(ctx context.Context, cfg Config, r sessionRecord, q sessionCredentialRequest, origin string, client *http.Client) (sessionCredentialValues, error) {
 	var values sessionCredentialValues
-	if !strings.HasPrefix(cfg.ServerURL, "https://") {
-		return values, errCredentials
+	fields := []string{"sessionId", "leaseId", "workspaceId", "loginOrigin", "username", "password"}
+	body := map[string]string{"roleId": q.RoleID}
+	if q.AccountID != "" {
+		fields = append(fields, "callId", "accountId", "targetOrigin")
+		body = map[string]string{"callId": q.CallID, "accountId": q.AccountID, "targetOrigin": q.Target}
+	} else {
+		fields = append(fields, "roleId")
 	}
-	body, _ := json.Marshal(map[string]string{"roleId": q.RoleID})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.ServerURL+"/api/manager/browser-sessions/"+r.SessionID+"/leases/"+r.LeaseID+"/credentials/resolve", bytes.NewReader(body))
-	if err != nil {
-		return values, errCredentials
-	}
-	req.Header.Set("Authorization", "Bearer "+cfg.Token)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Cache-Control", "no-store")
-	isolated := *client
-	isolated.CheckRedirect = func(*http.Request, []*http.Request) error { return errCredentials }
-	resp, err := isolated.Do(req)
-	if err != nil {
-		return values, errCredentials
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK || !hasNoStore(resp.Header.Get("Cache-Control")) {
-		return values, errCredentials
-	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, credentialFrameLimit+1))
-	if err != nil || len(raw) > credentialFrameLimit || !exactWorkspaceObject(raw, "sessionId", "leaseId", "workspaceId", "roleId", "loginOrigin", "username", "password") {
-		return values, errCredentials
-	}
-	if json.Unmarshal(raw, &values) != nil {
+	path := "/api/manager/browser-sessions/" + r.SessionID + "/leases/" + r.LeaseID + "/credentials/resolve"
+	raw, err := fetchCredentialJSON(ctx, cfg, path, body, client)
+	if err != nil || !exactWorkspaceObject(raw, fields...) || json.Unmarshal(raw, &values) != nil {
 		return sessionCredentialValues{}, errCredentials
 	}
 	expected, valid := workspaceOrigin(origin)
 	actual, actualValid := workspaceOrigin(values.LoginOrigin)
 	if !valid || !actualValid || expected != actual || values.SessionID != r.SessionID || values.LeaseID != r.LeaseID ||
-		values.WorkspaceID != r.WorkspaceID || values.RoleID != q.RoleID || !boundedAuthorText(values.Username, 4096, true) || !boundedAuthorText(values.Password, 4096, true) {
+		values.WorkspaceID != r.WorkspaceID || values.RoleID != q.RoleID || values.AccountID != q.AccountID || values.Target != q.Target ||
+		(q.AccountID != "" && values.CallID != q.CallID) || !boundedAuthorText(values.Username, 4096, true) || !boundedAuthorText(values.Password, 4096, true) {
 		return sessionCredentialValues{}, errCredentials
 	}
 	return values, nil
+}
+
+func (q sessionCredentialRequest) matches(call *sessionCallState) bool {
+	return call != nil && (q.RoleID != "" || q.AccountID != "") && call.roleID == q.RoleID && call.accountTarget == (accountSite{q.AccountID, q.Target})
 }
 
 func (m *Manager) handleSessionCredential(ctx context.Context, r sessionRecord, q sessionCredentialRequest, writer *attemptInputWriter) {
@@ -83,26 +75,16 @@ func (m *Manager) handleSessionCredential(ctx context.Context, r sessionRecord, 
 	current, ok := m.sessions[r.SessionID]
 	work := m.sessionWorking[r.SessionID]
 	valid := ok && current.LeaseID == q.LeaseID && current.State == "ready" && !current.Reclaimed && time.Now().UnixMilli() < current.DeadlineAt &&
-		work != nil && work.active == q.CallID && work.calls[q.CallID] != nil && work.calls[q.CallID].roleID == q.RoleID &&
+		work != nil && work.active == q.CallID && q.matches(work.calls[q.CallID]) &&
 		!work.credentialPending && work.credentialCount < 20 && !work.credentialSeen[q.RequestID]
 	origin := ""
 	if valid {
-		var config workspaceConfig
-		if work.workspace == nil || json.Unmarshal(work.workspace.Config, &config) != nil {
-			valid = false
+		if q.AccountID != "" {
+			binding, found := work.workspace.accountBinding(q.AccountID, q.Target)
+			origin, valid = workspaceURLOrigin(binding.EntryURL)
+			valid = valid && found
 		} else {
-			foundRef := false
-			for _, ref := range work.workspace.RoleRefs {
-				if ref.RoleID == q.RoleID && ref.Configured && ref.SecretRef != nil && ref.SecretVersion != nil {
-					foundRef = true
-				}
-			}
-			for _, role := range config.LoginRoles {
-				if role.RoleID != nil && *role.RoleID == q.RoleID && role.LoginMethod == "form" {
-					origin = role.LoginOrigin
-				}
-			}
-			valid = foundRef && origin != ""
+			_, origin, valid = work.workspace.configuredRole(q.RoleID)
 		}
 	}
 	if valid {
@@ -149,7 +131,7 @@ func (m *Manager) sendSessionCredentialReply(ctx context.Context, r sessionRecor
 	current := m.sessions[r.SessionID]
 	work := m.sessionWorking[r.SessionID]
 	active := current.LeaseID == r.LeaseID && current.State == "ready" && !current.Reclaimed && time.Now().UnixMilli() < current.DeadlineAt &&
-		work != nil && work.active == q.CallID && work.calls[q.CallID] != nil && work.calls[q.CallID].roleID == q.RoleID
+		work != nil && work.active == q.CallID && q.matches(work.calls[q.CallID])
 	m.mu.Unlock()
 	if !active {
 		return

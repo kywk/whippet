@@ -20,6 +20,9 @@ type workspaceContext struct {
 	SettingsRevision int64              `json:"settingsRevision"`
 	Config           json.RawMessage    `json:"config"`
 	RoleRefs         []workspaceRoleRef `json:"roleRefs"`
+	TestAccounts     json.RawMessage    `json:"testAccounts,omitempty"`
+	AccountBindings  []json.RawMessage  `json:"accountBindings,omitempty"`
+	bindings         map[accountSite]loginBinding
 }
 type workspaceRoleRef struct {
 	RoleID        string  `json:"roleId"`
@@ -214,13 +217,27 @@ func parseWorkspaceContext(raw json.RawMessage, workspaceID string) (*workspaceC
 	if len(raw) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		return nil, nil
 	}
-	if len(raw) > 1<<20 || !exactWorkspaceObject(raw, "schemaVersion", "workspaceId", "settingsRevision", "config", "roleRefs") {
+	if len(raw) > maxWorkspaceAccountSnapshotBytes {
 		return nil, errWorkspaceSnapshot
 	}
 	var c workspaceContext
 	d := json.NewDecoder(bytes.NewReader(raw))
 	d.DisallowUnknownFields()
-	if d.Decode(&c) != nil || c.SchemaVersion != "1" || !uuidPattern.MatchString(c.WorkspaceID) || workspaceID != "" && c.WorkspaceID != workspaceID || c.SettingsRevision < 1 || c.SettingsRevision > 9007199254740991 || c.RoleRefs == nil || len(c.RoleRefs) > 10 {
+	if d.Decode(&c) != nil || !uuidPattern.MatchString(c.WorkspaceID) || workspaceID != "" && c.WorkspaceID != workspaceID || c.SettingsRevision < 1 || c.SettingsRevision > 9007199254740991 || c.RoleRefs == nil || len(c.RoleRefs) > 10 {
+		return nil, errWorkspaceSnapshot
+	}
+	keys := []string{"schemaVersion", "workspaceId", "settingsRevision", "config", "roleRefs"}
+	switch c.SchemaVersion {
+	case "1":
+		if len(raw) > 1<<20 {
+			return nil, errWorkspaceSnapshot
+		}
+	case "2":
+		keys = append(keys, "testAccounts", "accountBindings")
+	default:
+		return nil, errWorkspaceSnapshot
+	}
+	if !exactWorkspaceObject(raw, keys...) {
 		return nil, errWorkspaceSnapshot
 	}
 	var fields map[string]json.RawMessage
@@ -241,6 +258,13 @@ func parseWorkspaceContext(raw json.RawMessage, workspaceID string) (*workspaceC
 	}
 	if !bytes.Equal(bytes.TrimSpace(c.Config), []byte("null")) && validWorkspaceConfig(c.Config, nil) != nil {
 		return nil, errWorkspaceSnapshot
+	}
+	if c.SchemaVersion == "2" {
+		var ok bool
+		c.bindings, ok = accountDirectoryBindings(&c)
+		if !ok {
+			return nil, errWorkspaceSnapshot
+		}
 	}
 	return &c, nil
 }
