@@ -115,30 +115,52 @@ export interface WorkspaceTestAccount {
   sites: WorkspaceSiteLogin[];
 }
 
+export type WorkspaceTestAccountUpdate = Pick<WorkspaceTestAccount, 'name' | 'role' | 'purpose'> & { revision: number };
+
 export const WORKSPACE_VERIFICATION_REASONS = [
   'scope_confirmation_required', 'login_setup_required', 'credentials_required', 'unsupported_login_method',
   'login_rejected', 'mfa_required', 'guest_accessible', 'login_not_verified', 'credential_unavailable',
   'invalid_evidence', 'timed_out', 'cancelled', 'interrupted',
 ] as const;
+export type WorkspaceVerificationReason = typeof WORKSPACE_VERIFICATION_REASONS[number];
+
+export interface WorkspaceSiteAccountVerification {
+  accountId: string;
+  state: 'pending' | 'running' | 'verified' | 'failed';
+  reason: WorkspaceVerificationReason | null;
+  runId: string | null;
+  verifiedAt: string | null;
+}
 
 export interface WorkspaceSiteReadiness {
   targetOrigin: string;
   testScope: WorkspaceTestScope;
   ready: boolean;
   reason: 'scope_choice_required' | 'login_verification_required' | null;
-  accounts: {
-    accountId: string;
-    state: 'pending' | 'running' | 'verified' | 'failed';
-    reason: typeof WORKSPACE_VERIFICATION_REASONS[number] | null;
-    runId: string | null;
-    verifiedAt: string | null;
-  }[];
+  accounts: WorkspaceSiteAccountVerification[];
 }
 
 export interface WorkspaceAccountCredentials {
   accountId: string;
   configured: boolean;
   secretVersion: number | null;
+}
+
+export interface WorkspaceProposalCredentialVersion {
+  baseRevision: number;
+  expectedSecretVersion: number;
+}
+
+export interface WorkspaceProposalCredentialInput extends WorkspaceProposalCredentialVersion {
+  username: string;
+  password: string;
+}
+
+export interface WorkspaceLoginVerificationInput {
+  baseRevision: number;
+  requestId: string;
+  accountId: string;
+  targetOrigin: string;
 }
 
 export interface WorkspaceConfig {
@@ -233,7 +255,7 @@ export interface WorkspaceProposal {
   status: 'pending' | 'applied' | 'cancelled' | 'stale' | 'superseded';
   content: WorkspaceConfig;
   siteReadiness: WorkspaceSiteReadiness[];
-  accountCredentials: WorkspaceAccountCredentials[];
+  accountCredentials?: WorkspaceAccountCredentials[];
   scopeHash: string;
   scopeConfirmed: boolean;
   invalidationReason: string | null;
@@ -423,7 +445,7 @@ export interface RunActivity {
   startedAt?: string;
   finishedAt?: string;
   reportUrl?: string;
-  kind?: 'run' | 'validation' | 'author';
+  kind?: 'run' | 'validation' | 'author' | 'workspace_login_verification';
   draftRevision?: number;
   editingSessionId?: string | null;
   authorMode?: 'edit' | 'summary' | 'workspace';
@@ -644,6 +666,7 @@ export interface WhippetApi {
   replaceDraftWithNewTest(testId: string, sessionId: string, revision: number, replyId: string, signal?: AbortSignal): Promise<{ sourceTest: Test; test: Test }>;
   requestSummary(testId: string, editingSessionId: string, revision: number, validationRunId: string, signal?: AbortSignal): Promise<Run>;
   getWorkspace(workspaceId: string, signal?: AbortSignal): Promise<WorkspaceDetail>;
+  updateWorkspaceTestAccount(workspaceId: string, accountId: string, input: WorkspaceTestAccountUpdate, signal?: AbortSignal): Promise<WorkspaceDetail>;
   updateWorkspaceAuthorEngine(workspaceId: string, revision: number, authorEngine: AuthorEngine, signal?: AbortSignal): Promise<WorkspaceDetail>;
   getWorkspaceAgentRuntime?: (workspaceId: string, signal?: AbortSignal) => Promise<WorkspaceAgentRuntime>;
   updateWorkspaceAgentRuntime?: (workspaceId: string, revision: number, selection: AgentRuntimeSelection, signal?: AbortSignal) => Promise<WorkspaceAgentRuntime>;
@@ -654,6 +677,9 @@ export interface WhippetApi {
   confirmWorkspaceScope(workspaceId: string, proposalId: string, baseRevision: number, signal?: AbortSignal): Promise<WorkspaceProposal>;
   confirmWorkspaceProposal(workspaceId: string, proposalId: string, baseRevision: number, signal?: AbortSignal): Promise<{ workspace: WorkspaceDetail; proposal: WorkspaceProposal }>;
   cancelWorkspaceProposal(workspaceId: string, proposalId: string, baseRevision: number, signal?: AbortSignal): Promise<WorkspaceProposal>;
+  saveWorkspaceProposalCredentials(workspaceId: string, proposalId: string, accountId: string, input: WorkspaceProposalCredentialInput, signal?: AbortSignal): Promise<WorkspaceAccountCredentials>;
+  revokeWorkspaceProposalCredentials(workspaceId: string, proposalId: string, accountId: string, input: WorkspaceProposalCredentialVersion, signal?: AbortSignal): Promise<WorkspaceAccountCredentials>;
+  verifyWorkspaceProposalLogin(workspaceId: string, proposalId: string, input: WorkspaceLoginVerificationInput, signal?: AbortSignal): Promise<Run>;
   saveWorkspaceCredentials(workspaceId: string, roleId: string, input: { expectedSecretVersion: number; username: string; password: string }, signal?: AbortSignal): Promise<WorkspaceRoleRef>;
   revokeWorkspaceCredentials(workspaceId: string, roleId: string, expectedSecretVersion: number, signal?: AbortSignal): Promise<{ roleId: string; secretRef: string | null; configured: boolean }>;
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, errorMessage } from './api';
 import { Notice } from './components';
+import { WorkspaceLoginVerification } from './WorkspaceLoginVerification';
 import { CapabilityStatus, WorkspaceConfigView, workspaceTargetProgress } from './WorkspaceSettings';
 import type { WhippetApi, WorkspaceDetail, WorkspaceProposal as Proposal } from './types';
 
@@ -11,6 +12,7 @@ export function WorkspaceProposalCard({ api, workspace, proposal, contextRevisio
 }) {
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState<'scope' | 'apply' | 'cancel'>();
+  const [verificationBusy, setVerificationBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [note, setNote] = useState<string>();
   const [conflict, setConflict] = useState(false);
@@ -20,9 +22,10 @@ export function WorkspaceProposalCard({ api, workspace, proposal, contextRevisio
   const targets = workspaceTargetProgress(proposal.content.targets, proposal.siteReadiness);
   const complete = targets.length > 0 && Boolean(proposal.content.purpose.trim() && proposal.content.backgroundSummary.trim());
   const readyToApply = complete && targets.every((target) => target.ready);
-  const actionsBlocked = blocked || Boolean(busy) || conflict;
+  const mutating = Boolean(busy) || verificationBusy;
+  const actionsBlocked = blocked || mutating || conflict;
   useEffect(() => { setConfirmed(false); setConflict(false); setError(undefined); }, [proposal, workspace.revision, contextRevision]);
-  useEffect(() => { onBusyChange(Boolean(busy)); return () => onBusyChange(false); }, [busy, onBusyChange]);
+  useEffect(() => { onBusyChange(mutating); return () => onBusyChange(false); }, [mutating, onBusyChange]);
   useEffect(() => () => controller.current?.abort(), []);
   async function act(kind: 'scope' | 'apply' | 'cancel') {
     if (lock.current || actionsBlocked || !current || (kind !== 'cancel' && !confirmed) || (kind === 'apply' && !readyToApply)) return;
@@ -68,6 +71,8 @@ export function WorkspaceProposalCard({ api, workspace, proposal, contextRevisio
     <p className="summary-content">範圍確認：{proposal.scopeConfirmed ? 'Server 已確認此提案範圍' : '尚未確認'}。確認範圍不代表已完成探索。</p>
     <CapabilityStatus label="AI 探索工具" capability={workspace.capabilities?.aiExploration} />
     <WorkspaceConfigView config={proposal.content} targets={targets} interview={current ? { disabled: actionsBlocked, onChoose: onDraftScope } : undefined} />
+    {current ? <WorkspaceLoginVerification api={api} proposal={proposal} blocked={blocked || Boolean(busy) || conflict}
+      onBusyChange={setVerificationBusy} onRefresh={onRefresh} /> : null}
     {proposal.invalidationReason ? <p className="blocked-hint">提案失效原因：{proposal.invalidationReason}</p> : null}
     {!current && proposal.status === 'pending' ? <p className="blocked-hint">提案與目前設定或對話版本不一致，請重新載入後取得新提案。</p> : null}
     {proposal.appliedRevision !== null ? <p className="action-message">已套用於正式設定 revision {proposal.appliedRevision}</p> : null}

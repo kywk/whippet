@@ -21,7 +21,7 @@ export function workspaceTargetProgress(targets: WorkspaceTarget[], siteReadines
 function targetProgressMessage({ testScope, ready }: TargetProgress) {
   if (testScope === 'unknown') return '請在訪談中為此站選擇要測的流程。';
   if (testScope === 'guest') return ready ? '本站已就緒。' : '請重新載入設定對話，取得本站狀態。';
-  return ready ? '本站登入驗證已通過。' : '本站需要至少一組帳號通過登入驗證。請先在訪談補充登入方式、角色與登入後成功條件。';
+  return ready ? '本站登入驗證已通過。' : '本站需要至少一組帳號通過登入驗證。';
 }
 
 export function CapabilityStatus({ label, capability }: { label: string; capability: WorkspaceCapability | undefined }) {

@@ -306,6 +306,7 @@ test('本機頁面', async ({ page }) => {
     async replaceDraftWithNewTest() { throw new ApiError('示範模式不會放棄草稿。', 'MOCK_SESSION_UNAVAILABLE', 400); },
     async requestSummary() { throw new ApiError('示範模式不產生驗收摘要，請使用真實 API。', 'MOCK_SUMMARY_UNAVAILABLE', 400); },
     async getWorkspace() { throw new ApiError('M8 設定對話請使用真實 API。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
+    async updateWorkspaceTestAccount() { throw new ApiError('示範模式不會更新測試帳號。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
     async updateWorkspaceAuthorEngine() { throw new ApiError('示範模式不會切換 AI 撰寫引擎。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
     async createWorkspace() { throw new ApiError('示範模式不會建立 Workspace。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
     async getWorkspaceConversation() { throw new ApiError('示範模式沒有持久設定對話。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
@@ -314,6 +315,9 @@ test('本機頁面', async ({ page }) => {
     async confirmWorkspaceScope() { throw new ApiError('示範模式不會確認範圍。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
     async confirmWorkspaceProposal() { throw new ApiError('示範模式不會套用提案。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
     async cancelWorkspaceProposal() { throw new ApiError('示範模式不會取消提案。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
+    async saveWorkspaceProposalCredentials() { throw new ApiError('示範模式不收集登入資料。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
+    async revokeWorkspaceProposalCredentials() { throw new ApiError('示範模式沒有登入資料。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
+    async verifyWorkspaceProposalLogin() { throw new ApiError('示範模式不會啟動登入驗證。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
     async saveWorkspaceCredentials() { throw new ApiError('示範模式不收集登入資料。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
     async revokeWorkspaceCredentials() { throw new ApiError('示範模式沒有登入資料。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
   };
