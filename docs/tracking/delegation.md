@@ -2,6 +2,19 @@
 
 M1–M6 本機功能證據沿用；目前由 UI／UX PM 推進 M7–M9 規格與後續實作。里程碑與唯一進度來源為 [實作計畫](implementation.md)。
 
+## Workspace 逐站登入驗證與測試帳號
+
+依 [實作計畫](implementation.md#workspace-逐站登入驗證與測試帳號) 的 WLA 編號派工，使用 [規格驗收情境](../requirements/workspace-test-accounts/spec.md#驗收情境) 交接。
+
+| Owner／寫入範圍 | 任務 | 可交接成果 |
+| --- | --- | --- |
+| 總指揮／contracts、docs、整合腳本 | WLA-0 固定跨模組介面及舊資料映射；WLA-4 整合逐站設定與腳本使用流程，維護唯一進度表 | 契約範例、A1–A6 結果與各入口實測紀錄 |
+| Server／services/server | WLA-1 保存逐站範圍並守住確認入口；WLA-2 授權提案驗證、依版本寫入結果並在套用時核對；WLA-3 實作維運權限、舊引用映射、快照及 MCP 互動／接單授權 | migration 與相容資料測試、雙站部分通過、撤權、輪替與晚到回報案例 |
+| Runtime／services/manager、runtimes/worker、runtimes/agent-bridge | WLA-1 調整 Workspace 訪談；WLA-2 接可信登入工具與登入後斷言；WLA-3 提供帳號選用指引，串接內建、Vercel、Pi 與參考 MCP 客戶端 | 成功、僅送出表單、錯站、取消及同角色雙帳號腳本證據，驗證敏感輸入遮蔽 |
+| Web／apps/web | WLA-1 提供逐站範圍確認；WLA-2 串接專用機密輸入、逐站結果與草稿重試；WLA-3 提供管理員編輯帳號名稱、角色、用途及查看驗證狀態 | 管理員與一般成員操作結果，含重開草稿、零帳號訪客與部分通過畫面 |
+
+WLA-0 固定後，三個模組可依同一組範例並行。先整合訪客站，接著用兩個需要登入的站台驗證逐站門檻，再接腳本撰寫。共同介面由總指揮單一寫入，各 owner 回報檔案、介面差異、實際驗證及剩餘工作。
+
 ## 全站管理後台
 
 依 [實作計畫](implementation.md#全站管理後台) 的 ADM 編號派工，驗收情境見 [後台規格](../requirements/site-management/spec.md#驗收情境)。
