@@ -510,6 +510,8 @@ class Acceptance:
                               "replacementRunId": newer_run, "lateWorkerResult": frame}
 
     def update_account_metadata(self, workspace, owner, other):
+        from playwright.sync_api import expect
+
         workspace_path = f"/api/workspaces/{workspace}"
         self.api("PUT", workspace_path + "/members/dev-qa", data={"role": "qa"})
         qa = self.adm.login(self.browser, self.base, self.key, "dev-qa")
@@ -517,18 +519,25 @@ class Acceptance:
         self.api("GET", workspace_path, page=qa)
         self.open_settings(initial["name"])
         panel = self.panel("settings").get_by_role("region", name="測試帳號維護", exact=True)
+        editor = panel.locator("form")
         purposes = ("建立驗收訂單", "檢查別的會員看不到驗收訂單")
         for account, name, purpose in zip((owner, other), ("會員 A", "會員 B"), purposes):
             before = self.workspace(workspace)
             path = workspace_path + f"/test-accounts/{account}"
             patch = {"revision": before["revision"], "name": name, "role": "會員", "purpose": purpose}
             self.api("PATCH", path, 403, patch, "forbidden", page=qa)
-            panel.locator(f'[data-account-id="{account}"]').get_by_role("button", name=f"編輯 {name} 的說明", exact=True).click()
-            panel.get_by_label("用途", exact=True).fill(purpose)
+            row = panel.locator(f'[data-account-id="{account}"]')
+            edit = row.get_by_role("button", name=f"編輯 {name} 的說明", exact=True)
+            edit.click()
+            expect(editor.locator('input[name="name"]')).to_have_value(name)
+            editor.locator('textarea[name="purpose"]').fill(purpose)
             with self.admin.expect_response(lambda response: response.url.endswith(path) and response.request.method == "PATCH") as saved:
-                panel.get_by_role("button", name="保存帳號說明", exact=True).click()
+                editor.get_by_role("button", name="保存帳號說明", exact=True).click()
             after = clean(self.adm.checked(saved.value, 200))
             check(after["revision"] > before["revision"], "account metadata needs a new Workspace revision")
+            expect(editor).to_have_count(0)
+            expect(row.get_by_text(purpose, exact=True)).to_be_visible()
+            expect(edit).to_be_enabled()
         check(initial["siteReadiness"] == self.workspace(workspace)["siteReadiness"], "metadata edit must preserve evidence")
         self.checks["A4"] = {"metadataUpdated": True, "qaWrite": 403}
         return purposes
