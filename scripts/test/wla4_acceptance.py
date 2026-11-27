@@ -605,12 +605,21 @@ class Acceptance:
         return self.adm.MCP(self.admin.request, self.base, issued["token"])
 
     @staticmethod
-    def tool(mcp, name, args, *, code=None, meta=None):
+    def mcp_reply(mcp, name, args, meta=None):
         reply = clean(mcp.tool(name, args, meta))
-        check(bool(reply.get("isError")) == bool(code), f"unexpected MCP tool result for {name}")
-        payload = reply["structuredContent"]
-        if code:
-            check(payload.get("error") == code, f"unexpected MCP error for {name}")
+        operation = f"{name}/{args['name']}" if name == "task_tool_call" else name
+        check(isinstance(reply, dict), f"MCP {operation} must return a result object")
+        is_error = reply.get("isError", False)
+        check(type(is_error) is bool, f"MCP {operation} must use a boolean isError")
+        payload = reply.get("structuredContent")
+        check(isinstance(payload, dict) and payload, f"MCP {operation} must return structuredContent (isError={is_error})")
+        return operation, is_error, payload
+
+    def tool(self, mcp, name, args, *, code=None, meta=None):
+        operation, is_error, payload = self.mcp_reply(mcp, name, args, meta)
+        check(is_error == (code is not None), f"unexpected MCP result for {operation}")
+        if code is not None:
+            check(payload.get("error") == code, f"MCP {operation} must return structuredContent.error={code}")
         return payload
 
     def open_lease(self, mcp):
@@ -620,7 +629,10 @@ class Acceptance:
         return ids, ready["testAccounts"]
 
     def close_lease(self, mcp, ids):
-        self.tool(mcp, "browser_session_close", ids)
+        closed = self.tool(mcp, "browser_session_close", ids)
+        check(all(closed.get(key) == value for key, value in ids.items()) and
+              closed.get("state") in {"closing", "reclaim_pending", "closed"} and type(closed.get("reclaimed")) is bool,
+              "MCP browser_session_close must return the lease state")
         wait_for(lambda: self.tool(mcp, "browser_session_status", ids), lambda row: row["reclaimed"], "MCP lease reclaimed")
 
     @staticmethod
@@ -633,6 +645,7 @@ class Acceptance:
 
     def interactive_mcp(self, mcp, foreign, owner, other, purposes):
         orders, support = self.origins["orders"], self.origins["support"]
+        self.stage = "A5 MCP interactive open"
         ids, directory = self.open_lease(mcp)
         self.assert_directory(directory, owner, other, purposes, orders)
 
@@ -643,17 +656,24 @@ class Acceptance:
             return {"accountId": account, "targetOrigin": target}
 
         try:
+            self.stage = "A5 MCP interactive wrong-site login"
             self.tool(mcp, "browser_login_account", login(owner, support), code=DENIED, meta=metadata(ids))
+            self.stage = "A5 MCP interactive authorized login"
             submitted = self.tool(mcp, "browser_login_account", login(owner, orders), meta=metadata(ids))
             check(submitted.get("submitted") is True, "interactive account login failed")
+            self.stage = "A5 MCP interactive protected page"
             view = self.tool(mcp, "browser_navigate", {"url": orders + "/products"}, meta=metadata(ids))
             check(AUTHENTICATED in view["snapshot"], "interactive lease must reach a protected page")
+            self.stage = "A5 MCP interactive close"
         finally:
             self.close_lease(mcp, ids)
+        self.stage = "A5 MCP interactive guest lease"
         empty, directory = self.open_lease(foreign)
         try:
             check(directory == [], "visitor Workspace must have an empty account directory")
+            self.stage = "A5 MCP interactive foreign account"
             self.tool(foreign, "browser_login_account", login(owner, orders), code=DENIED, meta=metadata(empty))
+            self.stage = "A5 MCP interactive guest close"
         finally:
             self.close_lease(foreign, empty)
         self.checks["A5"]["mcpInteractive"] = {"allowed": True, "wrongSite": DENIED, "foreignAccount": DENIED,
@@ -673,6 +693,20 @@ class Acceptance:
     def task_tool(self, mcp, ids, name, args, code=None):
         return self.tool(mcp, "task_tool_call", {**ids, "name": name, "arguments": args, "callId": str(uuid4())}, code=code)
 
+    def submit_task(self, mcp, ids, output):
+        args = {**ids, "submitId": str(uuid4()), "output": output}
+
+        def submit():
+            _, is_error, receipt = self.mcp_reply(mcp, "task_submit", args)
+            if is_error and receipt.get("error") == "busy":
+                return None
+            check(not is_error and receipt.get("state") == "submitted" and
+                  "appliedRevision" in receipt and "validationRunId" in receipt,
+                  "MCP task_submit must return a submitted receipt")
+            return receipt
+
+        return wait_for(submit, bool, "MCP submission after browser reclamation", timeout=30)
+
     def report(self, run_id):
         run = self.terminal(run_id, {"succeeded"})
         check(run["kind"] == "validation", "expected independent Playwright validation")
@@ -683,6 +717,7 @@ class Acceptance:
 
     def claimed_mcp(self, mcp, foreign, workspace, empty, owner, other, purposes):
         orders, support = self.origins["orders"], self.origins["support"]
+        self.stage = "A5 MCP claim acquire"
         self.set_author_engine(workspace, "external")
         route, run_id = self.author(workspace, "WLA4 外部雙身分訂單", {"target": orders})
         task, ids = self.claim(mcp, run_id)
@@ -691,20 +726,24 @@ class Acceptance:
         check("accountBindings" not in context, "MCP claim exposed private binding information")
         check("browser_login_account" in bundle["author"]["allowedTools"], "claim is missing the scoped login tool")
         self.assert_directory(context["testAccounts"], owner, other, purposes, orders)
-        self.tool(mcp, "task_heartbeat", ids)
+        check(self.tool(mcp, "task_heartbeat", ids).get("state") == "active", "MCP claim must remain active")
+        self.stage = "A5 MCP claim wrong-site login"
         self.task_tool(mcp, ids, "browser_login_account", {"accountId": owner, "targetOrigin": support}, DENIED)
+        self.stage = "A5 MCP claim authorized login"
         submitted = self.task_tool(mcp, ids, "browser_login_account", {"accountId": owner, "targetOrigin": orders})
         check(submitted.get("submitted") is True, "claimed account login failed")
+        self.stage = "A5 MCP claim protected page"
         view = self.task_tool(mcp, ids, "browser_navigate", {"url": orders + "/products"})
         check(AUTHENTICATED in view["snapshot"], "claimed browser must reach its protected page")
+        self.stage = "A5 MCP claim submit"
         candidate = order_script(orders, owner, other)
-        submitted = self.tool(mcp, "task_submit", {**ids, "submitId": str(uuid4()), "output": {
-            "message": "雙身分訂單候選腳本", "script": candidate, "requestValidation": True}})
+        submitted = self.submit_task(mcp, ids, {"message": "雙身分訂單候選腳本", "script": candidate, "requestValidation": True})
         validation = submitted["validationRunId"]
         check(bool(validation), "MCP candidate must enqueue an independent Worker validation")
         self.report(validation)
         check(self.api("GET", route + "/draft")["script"] == candidate, "verified draft must be the submitted account-ID script")
 
+        self.stage = "A5 MCP claim guest claim"
         self.set_author_engine(empty, "external")
         route, missing_run = self.author(empty, "WLA4 外部帳號缺項", {"missing": True})
         task, missing_ids = self.claim(foreign, missing_run)
@@ -712,10 +751,12 @@ class Acceptance:
         context = bundle["workspaceContext"]
         check(context.get("testAccounts", []) == [] and "accountBindings" not in context and
               "browser_login_account" not in bundle["author"]["allowedTools"], "claim on guest scope must grant no account access")
+        self.stage = "A5 MCP claim foreign account"
         self.task_tool(foreign, missing_ids, "browser_login_account", {"accountId": owner, "targetOrigin": orders}, DENIED)
         missing = "缺少適用的會員測試帳號，請補充。"
-        self.tool(foreign, "task_submit", {**missing_ids, "submitId": str(uuid4()), "output": {
-            "message": missing, "requestValidation": False}})
+        self.stage = "A5 MCP claim guest submit"
+        receipt = self.submit_task(foreign, missing_ids, {"message": missing, "requestValidation": False})
+        check(receipt["validationRunId"] is None, "missing account reply must not enqueue validation")
         self.terminal(missing_run, {"succeeded"})
         messages = self.api("GET", route + "/conversation")["messages"]
         check(any(row["content"] == missing and row["role"] == "assistant" for row in messages), "external account gap must reach the user")

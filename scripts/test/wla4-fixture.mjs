@@ -1,9 +1,10 @@
 // Isolated WLA acceptance. The preload replaces only model transport.
 import assert from 'node:assert/strict';
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, constants, existsSync, linkSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, request } from 'node:https';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
 const secretMarker = /wla4-(?:secret-|provider-key)/;
@@ -12,6 +13,58 @@ const protectedPage = 'Authenticated synthetic customer';
 const prefix = 'WLA4 ';
 const scopeAnswer = /^本次 (http:\/\/[0-9.]+:[0-9]+) (只測訪客|只測登入後|訪客與登入後都測)。$/u;
 const scopeByLabel = { '只測訪客': 'guest', '只測登入後': 'authenticated', '訪客與登入後都測': 'both' };
+const fixtureModel = /^wla4-(builtin|vercel|pi)$/;
+const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+const attemptIdPattern = new RegExp(`^${uuid}$`);
+const credentialPath = new RegExp(`^/api/manager/runs/${uuid}/attempts/(${uuid})/credentials/resolve$`);
+const traceDir = 'wla4-model-trace';
+const traceName = 'wla4-model-trace.jsonl';
+const toolErrors = new Set(['tool_unavailable', 'tool_failed', 'scope_confirmation_required', 'dependency_usage_not_allowed',
+  'credential_unavailable', 'credentials_unavailable']);
+const credentialStatuses = new Set([200, 400, 401, 403, 404, 409, 500, 503]);
+const traceSteps = new Set(['trace', 'request', 'setup', 'scope', 'account_context', 'wrong_site', 'login', 'products', 'credential_resolve']);
+const traceStatuses = new Set(['linked', 'link_failed', 'received', 'transport_rejected', 'body_rejected',
+  'secret_marker_blocked', 'fixture_rejected', 'completed',
+  'checking', 'ready', 'missing_account', 'requested', 'submitted', 'protected_page', 'page_without_marker',
+  'invalid_tool_result', 'unknown_tool_error', 'http_other', ...toolErrors, ...Array.from(credentialStatuses, code => `http_${code}`)]);
+
+function trace(path, step, status, requestNumber) {
+  if (!traceSteps.has(step) || !traceStatuses.has(status) ||
+      (requestNumber !== undefined && (!Number.isInteger(requestNumber) || requestNumber < 1 || requestNumber > 12))) return;
+  try {
+    appendFileSync(path, JSON.stringify({ request: requestNumber, step, status }) + '\n', {
+      flag: constants.O_WRONLY | constants.O_APPEND | constants.O_NOFOLLOW,
+    });
+  } catch { /* Trace collection must not affect the model or tool assertions. */ }
+}
+
+async function linkAttemptTrace(root, attemptId) {
+  const persisted = join(root, traceDir, `${attemptId}.jsonl`);
+  const mounted = join(root, 'manager-work', 'runs', attemptId, traceName);
+  try { writeFileSync(persisted, '', { flag: 'wx', mode: 0o600 }); }
+  catch (error) { if (error.code !== 'EEXIST') return; }
+  // Link only the attempt's trace into /work so evidence survives Manager reclamation.
+  const deadline = Date.now() + 5000;
+  do {
+    try {
+      linkSync(persisted, mounted);
+      trace(persisted, 'trace', 'linked');
+      return;
+    } catch (error) {
+      if (error.code === 'EEXIST') return;
+      if (error.code !== 'ENOENT') break;
+    }
+    await delay(20);
+  } while (Date.now() < deadline);
+  trace(persisted, 'trace', 'link_failed');
+}
+
+function toolStatus(value) {
+  if (value && Object.hasOwn(value, 'error')) return toolErrors.has(value.error) ? value.error : 'unknown_tool_error';
+  if (value?.submitted === true) return 'submitted';
+  if (typeof value?.snapshot === 'string') return value.snapshot.includes(protectedPage) ? 'protected_page' : 'page_without_marker';
+  return 'invalid_tool_result';
+}
 
 function textOf(item) {
   return typeof item.content === 'string' ? item.content : (item.content ?? []).map(part => part.text ?? '').join('');
@@ -33,7 +86,7 @@ function snapshotOf(items) {
   return JSON.parse(textOf(saved).slice(marker.length)).workspaceContext;
 }
 
-export function modelOutput(body) {
+export function modelOutput(body, record = () => {}) {
   const messages = body.input.filter(item => item.role === 'user').map(textOf);
   const current = messages.findLast(text => text.startsWith(prefix) || scopeAnswer.test(text));
   assert.ok(current, 'WLA fixture request');
@@ -44,60 +97,96 @@ export function modelOutput(body) {
     const target = proposal.targets.find(site => site.origin === choice[1]);
     assert.ok(target, 'fixture scope answer must refer to a known target');
     target.testScope = scopeByLabel[choice[2]];
+    record('scope', 'completed');
     return message({ message: `已記下本站${choice[2]}。`, proposal });
   }
   const [kind, data] = current.slice(prefix.length).split(/ (.*)/s, 2);
   const input = JSON.parse(data);
-  if (kind === 'setup') return message({ message: input.message, proposal: input.proposal });
+  if (kind === 'setup') {
+    record('setup', 'completed');
+    return message({ message: input.message, proposal: input.proposal });
+  }
   assert.equal(kind, 'author');
+  record('account_context', 'checking');
   const snapshot = snapshotOf(body.input);
   const accounts = snapshot.schemaVersion === '1' && !Object.hasOwn(snapshot, 'testAccounts') ? [] : snapshot.testAccounts;
   assert.ok(Array.isArray(accounts));
   assert.ok(!Object.hasOwn(snapshot, 'accountBindings'));
   assert.ok(snapshot.roleRefs.every(ref => ref.secretRef === null && ref.secretVersion === null));
-  const engine = body.model.match(/^wla4-(builtin|vercel|pi)$/)?.[1];
+  const engine = body.model.match(fixtureModel)?.[1];
   assert.ok(engine);
   const accountTool = body.tools.some(tool => tool.name === 'browser_login_account');
   if (input.missing) {
     assert.equal(accounts.length, 0);
     assert.ok(!accountTool);
-    return message({ message: `WLA4 ${engine}：缺少適用的會員測試帳號，請補充。`, requestValidation: false });
+    record('account_context', 'missing_account');
+    return message({ message: `WLA4 ${engine}：缺少適用的會員測試帳號，請補充。` });
   }
   assert.deepEqual(new Set(accounts.map(account => account.role)), new Set(['會員']));
   const [owner, other] = [input.ownerPurpose, input.otherPurpose].map(purpose => accounts.find(account =>
     account.purpose === purpose && account.sites.some(site => site.targetOrigin === input.target && site.state === 'verified')));
   assert.ok(owner && other && owner.accountId !== other.accountId);
   assert.ok(accountTool);
-  const result = id => {
+  record('account_context', 'ready');
+  const result = (id, step) => {
     const item = body.input.find(value => value.type === 'function_call_output' && value.call_id === id);
-    return item && JSON.parse(typeof item.output === 'string' ? item.output : item.output[0].text);
+    if (!item) return undefined;
+    let value;
+    try { value = JSON.parse(typeof item.output === 'string' ? item.output : item.output[0].text); }
+    catch (error) { record(step, 'invalid_tool_result'); throw error; }
+    record(step, toolStatus(value));
+    return value;
   };
-  const denied = result('wla_denied');
-  if (!denied) return call('browser_login_account', 'wla_denied', { accountId: owner.accountId, targetOrigin: input.wrongTarget });
+  const requestTool = (step, name, id, args) => {
+    record(step, 'requested');
+    return call(name, id, args);
+  };
+  const denied = result('wla_denied', 'wrong_site');
+  if (!denied) return requestTool('wrong_site', 'browser_login_account', 'wla_denied', { accountId: owner.accountId, targetOrigin: input.wrongTarget });
   assert.equal(denied.error, 'tool_unavailable');
-  const submitted = result('wla_login');
-  if (!submitted) return call('browser_login_account', 'wla_login', { accountId: owner.accountId, targetOrigin: input.target });
+  const submitted = result('wla_login', 'login');
+  if (!submitted) return requestTool('login', 'browser_login_account', 'wla_login', { accountId: owner.accountId, targetOrigin: input.target });
   assert.equal(submitted.submitted, true);
-  const visited = result('wla_products');
-  if (!visited) return call('browser_navigate', 'wla_products', { url: `${input.target}/products` });
+  const visited = result('wla_products', 'products');
+  if (!visited) return requestTool('products', 'browser_navigate', 'wla_products', { url: `${input.target}/products` });
   assert.ok(visited.snapshot.includes(protectedPage));
-  return message({ message: `WLA4 ${engine}：錯站拒絕，已讀到受保護商品頁。`, requestValidation: false });
+  return message({ message: `WLA4 ${engine}：錯站拒絕，已讀到受保護商品頁。` });
 }
 
 function installProvider() {
+  const tracePath = join('/work', traceName);
+  let requests = 0;
   globalThis.fetch = async (url, options) => {
+    const requestNumber = ++requests;
+    const record = (step, status) => trace(tracePath, step, status, requestNumber);
     if (String(url) !== modelURL || new Headers(options?.headers).get('authorization') !== 'Bearer wla4-provider-key') {
+      record('request', 'transport_rejected');
       throw new Error('unexpected fixture provider request');
     }
-    if (typeof options.body !== 'string' || secretMarker.test(options.body)) {
+    if (typeof options.body !== 'string') {
+      record('request', 'body_rejected');
       throw new Error('secret or invalid body in fixture model input');
     }
-    const input = JSON.parse(options.body);
-    const response = { id: 'resp_fixture', object: 'response', created_at: 1, status: 'completed', model: input.model,
-      output: [modelOutput(input)], usage: { input_tokens: 20, output_tokens: 10, total_tokens: 30,
-        input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } };
-    assert.equal(input.stream ?? false, false, 'fixture uses the Responses JSON entrypoint');
-    return Response.json(response);
+    if (secretMarker.test(options.body)) {
+      record('request', 'secret_marker_blocked');
+      throw new Error('secret or invalid body in fixture model input');
+    }
+    try {
+      const input = JSON.parse(options.body);
+      if (requestNumber === 1 && fixtureModel.test(input.model)) {
+        for (let tries = 0; tries < 50 && !existsSync(tracePath); tries++) await delay(20);
+      }
+      record('request', 'received');
+      const response = { id: 'resp_fixture', object: 'response', created_at: 1, status: 'completed', model: input.model,
+        output: [modelOutput(input, record)], usage: { input_tokens: 20, output_tokens: 10, total_tokens: 30,
+          input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } };
+      assert.equal(input.stream ?? false, false, 'fixture uses the Responses JSON entrypoint');
+      record('request', 'completed');
+      return Response.json(response);
+    } catch (error) {
+      record('request', 'fixture_rejected');
+      throw error;
+    }
   };
 }
 
@@ -164,6 +253,7 @@ function resultProxy() {
   assert.equal(upstream.protocol, 'https:');
   const root = process.env.WLA4_ROOT;
   const file = name => join(root, `wla4-${name}`);
+  mkdirSync(join(root, traceDir), { mode: 0o700, recursive: true });
   const cert = readFileSync(join(root, 'server.crt'));
   const { WebSocket, WebSocketServer } = createRequire(import.meta.url)(join(root, 'ws'));
   const limit = 64 * 1024 * 1024;
@@ -171,8 +261,11 @@ function resultProxy() {
   const server = createServer({ cert, key: readFileSync(join(root, 'server.key')) }, (incoming, response) => {
     if (incoming.url === '/readyz') { response.writeHead(200).end(); return; }
     if (!incoming.url?.startsWith('/api/manager/')) { response.writeHead(404).end(); return; }
+    const credentials = incoming.method === 'POST' && credentialPath.exec(incoming.url);
     const send = request(new URL(incoming.url, upstream), { method: incoming.method, ca: cert,
       headers: { ...incoming.headers, host: upstream.host } }, peer => {
+      if (credentials) trace(join(root, traceDir, `${credentials[1]}.jsonl`), 'credential_resolve',
+        credentialStatuses.has(peer.statusCode) ? `http_${peer.statusCode}` : 'http_other');
       response.writeHead(peer.statusCode, peer.headers);
       peer.pipe(response);
     });
@@ -200,6 +293,7 @@ function resultProxy() {
           if (frame.type === 'dispatch' && frame.payload?.kind === 'author') {
             const engine = frame.payload.author?.runtime?.engine;
             if (['builtin', 'vercel', 'pi'].includes(engine)) {
+              if (typeof frame.attemptId === 'string' && attemptIdPattern.test(frame.attemptId)) void linkAttemptTrace(root, frame.attemptId);
               appendFileSync(file('author-dispatches.jsonl'), JSON.stringify({
                 runId: frame.runId, attemptId: frame.attemptId, engine,
               }) + '\n', { mode: 0o600 });
