@@ -27,6 +27,116 @@ func m8Dispatch(t *testing.T) Dispatch {
 	return d
 }
 
+func wlaProposal(scope string) map[string]any {
+	config := m8Config()
+	config["targets"].([]any)[0].(map[string]any)["testScope"] = scope
+	config["testAccounts"] = []any{}
+	return config
+}
+
+func TestWLA1WorkspaceProposalForwardingAndGuestArtifact(t *testing.T) {
+	for _, scope := range []string{"first", "guest", "unknown", "both"} {
+		t.Run(scope, func(t *testing.T) {
+			m, _, _ := lifecycleManager(t, 1)
+			d := m8Dispatch(t)
+			var candidate any
+			if scope != "first" {
+				var reason any
+				switch scope {
+				case "unknown":
+					reason = "scope_choice_required"
+				case "both":
+					reason = "login_verification_required"
+				}
+				candidate = map[string]any{"content": wlaProposal(scope), "siteReadiness": []any{
+					map[string]any{"targetOrigin": "https://example.test", "testScope": scope, "ready": scope == "guest", "reason": reason, "accounts": []any{}},
+				}}
+			}
+			d.Author.WorkspaceProposal, _ = json.Marshal(candidate)
+			env := message("manager-test", "dispatch", newID(), newID(), d)
+			var dispatch Dispatch
+			if err := json.Unmarshal(env.Payload, &dispatch); err != nil {
+				t.Fatal(err)
+			}
+			if err := validDispatch(dispatch); err != nil {
+				t.Fatal(err)
+			}
+			r := record{RunID: env.RunID, AttemptID: env.AttemptID, Kind: "author", Phase: "accepted", ResultMessageID: newID(),
+				Author: dispatch.Author, WorkspaceID: d.WorkspaceID, TestID: d.TestID, WorkspaceContext: d.WorkspaceContext}
+			if err := m.prepare(r, dispatch); err != nil {
+				t.Fatal(err)
+			}
+			if err := m.store(r); err != nil {
+				t.Fatal(err)
+			}
+			raw, err := os.ReadFile(filepath.Join(m.taskDir(r), "input.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var input WorkerInput
+			if err := json.Unmarshal(raw, &input); err != nil {
+				t.Fatal(err)
+			}
+			loaded, err := loadRecords(m.cfg.WorkDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(input.Author.WorkspaceProposal, d.Author.WorkspaceProposal) ||
+				!reflect.DeepEqual(loaded[r.AttemptID].Author.WorkspaceProposal, d.Author.WorkspaceProposal) ||
+				!reflect.DeepEqual(input.WorkspaceContext, d.WorkspaceContext) {
+				t.Fatal("interview proposal was lost or changed the execution scope")
+			}
+			output := filepath.Join(m.taskDir(r), "output")
+			if err := os.Mkdir(output, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := atomicJSON(filepath.Join(output, "result.json"), Result{Status: "succeeded"}); err != nil {
+				t.Fatal(err)
+			}
+			file := filepath.Join(output, "author.json")
+			if err := atomicJSON(file, map[string]any{"message": "訪客設定待確認", "proposal": wlaProposal("guest")}); err != nil {
+				t.Fatal(err)
+			}
+			result, artifacts := collectAttemptResult(loaded[r.AttemptID], m.taskDir(r), execution{ExitCode: 0})
+			if result.Status != "succeeded" || !reflect.DeepEqual(artifacts, []string{"author.json"}) {
+				t.Fatalf("guest proposal was not collected: %v, %v", result, artifacts)
+			}
+			if scope != "first" {
+				return
+			}
+			raw, _ = os.ReadFile(file)
+			duplicate := strings.Replace(string(raw), `"testScope":"guest"`, `"testScope":"unknown","testScope":"guest"`, 1)
+			if err := os.WriteFile(file, []byte(duplicate), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if validAuthorArtifact(m.taskDir(r), r.Author, r.WorkspaceContext) || sanitizeCredentialOutputs(m.taskDir(r), []string{"synthetic-credential"}, r.Author) == nil {
+				t.Fatal("accepted a duplicate target scope or hid it during credential redaction")
+			}
+		})
+	}
+}
+
+func TestWLA1WorkspaceProposalReadinessCannotAuthorizeBrowserOrForgeEvidence(t *testing.T) {
+	for _, scope := range []string{"unknown", "authenticated", "both"} {
+		d := m8Dispatch(t)
+		d.Author.WorkspaceProposal, _ = json.Marshal(map[string]any{"content": wlaProposal(scope), "siteReadiness": []any{
+			map[string]any{"targetOrigin": "https://example.test", "testScope": scope, "ready": true, "reason": nil, "accounts": []any{}},
+		}})
+		if validDispatch(d) == nil {
+			t.Fatalf("accepted %s readiness without evidence", scope)
+		}
+	}
+	d := m8Dispatch(t)
+	d.Author.WorkspaceProposal, _ = json.Marshal(map[string]any{"content": wlaProposal("guest"), "siteReadiness": []any{
+		map[string]any{"targetOrigin": "https://example.test", "testScope": "guest", "ready": true, "reason": nil, "accounts": []any{}},
+	}})
+	tools := []string{"browser_navigate"}
+	d.Author.AllowedTools = &tools
+	if err := validDispatch(d); err == nil || err.Error() != "scope_confirmation_required" {
+		t.Fatalf("draft granted browser permission: %v", err)
+	}
+}
+
 func TestM8WorkspaceAuthorFlatInputJournalDedupCancel(t *testing.T) {
 	m, driver, ctx := lifecycleManager(t, 1)
 	d := m8Dispatch(t)

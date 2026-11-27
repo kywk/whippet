@@ -161,6 +161,8 @@ test('private files, exclusive state, URL and duplicate-key boundaries', t => {
   for (const url of ['http://example.com/mcp', withCredentials.href, 'https://example.com/mcp?key=x']) assert.throws(() => mcpURL(url), BridgeError);
   assert.throws(() => strictJSON('{"a":1,"\\u0061":2}'), BridgeError);
   assert.deepEqual(strictJSON('{"a":[{"x":1},{"x":2}],"b":"a,{}"}'), { a: [{ x: 1 }, { x: 2 }], b: 'a,{}' });
+  const large = { script: '"\\'.repeat(2 * 1024 * 1024) };
+  assert.deepEqual(strictJSON(JSON.stringify(large)), large);
 });
 test('429 is explicit and never automatically resends a control operation', async () => {
   let requests = 0;

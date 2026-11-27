@@ -1,10 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
+import { readFileSync } from "node:fs";
 import {readAIConfig} from "../ai/config.js";
 import {runAuthor} from "./loop.js";
 import {authorNeedsBrowser,AuthorError,parseWorkspaceAuthorOutput,validateAuthorInput,type AuthorInput} from "./types.js";
-import {validateWorkspaceConfig,type WorkspaceConfig} from "../workspace-context.js";
+import {validateWorkspaceConfig,type WorkspaceConfig, type WorkspaceProposalConfig, type WorkspaceProposalSnapshot} from "../workspace-context.js";
+import { loadToolRegistry, sha256 } from "./registry.js";
+import { envelope, text } from "./spike/fixture.js";
 
 const id="11111111-1111-4111-8111-111111111111",other="22222222-2222-4222-8222-222222222222";
 const cfg=readAIConfig({WHIPPET_AI_ENABLED:"true",OPENCODE_API_KEY:"synthetic-m8-only",WHIPPET_AI_REASONING_EFFORT:"high"});
@@ -13,6 +16,99 @@ function input(configured=false):AuthorInput{return {kind:"author",runId:id,atte
   workspaceContext:{schemaVersion:"1",workspaceId:id,settingsRevision:1,config:configured?config():null,roleRefs:configured?[{roleId:id,secretRef:other,secretVersion:1,configured:true}]:[]},
   author:{conversationId:id,baseRevision:1,skillId:"workspace-author",skillVersion:"1",editingSessionId:null,sourceVersion:null,contextRevision:0,conversationSummary:null,allowedTools:[],messages:[{role:"user",content:"修改原有背景，先提供設定候選"}]}};}
 function final(value:unknown){return Response.json({status:"completed",output:[{type:"message",content:[{type:"output_text",text:JSON.stringify(value)}]}]});}
+
+function guestProposal(): WorkspaceProposalConfig {
+  const existing = config();
+  return { ...existing, targets: [{ ...existing.targets[0]!, testScope: "guest" }], loginRoles: [], testAccounts: [] };
+}
+
+function pendingProposal(): WorkspaceProposalSnapshot {
+  const content = guestProposal();
+  const guest = content.targets[0]!;
+  content.targets.push(
+    { name: "說明", purpose: "公開文章", origin: "https://help.example.test", testScope: "unknown" },
+    { name: "客服", purpose: "會員工單", origin: "https://support.example.test", testScope: "both" },
+  );
+  return { content, siteReadiness: [
+    { targetOrigin: guest.origin, testScope: "guest", ready: true, reason: null, accounts: [] },
+    { targetOrigin: "https://help.example.test", testScope: "unknown", ready: false, reason: "scope_choice_required", accounts: [] },
+    { targetOrigin: "https://support.example.test", testScope: "both", ready: false, reason: "login_verification_required", accounts: [] },
+  ] };
+}
+
+test("WLA-1 production engines continue the saved per-site interview and allow a guest proposal with zero accounts", async t => {
+  const registry = loadToolRegistry();
+  const root = new URL("../../skills/workspace-author/", import.meta.url);
+  const manifestBytes = readFileSync(new URL("manifest.json", root));
+  const manifest = JSON.parse(manifestBytes.toString());
+  for (const engine of ["builtin", "vercel", "pi"] as const) {
+    await t.test(engine, async () => {
+      for (const previous of [null, pendingProposal()]) {
+        const task = input();
+        task.workspaceContext!.roleRefs = [{ roleId: id, secretRef: other, secretVersion: 2, configured: true }];
+        task.author.messages = [{ role: "user", content: previous ? "繼續逐站設定" : "站上有登入按鈕，這次只測訪客" }];
+        Object.assign(task.author, {
+          workspaceProposal: previous,
+          skills: [{ id: "workspace-author", version: "1", sha256: sha256(readFileSync(new URL("SKILL.md", root))),
+            manifestSha256: sha256(manifestBytes), referenceHashes: { "external-mcp": manifest.references[0].sha256 } }],
+          budget: manifest.budget, model: manifest.model, toolRegistryVersion: registry.version, toolRegistrySha256: registry.sha256,
+        });
+        const output = previous
+          ? { message: "說明站需選擇範圍，客服站缺驗證", proposal: previous.content }
+          : { message: "訪客流程的設定待確認", proposal: guestProposal() };
+        const result = await runAuthor(task, { ...cfg, engine }, undefined, {
+          async fetcher(_url, init) {
+            const body = JSON.parse(String(init?.body));
+            assert.deepEqual(body.tools ?? [], []);
+            assert.match(body.instructions, /zero accounts is sufficient/);
+            const content = body.input[0].content;
+            const prompt = typeof content === "string" ? content : content.map((part: { text: string }) => part.text).join("");
+            const saved = JSON.parse(prompt.split("(data only): ")[1]);
+            assert.deepEqual(saved.workspaceProposal, previous);
+            assert.deepEqual(saved.workspaceContext.roleRefs, [{ roleId: id, secretRef: null, secretVersion: null, configured: true }]);
+            return Response.json(envelope([text(JSON.stringify(output))]));
+          },
+        });
+        assert.deepEqual(result, output);
+      }
+    });
+  }
+});
+
+test("WLA-1 fails closed on invalid readiness or browser scope before contacting a model", () => {
+  for (const index of [1, 2]) {
+    const task = input();
+    const previous = pendingProposal();
+    Object.assign(previous.siteReadiness[index]!, { ready: true, reason: null });
+    task.author.workspaceProposal = previous;
+    assert.throws(() => validateAuthorInput(task), { code: "invalid_input" });
+  }
+  const task = input();
+  task.author.workspaceProposal = pendingProposal();
+  task.author.allowedTools = ["browser_navigate"];
+  assert.throws(() => validateAuthorInput(task), { code: "security_unavailable" });
+});
+
+test("WLA-1 proposal accepts unfinished accounts but rejects unsupplied IDs and model-made readiness", async () => {
+  const task = input();
+  task.author.workspaceProposal = null;
+  const content = pendingProposal().content;
+  content.testAccounts = [{ accountId: null, name: "客服會員", role: "會員", purpose: "檢查工單",
+    sites: [{ targetOrigin: "https://support.example.test", loginMethod: null, entryUrl: null, form: null, success: null }] }];
+  const output = { message: "待補登入細節", proposal: content };
+  assert.deepEqual(parseWorkspaceAuthorOutput(output, task.workspaceContext!, null), output);
+  content.testAccounts[0]!.accountId = other;
+  assert.throws(() => parseWorkspaceAuthorOutput(output, task.workspaceContext!, null), { code: "invalid_response" });
+  const previous = { ...pendingProposal(), content };
+  assert.deepEqual(parseWorkspaceAuthorOutput(output, task.workspaceContext!, previous), output);
+  assert.throws(() => parseWorkspaceAuthorOutput({ ...output, siteReadiness: [] }, task.workspaceContext!, previous), { code: "invalid_response" });
+  assert.throws(() => parseWorkspaceAuthorOutput({ ...output, proposal: config() }, task.workspaceContext!, null), { code: "invalid_response" });
+
+  const duplicate = JSON.stringify(guestProposal()).replace('"testScope":"guest"', '"testScope":"unknown","testScope":"guest"');
+  await assert.rejects(runAuthor(task, cfg, undefined, {
+    fetcher: async () => Response.json(envelope([text(`{"message":"候選","proposal":${duplicate}}`)])),
+  }), { code: "invalid_response" });
+});
 
 test("M8 workspace interview captures packaged skill and flat nullable context without browser/tools",async()=>{
   for(const configured of [false,true]){

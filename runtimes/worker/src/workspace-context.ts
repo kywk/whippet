@@ -13,6 +13,63 @@ export interface WorkspaceContext {
   schemaVersion:"1";workspaceId:string;settingsRevision:number;config:WorkspaceConfig|null;
   roleRefs:{roleId:string;secretRef:string|null;secretVersion:number|null;configured:boolean}[];
 }
+
+const testScopes = ["unknown", "guest", "authenticated", "both"] as const;
+export type TestScope = typeof testScopes[number];
+export interface FormSelectors {
+  usernameSelector: string;
+  passwordSelector: string;
+  submitSelector: string;
+  loginRejectedSelector?: string;
+  mfaSelector?: string;
+}
+export interface SuccessCheck { url: string; visibleSelector: string }
+export interface SiteLogin {
+  targetOrigin: string;
+  loginMethod: "form" | "sso" | "mfa" | "other" | null;
+  entryUrl: string | null;
+  form: FormSelectors | null;
+  success: SuccessCheck | null;
+}
+export interface TestAccount {
+  accountId: string | null;
+  name: string;
+  role: string;
+  purpose: string;
+  sites: SiteLogin[];
+}
+export interface WorkspaceProposalConfig extends WorkspaceConfig {
+  targets: (WorkspaceConfig["targets"][number] & { testScope: TestScope })[];
+  testAccounts: TestAccount[];
+}
+const verificationReasons = [
+  "scope_confirmation_required", "login_setup_required", "credentials_required", "unsupported_login_method",
+  "login_rejected", "mfa_required", "guest_accessible", "login_not_verified", "credential_unavailable",
+  "invalid_evidence", "timed_out", "cancelled", "interrupted",
+] as const;
+export type VerificationReason = typeof verificationReasons[number];
+export interface SiteAccountVerification {
+  accountId: string;
+  state: "pending" | "running" | "verified" | "failed";
+  reason: VerificationReason | null;
+  runId: string | null;
+  verifiedAt: string | null;
+}
+export interface SiteReadiness {
+  targetOrigin: string;
+  testScope: TestScope;
+  ready: boolean;
+  reason: "scope_choice_required" | "login_verification_required" | null;
+  accounts: SiteAccountVerification[];
+}
+export interface WorkspaceProposalSnapshot {
+  content: WorkspaceProposalConfig;
+  siteReadiness: SiteReadiness[];
+}
+
+const configKeys = ["name", "purpose", "backgroundSummary", "targets", "dependencies", "excludedOrigins", "exclusions", "loginRoles", "defaultTestUrl", "timeoutMs"];
+const formRequired = ["usernameSelector", "passwordSelector", "submitSelector"];
+const formOptional = ["loginRejectedSelector", "mfaSelector"];
 function object(value:unknown,keys:string[]):value is Record<string,any>{return value!==null&&typeof value==="object"&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every((k)=>Object.hasOwn(value,k));}
 function text(value:unknown,max:number,nonempty=false):value is string{return typeof value==="string"&&Buffer.byteLength(value)<=max&&!value.includes("\0")&&Buffer.from(value).toString("utf8")===value&&(!nonempty||value.trim()!=="");}
 function name(value:unknown):value is string{return typeof value==="string"&&!value.includes("\0")&&Buffer.from(value).toString("utf8")===value&&text(value.trim(),200,true);}
@@ -32,8 +89,16 @@ export function origin(value:unknown):string {
   return u.origin;
 }
 
+function workspaceURLOrigin(value: unknown): string {
+  if (!text(value, 8192, true) || [...value].length > 2048 || !/^https?:\/\//i.test(value) || /[\s\u0000-\u001f\\]/u.test(value)) return invalid();
+  let url: URL;
+  try { url = new URL(value); } catch { return invalid(); }
+  if (url.username || url.password) return invalid();
+  return origin(url.origin);
+}
+
 export function validateWorkspaceConfig(value:unknown,knownRoles?:Set<string>):WorkspaceConfig {
-  if(!object(value,["name","purpose","backgroundSummary","targets","dependencies","excludedOrigins","exclusions","loginRoles","defaultTestUrl","timeoutMs"])||
+  if(!object(value,configKeys)||
     !name(value.name)||!text(value.purpose,8192)||!text(value.backgroundSummary,8192)||!text(value.exclusions,8192)||
     !Number.isInteger(value.timeoutMs)||value.timeoutMs<1||value.timeoutMs>3600000||!text(value.defaultTestUrl,8192)||[...value.defaultTestUrl].length>2048||
     !Array.isArray(value.targets)||value.targets.length>20||!Array.isArray(value.dependencies)||value.dependencies.length>20||
@@ -50,10 +115,7 @@ export function validateWorkspaceConfig(value:unknown,knownRoles?:Set<string>):W
     const o=origin(role.loginOrigin);if(!targets.has(o)&&!value.dependencies.some((d:any)=>d.purpose==="login"&&origin(d.origin)===o))return invalid();
     if(role.roleId!==null)roles.add(role.roleId);
   }
-  if(value.defaultTestUrl!==""){
-    let u:URL;try{u=new URL(value.defaultTestUrl);}catch{return invalid();}
-    if(!/^https?:\/\//i.test(value.defaultTestUrl)||/[\s\u0000-\u001f\\]/u.test(value.defaultTestUrl)||u.username||u.password||!targets.has(origin(u.origin)))return invalid();
-  }
+  if(value.defaultTestUrl!==""&&!targets.has(workspaceURLOrigin(value.defaultTestUrl)))return invalid();
   return value as unknown as WorkspaceConfig;
 }
 
@@ -69,4 +131,89 @@ export function validateWorkspaceContext(value:unknown,workspaceId?:string):Work
   }
   if(value.config!==null)validateWorkspaceConfig(value.config);
   return value as unknown as WorkspaceContext;
+}
+
+function selector(value: unknown): boolean {
+  return text(value, 4000, true) && value.length <= 1000;
+}
+
+function validateForm(value: unknown): void {
+  if (value === null) return;
+  const optional = formOptional.filter(key => value && Object.hasOwn(value, key));
+  if (!object(value, [...formRequired, ...optional]) || !Object.values(value).every(selector)) invalid();
+}
+
+export function validateWorkspaceProposalConfig(value: unknown): WorkspaceProposalConfig {
+  if (!object(value, [...configKeys, "testAccounts"]) || !Array.isArray(value.targets) || value.targets.length > 20 ||
+      !Array.isArray(value.testAccounts) || value.testAccounts.length > 10) return invalid();
+  const { testAccounts, targets, ...base } = value;
+  const scope = validateWorkspaceConfig({ ...base, targets: targets.map(target => {
+    if (!object(target, ["name", "purpose", "origin", "testScope"]) || !testScopes.includes(target.testScope)) return invalid();
+    return { name: target.name, purpose: target.purpose, origin: target.origin };
+  }) });
+  if (scope.loginRoles.some(role => role.roleId === null)) return invalid();
+
+  const targetOrigins = new Set(scope.targets.map(target => origin(target.origin)));
+  const loginOrigins = new Set(scope.dependencies.filter(site => site.purpose === "login").map(site => origin(site.origin)));
+  const accountIDs = new Set<string>();
+  for (const account of testAccounts) {
+    if (!object(account, ["accountId", "name", "role", "purpose", "sites"]) || !name(account.name) || !name(account.role) || !text(account.purpose, 8192) ||
+        !Array.isArray(account.sites) || account.sites.length > targetOrigins.size) return invalid();
+    if (account.accountId !== null) {
+      if (typeof account.accountId !== "string" || !uuid.test(account.accountId)) return invalid();
+      const id = account.accountId.toLowerCase();
+      if (accountIDs.has(id)) return invalid();
+      accountIDs.add(id);
+    }
+    const siteOrigins = new Set<string>();
+    for (const site of account.sites) {
+      if (!object(site, ["targetOrigin", "loginMethod", "entryUrl", "form", "success"]) || ![null, "form", "sso", "mfa", "other"].includes(site.loginMethod)) return invalid();
+      const target = origin(site.targetOrigin);
+      if (!targetOrigins.has(target) || siteOrigins.has(target)) return invalid();
+      siteOrigins.add(target);
+      if (site.entryUrl !== null) {
+        const entry = workspaceURLOrigin(site.entryUrl);
+        if (entry !== target && !loginOrigins.has(entry)) return invalid();
+      }
+      validateForm(site.form);
+      if (site.success !== null && (!object(site.success, ["url", "visibleSelector"]) || workspaceURLOrigin(site.success.url) !== target || !selector(site.success.visibleSelector))) return invalid();
+    }
+  }
+  return value as unknown as WorkspaceProposalConfig;
+}
+
+export function validateWorkspaceProposalSnapshot(value: unknown): WorkspaceProposalSnapshot | null {
+  if (value === null) return null;
+  if (!object(value, ["content", "siteReadiness"]) || !Array.isArray(value.siteReadiness)) return invalid();
+  const content = validateWorkspaceProposalConfig(value.content);
+  if (value.siteReadiness.length !== content.targets.length) return invalid();
+  const sites = new Map(content.targets.map(target => [origin(target.origin), target.testScope]));
+  const accounts = new Map<string, Set<string>>();
+  for (const account of content.testAccounts) {
+    if (account.accountId === null) return invalid();
+    accounts.set(account.accountId.toLowerCase(), new Set(account.sites.map(site => origin(site.targetOrigin))));
+  }
+  for (const site of value.siteReadiness) {
+    if (!object(site, ["targetOrigin", "testScope", "ready", "reason", "accounts"]) || !Array.isArray(site.accounts) || site.accounts.length > accounts.size) return invalid();
+    const target = origin(site.targetOrigin);
+    const scope = sites.get(target);
+    if (!scope || site.testScope !== scope) return invalid();
+    sites.delete(target);
+    const seen = new Set<string>();
+    for (const account of site.accounts) {
+      if (!object(account, ["accountId", "state", "reason", "runId", "verifiedAt"]) || typeof account.accountId !== "string" ||
+          !["pending", "running", "verified", "failed"].includes(account.state) ||
+          account.reason !== null && !verificationReasons.includes(account.reason) ||
+          account.runId !== null && (typeof account.runId !== "string" || !uuid.test(account.runId)) ||
+          account.verifiedAt !== null && typeof account.verifiedAt !== "string") return invalid();
+      const id = account.accountId.toLowerCase();
+      if (!accounts.get(id)?.has(target) || seen.has(id)) return invalid();
+      seen.add(id);
+    }
+    let reason: SiteReadiness["reason"] = null;
+    if (scope === "unknown") reason = "scope_choice_required";
+    else if (scope !== "guest" && !site.accounts.some(account => account.state === "verified")) reason = "login_verification_required";
+    if (site.ready !== (reason === null) || site.reason !== reason) return invalid();
+  }
+  return value as unknown as WorkspaceProposalSnapshot;
 }
