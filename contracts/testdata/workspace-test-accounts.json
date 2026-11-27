@@ -1,0 +1,316 @@
+{
+  "guestOnly": {
+    "proposal": {
+      "id": "12000000-0000-4000-8000-000000000001",
+      "workspaceId": "11000000-0000-4000-8000-000000000001",
+      "conversationId": "13000000-0000-4000-8000-000000000001",
+      "sourceRunId": "14000000-0000-4000-8000-000000000001",
+      "baseRevision": 1,
+      "contextRevision": 2,
+      "status": "pending",
+      "content": {
+        "name": "說明中心",
+        "purpose": "檢查訪客查詢說明文章",
+        "backgroundSummary": "站上有登入入口，本次檢查公開說明。",
+        "targets": [
+          { "name": "說明中心", "purpose": "搜尋文章", "origin": "https://help.example", "testScope": "guest" }
+        ],
+        "dependencies": [],
+        "excludedOrigins": [],
+        "exclusions": "",
+        "loginRoles": [],
+        "testAccounts": [],
+        "defaultTestUrl": "https://help.example/",
+        "timeoutMs": 60000
+      },
+      "scopeHash": "71cb5f771c454688a473bb25d6c765ca31c111e5b7c1bca1440fcf20c473f59e",
+      "scopeConfirmed": true,
+      "invalidationReason": null,
+      "appliedRevision": null,
+      "createdAt": "2026-11-27T04:00:00Z",
+      "siteReadiness": [
+        { "targetOrigin": "https://help.example", "testScope": "guest", "ready": true, "reason": null, "accounts": [] }
+      ],
+      "accountCredentials": []
+    },
+    "confirmRequest": { "baseRevision": 1, "confirmed": true },
+    "confirmStatus": 200,
+    "unansweredSiteReadiness": {
+      "targetOrigin": "https://help.example",
+      "testScope": "unknown",
+      "ready": false,
+      "reason": "scope_choice_required",
+      "accounts": []
+    }
+  },
+  "partialSharedLogin": {
+    "proposal": {
+      "id": "22000000-0000-4000-8000-000000000001",
+      "workspaceId": "21000000-0000-4000-8000-000000000001",
+      "conversationId": "23000000-0000-4000-8000-000000000001",
+      "sourceRunId": "24000000-0000-4000-8000-000000000001",
+      "baseRevision": 3,
+      "contextRevision": 8,
+      "status": "pending",
+      "content": {
+        "name": "商店驗測",
+        "purpose": "檢查說明、會員訂單及客服工單",
+        "backgroundSummary": "訂單與客服共用帳密表單，各自驗證登入後頁面。",
+        "targets": [
+          { "name": "說明中心", "purpose": "公開文章", "origin": "https://help.example", "testScope": "guest" },
+          { "name": "訂單站", "purpose": "會員訂單", "origin": "https://orders.example", "testScope": "authenticated" },
+          { "name": "客服站", "purpose": "公開 FAQ 與會員工單", "origin": "https://support.example", "testScope": "both" }
+        ],
+        "dependencies": [
+          { "name": "共用登入", "purpose": "login", "origin": "https://auth.example" }
+        ],
+        "excludedOrigins": [],
+        "exclusions": "",
+        "loginRoles": [],
+        "testAccounts": [
+          {
+            "accountId": "25000000-0000-4000-8000-000000000001",
+            "name": "商店會員",
+            "role": "會員",
+            "purpose": "檢查自己的訂單與工單",
+            "sites": [
+              {
+                "targetOrigin": "https://orders.example",
+                "loginMethod": "form",
+                "entryUrl": "https://auth.example/orders/login",
+                "form": {
+                  "usernameSelector": "#username",
+                  "passwordSelector": "#password",
+                  "submitSelector": "#sign-in",
+                  "loginRejectedSelector": "#invalid-login"
+                },
+                "success": { "url": "https://orders.example/account", "visibleSelector": "#account-menu" }
+              },
+              {
+                "targetOrigin": "https://support.example",
+                "loginMethod": "form",
+                "entryUrl": "https://auth.example/support/login",
+                "form": {
+                  "usernameSelector": "#username",
+                  "passwordSelector": "#password",
+                  "submitSelector": "#sign-in",
+                  "mfaSelector": "#mfa-challenge"
+                },
+                "success": { "url": "https://support.example/tickets", "visibleSelector": "#my-tickets" }
+              }
+            ]
+          }
+        ],
+        "defaultTestUrl": "https://orders.example/",
+        "timeoutMs": 60000
+      },
+      "scopeHash": "6e3646605020d1b321c8395ecff909df19de137f927a9702661018b33218d827",
+      "scopeConfirmed": true,
+      "invalidationReason": null,
+      "appliedRevision": null,
+      "createdAt": "2026-11-27T04:10:00Z",
+      "siteReadiness": [
+        { "targetOrigin": "https://help.example", "testScope": "guest", "ready": true, "reason": null, "accounts": [] },
+        {
+          "targetOrigin": "https://orders.example",
+          "testScope": "authenticated",
+          "ready": true,
+          "reason": null,
+          "accounts": [
+            {
+              "accountId": "25000000-0000-4000-8000-000000000001",
+              "state": "verified",
+              "reason": null,
+              "runId": "26000000-0000-4000-8000-000000000001",
+              "verifiedAt": "2026-11-27T04:12:00Z"
+            }
+          ]
+        },
+        {
+          "targetOrigin": "https://support.example",
+          "testScope": "both",
+          "ready": false,
+          "reason": "login_verification_required",
+          "accounts": [
+            {
+              "accountId": "25000000-0000-4000-8000-000000000001",
+              "state": "failed",
+              "reason": "login_not_verified",
+              "runId": "26000000-0000-4000-8000-000000000002",
+              "verifiedAt": null
+            }
+          ]
+        }
+      ],
+      "accountCredentials": [
+        { "accountId": "25000000-0000-4000-8000-000000000001", "configured": true, "secretVersion": 2 }
+      ]
+    },
+    "confirmRequest": { "baseRevision": 3, "confirmed": true },
+    "confirmStatus": 409,
+    "confirmError": { "error": { "code": "workspace_setup_incomplete", "message": "請補齊逐站驗證。" } },
+    "verifyOrdersRequest": {
+      "baseRevision": 3,
+      "requestId": "28000000-0000-4000-8000-000000000001",
+      "accountId": "25000000-0000-4000-8000-000000000001",
+      "targetOrigin": "https://orders.example"
+    },
+    "ordersDispatch": {
+      "protocolVersion": 1,
+      "type": "dispatch",
+      "messageId": "2b000000-0000-4000-8000-000000000001",
+      "managerId": "fixture-manager",
+      "runId": "26000000-0000-4000-8000-000000000001",
+      "attemptId": "27000000-0000-4000-8000-000000000001",
+      "payload": {
+        "kind": "workspace_login_verification",
+        "workspaceId": "21000000-0000-4000-8000-000000000001",
+        "testId": null,
+        "script": "",
+        "scriptOrigin": "legacy",
+        "timeoutMs": 60000,
+        "workspaceContext": {
+          "schemaVersion": "1",
+          "workspaceId": "21000000-0000-4000-8000-000000000001",
+          "settingsRevision": 3,
+          "config": {
+            "name": "商店驗測",
+            "purpose": "檢查說明、會員訂單及客服工單",
+            "backgroundSummary": "訂單與客服共用帳密表單，各自驗證登入後頁面。",
+            "targets": [
+              { "name": "說明中心", "purpose": "公開文章", "origin": "https://help.example" },
+              { "name": "訂單站", "purpose": "會員訂單", "origin": "https://orders.example" },
+              { "name": "客服站", "purpose": "公開 FAQ 與會員工單", "origin": "https://support.example" }
+            ],
+            "dependencies": [
+              { "name": "共用登入", "purpose": "login", "origin": "https://auth.example" }
+            ],
+            "excludedOrigins": [],
+            "exclusions": "",
+            "loginRoles": [],
+            "defaultTestUrl": "https://orders.example/",
+            "timeoutMs": 60000
+          },
+          "roleRefs": []
+        },
+        "loginVerification": {
+          "proposalId": "22000000-0000-4000-8000-000000000001",
+          "baseRevision": 3,
+          "contextRevision": 8,
+          "scopeHash": "6e3646605020d1b321c8395ecff909df19de137f927a9702661018b33218d827",
+          "binding": {
+            "accountId": "25000000-0000-4000-8000-000000000001",
+            "targetOrigin": "https://orders.example",
+            "loginConfigVersion": "29000000-0000-4000-8000-000000000001",
+            "entryUrl": "https://auth.example/orders/login",
+            "form": {
+              "usernameSelector": "#username",
+              "passwordSelector": "#password",
+              "submitSelector": "#sign-in",
+              "loginRejectedSelector": "#invalid-login"
+            },
+            "success": { "url": "https://orders.example/account", "visibleSelector": "#account-menu" },
+            "secretRef": "2a000000-0000-4000-8000-000000000001",
+            "secretVersion": 2
+          }
+        }
+      }
+    },
+    "ordersResult": {
+      "protocolVersion": 1,
+      "type": "result",
+      "messageId": "2b000000-0000-4000-8000-000000000002",
+      "managerId": "fixture-manager",
+      "runId": "26000000-0000-4000-8000-000000000001",
+      "attemptId": "27000000-0000-4000-8000-000000000001",
+      "payload": {
+        "status": "succeeded",
+        "loginVerification": {
+          "observedOrigin": "https://orders.example",
+          "guest": "denied",
+          "submitted": true,
+          "authenticated": "selector_visible"
+        }
+      }
+    },
+    "supportResult": {
+      "protocolVersion": 1,
+      "type": "result",
+      "messageId": "2b000000-0000-4000-8000-000000000003",
+      "managerId": "fixture-manager",
+      "runId": "26000000-0000-4000-8000-000000000002",
+      "attemptId": "27000000-0000-4000-8000-000000000002",
+      "payload": {
+        "status": "failed",
+        "loginVerification": { "reason": "login_not_verified" }
+      }
+    }
+  },
+  "sameRole": {
+    "workspaceContext": {
+      "schemaVersion": "2",
+      "workspaceId": "31000000-0000-4000-8000-000000000001",
+      "settingsRevision": 5,
+      "config": {
+        "name": "會員訂單驗測",
+        "purpose": "確認兩個會員的訂單彼此隔離",
+        "backgroundSummary": "使用兩個同角色的測試帳號。",
+        "targets": [
+          { "name": "訂單站", "purpose": "訂單隔離", "origin": "https://orders.example" }
+        ],
+        "dependencies": [],
+        "excludedOrigins": [],
+        "exclusions": "",
+        "loginRoles": [
+          {
+            "roleId": "35000000-0000-4000-8000-000000000001",
+            "name": "會員",
+            "loginMethod": "form",
+            "loginOrigin": "https://orders.example"
+          }
+        ],
+        "defaultTestUrl": "https://orders.example/",
+        "timeoutMs": 60000
+      },
+      "roleRefs": [
+        { "roleId": "35000000-0000-4000-8000-000000000001", "secretRef": null, "secretVersion": null, "configured": true }
+      ],
+      "testAccounts": [
+        {
+          "accountId": "35000000-0000-4000-8000-000000000001",
+          "name": "會員 A",
+          "role": "會員",
+          "purpose": "建立訂單",
+          "sites": [{ "targetOrigin": "https://orders.example", "state": "verified" }]
+        },
+        {
+          "accountId": "35000000-0000-4000-8000-000000000002",
+          "name": "會員 B",
+          "role": "會員",
+          "purpose": "驗證他人訂單不可見",
+          "sites": [{ "targetOrigin": "https://orders.example", "state": "verified" }]
+        }
+      ]
+    },
+    "createOrderArgs": {
+      "accountId": "35000000-0000-4000-8000-000000000001",
+      "targetOrigin": "https://orders.example"
+    },
+    "checkOtherUserArgs": {
+      "accountId": "35000000-0000-4000-8000-000000000002",
+      "targetOrigin": "https://orders.example"
+    },
+    "wrongSiteArgs": {
+      "accountId": "35000000-0000-4000-8000-000000000002",
+      "targetOrigin": "https://support.example"
+    },
+    "wrongSiteError": { "isError": true, "structuredContent": { "error": "tool_unavailable" } },
+    "legacyLoginArgs": {
+      "roleId": "35000000-0000-4000-8000-000000000001",
+      "usernameSelector": "#username",
+      "passwordSelector": "#password",
+      "submitSelector": "#sign-in"
+    },
+    "legacyResolvedAccountId": "35000000-0000-4000-8000-000000000001"
+  }
+}
