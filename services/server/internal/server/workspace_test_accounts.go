@@ -208,13 +208,16 @@ func validateSiteLogin(site SiteLogin, loginDependencies map[string]bool) error 
 	return nil
 }
 
-// The frozen proposal is the authority on which account IDs the interview saw.
-func assignWorkspaceTestAccounts(c *WorkspaceConfig, previous *WorkspaceInterviewProposal) error {
+// Match the author validator's whitelist from the same frozen input.
+func assignWorkspaceTestAccounts(c *WorkspaceConfig, previous *WorkspaceInterviewProposal, roles []RoleRef) error {
 	known := make(map[string]bool)
 	if previous != nil {
 		for _, account := range previous.Content.TestAccounts {
-			known[stringValue(account.AccountID)] = true
+			known[strings.ToLower(stringValue(account.AccountID))] = true
 		}
+	}
+	for _, role := range roles {
+		known[strings.ToLower(role.RoleID)] = true
 	}
 	for i := range c.TestAccounts {
 		account := &c.TestAccounts[i]

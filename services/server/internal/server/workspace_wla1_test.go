@@ -39,14 +39,14 @@ func TestWLA1ProposalConfig(t *testing.T) {
 		t.Fatalf("invalid site/account normalization: %+v %v", out, err)
 	}
 	config := out.Proposal
-	if err := assignWorkspaceTestAccounts(config, nil); err != nil || !ValidID(stringValue(config.TestAccounts[0].AccountID)) {
+	if err := assignWorkspaceTestAccounts(config, nil, nil); err != nil || !ValidID(stringValue(config.TestAccounts[0].AccountID)) {
 		t.Fatalf("allocate account ID: %v", err)
 	}
 	previous := &WorkspaceInterviewProposal{Content: *config}
-	if err := assignWorkspaceTestAccounts(config, previous); err != nil {
+	if err := assignWorkspaceTestAccounts(config, previous, nil); err != nil {
 		t.Fatalf("reuse previously offered account ID: %v", err)
 	}
-	if err := assignWorkspaceTestAccounts(config, nil); err == nil {
+	if err := assignWorkspaceTestAccounts(config, nil, nil); err == nil {
 		t.Fatal("accepted account ID absent from the interview snapshot")
 	}
 	pending := workspaceSiteReadiness(config, false)[0]
