@@ -1,6 +1,6 @@
 import { loadToolRegistry, sha256, validateToolArguments, validateToolResult, exactObject, type ToolDefinition } from "../author/registry.js";
 import type { ExplorationBrowser } from "../author/tools.js";
-import { validateWorkspaceContext, type WorkspaceContext } from "../workspace-context.js";
+import { findAccountBinding, validateWorkspaceContext, type WorkspaceContext } from "../workspace-context.js";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const maxCalls = 256;
@@ -44,6 +44,7 @@ export function validateSessionInput(value: unknown): SessionInput {
       typeof value.toolRegistryVersion !== "string" || !/^[a-f0-9]{64}$/.test(value.toolRegistrySha256)) throw new Error("invalid_session_input");
   const context = validateWorkspaceContext(value.workspaceContext, value.workspaceId);
   if (!context?.config?.targets.length) throw new Error("invalid_session_input");
+  if (value.allowedTools.includes("browser_login_account") && context.schemaVersion !== "2") throw new Error("invalid_session_input");
   const registry = loadToolRegistry();
   if (value.toolRegistryVersion !== registry.version || value.toolRegistrySha256 !== registry.sha256 ||
       value.allowedTools.some((name: unknown) => typeof name !== "string" || !registry.tools.some(tool => tool.name === name && tool.side === "worker" && tool.effect === "browser"))) throw new Error("invalid_session_input");
@@ -121,6 +122,11 @@ export class SessionWorker {
           if (!allowed) throw new Error("login_unavailable");
           return this.browser.login!(args.roleId!, args.usernameSelector!, args.passwordSelector!, args.submitSelector!, frame.callId);
         });
+      case "browser_login_account":
+        if (!this.browser.loginAccount || !findAccountBinding(this.input.workspaceContext, args.accountId!, args.targetOrigin!)) {
+          return Promise.reject(new Error("tool_unavailable"));
+        }
+        return this.browser.loginAccount(args.accountId!, args.targetOrigin!, frame.callId).then(() => ({ submitted: true }));
       default: return Promise.reject(new Error("tool_unavailable"));
     }
   }

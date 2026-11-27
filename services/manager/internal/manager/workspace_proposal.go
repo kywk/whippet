@@ -129,36 +129,39 @@ func (p *workspaceProposalConfig) loginSite(raw json.RawMessage, loginOrigins ma
 			return "", false
 		}
 	}
-	if !bytes.Equal(site.Form, []byte("null")) {
-		form, ok := uniqueBudgetFields(site.Form)
-		if !ok || form["usernameSelector"] == nil || form["passwordSelector"] == nil || form["submitSelector"] == nil {
-			return "", false
-		}
-		for key, raw := range form {
-			switch key {
-			case "usernameSelector", "passwordSelector", "submitSelector", "loginRejectedSelector", "mfaSelector":
-				var selector string
-				if json.Unmarshal(raw, &selector) != nil || !workspaceSelector(selector) {
-					return "", false
-				}
-			default:
-				return "", false
+	return target, (bytes.Equal(site.Form, []byte("null")) || validWorkspaceForm(site.Form)) &&
+		(bytes.Equal(site.Success, []byte("null")) || validWorkspaceSuccess(site.Success, target))
+}
+
+func validWorkspaceForm(raw json.RawMessage) bool {
+	form, ok := uniqueBudgetFields(raw)
+	if !ok || form["usernameSelector"] == nil || form["passwordSelector"] == nil || form["submitSelector"] == nil {
+		return false
+	}
+	for key, raw := range form {
+		switch key {
+		case "usernameSelector", "passwordSelector", "submitSelector", "loginRejectedSelector", "mfaSelector":
+			var selector string
+			if json.Unmarshal(raw, &selector) != nil || !workspaceSelector(selector) {
+				return false
 			}
+		default:
+			return false
 		}
 	}
-	if !bytes.Equal(site.Success, []byte("null")) {
-		var success struct {
-			URL      string `json:"url"`
-			Selector string `json:"visibleSelector"`
-		}
-		if !exactWorkspaceObject(site.Success, "url", "visibleSelector") || json.Unmarshal(site.Success, &success) != nil || !workspaceSelector(success.Selector) {
-			return "", false
-		}
-		if origin, ok := workspaceURLOrigin(success.URL); !ok || origin != target {
-			return "", false
-		}
+	return true
+}
+
+func validWorkspaceSuccess(raw json.RawMessage, target string) bool {
+	var success struct {
+		URL      string `json:"url"`
+		Selector string `json:"visibleSelector"`
 	}
-	return target, true
+	if !exactWorkspaceObject(raw, "url", "visibleSelector") || json.Unmarshal(raw, &success) != nil || !workspaceSelector(success.Selector) {
+		return false
+	}
+	origin, ok := workspaceURLOrigin(success.URL)
+	return ok && origin == target
 }
 
 func workspaceSelector(value string) bool {

@@ -1,4 +1,5 @@
 import type { Readable, Writable } from "node:stream";
+import { parseUniqueJSON } from "./strict-json.js";
 
 export const MAX_ATTEMPT_FRAME = 64 * 1024;
 const MAX_MODEL_KEY_FRAME = 32 * 1024;
@@ -52,8 +53,9 @@ class AttemptIO {
       const raw = this.buffer; this.buffer = Buffer.alloc(0); start = end + 1;
       try {
         if (!Buffer.from(raw.toString("utf8")).equals(raw)) throw new Error();
-        const frame = JSON.parse(raw.toString("utf8")) as Record<string, unknown>;
+        let frame = JSON.parse(raw.toString("utf8")) as Record<string, unknown>;
         if (!frame || Array.isArray(frame)) throw new Error();
+        if (frame.kind === "credential_response") frame = parseUniqueJSON(raw.toString("utf8")) as Record<string, unknown>;
         if(frame.kind === "tool_response") {
           const name=this.pending.get(String(frame.requestId));
           if(!name)continue;

@@ -14,6 +14,7 @@ import { validateWorkspaceSettings, type WorkspaceSettings } from "./workspace.j
 import {validateWorkspaceContext,type WorkspaceContext} from './workspace-context.js';
 import {CredentialClient} from './login/client.js';
 import {loginBroker} from './login/broker.js';
+import {parseUniqueJSON} from './strict-json.js';
 import {sanitizeLoginOutputs} from './login/artifacts.js';
 import {unconfirmedBrowserScope} from './author/scope.js';
 import { installModuleABI, validModuleABI, type ModuleABI } from './module-abi.js';
@@ -85,7 +86,7 @@ function validateInput(value: unknown): Input {
 }
 
 async function readJSON(path: string): Promise<unknown> {
-  return JSON.parse(await readFile(path, "utf8")) as unknown;
+  return parseUniqueJSON(new TextDecoder("utf-8", { fatal: true }).decode(await readFile(path)));
 }
 
 async function regularFile(path: string): Promise<boolean> {
@@ -133,7 +134,7 @@ async function execute(input: Input, taskDir: string, harness: TestHarness): Pro
     privacyURL: new URL("./login/privacy.js", import.meta.url).href,
     jpegOnly: harness.networkIsolated,
   }), "utf8");
-  const loginShim=join(taskDir,'login.cjs');await writeFile(loginShim,`exports.loginAs=async(...args)=>(await import(${JSON.stringify(new URL('./login/helper.js',import.meta.url).href)})).loginAs(...args);\n`,'utf8');
+  const loginShim=join(taskDir,'login.cjs');await writeFile(loginShim,`const helper=()=>import(${JSON.stringify(new URL('./login/helper.js',import.meta.url).href)});\nexports.loginAs=async(...args)=>(await helper()).loginAs(...args);\nexports.loginAsAccount=async(...args)=>(await helper()).loginAsAccount(...args);\n`,'utf8');
   const tsconfigPath = join(taskDir, "tsconfig.json");
   await writeFile(tsconfigPath, JSON.stringify({ compilerOptions: { baseUrl: taskDir, paths: { "@playwright/test": [bridgePath],"whippet/login":[loginShim], ...(input.files ? { "@lib/*": ["lib/*"] } : {}) } } }), "utf8");
   const summaryPath = join(taskDir, "runtime-summary.json");

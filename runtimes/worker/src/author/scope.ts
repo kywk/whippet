@@ -20,6 +20,7 @@ export class AIOriginGate {
   private navigationBlock?:{revision:number;issue:ScopeIssue};
   private loginOrigin?:string;
   private readonly workspaceLogins = new WeakMap<Page, number>();
+  private readonly accountLogins = new WeakMap<Page, string>();
   private readonly entryUrl: string;
   private readonly roleOrigins = new Map<string, string>();
   private readonly loginTimeout: number;
@@ -47,6 +48,7 @@ export class AIOriginGate {
     if(purpose==='api'&&['xhr','fetch','eventsource','websocket'].includes(kind))return;
     if(purpose==='cdn'&&['script','stylesheet','image','font','media','manifest','texttrack'].includes(kind))return;
     if (purpose === 'login' && page && (this.workspaceLogins.get(page) ?? 0) > Date.now()) return;
+    if (purpose === 'login' && page && this.accountLogins.get(page) === o) return;
     if(purpose==='login'&&this.loginOrigin===o)return;
     if(purpose==='login'&&kind!=='navigation'&&this.observedLoginOrigins.has(o))return;
     if(purpose)return {error:"dependency_usage_not_allowed",origin:o,message:"此網站僅可作已確認的 dependency 用途；登入請用角色登入工具，不能當一般驗測目標。"};
@@ -91,6 +93,17 @@ export class AIOriginGate {
     const previous=this.loginOrigin;this.loginOrigin=o;
     this.observedLoginOrigins.add(o);
     try{return await operation();}finally{this.loginOrigin=previous;}
+  }
+
+  async duringAccountLogin<T>(page: Page, target: string, entryURL: string, operation: () => Promise<T>): Promise<T> {
+    const targetOrigin = origin(target);
+    const entryOrigin = origin(new URL(entryURL).origin);
+    if (browserScope(page.context()) !== this || !this.targets.has(targetOrigin) || this.excluded.has(entryOrigin) ||
+        (entryOrigin !== targetOrigin && this.dependencies.get(entryOrigin) !== "login") || this.accountLogins.has(page)) {
+      throw new BrowserScopeError({ error: "dependency_usage_not_allowed", message: "該帳號或登入入口不在本次站台範圍。" });
+    }
+    this.accountLogins.set(page, entryOrigin);
+    try { return await operation(); } finally { this.accountLogins.delete(page); }
   }
 }
 

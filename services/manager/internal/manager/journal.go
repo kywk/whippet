@@ -12,6 +12,7 @@ import (
 // accepted -> running -> collecting -> complete. complete implies container
 // removal and successful upload of all available v1 artifacts.
 type record struct {
+	LoginVerification    json.RawMessage  `json:"loginVerification,omitempty"`
 	CredentialsUsed      bool             `json:"credentialsUsed,omitempty"`
 	CredentialsSanitized bool             `json:"credentialsSanitized,omitempty"`
 	ScriptOrigin         string           `json:"scriptOrigin,omitempty"`
@@ -149,23 +150,32 @@ func loadRecords(workDir string) (map[string]record, error) {
 		if r.Phase != "accepted" && r.Phase != "running" && r.Phase != "collecting" && r.Phase != "complete" {
 			return nil, fmt.Errorf("invalid journal phase: %s", r.Phase)
 		}
-		if r.Kind != "" && r.Kind != "run" && r.Kind != "author" {
+		if r.Kind != "" && r.Kind != "run" && r.Kind != "author" && r.Kind != workspaceLoginVerificationKind {
 			return nil, fmt.Errorf("invalid journal kind: %s", entry.Name())
 		}
+		resultValid := r.Result != nil && r.Result.valid()
+		if r.Kind == workspaceLoginVerificationKind {
+			if !dispatchVerificationValid(Dispatch{WorkspaceID: r.WorkspaceID, TestID: r.TestID, WorkspaceContext: r.WorkspaceContext,
+				ScriptOrigin: r.ScriptOrigin, Author: r.Author, ModelCredential: r.ModelCredential, LoginVerification: r.LoginVerification}) || r.TimeoutMS < 1 || r.TimeoutMS > 3600000 {
+				return nil, errWorkspaceSnapshot
+			}
+			context, _ := parseWorkspaceContext(r.WorkspaceContext, r.WorkspaceID)
+			binding, _ := parseVerificationBinding(r.LoginVerification, context)
+			resultValid = r.Result != nil && validVerificationResult(*r.Result, binding) && (r.Result.Status != "succeeded" || r.CredentialsUsed)
+		} else if len(r.LoginVerification) > 0 || validWorkspaceOwner(r.WorkspaceID, r.TestID, r.WorkspaceContext, r.Author) != nil {
+			return nil, errors.New("invalid journal Workspace snapshot")
+		}
 		validationMode := executionAuthorValidation
-		if r.Phase == "complete" && r.Reclaimed && r.Result != nil && r.Result.valid() {
+		if r.Phase == "complete" && r.Reclaimed && resultValid {
 			validationMode = terminalJournalAuthorValidation
 		}
 		if r.Author != nil && (r.Kind != "author" || validAuthorMetadataForMode(r.Author, nil, validationMode) != nil) {
 			return nil, errors.New("invalid journal author snapshot")
 		}
-		if validWorkspaceOwner(r.WorkspaceID, r.TestID, r.WorkspaceContext, r.Author) != nil {
-			return nil, errors.New("invalid journal Workspace snapshot")
-		}
 		if r.ModelCredential != nil && (r.Kind != "author" || r.Author == nil || !validRuntimeSnapshot(r.Author.Runtime) || !uuidPattern.MatchString(r.WorkspaceID)) {
 			return nil, errModelKey
 		}
-		if r.Result != nil && !r.Result.valid() || (r.Phase == "complete" || r.Phase == "collecting") && r.Result == nil {
+		if !resultValid && (r.Result != nil || r.Phase == "complete" || r.Phase == "collecting") {
 			return nil, fmt.Errorf("invalid journal result: %s", entry.Name())
 		}
 		pngCount, evidenceCount := 0, 0

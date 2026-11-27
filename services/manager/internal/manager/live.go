@@ -114,7 +114,7 @@ func (m *Manager) startLive(ctx context.Context, env Envelope) error {
 		m.recordRunLiveDiagnostic(env.RunID, env.AttemptID, start.ViewerID, "command_rejected", "attempt_inactive")
 		return errors.New("live attempt is not active")
 	}
-	if r.Author != nil && !authorWantsBrowser(r.Author) {
+	if r.Kind == workspaceLoginVerificationKind || r.Author != nil && !authorWantsBrowser(r.Author) {
 		m.recordRunLiveDiagnostic(env.RunID, env.AttemptID, start.ViewerID, "command_rejected", "author_browser_disabled")
 		return errors.New("live attempt is not active")
 	}

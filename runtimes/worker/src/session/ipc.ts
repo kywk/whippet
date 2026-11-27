@@ -2,6 +2,7 @@ import type { Readable, Writable } from "node:stream";
 import { once } from "node:events";
 import { maxSessionFrameBytes, SessionWorker, type SessionCall } from "./session.js";
 import type { SessionCredentialClient } from "./credentials.js";
+import { parseUniqueJSON } from "../strict-json.js";
 
 export function sessionOutput(output: Writable): { send(frame: unknown): Promise<void> } {
   let tail = Promise.resolve();
@@ -32,7 +33,7 @@ export async function runSessionIPC(worker: SessionWorker, input: Readable, outp
         pending = pending.subarray(newline + 1);
         if (frameBytes.length + 1 > maxSessionFrameBytes || !Buffer.from(frameBytes.toString("utf8"), "utf8").equals(frameBytes)) throw new Error("invalid_session_frame");
         let frame: Record<string, unknown>;
-        try { frame = JSON.parse(frameBytes.toString("utf8")) as Record<string, unknown>; } catch { throw new Error("invalid_session_frame"); }
+        try { frame = parseUniqueJSON(frameBytes.toString("utf8")) as Record<string, unknown>; } catch { throw new Error("invalid_session_frame"); }
         if (!frame || Array.isArray(frame) || typeof frame !== "object") throw new Error("invalid_session_frame");
         if (frame.kind === "credential_response" && options.credentials && frameBytes.length + 1 <= (64 << 10)) {
           options.credentials.receive(frame);

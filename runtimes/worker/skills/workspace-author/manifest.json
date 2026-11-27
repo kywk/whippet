@@ -8,6 +8,7 @@
     "browser_click",
     "browser_fill",
     "browser_login",
+    "browser_login_account",
     "read_skill_reference",
     "record_conversation_memory"
   ],

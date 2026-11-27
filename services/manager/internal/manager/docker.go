@@ -44,6 +44,9 @@ func (d dockerCLI) Execute(ctx context.Context, r record, taskDir string, emit f
 		if r.Kind == "author" && result.Error != "" {
 			result.Error = "Author container execution failed"
 		}
+		if r.Kind == workspaceLoginVerificationKind && result.Error != "" {
+			result.Error = "Workspace login verification container failed"
+		}
 	}()
 	createCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -66,6 +69,9 @@ func (d dockerCLI) createArgs(r record, taskDir string) []string {
 		"--mount", "type=bind,source=" + taskDir + ",target=/work",
 		"--memory", "1g", "--cpus", "1", "--pids-limit", "256", "--shm-size", "256m",
 		"--cap-add", "NET_ADMIN", "--security-opt", "no-new-privileges=true",
+	}
+	if r.Kind == workspaceLoginVerificationKind {
+		return append(args, d.cfg.WorkerImage, "node", "dist/login/verification-main.js")
 	}
 	if r.Kind == "author" {
 		if m109Enabled() {
@@ -187,6 +193,9 @@ func (d dockerCLI) Remove(ctx context.Context, r record) error {
 	if err != nil && !strings.Contains(string(out), "No such container") {
 		if r.Kind == "author" {
 			return errors.New("author container cleanup failed; slot retained")
+		}
+		if r.Kind == workspaceLoginVerificationKind {
+			return errors.New("workspace login verification container cleanup failed; slot retained")
 		}
 		return fmt.Errorf("docker rm: %w: %s", err, clip(string(out), 2000))
 	}

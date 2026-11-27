@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { CredentialError, KnownSecrets, validCredentialText, type CredentialResolver, type LoginValues } from "../login/client.js";
-import { origin } from "../workspace-context.js";
+import { findAccountBinding, origin } from "../workspace-context.js";
 import type { SessionInput } from "./session.js";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -10,7 +10,7 @@ const keys = (value: unknown, expected: string[]): value is Record<string, unkno
 
 export class SessionCredentialClient implements CredentialResolver {
   readonly secrets = new KnownSecrets();
-  private pending?: { requestId: string; callId: string; roleId: string; resolve: (value: LoginValues) => void; reject: () => void; timer: NodeJS.Timeout };
+  private pending?: { requestId: string; callId: string; loginOrigin: string; lookup: LoginLookup; resolve: (value: LoginValues) => void; reject: () => void; timer: NodeJS.Timeout };
   private count = 0;
   private closed = false;
 
@@ -19,13 +19,23 @@ export class SessionCredentialClient implements CredentialResolver {
   resolve(roleId: string, callId?: string): Promise<LoginValues> {
     const role = this.input.workspaceContext.config?.loginRoles.find(item => item.roleId === roleId);
     const ref = this.input.workspaceContext.roleRefs.find(item => item.roleId === roleId);
-    if (this.closed || this.pending || ++this.count > 20 || !uuid.test(roleId) || !callId || !uuid.test(callId) ||
-        !role || !ref?.configured || !ref.secretRef || !ref.secretVersion) return Promise.reject(new CredentialError());
+    if (!uuid.test(roleId) || !role || !ref?.configured || !ref.secretRef || !ref.secretVersion) return Promise.reject(new CredentialError());
+    return this.request({ roleId }, origin(role.loginOrigin), callId);
+  }
+
+  resolveAccount(accountId: string, targetOrigin: string, callId?: string): Promise<LoginValues> {
+    const binding = findAccountBinding(this.input.workspaceContext, accountId, targetOrigin);
+    if (!binding) return Promise.reject(new CredentialError());
+    return this.request({ accountId: binding.accountId, targetOrigin: origin(binding.targetOrigin) }, new URL(binding.entryUrl).origin, callId);
+  }
+
+  private request(lookup: LoginLookup, loginOrigin: string, callId?: string): Promise<LoginValues> {
+    if (this.closed || this.pending || ++this.count > 20 || !callId || !uuid.test(callId)) return Promise.reject(new CredentialError());
     const requestId = randomUUID();
     return new Promise<LoginValues>((resolve, reject) => {
       const timer = setTimeout(() => this.fail(), 12000);
-      this.pending = { requestId, callId, roleId, resolve, reject: () => reject(new CredentialError()), timer };
-      void this.send({ kind: "credential_request", sessionId: this.input.sessionId, leaseId: this.input.leaseId, callId, requestId, roleId }).catch(() => this.fail());
+      this.pending = { requestId, callId, loginOrigin, lookup, resolve, reject: () => reject(new CredentialError()), timer };
+      void this.send({ kind: "credential_request", sessionId: this.input.sessionId, leaseId: this.input.leaseId, callId, requestId, ...lookup }).catch(() => this.fail());
     });
   }
 
@@ -38,12 +48,13 @@ export class SessionCredentialClient implements CredentialResolver {
       if (frame.kind !== "credential_response" || frame.sessionId !== this.input.sessionId || frame.leaseId !== this.input.leaseId ||
           frame.callId !== p.callId || frame.requestId !== p.requestId || "error" in frame) throw new CredentialError();
       const value = frame.credentials;
-      if (!keys(value, ["sessionId", "leaseId", "workspaceId", "roleId", "loginOrigin", "username", "password"])) throw new CredentialError();
-      const role = this.input.workspaceContext.config?.loginRoles.find(item => item.roleId === p.roleId);
-      if (!role || value.sessionId !== this.input.sessionId || value.leaseId !== this.input.leaseId ||
-          value.workspaceId !== this.input.workspaceId || value.roleId !== p.roleId || origin(value.loginOrigin) !== origin(role.loginOrigin) ||
+      const account = "accountId" in p.lookup;
+      if (!keys(value, ["sessionId", "leaseId", "workspaceId", "loginOrigin", "username", "password", ...Object.keys(p.lookup), ...(account ? ["callId"] : [])])) throw new CredentialError();
+      if (value.sessionId !== this.input.sessionId || value.leaseId !== this.input.leaseId ||
+          value.workspaceId !== this.input.workspaceId || (account && value.callId !== p.callId) ||
+          !Object.entries(p.lookup).every(([key, expected]) => value[key] === expected) || origin(value.loginOrigin) !== p.loginOrigin ||
           !validCredentialText(value.username) || !validCredentialText(value.password)) throw new CredentialError();
-      this.secrets.add(value.username); this.secrets.add(value.password);
+      this.secrets.addCredentials(value.username, value.password);
       this.pending = undefined; clearTimeout(p.timer);
       p.resolve({ loginOrigin: value.loginOrigin, username: value.username, password: value.password } as LoginValues);
     } catch { this.fail(); }
@@ -55,3 +66,5 @@ export class SessionCredentialClient implements CredentialResolver {
   }
   close(): void { this.closed = true; this.fail(); this.secrets.clear(); }
 }
+
+type LoginLookup = { roleId: string } | { accountId: string; targetOrigin: string };

@@ -60,11 +60,12 @@ type sessionWireError string
 func (e sessionWireError) Error() string { return string(e) }
 
 type sessionCallState struct {
-	hash   [32]byte
-	tool   registryTool
-	roleID string
-	reply  *sessionToolResult
-	timer  *time.Timer
+	hash          [32]byte
+	tool          registryTool
+	roleID        string
+	accountTarget accountSite
+	reply         *sessionToolResult
+	timer         *time.Timer
 }
 type sessionWorkingState struct {
 	allowed           map[string]bool
@@ -170,11 +171,11 @@ func (m *Manager) openSession(ctx context.Context, env Envelope) error {
 		return err
 	}
 	var p sessionOpen
-	if len(env.Payload) > 1<<20 || !exactWorkspaceObject(env.Payload, "sessionId", "leaseId", "workspaceId", "workspaceContext", "allowedTools", "toolRegistryVersion", "toolRegistrySha256", "idleTimeoutMs", "maxLifetimeMs") || json.Unmarshal(env.Payload, &p) != nil || !uuidPattern.MatchString(p.SessionID) || !uuidPattern.MatchString(p.LeaseID) || !uuidPattern.MatchString(p.WorkspaceID) || p.IdleTimeoutMS != 600000 || p.MaxLifetimeMS != 1800000 || p.AllowedTools == nil {
+	if len(env.Payload) > maxWorkspaceAccountSnapshotBytes || !exactWorkspaceObject(env.Payload, "sessionId", "leaseId", "workspaceId", "workspaceContext", "allowedTools", "toolRegistryVersion", "toolRegistrySha256", "idleTimeoutMs", "maxLifetimeMs") || json.Unmarshal(env.Payload, &p) != nil || !uuidPattern.MatchString(p.SessionID) || !uuidPattern.MatchString(p.LeaseID) || !uuidPattern.MatchString(p.WorkspaceID) || p.IdleTimeoutMS != 600000 || p.MaxLifetimeMS != 1800000 || p.AllowedTools == nil {
 		return sessionWireError("invalid_request")
 	}
 	workspace, err := parseWorkspaceContext(p.WorkspaceContext, p.WorkspaceID)
-	if err != nil || workspace == nil || bytes.Equal(bytes.TrimSpace(workspace.Config), []byte("null")) {
+	if err != nil || workspace == nil || bytes.Equal(bytes.TrimSpace(workspace.Config), []byte("null")) || (workspace.SchemaVersion == "1" && len(env.Payload) > 1<<20) {
 		return sessionWireError("invalid_request")
 	}
 	registry, err := loadToolRegistry()
@@ -186,7 +187,7 @@ func (m *Manager) openSession(ctx context.Context, env Envelope) error {
 	}
 	allowed := map[string]bool{}
 	for _, name := range p.AllowedTools {
-		if allowed[name] {
+		if allowed[name] || name == "browser_login_account" && workspace.SchemaVersion != "2" {
 			return sessionWireError("invalid_request")
 		}
 		allowed[name] = true
@@ -305,6 +306,15 @@ func (m *Manager) startSession(ctx context.Context, r sessionRecord, taskDir str
 			if reply.Error != "" && !validSessionError(reply.Error) || len(reply.Result) > 0 && (len(reply.Result) > int(call.tool.Limits.MaxOutputBytes) || !json.Valid(reply.Result)) || len(reply.Result) == 0 && reply.Error == "" {
 				reply.Result = nil
 				reply.Error = "unknown_result"
+			}
+			if call.tool.Name == "browser_login_account" && len(reply.Result) > 0 {
+				var receipt struct {
+					Submitted bool `json:"submitted"`
+				}
+				if !exactWorkspaceObject(reply.Result, "submitted") || json.Unmarshal(reply.Result, &receipt) != nil || !receipt.Submitted || reply.Error != "" {
+					reply.Result = nil
+					reply.Error = "unknown_result"
+				}
 			}
 			work.active = ""
 			bytes := len(reply.Result) + len(reply.Error) + 128
@@ -538,7 +548,7 @@ func (m *Manager) callSession(_ context.Context, env Envelope) error {
 		m.requestSessionClose(p.SessionID, "cancelled")
 		return sessionWireError("cancelled")
 	}
-	roleID := ""
+	state := &sessionCallState{hash: hash, tool: *tool}
 	if p.Name == "browser_login" {
 		var login struct {
 			RoleID string `json:"roleId"`
@@ -547,9 +557,25 @@ func (m *Manager) callSession(_ context.Context, env Envelope) error {
 			m.mu.Unlock()
 			return sessionWireError("invalid_request")
 		}
-		roleID = login.RoleID
+		state.roleID = login.RoleID
 	}
-	work.calls[p.CallID] = &sessionCallState{hash: hash, tool: *tool, roleID: roleID}
+	if p.Name == "browser_login_account" {
+		var login struct {
+			AccountID string `json:"accountId"`
+			Target    string `json:"targetOrigin"`
+		}
+		if !exactWorkspaceObject(p.Arguments, "accountId", "targetOrigin") || json.Unmarshal(p.Arguments, &login) != nil {
+			m.mu.Unlock()
+			return sessionWireError("invalid_request")
+		}
+		binding, found := work.workspace.accountBinding(login.AccountID, login.Target)
+		if !found {
+			m.mu.Unlock()
+			return sessionWireError("tool_unavailable")
+		}
+		state.accountTarget = accountSite{binding.AccountID, binding.TargetOrigin}
+	}
+	work.calls[p.CallID] = state
 	work.active = p.CallID
 	m.mu.Unlock()
 	timeout := time.Duration(tool.Limits.TimeoutMS)*time.Millisecond + time.Second

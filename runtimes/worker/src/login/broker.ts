@@ -3,6 +3,7 @@ import {chmod,chown,mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {CredentialClient,MAX_CREDENTIAL_FRAME} from './client.js';
+import {parseUniqueJSON} from '../strict-json.js';
 
 export async function loginBroker(client:CredentialClient,uid?:number):Promise<{path:string;close():Promise<void>}> {
   const dir=await mkdtemp(join(tmpdir(),'whippet-login-'));await chmod(dir,0o700);const path=join(dir,'login.sock');
@@ -12,9 +13,31 @@ export async function loginBroker(client:CredentialClient,uid?:number):Promise<{
     let buffer=Buffer.alloc(0),received=false;
     socket.on('data',(data)=>{
       if(received){socket.destroy();return;}buffer=Buffer.concat([buffer,data]);if(buffer.length>MAX_CREDENTIAL_FRAME){socket.destroy();return;}const n=buffer.indexOf(10);if(n<0)return;received=true;
-      void (async()=>{try{const req=JSON.parse(buffer.subarray(0,n).toString('utf8'));if(Object.keys(req).length!==1)throw new Error();
-        if(Array.isArray(req.secrets)){if(req.secrets.length>256||req.secrets.some((v:unknown)=>typeof v!=='string'||Buffer.byteLength(v)>4096))throw new Error();for(const value of req.secrets)client.secrets.add(value);socket.end('{"ok":true}\n');return;}
-        if(typeof req.roleId!=='string')throw new Error();const credentials=await client.resolve(req.roleId);if(!socket.destroyed)socket.end(JSON.stringify({credentials})+'\n');}catch{if(!socket.destroyed)socket.end('{"error":"credential_operation_failed"}\n');}finally{buffer=Buffer.alloc(0);}})();
+      void (async () => {
+        try {
+          const req = parseUniqueJSON(new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, n))) as Record<string, unknown>;
+          const size = Object.keys(req).length;
+          if (size === 1 && Array.isArray(req.secrets)) {
+            if (req.secrets.length > 256 || req.secrets.some((v: unknown) => typeof v !== "string" || Buffer.byteLength(v) > 4096)) throw new Error();
+            for (const value of req.secrets) client.secrets.add(value);
+            socket.end('{"ok":true}\n');
+          } else if (size === 1 && typeof req.roleId === "string") {
+            const credentials = await client.resolve(req.roleId);
+            if (!socket.destroyed) socket.end(JSON.stringify({ credentials }) + "\n");
+            credentials.username = ""; credentials.password = "";
+          } else if (size === 2 && typeof req.accountId === "string" && typeof req.targetOrigin === "string") {
+            const binding = client.accountBinding(req.accountId, req.targetOrigin);
+            if (!binding) throw new Error();
+            const values = await client.resolveAccount(req.accountId, req.targetOrigin);
+            const { accountId, targetOrigin, entryUrl, form } = binding;
+            const { loginOrigin, username, password } = values;
+            if (!socket.destroyed) socket.end(JSON.stringify({ credentials: { accountId, targetOrigin, entryUrl, form, loginOrigin, username, password } }) + "\n");
+            values.username = ""; values.password = "";
+          } else throw new Error();
+        } catch {
+          if (!socket.destroyed) socket.end('{"error":"credential_operation_failed"}\n');
+        } finally { buffer = Buffer.alloc(0); }
+      })();
     });
   });
   try{

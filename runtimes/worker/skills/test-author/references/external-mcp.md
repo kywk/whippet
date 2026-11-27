@@ -8,3 +8,5 @@ Use this reference when a `task_claim` returns a `test-author` task. The claim's
 4. Check the saved draft revision and independent validation Run before saying the script passed. Successful validation requires the platform's `succeeded` result and saved report for the submitted revision. Publication remains a human UI action.
 
 If a tool returns `busy`, retain its `callId` and observe or retry the same operation after the stated condition clears. If it returns `unknown_result`, stop that side-effecting operation and report uncertainty; a new `callId` could repeat it. If scope, connectivity, or a site blocker prevents reliable assertions, explain the blocker and submit only what the saved context supports.
+
+Use the claim's `workspaceContext.testAccounts` to choose a verified account for the target and purpose. Call `browser_login_account` through `task_tool_call` with nested `{accountId,targetOrigin}` when offered. If the account is unavailable, report the missing role or purpose. Use `loginAsAccount` from `whippet/login` in the generated script and assert the authenticated outcome.

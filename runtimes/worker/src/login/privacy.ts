@@ -91,13 +91,13 @@ export async function maskKnownInputs(page:Page,values:string[]):Promise<void>{
   await (await mask).update(values);
 }
 
-export function installLoginPrivacy(browser:Browser,live:LiveObserver):{close():void;secrets:KnownSecrets}{
+export function installLoginPrivacy(browser:Browser,live?:LiveObserver):{close():void;secrets:KnownSecrets}{
   const secrets=new KnownSecrets();
   const original=browser.newContext;
   browser.newContext=async(...args)=>{const context=await original.apply(browser,args);context.on('page',(page)=>{page.on('domcontentloaded',()=>{if(secrets.list().length)void maskKnownInputs(page,secrets.list()).catch(()=>undefined);});});return context;};
   const hooks:LoginHook={
-    async pause(){await live.pauseSensitive();},resume(){return live.resumeSensitive();},
-    remember(values){for(const value of values)secrets.add(value);for(const context of browser.contexts())for(const page of context.pages())void maskKnownInputs(page,secrets.list()).catch(()=>undefined);},
+    async pause(){await live?.pauseSensitive();},resume(){return live?.resumeSensitive();},
+    remember(values, credentials){if(credentials)secrets.addCredentials(...values);else for(const value of values)secrets.add(value);for(const context of browser.contexts())for(const page of context.pages())void maskKnownInputs(page,secrets.list()).catch(()=>undefined);},
   };
   (globalThis as LoginHooks)[LOGIN_HOOK]=hooks;
   return {secrets,close(){browser.newContext=original;if((globalThis as LoginHooks)[LOGIN_HOOK]===hooks)delete (globalThis as LoginHooks)[LOGIN_HOOK];secrets.clear();}};
