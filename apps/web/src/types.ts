@@ -83,15 +83,74 @@ export interface ManagedWorkspaceApi {
   restore(workspaceId: string, revision: number, signal?: AbortSignal): Promise<ManagedWorkspace>;
 }
 
+export const WORKSPACE_TEST_SCOPES = ['unknown', 'guest', 'authenticated', 'both'] as const;
+export type WorkspaceTestScope = typeof WORKSPACE_TEST_SCOPES[number];
+
+export interface WorkspaceTarget {
+  name: string;
+  purpose: string;
+  origin: string;
+  testScope: WorkspaceTestScope;
+}
+
+export interface WorkspaceSiteLogin {
+  targetOrigin: string;
+  loginMethod: 'form' | 'sso' | 'mfa' | 'other' | null;
+  entryUrl: string | null;
+  form: {
+    usernameSelector: string;
+    passwordSelector: string;
+    submitSelector: string;
+    loginRejectedSelector?: string;
+    mfaSelector?: string;
+  } | null;
+  success: { url: string; visibleSelector: string } | null;
+}
+
+export interface WorkspaceTestAccount {
+  accountId: string;
+  name: string;
+  role: string;
+  purpose: string;
+  sites: WorkspaceSiteLogin[];
+}
+
+export const WORKSPACE_VERIFICATION_REASONS = [
+  'scope_confirmation_required', 'login_setup_required', 'credentials_required', 'unsupported_login_method',
+  'login_rejected', 'mfa_required', 'guest_accessible', 'login_not_verified', 'credential_unavailable',
+  'invalid_evidence', 'timed_out', 'cancelled', 'interrupted',
+] as const;
+
+export interface WorkspaceSiteReadiness {
+  targetOrigin: string;
+  testScope: WorkspaceTestScope;
+  ready: boolean;
+  reason: 'scope_choice_required' | 'login_verification_required' | null;
+  accounts: {
+    accountId: string;
+    state: 'pending' | 'running' | 'verified' | 'failed';
+    reason: typeof WORKSPACE_VERIFICATION_REASONS[number] | null;
+    runId: string | null;
+    verifiedAt: string | null;
+  }[];
+}
+
+export interface WorkspaceAccountCredentials {
+  accountId: string;
+  configured: boolean;
+  secretVersion: number | null;
+}
+
 export interface WorkspaceConfig {
   name: string;
   purpose: string;
   backgroundSummary: string;
-  targets: { name: string; purpose: string; origin: string }[];
+  targets: WorkspaceTarget[];
   dependencies: { name: string; purpose: 'login' | 'api' | 'cdn'; origin: string }[];
   excludedOrigins: string[];
   exclusions: string;
   loginRoles: { roleId: string | null; name: string; loginMethod: 'form'; loginOrigin: string }[];
+  testAccounts: WorkspaceTestAccount[];
   defaultTestUrl: string;
   timeoutMs: number;
 }
@@ -173,6 +232,8 @@ export interface WorkspaceProposal {
   contextRevision: number;
   status: 'pending' | 'applied' | 'cancelled' | 'stale' | 'superseded';
   content: WorkspaceConfig;
+  siteReadiness: WorkspaceSiteReadiness[];
+  accountCredentials: WorkspaceAccountCredentials[];
   scopeHash: string;
   scopeConfirmed: boolean;
   invalidationReason: string | null;
@@ -186,6 +247,7 @@ export interface WorkspaceDetail extends WorkspaceSummary, WorkspaceSettingsSnap
   authorizationRevision: number;
   scopeStatus: 'unconfirmed' | 'confirmed' | 'revoking';
   settings: WorkspaceConfig | null;
+  siteReadiness: WorkspaceSiteReadiness[];
   conversationId: string;
   activeRunId: string | null;
   currentProposal: WorkspaceProposal | null;

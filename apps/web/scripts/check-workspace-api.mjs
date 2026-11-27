@@ -139,6 +139,36 @@ try {
   check((await api.confirmWorkspaceProposal(wid, pid, 1)).workspace.settings.purpose === '驗測用途');
   responseBody = { ...proposal, status: 'cancelled' };
   check((await api.cancelWorkspaceProposal(wid, pid, 1)).status === 'cancelled');
+  responseBody = proposal;
+  const legacyProposal = await api.getWorkspaceProposal(wid, pid);
+  check(legacyProposal.content.targets[0].testScope === 'unknown');
+  assert.deepEqual(legacyProposal.siteReadiness, []); checks++;
+
+  const guestTarget = { ...config.targets[0], testScope: 'guest' };
+  const guestReadiness = { targetOrigin: guestTarget.origin, testScope: 'guest', ready: true, reason: null, accounts: [] };
+  const guest = { ...proposal, content: { ...config, targets: [guestTarget], testAccounts: [] }, siteReadiness: [guestReadiness], accountCredentials: [] };
+  responseBody = guest;
+  const reopenedGuest = await api.getWorkspaceProposal(wid, pid);
+  assert.deepEqual(reopenedGuest, guest); checks++;
+  check(calls.at(-1).method === 'GET' && calls.at(-1).url === `/api/workspaces/${wid}/proposals/${pid}`);
+  responseBody = { workspace: { ...workspace, settings: guest.content, siteReadiness: [guestReadiness], revision: 2, lifecycle: 'active' }, proposal: { ...guest, status: 'applied', appliedRevision: 2 } };
+  assert.deepEqual((await api.confirmWorkspaceProposal(wid, pid, 1)).workspace.siteReadiness, [guestReadiness]); checks++;
+  assert.deepEqual(calls.at(-1).body, { baseRevision: 1, confirmed: true }); checks++;
+
+  const accountId = '00000000-0000-4000-8000-000000000106';
+  const loginTarget = { name: '合成會員站', purpose: '檢查會員功能', origin: 'https://members.example', testScope: 'both' };
+  const login = { targetOrigin: loginTarget.origin, loginMethod: 'mfa', entryUrl: null, form: null, success: null };
+  const account = { accountId, name: '測試會員', role: '會員', purpose: '檢查會員功能', sites: [login] };
+  const blockedSite = { targetOrigin: loginTarget.origin, testScope: 'both', ready: false, reason: 'login_verification_required',
+    accounts: [{ accountId, state: 'pending', reason: 'unsupported_login_method', runId: null, verifiedAt: null }] };
+  const mixedProposal = { ...guest, content: { ...guest.content, targets: [guestTarget, loginTarget], testAccounts: [account] },
+    siteReadiness: [guestReadiness, blockedSite], accountCredentials: [{ accountId, configured: false, secretVersion: null }] };
+  responseBody = mixedProposal;
+  assert.deepEqual(await api.getWorkspaceProposal(wid, pid), mixedProposal); checks++;
+  responseBody = { ...mixedProposal, id: rid };
+  await assert.rejects(api.getWorkspaceProposal(wid, pid), (error) => error.code === 'WORKSPACE_CONFLICT'); checks++;
+  responseBody = { ...mixedProposal, content: { ...mixedProposal.content, targets: [{ ...loginTarget, testScope: 'other' }] } };
+  await assert.rejects(api.getWorkspaceProposal(wid, pid), (error) => error.code === 'INVALID_RESPONSE'); checks++;
   responseBody = { proposal };
   await assert.rejects(api.getWorkspaceProposal(wid, pid), (error) => error instanceof ApiError && error.code === 'INVALID_RESPONSE'); checks++;
   responseBody = { ...workspace, executionAvailable: undefined };

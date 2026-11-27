@@ -1,6 +1,6 @@
 import { validRepairContent, editableStage } from './plan';
-import { AGENT_RUNTIME_SKILLS, DEFAULT_WORKSPACE_MANAGEMENT, RUN_STATUSES, SITE_ROLES, WORKSPACE_ARCHIVE_MODES, WORKSPACE_MANAGEMENT_STATES, WORKSPACE_MEMBER_ROLES } from './types';
-import type { ManagedWorkspace, WorkspaceManagement, WorkspacePermissions, WorkspaceSummary } from './types';
+import { AGENT_RUNTIME_SKILLS, DEFAULT_WORKSPACE_MANAGEMENT, RUN_STATUSES, SITE_ROLES, WORKSPACE_ARCHIVE_MODES, WORKSPACE_MANAGEMENT_STATES, WORKSPACE_MEMBER_ROLES, WORKSPACE_TEST_SCOPES, WORKSPACE_VERIFICATION_REASONS } from './types';
+import type { ManagedWorkspace, WorkspaceManagement, WorkspacePermissions, WorkspaceSiteLogin, WorkspaceSiteReadiness, WorkspaceSummary } from './types';
 import type { AiAgent, AiAgentDraft, AiOptions, AiPage, AiReason, AiResource, AiResourceAction, AiRouting } from './aiAdminTypes';
 import type { RunActivity, SimilarTestSuggestion, VersionConversationMessage, WorkspaceAgentRuntime, WorkspaceMember, WorkspaceRunActivity } from './types';
 import type { AgentToken, AgentToolAudit, AuthorEngine, BrowserSession, StageRetry, ModuleMetadata, Plan, PlanStage, PlanSummary, StageArgument, JsonValue, AuthorPartial, CatalogItem, AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
@@ -133,16 +133,61 @@ function parseMember(value: unknown): WorkspaceMember {
   return { id: string(data.id), name: string(data.name), role: choice(data.role, WORKSPACE_MEMBER_ROLES) };
 }
 
+function parseWorkspaceSiteLogin(value: unknown): WorkspaceSiteLogin {
+  const data = record(value);
+  const form = data.form === null ? null : record(data.form);
+  const success = data.success === null ? null : record(data.success);
+  return {
+    targetOrigin: string(data.targetOrigin), entryUrl: nullableString(data.entryUrl),
+    loginMethod: data.loginMethod === null ? null : choice(data.loginMethod, ['form', 'sso', 'mfa', 'other'] as const),
+    form: form && {
+      usernameSelector: string(form.usernameSelector), passwordSelector: string(form.passwordSelector),
+      submitSelector: string(form.submitSelector),
+      loginRejectedSelector: form.loginRejectedSelector === undefined ? undefined : string(form.loginRejectedSelector),
+      mfaSelector: form.mfaSelector === undefined ? undefined : string(form.mfaSelector),
+    },
+    success: success && { url: string(success.url), visibleSelector: string(success.visibleSelector) },
+  };
+}
+
+function parseWorkspaceSiteReadiness(value: unknown): WorkspaceSiteReadiness[] {
+  return value === undefined ? [] : array(value, (entry) => {
+    const site = record(entry);
+    return {
+      targetOrigin: string(site.targetOrigin), testScope: choice(site.testScope, WORKSPACE_TEST_SCOPES), ready: bool(site.ready),
+      reason: site.reason === null ? null : choice(site.reason, ['scope_choice_required', 'login_verification_required'] as const),
+      accounts: array(site.accounts, (value) => {
+        const account = record(value);
+        return {
+          accountId: string(account.accountId), state: choice(account.state, ['pending', 'running', 'verified', 'failed'] as const),
+          reason: account.reason === null ? null : choice(account.reason, WORKSPACE_VERIFICATION_REASONS),
+          runId: nullableString(account.runId), verifiedAt: nullableString(account.verifiedAt),
+        };
+      }),
+    };
+  });
+}
+
 function parseWorkspaceConfig(value: unknown): WorkspaceConfig {
   const data = record(value);
   const timeoutMs = revision(data.timeoutMs);
   if (timeoutMs < 1 || timeoutMs > 3_600_000) throw new ApiError('Workspace 逾時格式不符。', 'INVALID_RESPONSE');
   return {
     name: string(data.name), purpose: string(data.purpose), backgroundSummary: string(data.backgroundSummary),
-    targets: array(data.targets, (value) => { const item = record(value); return { name: string(item.name), purpose: string(item.purpose), origin: string(item.origin) }; }),
+    targets: array(data.targets, (value) => {
+      const item = record(value);
+      return {
+        name: string(item.name), purpose: string(item.purpose), origin: string(item.origin),
+        testScope: item.testScope === undefined ? 'unknown' : choice(item.testScope, WORKSPACE_TEST_SCOPES),
+      };
+    }),
     dependencies: array(data.dependencies, (value) => { const item = record(value); return { name: string(item.name), purpose: choice(item.purpose, ['login', 'api', 'cdn'] as const), origin: string(item.origin) }; }),
     excludedOrigins: array(data.excludedOrigins, string), exclusions: string(data.exclusions),
     loginRoles: array(data.loginRoles, (value) => { const item = record(value); return { roleId: nullableString(item.roleId), name: string(item.name), loginMethod: choice(item.loginMethod, ['form'] as const), loginOrigin: string(item.loginOrigin) }; }),
+    testAccounts: data.testAccounts === undefined ? [] : array(data.testAccounts, (value) => {
+      const account = record(value);
+      return { accountId: string(account.accountId), name: string(account.name), role: string(account.role), purpose: string(account.purpose), sites: array(account.sites, parseWorkspaceSiteLogin) };
+    }),
     defaultTestUrl: string(data.defaultTestUrl), timeoutMs,
   };
 }
@@ -160,6 +205,11 @@ function parseWorkspaceProposal(value: unknown): WorkspaceProposal {
     id: string(data.id), workspaceId: string(data.workspaceId), conversationId: string(data.conversationId), sourceRunId: string(data.sourceRunId),
     baseRevision: revision(data.baseRevision), contextRevision: revision(data.contextRevision),
     status: choice(data.status, ['pending', 'applied', 'cancelled', 'stale', 'superseded'] as const), content: parseWorkspaceConfig(data.content),
+    siteReadiness: parseWorkspaceSiteReadiness(data.siteReadiness),
+    accountCredentials: data.accountCredentials === undefined ? [] : array(data.accountCredentials, (value) => {
+      const account = record(value);
+      return { accountId: string(account.accountId), configured: bool(account.configured), secretVersion: account.secretVersion === null ? null : positiveRevision(account.secretVersion) };
+    }),
     scopeHash: string(data.scopeHash), scopeConfirmed: bool(data.scopeConfirmed), invalidationReason: nullableString(data.invalidationReason),
     appliedRevision: data.appliedRevision === null ? null : revision(data.appliedRevision), createdAt: string(data.createdAt),
   };
@@ -353,6 +403,7 @@ function parseWorkspaceDetail(value: unknown): WorkspaceDetail {
     management: data.management === undefined ? { ...DEFAULT_WORKSPACE_MANAGEMENT } : parseWorkspaceManagement(data.management),
     authorizationRevision: revision(data.authorizationRevision), scopeStatus: choice(data.scopeStatus, ['unconfirmed', 'confirmed', 'revoking'] as const),
     settings: data.settings === null ? null : parseWorkspaceConfig(data.settings), conversationId: string(data.conversationId), activeRunId: nullableString(data.activeRunId),
+    siteReadiness: parseWorkspaceSiteReadiness(data.siteReadiness),
     currentProposal: data.currentProposal === null ? null : parseWorkspaceProposal(data.currentProposal), roles: array(data.roles, parseWorkspaceRole),
     secretsAvailable: bool(data.secretsAvailable), executionAvailable: bool(data.executionAvailable), unavailableReason: nullableString(data.unavailableReason),
     capabilities: parseCapabilities(data.capabilities),
@@ -754,9 +805,9 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
   }
   const adminWorkspacePath = (workspaceId: string) => `/admin/workspaces/${id(workspaceId)}`;
   const proposalPath = (workspaceId: string, proposalId: string) => `/workspaces/${id(workspaceId)}/proposals/${id(proposalId)}`;
-  function ownedProposal(value: unknown, workspaceId: string) {
+  function ownedProposal(value: unknown, workspaceId: string, proposalId: string) {
     const proposal = parseWorkspaceProposal(value);
-    if (proposal.workspaceId !== workspaceId) throw new ApiError('提案所屬 Workspace 不符。', 'WORKSPACE_CONFLICT');
+    if (proposal.workspaceId !== workspaceId || proposal.id !== proposalId) throw new ApiError('提案識別碼或所屬 Workspace 不符。', 'WORKSPACE_CONFLICT');
     return proposal;
   }
   return {
@@ -1145,15 +1196,15 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
       if (run.workspaceId !== workspaceId || run.testId !== null || run.authorMode !== 'workspace') throw new ApiError('設定任務所屬 Workspace 不符。', 'WORKSPACE_CONFLICT');
       return { run, conversationId: string(data.conversationId) };
     },
-    async getWorkspaceProposal(workspaceId, proposalId, signal) { return ownedProposal(await request(proposalPath(workspaceId, proposalId), 'GET', signal), workspaceId); },
-    async confirmWorkspaceScope(workspaceId, proposalId, baseRevision, signal) { return ownedProposal(await request(`${proposalPath(workspaceId, proposalId)}/confirm-scope`, 'POST', signal, { baseRevision, confirmed: true }), workspaceId); },
+    async getWorkspaceProposal(workspaceId, proposalId, signal) { return ownedProposal(await request(proposalPath(workspaceId, proposalId), 'GET', signal), workspaceId, proposalId); },
+    async confirmWorkspaceScope(workspaceId, proposalId, baseRevision, signal) { return ownedProposal(await request(`${proposalPath(workspaceId, proposalId)}/confirm-scope`, 'POST', signal, { baseRevision, confirmed: true }), workspaceId, proposalId); },
     async confirmWorkspaceProposal(workspaceId, proposalId, baseRevision, signal) {
       const data = record(await request(`${proposalPath(workspaceId, proposalId)}/confirm`, 'POST', signal, { baseRevision, confirmed: true }));
       const workspace = parseWorkspaceDetail(data.workspace);
       if (workspace.id !== workspaceId) throw new ApiError('Workspace 回應不符。', 'WORKSPACE_CONFLICT');
-      return { workspace, proposal: ownedProposal(data.proposal, workspaceId) };
+      return { workspace, proposal: ownedProposal(data.proposal, workspaceId, proposalId) };
     },
-    async cancelWorkspaceProposal(workspaceId, proposalId, baseRevision, signal) { return ownedProposal(await request(`${proposalPath(workspaceId, proposalId)}/cancel`, 'POST', signal, { baseRevision, confirmed: true }), workspaceId); },
+    async cancelWorkspaceProposal(workspaceId, proposalId, baseRevision, signal) { return ownedProposal(await request(`${proposalPath(workspaceId, proposalId)}/cancel`, 'POST', signal, { baseRevision, confirmed: true }), workspaceId, proposalId); },
     async saveWorkspaceCredentials(workspaceId, roleId, input, signal) {
       if (!isProtectedCredentialTransport(base, window.location.href)) throw new ApiError('需 HTTPS 或明確的 loopback 本機連線才能保存登入資料。', 'INSECURE_TRANSPORT');
       if (!Number.isSafeInteger(input.expectedSecretVersion) || input.expectedSecretVersion < 0) throw new ApiError('需提供有效的登入資料版本。', 'INVALID_CREDENTIAL_VERSION');

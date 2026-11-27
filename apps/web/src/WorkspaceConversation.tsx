@@ -27,6 +27,7 @@ interface Props {
 }
 
 type WsSideTab = 'proposal' | 'credentials' | 'settings';
+const workspaceMessageId = 'workspace-message';
 
 export function WorkspaceConversation(props: Props) {
   return props.workspace ? <WorkspaceInterview {...props} workspace={props.workspace} /> : <CreateWorkspace {...props} />;
@@ -99,13 +100,23 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
   const lastEngine = useRef(workspace.authorEngine);
   useEffect(() => () => { for (const controller of controllers.current) controller.abort(); }, []);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (proposalToReload?: string) => {
     const request = new AbortController(); controllers.current.add(request);
     const turn = ++sequence.current; setRefreshing(true);
     try {
-      const [next, messages] = await Promise.all([api.getWorkspace(workspace.id, request.signal), api.getWorkspaceConversation(workspace.id, request.signal)]);
-      if (messages.id !== next.conversationId || (next.currentProposal && next.currentProposal.conversationId !== messages.id)) throw new ApiError('設定對話或提案關聯不符。', 'WORKSPACE_CONFLICT');
+      const [loaded, messages, reloadedProposal] = await Promise.all([
+        api.getWorkspace(workspace.id, request.signal),
+        api.getWorkspaceConversation(workspace.id, request.signal),
+        proposalToReload ? api.getWorkspaceProposal(workspace.id, proposalToReload, request.signal) : undefined,
+      ]);
+      if (request.signal.aborted || turn !== sequence.current) return;
+      let proposal = loaded.currentProposal;
+      if (proposal?.status === 'pending') {
+        proposal = reloadedProposal?.id === proposal.id ? reloadedProposal : await api.getWorkspaceProposal(workspace.id, proposal.id, request.signal);
+      }
+      if (messages.id !== loaded.conversationId || (proposal && proposal.conversationId !== messages.id)) throw new ApiError('設定對話或提案關聯不符。', 'WORKSPACE_CONFLICT');
       if (!request.signal.aborted && turn === sequence.current) {
+        const next = { ...loaded, currentProposal: proposal };
         setEngineSelection((selected) => selected === lastEngine.current ? next.authorEngine : selected);
         lastEngine.current = next.authorEngine;
         setCurrent(next); setConversation(messages); setLoadError(undefined); setFresh(true); onWorkspaceUpdated(next);
@@ -155,6 +166,13 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
   const reportCredentialGuard = useCallback((state: { dirty: boolean; busy: boolean }) => setCredentialGuard(state), []);
   const reportRuntimeGuard = useCallback((state: { dirty: boolean; busy: boolean }) => setRuntimeGuard(state), []);
   const canSend = Boolean(fresh && conversation && !refreshing && !mutating && !runActive && !credentialGuard.dirty);
+
+  function draftScopeAnswer(origin: string, answer: string) {
+    if (!canSend || content) return;
+    setContent(`本次 ${origin} ${answer}。`);
+    setSideOpen(false);
+    document.getElementById(workspaceMessageId)?.focus();
+  }
 
   async function send() {
     if (sendLock.current || !canSend || !conversation || !content.trim() || Array.from(content).length > 16_000) return;
@@ -257,7 +275,7 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
           {loadError ? <Notice message={loadError} /> : null}
           {conversation && messages.length === 0 && !pendingTurn ? <div className="chat-empty">
             <h2>設定這個 Workspace 的目標與範圍</h2>
-            <p>描述要測試的網站用途、主要流程、目標網址與非機密背景。AI 會先訪談並提出結構化設定提案，經你確認後才生效。</p>
+            <p>描述目標網址、驗測目的與非機密背景，並說明每站是只測訪客、只測登入後，或兩者都測。AI 會透過訪談整理設定提案。</p>
             <p className="inline-hint">請勿在對話中輸入帳號、密碼或 token；登入資料請統一由右側「登入資料」欄位保存。</p>
           </div> : null}
           <ol className="turns" aria-label="已儲存的 Workspace 訊息">
@@ -288,7 +306,7 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
         </ChatScroll>
         <div className="composer-dock">
           {sendError ? <Notice message={sendError} /> : null}
-          <Composer id="workspace-message" label="Workspace 需求或修改訊息" value={content} onChange={setContent} onSubmit={() => { void send(); }} placeholder="描述目標網站 URL、驗測目的或需要調整的範圍（請勿填帳密）…" sending={sending} canSend={canSend} reason={reason ?? (note && !content ? note : undefined)} helper={`設定 revision ${current.revision} · 對話版本 ${conversation?.contextRevision ?? '尚未取得'} · 請勿填帳密`} />
+          <Composer id={workspaceMessageId} label="Workspace 需求或修改訊息" value={content} onChange={setContent} onSubmit={() => { void send(); }} placeholder="描述目標網站 URL、驗測目的或需要調整的範圍（請勿填帳密）…" sending={sending} canSend={canSend} reason={reason ?? (note && !content ? note : undefined)} helper={`設定 revision ${current.revision} · 對話版本 ${conversation?.contextRevision ?? '尚未取得'} · 請勿填帳密`} />
         </div>
       </section>
       <aside className="studio-side" aria-label="Workspace 設定與提案">
@@ -297,7 +315,9 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
           <button className="rail-icon-button light small side-close" aria-label="關閉右側面板" onClick={() => setSideOpen(false)}><CloseIcon /></button>
         </div>
         <div id="ws-panel-proposal" role="tabpanel" aria-labelledby="ws-tab-proposal" className="side-panel" hidden={sideTab !== 'proposal'}>
-          {current.currentProposal && conversation ? <WorkspaceProposalCard key={current.currentProposal.id} api={api} workspace={current} proposal={current.currentProposal} contextRevision={conversation.contextRevision} blocked={!fresh || refreshing || sending || runActive || credentialGuard.busy || credentialGuard.dirty || runtimeGuard.busy || Boolean(content)} onUpdated={proposalUpdated} onBusyChange={setProposalBusy} onRefresh={refresh} /> : <section className="workspace-proposal" aria-label="設定提案"><h3>設定提案</h3><p className="mode-empty">尚未取得提案。正式設定保持原樣，請先透過訪談說明目標與必要資訊。</p></section>}
+          {current.currentProposal && conversation ? <WorkspaceProposalCard key={current.currentProposal.id} api={api} workspace={current} proposal={current.currentProposal} contextRevision={conversation.contextRevision}
+            blocked={!canSend || Boolean(content)} onDraftScope={draftScopeAnswer} onUpdated={proposalUpdated} onBusyChange={setProposalBusy} onRefresh={refresh}
+          /> : <section className="workspace-proposal" aria-label="設定提案"><h3>設定提案</h3><p className="mode-empty">尚未取得提案。正式設定保持原樣，請先透過訪談說明目標與必要資訊。</p></section>}
         </div>
         <div id="ws-panel-credentials" role="tabpanel" aria-labelledby="ws-tab-credentials" className="side-panel" hidden={sideTab !== 'credentials'}>
           {active ? <WorkspaceCredentials api={api} apiBase={apiBase} workspace={current} blocked={!fresh || refreshing || sending || proposalBusy || runtimeGuard.busy} onGuardChange={reportCredentialGuard} onRefresh={refresh} /> : null}
