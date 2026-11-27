@@ -55,8 +55,8 @@ var errWorkspaceSnapshot = errors.New("invalid nonsecret Workspace snapshot")
 var dnsLabel = regexp.MustCompile(`(?i)^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 
 func exactWorkspaceObject(raw json.RawMessage, names ...string) bool {
-	var fields map[string]json.RawMessage
-	if json.Unmarshal(raw, &fields) != nil || fields == nil || len(fields) != len(names) {
+	fields, ok := uniqueBudgetFields(raw)
+	if !ok || len(fields) != len(names) {
 		return false
 	}
 	for _, name := range names {
@@ -110,13 +110,17 @@ func workspaceOrigin(value string) (string, bool) {
 }
 
 func validWorkspaceConfig(raw json.RawMessage, knownRoles map[string]bool) error {
+	var config workspaceConfig
+	return decodeWorkspaceConfig(raw, knownRoles, &config)
+}
+
+func decodeWorkspaceConfig(raw json.RawMessage, knownRoles map[string]bool, c *workspaceConfig) error {
 	if !exactWorkspaceObject(raw, "name", "purpose", "backgroundSummary", "targets", "dependencies", "excludedOrigins", "exclusions", "loginRoles", "defaultTestUrl", "timeoutMs") {
 		return errWorkspaceSnapshot
 	}
-	var c workspaceConfig
 	d := json.NewDecoder(bytes.NewReader(raw))
 	d.DisallowUnknownFields()
-	if d.Decode(&c) != nil || !workspaceName(c.Name) || !boundedAuthorText(c.Purpose, 8192, false) || !boundedAuthorText(c.BackgroundSummary, 8192, false) || !boundedAuthorText(c.Exclusions, 8192, false) ||
+	if d.Decode(c) != nil || !workspaceName(c.Name) || !boundedAuthorText(c.Purpose, 8192, false) || !boundedAuthorText(c.BackgroundSummary, 8192, false) || !boundedAuthorText(c.Exclusions, 8192, false) ||
 		c.TimeoutMS < 1 || c.TimeoutMS > 3600000 || c.Targets == nil || len(c.Targets) > 20 || c.Dependencies == nil || len(c.Dependencies) > 20 || c.ExcludedOrigins == nil || len(c.ExcludedOrigins) > 40 || c.LoginRoles == nil || len(c.LoginRoles) > 10 {
 		return errWorkspaceSnapshot
 	}
@@ -186,20 +190,24 @@ func validWorkspaceConfig(raw json.RawMessage, knownRoles map[string]bool) error
 			return errWorkspaceSnapshot
 		}
 	}
-	if !utf8.ValidString(c.DefaultTestURL) || utf8.RuneCountInString(c.DefaultTestURL) > 2048 || strings.IndexFunc(c.DefaultTestURL, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) || r == '\\' }) >= 0 {
-		return errWorkspaceSnapshot
-	}
 	if c.DefaultTestURL != "" {
-		u, err := url.Parse(c.DefaultTestURL)
-		if err != nil || u.User != nil {
-			return errWorkspaceSnapshot
-		}
-		o, ok := workspaceOrigin(u.Scheme + "://" + u.Host)
+		o, ok := workspaceURLOrigin(c.DefaultTestURL)
 		if !ok || !targets[o] {
 			return errWorkspaceSnapshot
 		}
 	}
 	return nil
+}
+
+func workspaceURLOrigin(raw string) (string, bool) {
+	if !utf8.ValidString(raw) || utf8.RuneCountInString(raw) > 2048 || strings.IndexFunc(raw, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) || r == '\\' }) >= 0 {
+		return "", false
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.User != nil {
+		return "", false
+	}
+	return workspaceOrigin(u.Scheme + "://" + u.Host)
 }
 
 func parseWorkspaceContext(raw json.RawMessage, workspaceID string) (*workspaceContext, error) {

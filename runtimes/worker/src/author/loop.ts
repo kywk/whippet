@@ -10,6 +10,7 @@ import { selectAgentEngine } from "./engines/select.js";
 import { runtimeConfig } from "./runtime.js";
 import { AIError, type AIConfig } from "../ai/config.js";
 import { availableModelCapacity } from "../ai/capacity.js";
+import { parseUniqueJSON } from "../strict-json.js";
 import { FrozenAuthorSnapshot } from "./snapshot.js";
 import { buildResponsesRequest } from "../ai/responses.js";
 import { classifyDiagnosticError, type ExplorationBrowser } from "./tools.js";
@@ -127,12 +128,18 @@ export async function runAuthor(
   let historyCount = 0;
   let pendingModel = 0;
   const callsSeen = new Set<string>();
+  const workspaceProposal = input.author.workspaceProposal;
+  const workspaceContext = workspaceProposal !== undefined && input.workspaceContext ? {
+    ...input.workspaceContext,
+    roleRefs: input.workspaceContext.roleRefs.map(ref => ({ ...ref, secretRef: null, secretVersion: null })),
+  } : input.workspaceContext;
   const savedSnapshot = {
       baseRevision: input.author.baseRevision, script, ...(input.author.platform ? {platform:input.author.platform} : {}),
       ...(moduleEditing ? {moduleCandidateRef:moduleCandidates!.reference()} : {}),
       scriptOrigin:input.scriptOrigin??'legacy',
       ...(input.workspaceSettings ? { workspaceSettings: input.workspaceSettings } : {}),
-      ...(input.workspaceId ? {workspaceId:input.workspaceId,testId:input.testId,workspaceContext:input.workspaceContext} : {}),
+      ...(input.workspaceId ? { workspaceId: input.workspaceId, testId: input.testId, workspaceContext } : {}),
+      ...(workspaceProposal !== undefined ? { workspaceProposal } : {}),
       ...(input.author.skillId ? {
         editingSessionId: input.author.editingSessionId, contextRevision: input.author.contextRevision,
         sourceVersion: input.author.sourceVersion, conversationSummary: input.author.conversationSummary,
@@ -495,8 +502,10 @@ export async function runAuthor(
     }
     let message = engineResult.finalText;
     let result: AuthorOutput | SummaryOutput | WorkspaceAuthorOutput | PlannerOutput;
-    if(workspace){
-      result=parseWorkspaceAuthorOutput(JSON.parse(message) as unknown,input.workspaceContext!);
+    if (workspace) {
+      let output: unknown;
+      try { output = parseUniqueJSON(message); } catch { throw new AuthorError("invalid_response"); }
+      result = parseWorkspaceAuthorOutput(output, input.workspaceContext!, workspaceProposal);
     } else if (summary) {
       result = parseSummaryOutput(JSON.parse(message) as unknown);
     } else {

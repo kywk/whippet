@@ -4,7 +4,7 @@ import { validatePlatform, PLATFORM_TOOLS, moduleAuthor, type PlatformInput, typ
 import { capabilitySnapshot, type CapabilitySnapshot } from "./manifest.js";
 import { validateWorkspaceSettings, type WorkspaceSettings } from "../workspace.js";
 import { createHash } from "node:crypto";
-import { validateWorkspaceContext, validateWorkspaceConfig, type WorkspaceContext, type WorkspaceConfig } from "../workspace-context.js";
+import { origin, validateWorkspaceContext, validateWorkspaceConfig, validateWorkspaceProposalConfig, validateWorkspaceProposalSnapshot, type WorkspaceContext, type WorkspaceConfig, type WorkspaceProposalConfig, type WorkspaceProposalSnapshot } from "../workspace-context.js";
 import { validSequence, hasHistory, type HistoryPin } from "./history.js";
 import { validRuntime, type AuthorRuntime } from "./runtime.js";
 import { validModelCredential, type ModelCredential } from "./model-key.js";
@@ -45,6 +45,7 @@ export interface AuthorInput {
     testName?: string;
     sourceVersion?: { id: string; description: string | null; backgroundSummary: string | null } | null;
     conversationSummary?: string | null;
+    workspaceProposal?: WorkspaceProposalSnapshot | null;
     validationEvidence?: ValidationEvidence;
     history?: HistoryPin;
   };
@@ -78,7 +79,7 @@ export interface SummaryOutput {
   script?: never; requestValidation?: never;
 }
 
-export interface WorkspaceAuthorOutput {message:string;proposal?:WorkspaceConfig;conversationSummary?:string;script?:never;requestValidation?:never;}
+export interface WorkspaceAuthorOutput {message:string;proposal?:WorkspaceConfig | WorkspaceProposalConfig;conversationSummary?:string;script?:never;requestValidation?:never;}
 
 export function boundedText(value: unknown, bytes: number, nonempty = false): value is string {
   return typeof value === "string" && (!nonempty || value.trim() !== "") && !value.includes("\0") &&
@@ -89,11 +90,28 @@ export function isSummary(input: AuthorInput): boolean { return input.author.ski
 export function isWorkspaceAuthor(input: AuthorInput): boolean {return input.author.skillId==="workspace-author";}
 export function authorNeedsBrowser(input:AuthorInput):boolean{return moduleAuthor(input)||!isSummary(input)&&(input.author.allowedTools===undefined||input.author.allowedTools.some((t)=>t.startsWith("browser_")));}
 
-export function parseWorkspaceAuthorOutput(value:unknown,context:WorkspaceContext):WorkspaceAuthorOutput {
+export function parseWorkspaceAuthorOutput(value: unknown, context: WorkspaceContext, previous?: WorkspaceProposalSnapshot | null): WorkspaceAuthorOutput {
   const v=value as WorkspaceAuthorOutput|null;
   if(!v||typeof v!=="object"||Array.isArray(v)||Object.keys(v).some((k)=>!["message","proposal","conversationSummary"].includes(k))||
     !boundedText(v.message,128000,true)||v.message.length>32000||v.conversationSummary!==undefined&&!boundedText(v.conversationSummary,8192))throw new AuthorError("invalid_response");
-  if(v.proposal!==undefined){try{validateWorkspaceConfig(v.proposal,new Set(context.roleRefs.map((r)=>r.roleId)));}catch{throw new AuthorError("invalid_response");}}
+  if (v.proposal === undefined) return v;
+  try {
+    if (previous === undefined) {
+      validateWorkspaceConfig(v.proposal, new Set(context.roleRefs.map(ref => ref.roleId)));
+      return v;
+    }
+    const proposal = validateWorkspaceProposalConfig(v.proposal);
+    const aliases = new Map<string, string>();
+    for (const roles of [context.config?.loginRoles, previous?.content.loginRoles]) {
+      for (const role of roles ?? []) {
+        if (role.roleId === null) continue;
+        aliases.set(role.roleId, origin(role.loginOrigin));
+      }
+    }
+    const accountIDs = new Set(previous?.content.testAccounts.map(account => account.accountId?.toLowerCase()));
+    if (proposal.testAccounts.some(account => account.accountId !== null && !accountIDs.has(account.accountId.toLowerCase())) ||
+        proposal.loginRoles.some(role => role.roleId === null || aliases.get(role.roleId) !== origin(role.loginOrigin))) throw new AuthorError("invalid_response");
+  } catch { throw new AuthorError("invalid_response"); }
   return v;
 }
 
@@ -135,7 +153,11 @@ export function validateAuthorInput(value: unknown): AuthorInput {
   } catch { throw new AuthorError("invalid_input"); }
   const a = v.author;
   if (a.allowedTools !== undefined && !Array.isArray(a.allowedTools)) throw new AuthorError("invalid_input");
-  if (Object.keys(a).some((k) => !["conversationId", "baseRevision", "messages", "validation", "skillId", "skillVersion", "allowedTools", "editingSessionId", "contextRevision", "testName", "sourceVersion", "conversationSummary", "validationEvidence", "history", "skills", "skillFiles", "budget", "model", "toolRegistryVersion", "toolRegistrySha256", "platform", "batch", "moduleSummary", "runtime"].includes(k))) throw new AuthorError("invalid_input");
+  if (Object.keys(a).some((k) => !["conversationId", "baseRevision", "messages", "validation", "skillId", "skillVersion", "allowedTools", "editingSessionId", "contextRevision", "testName", "sourceVersion", "conversationSummary", "workspaceProposal", "validationEvidence", "history", "skills", "skillFiles", "budget", "model", "toolRegistryVersion", "toolRegistrySha256", "platform", "batch", "moduleSummary", "runtime"].includes(k))) throw new AuthorError("invalid_input");
+  if (Object.hasOwn(a, "workspaceProposal")) {
+    if (!isWorkspaceAuthor(v)) throw new AuthorError("invalid_input");
+    try { validateWorkspaceProposalSnapshot(a.workspaceProposal); } catch { throw new AuthorError("invalid_input"); }
+  }
   if (Object.hasOwn(a, "testName") && (a.skillId !== "test-author" || !boundedText(a.testName, 200, true))) throw new AuthorError("invalid_input");
   const capability = capabilitySnapshot(a);
   if (Array.isArray(a.allowedTools) && a.allowedTools.includes("read_author_snapshot") && !capability) throw new AuthorError("invalid_input");

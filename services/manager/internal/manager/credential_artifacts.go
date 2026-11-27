@@ -316,6 +316,18 @@ func sanitizeCredentialOutputs(taskDir string, values []string, authors ...*Auth
 			}
 			continue // Clean Module bytes (including key order/newline) remain immutable.
 		}
+		if name == "author.json" && len(authors) == 1 && workspaceAuthor(authors[0]) && len(authors[0].WorkspaceProposal) > 0 {
+			// Validate the original proposal shape before redaction decodes maps.
+			fields, ok := uniqueBudgetFields(data)
+			if !ok {
+				return errWorkspaceSnapshot
+			}
+			if proposal, exists := fields["proposal"]; exists {
+				if _, err := parseWorkspaceProposalConfig(proposal, false); err != nil {
+					return err
+				}
+			}
+		}
 		clean, err := scrubCredentialBytes(data, replacer, 0)
 		if err != nil {
 			return err

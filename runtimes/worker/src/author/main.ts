@@ -11,6 +11,7 @@ import { AuthorError, serializeAuthorArtifact, authorNeedsBrowser, validateAutho
 import {CredentialClient} from '../login/client.js';
 import {unconfirmedBrowserScope} from './scope.js';
 import { hasHistory, HistoryClient } from "./history.js";
+import { parseUniqueJSON } from "../strict-json.js";
 
 const workDir = resolve(process.env.WHIPPET_WORK_DIR ?? "/work");
 const outputDir = join(workDir, "output");
@@ -37,7 +38,11 @@ async function main(): Promise<void> {
     await mkdir(outputDir);
     const info = await lstat(join(workDir, "input.json"));
     if (!info.isFile() || info.size > 64 * 1024 * 1024) throw new AuthorError("invalid_input");
-    const input = validateAuthorInput(JSON.parse(await readFile(join(workDir, "input.json"), "utf8")) as unknown);
+    const raw = await readFile(join(workDir, "input.json"));
+    let decoded: unknown;
+    try { decoded = parseUniqueJSON(new TextDecoder("utf-8", { fatal: true }).decode(raw)); }
+    catch { throw new AuthorError("invalid_input"); }
+    const input = validateAuthorInput(decoded);
     if (managedModelKey !== !!input.modelCredential) throw new AuthorError("security_unavailable");
     if(input.workspaceId)credentials=new CredentialClient(input);
     if(moduleAuthor(input)||plannerAuthor(input))harness=new HarnessClient(input);

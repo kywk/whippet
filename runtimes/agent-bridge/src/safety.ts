@@ -1,4 +1,5 @@
 import { containsModelKey } from '../../worker/dist/author/model-key.js';
+import { parseUniqueJSON } from '../../worker/dist/strict-json.js';
 
 export type AgentControlCode = 'claim_paused' | 'agent_not_ready' | 'conflict' | 'workspace_archiving' | 'workspace_archived';
 export type BridgeCode = 'invalid_input' | 'invalid_response' | 'secret_file_unavailable' | 'state_unavailable' | 'state_busy' | 'state_mismatch' | 'interrupted_task' | 'mcp_unavailable' | 'mcp_unauthorized' | 'rate_limited' | 'tool_unavailable' | 'busy' | 'unknown_result' | 'lease_lost' | 'unsupported_skill' | 'sensitive_data' | 'incomplete_task' | 'worker_failed' | AgentControlCode;
@@ -15,24 +16,7 @@ export function object(value: unknown): Record<string, any> {
 }
 export const uuid = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 export function strictJSON(text: string): any {
-  let value: unknown;
-  try { value = JSON.parse(text); } catch { throw new BridgeError('invalid_response'); }
-  // JSON.parse validates syntax first. Scan only the already-valid tokens to
-  // reject duplicate keys, including keys escaped differently in model output.
-  const stack: { object: boolean; key: boolean; seen: Set<string> }[] = [];
-  for (const match of text.matchAll(/"(?:\\[\s\S]|[^"\\])*"|[{}\[\],:]/g)) {
-    const token = match[0], frame = stack.at(-1);
-    if (token === '{' || token === '[') stack.push({ object: token === '{', key: token === '{', seen: new Set() });
-    else if (token === '}' || token === ']') stack.pop();
-    else if (frame?.object && token === ',') frame.key = true;
-    else if (frame?.object && token === ':') frame.key = false;
-    else if (frame?.object && frame.key && token.startsWith('"')) {
-      const key = JSON.parse(token) as string;
-      if (frame.seen.has(key)) throw new BridgeError('invalid_response');
-      frame.seen.add(key);
-    }
-  }
-  return value;
+  try { return parseUniqueJSON(text); } catch { throw new BridgeError('invalid_response'); }
 }
 export function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;

@@ -38,6 +38,11 @@ func validAuthorMetadataForMode(a *AuthorTask, script *string, mode authorValida
 	if a == nil {
 		return errors.New("missing author snapshot")
 	}
+	if len(a.WorkspaceProposal) > 0 {
+		if _, err := parseWorkspaceProposalSnapshot(a.WorkspaceProposal); err != nil || !workspaceAuthor(a) {
+			return errWorkspaceSnapshot
+		}
+	}
 	if !validModuleSummary(a, script) {
 		return errCapability
 	}
@@ -188,6 +193,15 @@ func validAuthorArtifact(taskDir string, a *AuthorTask, context json.RawMessage)
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if workspaceAuthor(a) {
+		fields, ok := uniqueBudgetFields(raw)
+		if !ok {
+			return false
+		}
+		for key := range fields {
+			if key != "message" && key != "proposal" && key != "conversationSummary" {
+				return false
+			}
+		}
 		var out struct {
 			Message             *string         `json:"message"`
 			Proposal            json.RawMessage `json:"proposal,omitempty"`
@@ -198,11 +212,7 @@ func validAuthorArtifact(taskDir string, a *AuthorTask, context json.RawMessage)
 			return false
 		}
 		// Explicit null is not a valid optional string/config in author output.
-		var fields map[string]json.RawMessage
-		if json.Unmarshal(raw, &fields) != nil {
-			return false
-		}
-		if value, ok := fields["conversationSummary"]; ok && bytes.Equal(value, []byte("null")) {
+		if bytes.Equal(fields["conversationSummary"], []byte("null")) {
 			return false
 		}
 		if len(out.Proposal) == 0 {
@@ -211,6 +221,9 @@ func validAuthorArtifact(taskDir string, a *AuthorTask, context json.RawMessage)
 		snapshot, err := parseWorkspaceContext(context, "")
 		if err != nil || snapshot == nil {
 			return false
+		}
+		if len(a.WorkspaceProposal) > 0 {
+			return validWorkspaceProposalOutput(out.Proposal, a.WorkspaceProposal, snapshot)
 		}
 		roles := map[string]bool{}
 		for _, role := range snapshot.RoleRefs {
