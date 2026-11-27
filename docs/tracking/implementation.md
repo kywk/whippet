@@ -10,13 +10,25 @@
 | --- | --- | --- | --- |
 | WLA-0 固定契約 | 完成（契約 Agent，Herdr t10d） | 既有設定提案、登入工具與 Harness | 定義逐站範圍、帳號識別與舊 roleId 對應、驗證請求／回報、快照與授權錯誤。提供訪客、雙站部分通過及同角色雙帳號範例。 |
 | WLA-1 訪客設定 | 完成（Server、Runtime、Web） | WLA-0 | 串接訪談、提案、草稿重開與 Server 確認。訪客站零帳號可完成，範圍未知及欠缺登入證據均被擋下（A1）。 |
-| WLA-2 表單登入驗證 | 進行中（Server、Runtime、Web） | WLA-1 | 從設定草稿安全提供帳密，真 Worker 登入並回報逐站證據。管理員可見缺項、重試與確認結果（A2、A3）。 |
-| WLA-3 帳號維運與選用 | 進行中（Server、Runtime、Web） | WLA-0 可開工，整合依 WLA-2 | 串接管理員編輯、憑證版本失效、授權目錄、腳本登入與舊資料相容（A4、A5、A6）。 |
-| WLA-4 整合驗收 | 進行中（整合） | WLA-2、WLA-3 | 正式 Web、Server、資料庫及 Worker 走完 A1–A6；分別記錄內建、Vercel、Pi、MCP 互動及接單的實際放行與拒絕，列出環境與缺口。 |
+| WLA-2 表單登入驗證 | 完成（Server、Runtime、Web） | WLA-1 | 從設定草稿安全提供帳密，真 Worker 登入並回報逐站證據。管理員可見缺項、重試與確認結果（A2、A3）。 |
+| WLA-3 帳號維運與選用 | 完成（Server、Runtime、Web） | WLA-0 可開工，整合依 WLA-2 | 串接管理員編輯、憑證版本失效、授權目錄、腳本登入與舊資料相容（A4、A5、A6）。 |
+| WLA-4 整合驗收 | 完成（整合） | WLA-2、WLA-3 | 正式 Web、Server、資料庫及 Worker 走完 A1–A6；分別記錄內建、Vercel、Pi、MCP 互動及接單的實際放行與拒絕，列出環境與缺口。 |
 
 Wave 0 已合併 [v15 契約](../../contracts/mvp-v15.md) 與 [wire 範例](../../contracts/testdata/workspace-test-accounts.json)，整合時已解析 JSON。Wave 1 由 Herdr 的 Server t10f、Runtime t10g、Web t10h 分別處理。
 
 Wave 1 已合併。正式 Web、隔離 PostgreSQL、Server、Manager 與 Docker Worker 通過 A1。未選範圍與缺登入證據分別回 409，零帳號訪客站從 Web 套用回 200。模型回應使用合成供應商。
+
+2026-11-27 第二波完成。Server、Manager、Worker、Web 與 registry 17.0 已整合。正式設定與草稿機密分開保存，套用時按站台、帳號、設定及憑證版本查核證據。舊角色 UUID 可沿凍結快照續用。
+
+最終整合以正式 Web、Linux Server、隔離 PostgreSQL、TLS/WSS Manager、Docker Worker 及真 Chromium，一次通過 A1–A6。模型使用合成供應商。檔案、壓縮檔及報告掃描共 108 項，合成機密標記命中 0 項。LiveView 影格的視覺遮蔽本輪未單獨量測。[重現方式](../../scripts/test/wla4-acceptance.md)
+
+| 情境 | 最終驗收結果 |
+| --- | --- |
+| A1–A3 逐站設定 | 訪客零帳號可套用。兩個站台共用登入服務時各自取得成功證據，僅送表單無法過關。錯誤密碼及 MFA 可辨識，修正後重試可成功，晚到的舊成功結果無法覆蓋新提案。 |
+| A4 帳號維運 | 管理員可分別更新兩個會員帳號的用途，一般成員寫入回 403。輪替一組帳密後，另一組的驗證證據仍有效。 |
+| A5 內建、Vercel、Pi | 三個引擎均以授權帳號進入受保護頁、拒絕錯站，並在訪客 Workspace 指出缺少帳號。 |
+| A5 MCP 互動與接單 | 互動租約與接單工具均放行授權帳號，錯站及其他 Workspace 的帳號回 `tool_unavailable`。接單交回雙帳號腳本並通過正式驗證，Run `031a97da-0326-4db0-8fb7-abc1a2db6c3e`。 |
+| A6 相容性 | 舊腳本在升級前後驗證成功，缺證據及過期 revision 皆回 409。 |
 
 ## 全站管理後台
 
