@@ -5,6 +5,15 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 const username = process.env.FIXTURE_USERNAME;
 const password = process.env.FIXTURE_PASSWORD;
 if (!username || !password) throw new Error('Synthetic fixture credentials required');
+const accounts = [{ username, password }];
+const secondUsername = process.env.FIXTURE_SECOND_USERNAME;
+const secondPassword = process.env.FIXTURE_SECOND_PASSWORD;
+if (secondUsername || secondPassword) {
+  if (!secondUsername || !secondPassword || secondUsername === username) {
+    throw new Error('Second synthetic account needs distinct credentials');
+  }
+  accounts.push({ username: secondUsername, password: secondPassword });
+}
 const sessions = new Map();
 const orders = new Map();
 const product = { id: 'whippet-notebook', name: 'Whippet Notebook', price: 120 };
@@ -37,14 +46,18 @@ const server = http.createServer(async (req, res) => {
     };
     if (req.method === 'POST' && url.pathname === '/login') {
       const form = await body();
-      if (!equal(form.get('username') || '', username) || !equal(form.get('password') || '', password)) return send(401, 'Login rejected');
+      const submittedName = form.get('username') || '';
+      const submittedPassword = form.get('password') || '';
+      const customer = accounts.find(a => equal(submittedName, a.username) && equal(submittedPassword, a.password));
+      if (!customer) return send(401, 'Login rejected');
       const token = randomUUID();
-      sessions.set(token, Date.now() + 60 * 60 * 1000);
+      sessions.set(token, { customer, expires: Date.now() + 60 * 60 * 1000 });
       res.setHeader('Set-Cookie', `m10_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=3600`);
       return redirect('/products');
     }
     const token = (req.headers.cookie || '').split(';').map(x => x.trim()).find(x => x.startsWith('m10_session='))?.slice(12);
-    if (!token || (sessions.get(token) || 0) <= Date.now()) return send(401, 'Authentication required', '<a href="/login">Log in</a>');
+    const session = sessions.get(token);
+    if (!session || session.expires <= Date.now()) return send(401, 'Authentication required', '<a href="/login">Log in</a>');
     const account = '<p data-testid="account-state">Authenticated synthetic customer</p>';
     if (req.method === 'GET' && ['/', '/products'].includes(url.pathname)) {
       const query = url.searchParams.get('q') || '';
@@ -56,12 +69,12 @@ const server = http.createServer(async (req, res) => {
       const quantity = Number(form.get('quantity'));
       if (form.get('productId') !== product.id || !Number.isInteger(quantity) || quantity < 1 || quantity > 10) return send(400, 'Invalid order');
       const id = randomUUID();
-      orders.set(id, { token, quantity, total: quantity * product.price });
+      orders.set(id, { customer: session.customer, quantity, total: quantity * product.price });
       return redirect(`/orders/${id}`);
     }
     if (req.method === 'GET' && url.pathname.startsWith('/orders/')) {
       const id = url.pathname.slice('/orders/'.length), order = orders.get(id);
-      if (!order || order.token !== token) return send(404, 'Order not found');
+      if (!order || order.customer !== session.customer) return send(404, 'Order not found');
       return send(200, 'Order details', account + `<dl><dt>Order ID</dt><dd data-testid="order-id">${escape(id)}</dd><dt>Product ID</dt><dd data-testid="product-id">${product.id}</dd><dt>Quantity</dt><dd data-testid="quantity">${order.quantity}</dd><dt>Total TWD</dt><dd data-testid="total">${order.total}</dd><dt>Status</dt><dd data-testid="status">confirmed</dd></dl><a href="/orders/${escape(id)}">Reload this order</a>`);
     }
     return send(404, 'Not found');
