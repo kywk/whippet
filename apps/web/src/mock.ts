@@ -5,7 +5,7 @@ import type { DevUser, Draft, Run, SiteRole, Test, Version, WhippetApi, Workspac
 
 // 明確 opt-in 的 UI 示範；不與真實 API 自動互相切換。
 export function createMockApi(): WhippetApi {
-  const workspace: Omit<WorkspaceDetail, 'permissions'> = { id: '00000000-0000-4000-8000-000000000001', name: '示範 Workspace', revision: 1, authorEngine: 'builtin', sites: [], defaultTestUrl: '', timeoutMs: 60000, lifecycle: 'needs_confirmation', management: { ...DEFAULT_WORKSPACE_MANAGEMENT }, authorizationRevision: 0, scopeStatus: 'unconfirmed', settings: null, conversationId: 'mock-unavailable', activeRunId: null, currentProposal: null, roles: [], secretsAvailable: false, executionAvailable: false, unavailableReason: 'mock_unavailable' };
+  const workspace: Omit<WorkspaceDetail, 'permissions'> = { id: '00000000-0000-4000-8000-000000000001', name: '示範 Workspace', revision: 1, authorEngine: 'builtin', sites: [], defaultTestUrl: '', timeoutMs: 60000, lifecycle: 'needs_confirmation', management: { ...DEFAULT_WORKSPACE_MANAGEMENT }, authorizationRevision: 0, scopeStatus: 'unconfirmed', settings: null, siteReadiness: [], conversationId: 'mock-unavailable', activeRunId: null, currentProposal: null, roles: [], secretsAvailable: false, executionAvailable: false, unavailableReason: 'mock_unavailable' };
   let currentUserId: string | undefined;
   const siteRoles = new Map<string, SiteRole>([['dev-admin', 'superadmin'], ['dev-site-admin', 'site_admin']]);
   const workspaceRoles = new Map<string, WorkspaceMemberRole>([['dev-workspace-admin', 'workspace_admin'], [DEFAULT_DEV_USER, 'qa']]);

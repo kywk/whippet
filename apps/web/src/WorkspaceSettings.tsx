@@ -1,5 +1,28 @@
 import { capabilityReason } from './capabilities';
-import type { WorkspaceCapability, WorkspaceConfig, WorkspaceDetail } from './types';
+import type { WorkspaceCapability, WorkspaceConfig, WorkspaceDetail, WorkspaceSiteReadiness, WorkspaceTarget, WorkspaceTestScope } from './types';
+
+const scopeLabels: Record<WorkspaceTestScope, string> = {
+  unknown: '待釐清', guest: '只測訪客', authenticated: '只測登入後', both: '訪客與登入後都測',
+};
+const interviewScopes = ['guest', 'authenticated', 'both'] as const;
+
+type TargetProgress = WorkspaceTarget & { ready: boolean };
+
+export function workspaceTargetProgress(targets: WorkspaceTarget[], siteReadiness: WorkspaceSiteReadiness[]): TargetProgress[] {
+  const byOrigin = new Map(siteReadiness.map((site) => [site.targetOrigin, site]));
+  return targets.map((target) => {
+    const site = byOrigin.get(target.origin);
+    const ready = target.testScope !== 'unknown' && site?.testScope === target.testScope && site.ready && site.reason === null
+      && (target.testScope === 'guest' || site.accounts.some((account) => account.state === 'verified'));
+    return { ...target, ready };
+  });
+}
+
+function targetProgressMessage({ testScope, ready }: TargetProgress) {
+  if (testScope === 'unknown') return '請在訪談中為此站選擇要測的流程。';
+  if (testScope === 'guest') return ready ? '本站已就緒。' : '請重新載入設定對話，取得本站狀態。';
+  return ready ? '本站登入驗證已通過。' : '本站需要至少一組帳號通過登入驗證。請先在訪談補充登入方式、角色與登入後成功條件。';
+}
 
 export function CapabilityStatus({ label, capability }: { label: string; capability: WorkspaceCapability | undefined }) {
   return <p className="capability-state"><strong>{label}：{capability ? capability.available ? '可用' : '尚未就緒' : '未知'}</strong><span className="inline-hint">{capabilityReason(capability)}</span></p>;
@@ -17,10 +40,22 @@ export function WorkspaceAvailability({ workspace, heading: Heading = 'h3' }: { 
   </section>;
 }
 
-export function WorkspaceConfigView({ config }: { config: WorkspaceConfig }) {
+export function WorkspaceConfigView({ config, targets, interview }: {
+  config: WorkspaceConfig; targets: TargetProgress[];
+  interview?: { disabled: boolean; onChoose: (origin: string, answer: string) => void };
+}) {
   return <div className="workspace-config-view">
     <dl className="workspace-snapshot-meta"><div><dt>名稱</dt><dd>{config.name}</dd></div><div><dt>驗測目的</dt><dd>{config.purpose || '尚未提供'}</dd></div><div><dt>非機密背景</dt><dd>{config.backgroundSummary || '尚未提供'}</dd></div></dl>
-    <h4>目標網站</h4>{config.targets.length ? <ul className="workspace-snapshot-sites">{config.targets.map((site) => <li key={site.origin}><strong>{site.name}</strong><p>{site.origin}</p><p>用途：{site.purpose || '尚未提供'}</p></li>)}</ul> : <p className="muted">尚無目標網站。</p>}
+    <h4>目標網站</h4>
+    {targets.length ? <ul className="workspace-snapshot-sites">{targets.map((site) => <li key={site.origin}>
+      <strong>{site.name}</strong><p>{site.origin}</p><p>用途：{site.purpose || '尚未提供'}</p>
+      <p>測試範圍 · <strong>{scopeLabels[site.testScope]}</strong></p>
+      <p className={site.ready ? 'inline-hint' : 'blocked-hint'}>{targetProgressMessage(site)}</p>
+      {interview && site.testScope === 'unknown' ? <div className="action-row" role="group" aria-label={`${site.name} 的訪談回覆`}>
+        {interviewScopes.map((scope) => <button key={scope} type="button" className="button secondary compact" disabled={interview.disabled}
+          onClick={() => interview.onChoose(site.origin, scopeLabels[scope])}>{scopeLabels[scope]}</button>)}
+      </div> : null}
+    </li>)}</ul> : <p className="muted">尚無目標網站。</p>}
     <h4>必要相依服務</h4>{config.dependencies.length ? <ul className="workspace-snapshot-sites">{config.dependencies.map((site) => <li key={site.origin}><strong>{site.name}</strong><p>{site.origin}</p><p>用途：{({ login: '登入', api: 'API', cdn: 'CDN' })[site.purpose]}</p></li>)}</ul> : <p className="muted">未列相依服務。</p>}
     <h4>排除範圍</h4><p className="summary-content">{config.excludedOrigins.length ? config.excludedOrigins.join('\n') : '未列排除 origin。'}</p><p className="summary-content">{config.exclusions || '未提供其他排除說明。'}</p><p className="inline-hint">文字排除事項提供背景，不代表能以自然語言強制隔離。</p>
     <h4>登入角色定義</h4>{config.loginRoles.length ? <ul className="workspace-snapshot-sites">{config.loginRoles.map((role, index) => <li key={role.roleId ?? index}><strong>{role.name}</strong><p>表單登入 · {role.loginOrigin}</p><p className="inline-hint">角色：{role.roleId ?? '待 Server 分配'}</p></li>)}</ul> : <p className="muted">未列登入角色。</p>}
@@ -32,7 +67,7 @@ export function WorkspaceSettings({ workspace }: { workspace: WorkspaceDetail })
   return <section className="workspace-snapshot" aria-labelledby="workspace-snapshot-title">
     <h3 id="workspace-snapshot-title">目前正式設定（唯讀）</h3>
     <p className="settings-meta">{workspace.name} · revision {workspace.revision} · {({ draft: '建立中', needs_confirmation: '舊資料待確認', active: '已啟用' })[workspace.lifecycle]}</p>
-    {workspace.settings ? <WorkspaceConfigView config={workspace.settings} /> : <>
+    {workspace.settings ? <WorkspaceConfigView config={workspace.settings} targets={workspaceTargetProgress(workspace.settings.targets, workspace.siteReadiness)} /> : <>
       <p className="inline-hint">尚無已確認設定。以下為既有設定快照；網站清單不代表已授權範圍，也不自動分類為目標或相依服務。</p>
       <dl className="workspace-snapshot-meta"><div><dt>預設 URL</dt><dd>{workspace.defaultTestUrl || '未設定'}</dd></div><div><dt>執行逾時</dt><dd>{workspace.timeoutMs.toLocaleString('zh-TW')} 毫秒</dd></div></dl>
       {workspace.sites.length ? <ul className="workspace-snapshot-sites">{workspace.sites.map((site, index) => <li key={index}><strong>{site.name}</strong><p>{site.url}</p><p className="inline-hint">用途與目標／相依分類尚未提供。</p></li>)}</ul> : <p className="muted">未提供既有網站資料。</p>}

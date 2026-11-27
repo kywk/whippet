@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, errorMessage } from './api';
 import { Notice } from './components';
-import { CapabilityStatus, WorkspaceConfigView } from './WorkspaceSettings';
+import { CapabilityStatus, WorkspaceConfigView, workspaceTargetProgress } from './WorkspaceSettings';
 import type { WhippetApi, WorkspaceDetail, WorkspaceProposal as Proposal } from './types';
 
-export function WorkspaceProposalCard({ api, workspace, proposal, contextRevision, blocked, onUpdated, onBusyChange, onRefresh }: {
+export function WorkspaceProposalCard({ api, workspace, proposal, contextRevision, blocked, onDraftScope, onUpdated, onBusyChange, onRefresh }: {
   api: WhippetApi; workspace: WorkspaceDetail; proposal: Proposal; contextRevision: number; blocked: boolean;
-  onUpdated: (proposal: Proposal, workspace?: WorkspaceDetail) => void; onBusyChange: (busy: boolean) => void; onRefresh: () => Promise<void>;
+  onDraftScope: (origin: string, answer: string) => void;
+  onUpdated: (proposal: Proposal, workspace?: WorkspaceDetail) => void; onBusyChange: (busy: boolean) => void; onRefresh: (proposalId?: string) => Promise<void>;
 }) {
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState<'scope' | 'apply' | 'cancel'>();
@@ -16,12 +17,15 @@ export function WorkspaceProposalCard({ api, workspace, proposal, contextRevisio
   const lock = useRef(false);
   const controller = useRef<AbortController | null>(null);
   const current = proposal.status === 'pending' && proposal.baseRevision === workspace.revision && proposal.contextRevision === contextRevision;
-  const complete = proposal.content.targets.length > 0 && Boolean(proposal.content.purpose.trim() && proposal.content.backgroundSummary.trim());
+  const targets = workspaceTargetProgress(proposal.content.targets, proposal.siteReadiness);
+  const complete = targets.length > 0 && Boolean(proposal.content.purpose.trim() && proposal.content.backgroundSummary.trim());
+  const readyToApply = complete && targets.every((target) => target.ready);
+  const actionsBlocked = blocked || Boolean(busy) || conflict;
   useEffect(() => { setConfirmed(false); setConflict(false); setError(undefined); }, [proposal, workspace.revision, contextRevision]);
   useEffect(() => { onBusyChange(Boolean(busy)); return () => onBusyChange(false); }, [busy, onBusyChange]);
   useEffect(() => () => controller.current?.abort(), []);
   async function act(kind: 'scope' | 'apply' | 'cancel') {
-    if (lock.current || blocked || !current || conflict || (kind !== 'cancel' && !confirmed) || (kind === 'apply' && !complete)) return;
+    if (lock.current || actionsBlocked || !current || (kind !== 'cancel' && !confirmed) || (kind === 'apply' && !readyToApply)) return;
     if (kind === 'cancel' && !window.confirm('取消這份設定提案？暫時範圍確認會撤回，現行正式設定與歷史資料保留。')) return;
     lock.current = true; setBusy(kind); setError(undefined); setNote(undefined);
     const request = new AbortController(); controller.current = request;
@@ -40,8 +44,21 @@ export function WorkspaceProposalCard({ api, workspace, proposal, contextRevisio
       try { await onRefresh(); } catch { setError('操作已回應，但重新載入狀態失敗。請先重新載入設定對話，勿直接重送。'); setConflict(true); }
     } catch (cause) {
       if (request.signal.aborted) return;
+      setConfirmed(false);
+      if (kind === 'apply' && cause instanceof ApiError && cause.status === 409 && cause.code === 'workspace_setup_incomplete') {
+        try {
+          await onRefresh(proposal.id);
+          if (!request.signal.aborted) setNote('Server 拒絕套用，已重新載入逐站狀態。請依各站提示繼續設定。');
+        } catch {
+          if (!request.signal.aborted) {
+            setConflict(true);
+            setError('Server 拒絕套用，逐站狀態同步失敗。請先重新載入設定對話。');
+          }
+        }
+        return;
+      }
       if (cause instanceof ApiError && cause.status === 409) setConflict(true);
-      setConfirmed(false); setError(`${errorMessage(cause)} 請重新載入設定對話確認最新提案，不會自動重送。`);
+      setError(`${errorMessage(cause)} 請重新載入設定對話確認最新提案，不會自動重送。`);
     } finally { lock.current = false; if (!request.signal.aborted) setBusy(undefined); }
   }
   return <section className="workspace-proposal" aria-labelledby="workspace-proposal-title" data-proposal-id={proposal.id}>
@@ -50,15 +67,19 @@ export function WorkspaceProposalCard({ api, workspace, proposal, contextRevisio
     <p className="identifier version-id">{proposal.id}</p>
     <p className="summary-content">範圍確認：{proposal.scopeConfirmed ? 'Server 已確認此提案範圍' : '尚未確認'}。確認範圍不代表已完成探索。</p>
     <CapabilityStatus label="AI 探索工具" capability={workspace.capabilities?.aiExploration} />
-    <WorkspaceConfigView config={proposal.content} />
+    <WorkspaceConfigView config={proposal.content} targets={targets} interview={current ? { disabled: actionsBlocked, onChoose: onDraftScope } : undefined} />
     {proposal.invalidationReason ? <p className="blocked-hint">提案失效原因：{proposal.invalidationReason}</p> : null}
     {!current && proposal.status === 'pending' ? <p className="blocked-hint">提案與目前設定或對話版本不一致，請重新載入後取得新提案。</p> : null}
     {proposal.appliedRevision !== null ? <p className="action-message">已套用於正式設定 revision {proposal.appliedRevision}</p> : null}
     {current ? <>
       <p className="settings-impact">確認套用會更新正式設定與許可，現有草稿需重新驗證；已發布版本與既有 Run 保留原快照。相依服務不會成為可任意驗測的目標。</p>
       {!complete ? <p className="blocked-hint">確認套用需要至少一個目標、非空驗測目的與背景。請在設定對話中要求補齊提案；前端不會代填或刪除欄位。</p> : null}
-      <label className="checkbox-label"><input type="checkbox" checked={confirmed} disabled={blocked || Boolean(busy) || conflict} onChange={(event) => setConfirmed(event.target.checked)} />我已檢視目標、相依範圍、角色與設定提案</label>
-      <div className="action-row"><button className="button secondary" disabled={blocked || Boolean(busy) || conflict || !confirmed || proposal.scopeConfirmed || !proposal.content.targets.length} onClick={() => { void act('scope'); }}>{busy === 'scope' ? '確認中…' : '確認提案範圍'}</button><button className="button primary" disabled={blocked || Boolean(busy) || conflict || !confirmed || !complete} onClick={() => { void act('apply'); }}>{busy === 'apply' ? '套用中…' : '確認並套用提案'}</button><button className="button quiet" disabled={blocked || Boolean(busy) || conflict} onClick={() => { void act('cancel'); }}>取消提案</button></div>
+      <label className="checkbox-label"><input type="checkbox" checked={confirmed} disabled={actionsBlocked} onChange={(event) => setConfirmed(event.target.checked)} />我已檢視各站測試範圍、相依服務與設定提案</label>
+      <div className="action-row">
+        <button type="button" className="button secondary" disabled={actionsBlocked || !confirmed || proposal.scopeConfirmed || !targets.length} onClick={() => { void act('scope'); }}>{busy === 'scope' ? '確認中…' : '確認提案範圍'}</button>
+        <button type="button" className="button primary" disabled={actionsBlocked || !confirmed || !readyToApply} onClick={() => { void act('apply'); }}>{busy === 'apply' ? '套用中…' : '確認並套用提案'}</button>
+        <button type="button" className="button quiet" disabled={actionsBlocked} onClick={() => { void act('cancel'); }}>取消提案</button>
+      </div>
     </> : null}
     {error ? <Notice message={error} /> : null}{note ? <p className="action-message" role="status">{note}</p> : null}
   </section>;
