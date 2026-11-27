@@ -174,7 +174,7 @@ func (a *API) callMCPBrowserAction(ctx context.Context, p *Postgres, tool ToolDe
 
 func (a *API) callMCPBrowserActionOwned(ctx context.Context, p *Postgres, tool ToolDefinition, token AgentToken, sessionID, leaseID, callID string, canonical []byte, authorRunID *string) *mcp.CallToolResult {
 	if a.engine == nil {
-		return mcpToolError()
+		return mcpToolDenial(tool.Name)
 	}
 	if tool.Name == browserLoginAccountTool {
 		account, target, err := decodeAccountToolArguments(canonical)
@@ -185,7 +185,7 @@ func (a *API) callMCPBrowserActionOwned(ctx context.Context, p *Postgres, tool T
 	}
 	lease, err := p.BrowserLeaseOwned(ctx, token, sessionID, leaseID)
 	if err != nil || lease.State != "ready" || lease.Reclaimed {
-		return mcpToolError()
+		return mcpToolDenial(tool.Name)
 	}
 	existed, err := p.ReserveBrowserCall(ctx, token, lease, callID, tool.Name, canonical, authorRunID)
 	if err != nil {
@@ -197,7 +197,7 @@ func (a *API) callMCPBrowserActionOwned(ctx context.Context, p *Postgres, tool T
 		if errors.Is(err, errBrowserBusy) {
 			return mcpBrowserError("busy")
 		}
-		return mcpToolError()
+		return mcpToolDenial(tool.Name)
 	}
 	if existed {
 		result, code, found, complete := a.engine.BrowserCachedCall(sessionID, callID)
@@ -214,7 +214,7 @@ func (a *API) callMCPBrowserActionOwned(ctx context.Context, p *Postgres, tool T
 	}
 	if _, err := a.recheckAgent(ctx, p); err != nil {
 		_ = p.UnknownBrowserCall(ctx, sessionID, callID)
-		return mcpToolError()
+		return mcpToolDenial(tool.Name)
 	}
 	flight, err := a.engine.SendBrowserCall(lease, callID, tool.Name, json.RawMessage(canonical))
 	if err != nil {
@@ -238,7 +238,7 @@ func (a *API) callMCPBrowserActionOwned(ctx context.Context, p *Postgres, tool T
 		return mcpBrowserError(code)
 	}
 	if _, err := a.recheckAgent(ctx, p); err != nil {
-		return mcpToolError()
+		return mcpToolDenial(tool.Name)
 	}
 	return mcpBrowserResult(json.RawMessage(result), tool.Limits.MaxOutputBytes)
 }

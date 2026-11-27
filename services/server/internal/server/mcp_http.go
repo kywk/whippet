@@ -218,6 +218,13 @@ func mcpErrorCode(code string) *mcp.CallToolResult {
 	return &mcp.CallToolResult{IsError: true, StructuredContent: map[string]any{"error": code}, Content: []mcp.Content{&mcp.TextContent{Text: code}}}
 }
 
+func mcpToolDenial(name string) *mcp.CallToolResult {
+	if name == browserLoginAccountTool {
+		return mcpErrorCode("tool_unavailable")
+	}
+	return mcpToolError()
+}
+
 func mcpWorkspaceWorkError(err error) *mcp.CallToolResult {
 	if errors.Is(err, errSiteAIClaimPaused) || errors.Is(err, errSiteAINotReady) {
 		return mcpErrorCode(err.Error())
