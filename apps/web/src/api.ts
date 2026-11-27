@@ -3,6 +3,7 @@ import { AGENT_RUNTIME_SKILLS, DEFAULT_WORKSPACE_MANAGEMENT, RUN_STATUSES, SITE_
 import type { ManagedWorkspace, WorkspaceManagement, WorkspacePermissions, WorkspaceSiteLogin, WorkspaceSiteReadiness, WorkspaceSummary } from './types';
 import type { AiAgent, AiAgentDraft, AiOptions, AiPage, AiReason, AiResource, AiResourceAction, AiRouting } from './aiAdminTypes';
 import type { RunActivity, SimilarTestSuggestion, VersionConversationMessage, WorkspaceAgentRuntime, WorkspaceMember, WorkspaceRunActivity } from './types';
+import type { WorkspaceAccountCredentials, WorkspaceProposalCredentialInput, WorkspaceProposalCredentialVersion } from './types';
 import type { AgentToken, AgentToolAudit, AuthorEngine, BrowserSession, StageRetry, ModuleMetadata, Plan, PlanStage, PlanSummary, StageArgument, JsonValue, AuthorPartial, CatalogItem, AcceptanceSummary, ActiveEditingSession, Conversation, DevUser, Draft, EditingSession, Message, Run, RunArtifact, RunStatus, Test, Version, WhippetApi, WorkspaceCapabilities, WorkspaceCapability, WorkspaceConfig, WorkspaceConversationData, WorkspaceDetail, WorkspaceProposal, WorkspaceRoleRef, WorkspaceSettingsResponse, WorkspaceSettingsSnapshot } from './types';
 
 export class ApiError extends Error {
@@ -199,6 +200,14 @@ function parseWorkspaceRole(value: unknown): WorkspaceRoleRef {
   return role;
 }
 
+function parseWorkspaceAccountCredentials(value: unknown): WorkspaceAccountCredentials {
+  const data = record(value);
+  const secretVersion = data.secretVersion === null ? null : positiveRevision(data.secretVersion);
+  const configured = bool(data.configured);
+  if (configured && secretVersion === null) throw new ApiError('已設定的帳號缺少憑證版本。', 'INVALID_RESPONSE');
+  return { accountId: string(data.accountId), configured, secretVersion };
+}
+
 function parseWorkspaceProposal(value: unknown): WorkspaceProposal {
   const data = record(value);
   return {
@@ -206,10 +215,7 @@ function parseWorkspaceProposal(value: unknown): WorkspaceProposal {
     baseRevision: revision(data.baseRevision), contextRevision: revision(data.contextRevision),
     status: choice(data.status, ['pending', 'applied', 'cancelled', 'stale', 'superseded'] as const), content: parseWorkspaceConfig(data.content),
     siteReadiness: parseWorkspaceSiteReadiness(data.siteReadiness),
-    accountCredentials: data.accountCredentials === undefined ? [] : array(data.accountCredentials, (value) => {
-      const account = record(value);
-      return { accountId: string(account.accountId), configured: bool(account.configured), secretVersion: account.secretVersion === null ? null : positiveRevision(account.secretVersion) };
-    }),
+    accountCredentials: data.accountCredentials === undefined ? undefined : array(data.accountCredentials, parseWorkspaceAccountCredentials),
     scopeHash: string(data.scopeHash), scopeConfirmed: bool(data.scopeConfirmed), invalidationReason: nullableString(data.invalidationReason),
     appliedRevision: data.appliedRevision === null ? null : revision(data.appliedRevision), createdAt: string(data.createdAt),
   };
@@ -543,7 +549,7 @@ function parseCatalogItem(value: unknown): CatalogItem {
 }
 
 function parseRunActivityFields(data: Record<string, unknown>): Omit<RunActivity, 'testId' | 'authorPartial'> {
-  if (data.kind != null && data.kind !== 'run' && data.kind !== 'validation' && data.kind !== 'author') {
+  if (data.kind != null && data.kind !== 'run' && data.kind !== 'validation' && data.kind !== 'author' && data.kind !== 'workspace_login_verification') {
     throw new ApiError('API Run kind 格式不符。', 'INVALID_RESPONSE');
   }
   if (data.authorMode != null && data.authorMode !== 'edit' && data.authorMode !== 'summary' && data.authorMode !== 'workspace') throw new ApiError('authorMode 格式不符。', 'INVALID_RESPONSE');
@@ -805,6 +811,15 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
   }
   const adminWorkspacePath = (workspaceId: string) => `/admin/workspaces/${id(workspaceId)}`;
   const proposalPath = (workspaceId: string, proposalId: string) => `/workspaces/${id(workspaceId)}/proposals/${id(proposalId)}`;
+  async function mutateProposalCredentials(workspaceId: string, proposalId: string, accountId: string, method: 'PUT' | 'DELETE',
+    input: WorkspaceProposalCredentialInput | (WorkspaceProposalCredentialVersion & { confirmed: true }), signal?: AbortSignal) {
+    if (!isProtectedCredentialTransport(base, window.location.href)) throw new ApiError('需 HTTPS 或明確的 loopback 本機連線才能管理登入資料。', 'INSECURE_TRANSPORT');
+    if (!Number.isSafeInteger(input.expectedSecretVersion) || input.expectedSecretVersion < 0) throw new ApiError('需提供有效的登入資料版本。', 'INVALID_CREDENTIAL_VERSION');
+    const data = await request(`${proposalPath(workspaceId, proposalId)}/test-accounts/${id(accountId)}/credentials`, method, signal, input, true, 200);
+    const result = parseWorkspaceAccountCredentials(data);
+    if (result.accountId !== accountId || result.configured !== (method === 'PUT')) throw new ApiError('帳號憑證回應不符。', 'INVALID_RESPONSE');
+    return result;
+  }
   function ownedProposal(value: unknown, workspaceId: string, proposalId: string) {
     const proposal = parseWorkspaceProposal(value);
     if (proposal.workspaceId !== workspaceId || proposal.id !== proposalId) throw new ApiError('提案識別碼或所屬 Workspace 不符。', 'WORKSPACE_CONFLICT');
@@ -1205,6 +1220,25 @@ export function createHttpApi(apiBase = '/api'): WhippetApi {
       return { workspace, proposal: ownedProposal(data.proposal, workspaceId, proposalId) };
     },
     async cancelWorkspaceProposal(workspaceId, proposalId, baseRevision, signal) { return ownedProposal(await request(`${proposalPath(workspaceId, proposalId)}/cancel`, 'POST', signal, { baseRevision, confirmed: true }), workspaceId, proposalId); },
+    async saveWorkspaceProposalCredentials(workspaceId, proposalId, accountId, { baseRevision, expectedSecretVersion, username, password }, signal) {
+      const encoder = new TextEncoder();
+      if (!username || !password || encoder.encode(username).length > 4096 || encoder.encode(password).length > 4096) {
+        throw new ApiError('登入帳號與密碼皆為必填，各限 4096 位元組。', 'INVALID_CREDENTIAL_LENGTH');
+      }
+      return mutateProposalCredentials(workspaceId, proposalId, accountId, 'PUT', { baseRevision, expectedSecretVersion, username, password }, signal);
+    },
+    async revokeWorkspaceProposalCredentials(workspaceId, proposalId, accountId, { baseRevision, expectedSecretVersion }, signal) {
+      return mutateProposalCredentials(workspaceId, proposalId, accountId, 'DELETE', { baseRevision, expectedSecretVersion, confirmed: true }, signal);
+    },
+    async verifyWorkspaceProposalLogin(workspaceId, proposalId, { baseRevision, requestId, accountId, targetOrigin }, signal) {
+      const data = record(await request(`${proposalPath(workspaceId, proposalId)}/verify-login`, 'POST', signal,
+        { baseRevision, requestId, accountId, targetOrigin }, false, 202));
+      const run = parseRun(data.run);
+      if (run.workspaceId !== workspaceId || run.testId !== null || run.kind !== 'workspace_login_verification') {
+        throw new ApiError('登入驗證任務與此 Workspace 不符。', 'WORKSPACE_CONFLICT');
+      }
+      return run;
+    },
     async saveWorkspaceCredentials(workspaceId, roleId, input, signal) {
       if (!isProtectedCredentialTransport(base, window.location.href)) throw new ApiError('需 HTTPS 或明確的 loopback 本機連線才能保存登入資料。', 'INSECURE_TRANSPORT');
       if (!Number.isSafeInteger(input.expectedSecretVersion) || input.expectedSecretVersion < 0) throw new ApiError('需提供有效的登入資料版本。', 'INVALID_CREDENTIAL_VERSION');

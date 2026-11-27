@@ -161,6 +161,19 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
   }, [api, workspace.id, trackedId, refresh]);
 
   const mutating = sending || proposalBusy || credentialGuard.busy || engineBusy || runtimeGuard.busy;
+  const draft = current.currentProposal;
+  const verifyingProposalId = draft?.status === 'pending' && draft.siteReadiness.some((site) => site.accounts.some((account) => account.state === 'running')) ? draft.id : undefined;
+  useEffect(() => {
+    if (!active || !verifyingProposalId || mutating) return;
+    let timer: ReturnType<typeof setTimeout>;
+    let stopped = false;
+    async function poll() {
+      await refresh(verifyingProposalId).catch(() => undefined);
+      if (!stopped) timer = setTimeout(poll, 2_000);
+    }
+    timer = setTimeout(poll, 2_000);
+    return () => { stopped = true; clearTimeout(timer); };
+  }, [active, verifyingProposalId, mutating, refresh]);
   // 背景訪談與一般草稿文字不綁住頁面切換，只保護正在送出的請求、未保存帳密或設定選擇。
   useLeaveGuard(mutating || credentialGuard.dirty || runtimeGuard.dirty || engineSelection !== current.authorEngine, onDirtyChange);
   const reportCredentialGuard = useCallback((state: { dirty: boolean; busy: boolean }) => setCredentialGuard(state), []);
@@ -320,7 +333,8 @@ function WorkspaceInterview({ api, apiBase, workspace, active, onReturn, onDirty
           /> : <section className="workspace-proposal" aria-label="設定提案"><h3>設定提案</h3><p className="mode-empty">尚未取得提案。正式設定保持原樣，請先透過訪談說明目標與必要資訊。</p></section>}
         </div>
         <div id="ws-panel-credentials" role="tabpanel" aria-labelledby="ws-tab-credentials" className="side-panel" hidden={sideTab !== 'credentials'}>
-          {active ? <WorkspaceCredentials api={api} apiBase={apiBase} workspace={current} blocked={!fresh || refreshing || sending || proposalBusy || runtimeGuard.busy} onGuardChange={reportCredentialGuard} onRefresh={refresh} /> : null}
+          {active ? <WorkspaceCredentials api={api} apiBase={apiBase} workspace={current} contextRevision={conversation?.contextRevision}
+            blocked={!fresh || refreshing || sending || proposalBusy || runtimeGuard.busy} onGuardChange={reportCredentialGuard} onRefresh={refresh} /> : null}
         </div>
         <div id="ws-panel-settings" role="tabpanel" aria-labelledby="ws-tab-settings" className="side-panel" hidden={sideTab !== 'settings'}>
           <WorkspaceAvailability workspace={current} />

@@ -314,6 +314,9 @@ test('本機頁面', async ({ page }) => {
     async confirmWorkspaceScope() { throw new ApiError('示範模式不會確認範圍。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
     async confirmWorkspaceProposal() { throw new ApiError('示範模式不會套用提案。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
     async cancelWorkspaceProposal() { throw new ApiError('示範模式不會取消提案。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
+    async saveWorkspaceProposalCredentials() { throw new ApiError('示範模式不收集登入資料。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
+    async revokeWorkspaceProposalCredentials() { throw new ApiError('示範模式沒有登入資料。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
+    async verifyWorkspaceProposalLogin() { throw new ApiError('示範模式不會啟動登入驗證。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
     async saveWorkspaceCredentials() { throw new ApiError('示範模式不收集登入資料。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
     async revokeWorkspaceCredentials() { throw new ApiError('示範模式沒有登入資料。', 'MOCK_WORKSPACE_UNAVAILABLE', 400); },
   };
