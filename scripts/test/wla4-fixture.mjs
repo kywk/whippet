@@ -51,21 +51,23 @@ export function modelOutput(body) {
   if (kind === 'setup') return message({ message: input.message, proposal: input.proposal });
   assert.equal(kind, 'author');
   const snapshot = snapshotOf(body.input);
-  const accounts = snapshot.testAccounts;
+  const accounts = snapshot.schemaVersion === '1' && !Object.hasOwn(snapshot, 'testAccounts') ? [] : snapshot.testAccounts;
   assert.ok(Array.isArray(accounts));
   assert.ok(!Object.hasOwn(snapshot, 'accountBindings'));
   assert.ok(snapshot.roleRefs.every(ref => ref.secretRef === null && ref.secretVersion === null));
   const engine = body.model.match(/^wla4-(builtin|vercel|pi)$/)?.[1];
   assert.ok(engine);
+  const accountTool = body.tools.some(tool => tool.name === 'browser_login_account');
   if (input.missing) {
     assert.equal(accounts.length, 0);
+    assert.ok(!accountTool);
     return message({ message: `WLA4 ${engine}：缺少適用的會員測試帳號，請補充。`, requestValidation: false });
   }
   assert.deepEqual(new Set(accounts.map(account => account.role)), new Set(['會員']));
   const [owner, other] = [input.ownerPurpose, input.otherPurpose].map(purpose => accounts.find(account =>
     account.purpose === purpose && account.sites.some(site => site.targetOrigin === input.target && site.state === 'verified')));
   assert.ok(owner && other && owner.accountId !== other.accountId);
-  assert.ok(body.tools.some(tool => tool.name === 'browser_login_account'));
+  assert.ok(accountTool);
   const result = id => {
     const item = body.input.find(value => value.type === 'function_call_output' && value.call_id === id);
     return item && JSON.parse(typeof item.output === 'string' ? item.output : item.output[0].text);
@@ -133,7 +135,7 @@ async function shop() {
     const dispatch = (req, response) => {
       const path = req.url.split('?')[0];
       if ((path === '/login' && req.method === 'POST') || (path === '/products' && req.method === 'GET')) {
-        response.once('finish', () => process.stdout.write(`${req.method} ${path} ${response.statusCode}\n`));
+        response.once('finish', () => process.stdout.write(`${req.socket.localPort} ${req.method} ${path} ${response.statusCode}\n`));
       }
       if (process.env.WLA4_SHARED_SHOP === '1' && req.socket.localPort === 8080 && path === '/mfa-login') {
         response.setHeader('Cache-Control', 'no-store');
