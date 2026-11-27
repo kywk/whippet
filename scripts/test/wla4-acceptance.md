@@ -23,7 +23,7 @@ docker build --network=none -f scripts/test/wla4-worker.Dockerfile \
   --build-arg WORKER_IMAGE="whippet-worker:$WLA_TAG" -t "whippet-worker:$WLA_TAG-model" .
 ~~~
 
-測試映像保留正式 Worker，僅用 preload 回應 `.invalid` 的 Responses 呼叫。Go Server 的意圖檢查走隔離網路內的 HTTPS 合成供應商。`final` 會核對 checkout 與 Worker 映像內的工具 registry、合成供應商檔案及登入驗證入口。`adm4-local.py` 每次啟用獨立 PostgreSQL、loopback Web、TLS Server、Manager、Docker bridge 商店及工作目錄，離開時按該次資源名稱與 Manager label 清理。兩個登入目標用不同連接埠形成不同 origin，共用第三個登入 origin 與 `m10-shop` 帳密表單。
+測試映像保留正式 Worker，僅用 preload 回應 `.invalid` 的 Responses 呼叫。Go Server 將意圖檢查送到 Manager，由 Manager 呼叫綁定 loopback 的 HTTPS 合成供應商。`final` 會核對 checkout 與 Worker 映像內的工具 registry、合成供應商檔案及登入驗證入口。`adm4-local.py` 每次啟用獨立 PostgreSQL、loopback Web、TLS Server、Manager、Docker bridge 商店及工作目錄，離開時按該次資源名稱與 Manager label 清理。兩個登入目標用不同連接埠形成不同 origin，共用第三個登入 origin 與 `m10-shop` 帳密表單。
 
 ## 執行
 

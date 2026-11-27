@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -16,9 +17,14 @@ type Gateway struct {
 	Log    *slog.Logger
 }
 
-type peer struct{ conn *websocket.Conn }
+type peer struct {
+	conn   *websocket.Conn
+	writer sync.Mutex
+}
 
 func (p *peer) Send(m server.Envelope) error {
+	p.writer.Lock()
+	defer p.writer.Unlock()
 	data, err := json.Marshal(m)
 	if err != nil {
 		return err
@@ -56,8 +62,9 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
-		Capacity int             `json:"capacity"`
-		Admin    json.RawMessage `json:"admin"`
+		Capacity     int             `json:"capacity"`
+		AuthorIntent bool            `json:"authorIntent"`
+		Admin        json.RawMessage `json:"admin"`
 	}
 	if server.ValidateEnvelope(hello) != nil || hello.Type != "hello" || json.Unmarshal(hello.Payload, &payload) != nil {
 		g.reject(conn, "invalid hello")
@@ -69,7 +76,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	session, err := g.Engine.AttachSiteAI(ctx, hello.ManagerID, payload.Capacity, &peer{conn}, caps, r.TLS != nil)
+	session, err := g.Engine.AttachManager(ctx, hello.ManagerID, payload.Capacity, &peer{conn: conn}, caps, r.TLS != nil, payload.AuthorIntent)
 	cancel()
 	if err != nil {
 		g.Log.Warn("manager hello rejected", "managerId", hello.ManagerID, "error", err)
@@ -78,6 +85,28 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer g.Engine.Detach(session)
 	g.Log.Info("manager connected", "managerId", hello.ManagerID, "capacity", payload.Capacity)
+	// Ordinary control frames retain their ordering. An intent decision must
+	// still reach its waiter when another handler is waiting for a database lock.
+	messages := make(chan server.Envelope, 64)
+	workCtx, stop := context.WithCancel(r.Context())
+	defer stop()
+	defer close(messages)
+	go func() {
+		for m := range messages {
+			if workCtx.Err() != nil {
+				return
+			}
+			ctx, cancel := context.WithTimeout(workCtx, 10*time.Second)
+			err := g.Engine.Handle(ctx, session, m)
+			cancel()
+			if err != nil {
+				g.Log.Warn("manager message rejected", "managerId", hello.ManagerID, "type", m.Type, "error", err)
+				g.reject(conn, "manager message rejected")
+				_ = conn.Close()
+				return
+			}
+		}
+	}()
 	for {
 		// Application heartbeats must arrive within 60 seconds, including idle periods.
 		_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
@@ -86,12 +115,17 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			g.Log.Info("manager disconnected", "managerId", hello.ManagerID)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-		err := g.Engine.Handle(ctx, session, m)
-		cancel()
-		if err != nil {
-			g.Log.Warn("manager message rejected", "managerId", hello.ManagerID, "type", m.Type, "error", err)
-			g.reject(conn, "manager message rejected")
+		if m.Type == "agent.intent_result" {
+			if err := g.Engine.HandleIntentResult(session, m); err != nil {
+				g.reject(conn, "invalid intent result")
+				return
+			}
+			continue
+		}
+		select {
+		case messages <- m:
+		default:
+			g.reject(conn, "manager control queue full")
 			return
 		}
 	}

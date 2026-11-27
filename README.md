@@ -36,6 +36,20 @@ docker compose --env-file deploy/.env -f deploy/compose.runner.yml -f deploy/com
 
 `deploy/.env` 與 `deploy/.local/` 留在本機，請保留部署 token、穩定的 Manager ID 與 journal；重新啟動不需要重新初始化。
 
+## lab-masa 部署
+
+lab-masa 是內部測試環境。部署套件位於部署工作站的 `deploy/.local/lab-masa/`。該套件的 Compose 固定將 `WHIPPET_ADMIN_TOKEN` 設為空值，即使既有 `.env` 或 shell 中仍有同名設定。登入時直接選擇開發身分，建立 Workspace 請選 **Admin**。此入口允許連線者自行選擇開發身分，限受信任的測試網路使用。[lab-masa Whippet](https://lab-masa.nanshan.com.tw/whippet/)
+
+lab-masa 無法連外，遠端只部署 Web、Server 與 PostgreSQL。Manager、AI Worker 及模型金鑰一律放在可連外的本機部署工作站。以下指令都在該工作站的 repo 根目錄執行，Runner 使用該機的 Docker 與 `deploy/.env.ai`。
+
+```sh
+bash deploy/.local/lab-masa/deploy.sh deploy
+bash deploy/.local/lab-masa/start-runner.sh start
+bash deploy/.local/lab-masa/smoke.sh
+```
+
+已有符合目前 Git HEAD 的本機部署映像時，可用 `deploy.sh publish` 套用設定。Runner 啟動時會取得部署憑證，`smoke.sh` 用它驗證 HTTPS，並檢查 Admin 和 QA 免 key 登入、Workspace 清單與 Playwright 執行。MCP 與 Agent Token 管理停用。Workspace 訪談由 Server 在派工前透過已連線的本機 Manager 判定意圖，取得允許結果後才建立撰稿任務。
+
 ## 加入外部 AI Worker
 
 使用 Node.js 22.20 以上，在要使用 Agent 的專案目錄執行下列命令。若 CLI 顯示客戶端清單，選擇要使用的 Agent。指令會從 GitHub 安裝 `whippet-worker`，執行環境需有讀取 `kywk/whippet` 的權限。

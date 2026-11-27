@@ -75,17 +75,21 @@ func serverTLSConfig(cfg Config) (*tls.Config, error) {
 	if !strings.HasPrefix(cfg.ServerURL, "https://") {
 		return nil, errors.New("SERVER_CA_FILE requires an HTTPS SERVER_URL")
 	}
-	info, err := os.Stat(cfg.ServerCAFile)
+	return pinnedTLSConfig(cfg.ServerCAFile)
+}
+
+func pinnedTLSConfig(path string) (*tls.Config, error) {
+	info, err := os.Stat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Size() > 1<<20 {
-		return nil, errors.New("invalid SERVER_CA_FILE")
+		return nil, errors.New("invalid CA file")
 	}
-	pem, err := os.ReadFile(cfg.ServerCAFile)
+	pem, err := os.ReadFile(path)
 	if err != nil {
-		return nil, errors.New("cannot read SERVER_CA_FILE")
+		return nil, errors.New("cannot read CA file")
 	}
 	roots := x509.NewCertPool()
 	if !roots.AppendCertsFromPEM(pem) {
-		return nil, errors.New("SERVER_CA_FILE contains no CA certificate")
+		return nil, errors.New("CA file contains no certificate")
 	}
 	return &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}, nil
 }

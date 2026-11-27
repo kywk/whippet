@@ -124,6 +124,8 @@ Server 決定 skillId／skillVersion、sessionId、允許工具、Workspace 背�
 
 背景組合：Workspace 摘要＋來源版本摘要＋當前完整腳本（測試類）＋當輪訊息＋近期對話＋必要驗證證據。完整歷史留 DB，提供受限按需讀取；摘要保留來源關聯。Workspace 類任務沒有 testId，需擴充 Run owner 與檢查，不以假 Test 承載。
 
+Server 透過既有 Manager WebSocket 送出意圖檢查。Manager 在 hello 宣告 `authorIntent` 能力；`agent.intent` 帶請求識別碼、判定指令與有界的對話資料。Manager 以本機模型設定呼叫 Responses API，透過 `agent.intent_result` 回傳識別碼及判定。Server 核對來源連線、請求與判定結果後，才決定是否建立任務。
+
 新建一般測試的前三則需求在 Server 與意圖檢查一併做相似案例比對。Server 以同 Workspace 的已發佈測試名稱、說明與標籤篩選最多六筆，模型只能回覆是否需要確認其中一筆。確認狀態保存在 `new_test_reviews`。選擇繼續新增時，同一交易清除比對關聯、以原需求排入撰稿並保存重送憑據。Worker 和外部接單讀取相同的撰稿快照及對話歷史。
 
 M9 歷史工具依 [v9 契約](../../contracts/mvp-v9.md)：Server 在排入 author Run 前固定同 conversation 的 sequence 上限。只有 test-author／workspace-author 能按需讀取，每頁最多 6 個片段與 8192 UTF-8 bytes，每 attempt 最多 4 次、單次 15 秒；摘要任務與缺少 history 能力的舊 Run 不開工具。Manager 使用專用 HTTPS 端點核對活躍 attempt 與控制連線，Worker 只走獨立 history IPC，不持有 Manager token。credential／history 共用單一 stdin 分流與整 frame 寫入，資料及額度分離；失效 session／context、取消、終態拒讀。完整歷史不寫入一般 log，無新增持久配額表。

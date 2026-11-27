@@ -24,6 +24,7 @@ const connectionReadTimeout = 35 * time.Second
 
 type Manager struct {
 	cfg                        Config
+	intent                     *managerIntentProvider
 	docker                     containerRuntime
 	http                       *http.Client
 	tlsConfig                  *tls.Config
@@ -85,7 +86,7 @@ func New(cfg Config) (*Manager, error) {
 		return nil, err
 	}
 	m := &Manager{
-		cfg: cfg, http: newHTTPClientWithTLS(tlsConfig), tlsConfig: tlsConfig, lock: lock,
+		cfg: cfg, intent: loadIntentProvider(), http: newHTTPClientWithTLS(tlsConfig), tlsConfig: tlsConfig, lock: lock,
 		records: records, controls: make(map[string]context.CancelFunc),
 		provisions: provisions, provisionControls: make(map[string]context.CancelFunc),
 		sessions: sessions, sessionControls: make(map[string]context.CancelFunc),
@@ -209,6 +210,7 @@ func (m *Manager) session(ctx context.Context) error {
 	m.setConn(conn)
 	defer m.setConn(nil)
 	connectionCtx, cancelConnection := context.WithCancel(ctx)
+	intentSlots := make(chan struct{}, m.cfg.MaxWorkers)
 	defer cancelConnection()
 	// v1 has no result receipt ACK. Stable terminal message IDs allow safe replay.
 	m.transport.connection("REPLAY_START", connectionAttempt)
@@ -271,6 +273,8 @@ func (m *Manager) session(ctx context.Context) error {
 					return err
 				}
 			}
+		case "agent.intent":
+			m.handleIntent(connectionCtx, conn, intentSlots, env)
 		case "agent.provision":
 			if err := m.acceptProvision(ctx, connectionCtx, env); err != nil {
 				slog.Warn("agent provision rejected")
@@ -363,9 +367,10 @@ func (m *Manager) requestHeartbeat() {
 
 func (m *Manager) hello() Envelope {
 	return message(m.cfg.ManagerID, "hello", "", "", struct {
-		Capacity int                `json:"capacity"`
-		Admin    *adminCapabilities `json:"admin,omitempty"`
-	}{m.cfg.MaxWorkers, m.admin})
+		Capacity     int                `json:"capacity"`
+		Admin        *adminCapabilities `json:"admin,omitempty"`
+		AuthorIntent bool               `json:"authorIntent,omitempty"`
+	}{m.cfg.MaxWorkers, m.admin, m.intent != nil})
 }
 
 func (m *Manager) heartbeatMessage() Envelope {

@@ -11,23 +11,25 @@ import (
 	"time"
 )
 
-// Peer has a single writer: Engine serializes dispatch/cancel writes.
+// Peer serializes writes from dispatch and independent admission checks.
 type Peer interface {
 	Send(Envelope) error
 	Close() error
 }
 
 type Session struct {
-	managerID string
-	liveEpoch string
-	capacity  int
-	peer      Peer
-	ready     bool
-	sent      map[string]time.Time
-	siteAI    siteAIConnectionView
+	managerID    string
+	liveEpoch    string
+	capacity     int
+	peer         Peer
+	ready        bool
+	sent         map[string]time.Time
+	siteAI       siteAIConnectionView
+	authorIntent bool
 }
 
 type Engine struct {
+	intents           managerIntentBroker
 	store             Store
 	log               *slog.Logger
 	mu                sync.Mutex
@@ -82,6 +84,10 @@ func (e *Engine) Attach(ctx context.Context, managerID string, capacity int, pee
 }
 
 func (e *Engine) AttachSiteAI(ctx context.Context, managerID string, capacity int, peer Peer, caps *SiteAIManagerCapabilities, secure bool) (*Session, error) {
+	return e.AttachManager(ctx, managerID, capacity, peer, caps, secure, false)
+}
+
+func (e *Engine) AttachManager(ctx context.Context, managerID string, capacity int, peer Peer, caps *SiteAIManagerCapabilities, secure, authorIntent bool) (*Session, error) {
 	if len(managerID) == 0 || len(managerID) > 128 || capacity < 1 || capacity > 64 {
 		return nil, fmt.Errorf("%w: hello requires managerId and positive capacity", ErrInvalid)
 	}
@@ -116,7 +122,8 @@ func (e *Engine) AttachSiteAI(ctx context.Context, managerID string, capacity in
 		e.failBrowserCallsLocked("unknown_result")
 	}
 	// Even a fresh DB must reconcile the Manager's active journal before dispatch.
-	s := &Session{managerID: managerID, liveEpoch: conn.Epoch, capacity: capacity, peer: peer, sent: map[string]time.Time{}, siteAI: conn}
+	e.intents.clear(e.session)
+	s := &Session{authorIntent: authorIntent, managerID: managerID, liveEpoch: conn.Epoch, capacity: capacity, peer: peer, sent: map[string]time.Time{}, siteAI: conn}
 	e.session = s
 	e.Wake()
 	return s, nil
@@ -126,6 +133,7 @@ func (e *Engine) Detach(s *Session) {
 	e.mu.Lock()
 	hub := e.liveHub
 	if e.session == s {
+		e.intents.clear(s)
 		e.session = nil
 		if p, ok := e.store.(*Postgres); ok {
 			p.siteAIConn.Store(nil)
@@ -145,6 +153,7 @@ func (e *Engine) Detach(s *Session) {
 func (e *Engine) Close() {
 	e.mu.Lock()
 	hub, previous := e.liveHub, e.session
+	e.intents.clear(previous)
 	if e.session != nil {
 		_ = e.session.peer.Close()
 		e.session = nil
@@ -170,6 +179,9 @@ func ValidateEnvelope(m Envelope) error {
 }
 
 func (e *Engine) Handle(ctx context.Context, s *Session, m Envelope) error {
+	if m.Type == "agent.intent_result" {
+		return e.HandleIntentResult(s, m)
+	}
 	if err := ValidateEnvelope(m); err != nil {
 		return err
 	}
@@ -271,6 +283,9 @@ func (e *Engine) Handle(ctx context.Context, s *Session, m Envelope) error {
 			return err
 		}
 		s.ready = true
+		if s.authorIntent {
+			e.intents.activate(s)
+		}
 		s.siteAI.LastHeartbeat, s.siteAI.FreeSlots = time.Now().UTC(), admin.FreeSlots
 		s.siteAI.ReportedOccupancy = reportedOccupancy
 		if p, ok := e.store.(*Postgres); ok {

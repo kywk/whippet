@@ -96,7 +96,7 @@ def start_intent_fixture(stack, name, network, image, cert, tls_key, env, secret
     evidence = cert.parent / "intent-fixture"
     evidence.mkdir(mode=0o700)
     docker("run", "--rm", "--detach", "--pull=never", "--name", name, "--network", network,
-           "--network-alias", "adm-intent", "--env", "ADM4_INTENT_KEY",
+           "--network-alias", "adm-intent", "--publish", "127.0.0.1::8443", "--env", "ADM4_INTENT_KEY",
            "--mount", f"type=bind,src={cert},dst=/adm-tls/server.crt,readonly",
            "--mount", f"type=bind,src={tls_key},dst=/adm-tls/server.key,readonly",
            "--mount", f"type=bind,src={script},dst=/adm-intent.mjs,readonly",
@@ -107,7 +107,8 @@ def start_intent_fixture(stack, name, network, image, cert, tls_key, env, secret
     await_ready(lambda: docker("exec", name, "node", "-e", "const s=require('node:net').connect(8443,'127.0.0.1');"
                                "s.on('connect',()=>s.end());s.on('error',()=>process.exit(1));").returncode == 0,
                 "intent fixture failed readiness")
-    return "https://adm-intent:8443/v1"
+    address = docker("port", name, "8443/tcp", check=True).stdout.strip()
+    return f"https://{address}/v1"
 
 
 def container_server(stack, args, name, network, env, values, root):
@@ -282,7 +283,11 @@ def run(args):
             intent_key = secrets.token_urlsafe(32)
             intent_url = start_intent_fixture(stack, f"whippet-adm4-intent-{token}", network, worker,
                                               cert, tls_key, env, intent_key, wla=bool(args.wla))
-            server_env.update(WHIPPET_AUTHOR_INTENT_BASE_URL=intent_url,
+            # The site-admin Agent proposal uses the Server-side provider.
+            server_env.update(WHIPPET_AUTHOR_INTENT_BASE_URL="https://adm-intent:8443/v1",
+                              WHIPPET_AUTHOR_INTENT_MODEL="adm-intent-fixture",
+                              WHIPPET_AUTHOR_INTENT_API_KEY=intent_key)
+            manager_env.update(WHIPPET_AUTHOR_INTENT_CA_FILE=str(cert), WHIPPET_AUTHOR_INTENT_BASE_URL=intent_url,
                               WHIPPET_AUTHOR_INTENT_MODEL="adm-intent-fixture",
                               WHIPPET_AUTHOR_INTENT_API_KEY=intent_key)
         if args.fixture_profiles:

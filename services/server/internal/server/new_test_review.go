@@ -170,7 +170,7 @@ func (p *Postgres) checkNewTestRequest(ctx context.Context, tx *sql.Tx, s Editin
 				return nil, err
 			}
 			if len(candidates) > 0 {
-				match, err := p.NewTestReview(ctx, messages, candidates)
+				match, err := p.NewTestReview(intentContext(ctx, tx, s.WorkspaceID), messages, candidates)
 				if err != nil || match == "" {
 					return nil, err
 				}
@@ -188,7 +188,7 @@ func (p *Postgres) checkNewTestRequest(ctx context.Context, tx *sql.Tx, s Editin
 			}
 		}
 	}
-	return nil, p.checkAuthorIntent(ctx, skill, messages)
+	return nil, p.checkAuthorIntent(intentContext(ctx, tx, s.WorkspaceID), skill, messages)
 }
 
 func (p *Postgres) DecideSimilarTest(ctx context.Context, testID, sessionID, reviewID string, revision int, choice string) (SimilarTestDecision, error) {

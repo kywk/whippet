@@ -295,7 +295,7 @@ func (p *Postgres) claimExternalRunInTx(ctx context.Context, tx *sql.Tx, token A
 	if current != contextRevision || (input.SkillID != "workspace-author" && sessionStatus != "active") || (input.SkillID == "workspace-author" && sessionStatus == "archived") {
 		return nil, ErrConflict
 	}
-	if allowed, err := p.checkQueuedAuthorIntent(ctx, tx, runID, &input); err != nil || !allowed {
+	if allowed, err := p.checkQueuedAuthorIntent(intentContext(ctx, tx, token.WorkspaceID), tx, runID, &input); err != nil || !allowed {
 		return nil, err
 	}
 	now := time.Now().UTC()

@@ -50,12 +50,13 @@ func newAuthorIntentClient(baseURL, model, key string) authorIntentClient {
 }
 
 type authorIntentClient struct {
+	manager             *managerIntentBroker
 	client              *http.Client
 	baseURL, model, key string
 }
 
 func (c authorIntentClient) configured() bool {
-	return c.key != "" && c.model != "" && validRuntimeURL(c.baseURL)
+	return c.manager != nil || c.key != "" && c.model != "" && validRuntimeURL(c.baseURL)
 }
 
 type authorIntentContext struct {
@@ -73,11 +74,11 @@ func (c authorIntentClient) transcript(skill string, messages []ChatMessage, ear
 	if latest.Role != "user" || validateUserMessage(latest.Content) != nil {
 		return data, ErrAuthorPolicy
 	}
-	if strings.Contains(latest.Content, c.key) {
+	if c.hasKey(latest.Content) {
 		return data, ErrAuthorOffTopic
 	}
 	for _, message := range messages[max(0, len(messages)-earlierLimit-1) : len(messages)-1] {
-		if !strings.Contains(message.Content, c.key) {
+		if !c.hasKey(message.Content) {
 			runes := []rune(message.Content)
 			data.Earlier = append(data.Earlier, ChatMessage{Role: message.Role, Content: string(runes[:min(len(runes), 1200)])})
 		}
@@ -86,16 +87,29 @@ func (c authorIntentClient) transcript(skill string, messages []ChatMessage, ear
 	return data, nil
 }
 
+func (c authorIntentClient) hasKey(s string) bool { return c.key != "" && strings.Contains(s, c.key) }
+
+func (c authorIntentClient) classify(ctx context.Context, instructions string, data any) (string, error) {
+	if c.manager != nil {
+		return c.manager.request(ctx, instructions, data)
+	}
+	raw, err := c.request(ctx, instructions, data)
+	if err != nil {
+		return "", err
+	}
+	return authorIntentReply(raw)
+}
+
 func (c authorIntentClient) check(ctx context.Context, skill string, messages []ChatMessage) error {
 	data, err := c.transcript(skill, messages, 2)
 	if err != nil {
 		return err
 	}
-	raw, err := c.request(ctx, intentInstructions, data)
+	reply, err := c.classify(ctx, intentInstructions, data)
 	if err != nil {
 		return err
 	}
-	return parseAuthorIntent(raw)
+	return intentDecision(reply)
 }
 
 func (c authorIntentClient) reviewNewTest(ctx context.Context, messages []ChatMessage, candidates []similarTestCandidate) (string, error) {
@@ -105,7 +119,7 @@ func (c authorIntentClient) reviewNewTest(ctx context.Context, messages []ChatMe
 	}
 	safe := make([]similarTestCandidate, 0, len(candidates))
 	for _, candidate := range candidates {
-		if strings.Contains(candidate.Name, c.key) || strings.Contains(candidate.Description, c.key) || strings.Contains(strings.Join(candidate.Tags, "\n"), c.key) {
+		if c.hasKey(candidate.Name) || c.hasKey(candidate.Description) || c.hasKey(strings.Join(candidate.Tags, "\n")) {
 			continue
 		}
 		safe = append(safe, candidate)
@@ -113,14 +127,10 @@ func (c authorIntentClient) reviewNewTest(ctx context.Context, messages []ChatMe
 	if len(safe) == 0 {
 		return "", c.check(ctx, "test-author", messages)
 	}
-	raw, err := c.request(ctx, newTestReviewInstructions, struct {
+	reply, err := c.classify(ctx, newTestReviewInstructions, struct {
 		authorIntentContext
 		Candidates []similarTestCandidate `json:"candidates"`
 	}{data, safe})
-	if err != nil {
-		return "", err
-	}
-	reply, err := authorIntentReply(raw)
 	if err != nil {
 		return "", err
 	}

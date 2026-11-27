@@ -32,7 +32,7 @@ func TestAuthorIntentGate(t *testing.T) {
 		w.Write([]byte(`{"status":"completed","output":[{"type":"reasoning"},{"type":"message","content":[{"type":"output_text","text":"allow"}]}]}`))
 	}))
 	defer provider.Close()
-	gate := (authorIntentClient{provider.Client(), provider.URL + "/v1", "synthetic-model", "synthetic-intent-key"}).check
+	gate := (authorIntentClient{nil, provider.Client(), provider.URL + "/v1", "synthetic-model", "synthetic-intent-key"}).check
 	if err := gate(context.Background(), "test-author", []ChatMessage{{Role: "assistant", Content: marker}, {Role: "user", Content: latest}}); err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestNewTestReviewCombinesAdmissionAndPurposeMatching(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]string{"status": "completed", "output_text": reply})
 	}))
 	defer provider.Close()
-	gate := (authorIntentClient{provider.Client(), provider.URL + "/v1", "synthetic-model", key}).reviewNewTest
+	gate := (authorIntentClient{nil, provider.Client(), provider.URL + "/v1", "synthetic-model", key}).reviewNewTest
 	messages := []ChatMessage{
 		{Role: "user", Content: "初始目標是確認結帳流程。"},
 		{Role: "assistant", Content: "想核對什麼？"},

@@ -10,7 +10,7 @@ AI 執行中若有人儲存另一份草稿，結果不會覆蓋新 revision；�
 
 先依 [OpenCode Go 指南](opencode-go.md) 填妥本機 `deploy/.env.ai`，設定 `WHIPPET_AI_ENABLED=true`。使用者提供的 key 只放本機忽略檔，不提交。
 
-Server 也需要測試對話的意圖檢查模型。啟動 Server Compose 時一併加上 `--env-file deploy/.env.ai`。預設沿用該檔的 Responses 端點、模型與 `OPENCODE_API_KEY`，也可透過 `WHIPPET_AUTHOR_INTENT_BASE_URL`、`WHIPPET_AUTHOR_INTENT_MODEL` 與 `WHIPPET_AUTHOR_INTENT_API_KEY` 提供專用設定。意圖服務不可用時，Web 和 MCP 的新測試對話會回報服務不可用。在更新部署時先等活躍任務回收，再一起更新 Server、Manager、Worker 及 Web。
+Server 透過已連線的 Manager 檢查對話意圖。啟動 Manager 時載入本機 `deploy/.env.ai`，預設沿用 Runner 的 Responses 端點、模型與金鑰。需要獨立設定時，可在 Manager 指定 `WHIPPET_AUTHOR_INTENT_BASE_URL`、`WHIPPET_AUTHOR_INTENT_MODEL` 與 `WHIPPET_AUTHOR_INTENT_API_KEY`。意圖服務不可用時，Web 和 MCP 的新測試對話會回報服務不可用。在更新部署時先等活躍任務回收，再一起更新 Server、Manager、Worker 及 Web。
 
 從 repo 根目錄啟動具 AI 能力的本機 Manager：
 

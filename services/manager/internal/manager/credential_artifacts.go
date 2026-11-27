@@ -166,11 +166,6 @@ func scrubCredentialBytes(data []byte, replacer *strings.Replacer, depth int) ([
 // Certify every decoded JSON string without rewriting Module source bytes.
 // Token traversal rejects duplicate keys before they can hide a credential value.
 func certifyModuleCredentialJSON(data []byte, replacer *strings.Replacer) error {
-	if !utf8.Valid(data) {
-		return errCredentials
-	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.UseNumber()
 	checkString := func(value string) error {
 		if replacer.Replace(value) != value {
 			return errors.New("module candidate changed during redaction")
@@ -181,6 +176,16 @@ func certifyModuleCredentialJSON(data []byte, replacer *strings.Replacer) error 
 		}
 		return nil
 	}
+	return validateJSONObjectStrings(data, checkString)
+}
+
+// Validate each decoded string and reject duplicate fields, excessive nesting and trailing data.
+func validateJSONObjectStrings(data []byte, checkString func(string) error) error {
+	if !utf8.Valid(data) {
+		return errCredentials
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
 	var value func(int) error
 	value = func(depth int) error {
 		if depth > 64 {

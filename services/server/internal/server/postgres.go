@@ -538,7 +538,7 @@ func (p *Postgres) claimManagedRun(ctx context.Context, tx *sql.Tx, managerID st
 			return nil, false, err
 		}
 	}
-	if allowed, err := p.checkQueuedAuthorIntent(ctx, tx, a.ID, a.Author); err != nil {
+	if allowed, err := p.checkQueuedAuthorIntent(intentContext(ctx, tx, a.WorkspaceID), tx, a.ID, a.Author); err != nil {
 		return nil, false, err
 	} else if !allowed {
 		return nil, true, nil

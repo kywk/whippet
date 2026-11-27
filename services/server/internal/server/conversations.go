@@ -260,7 +260,7 @@ func (p *Postgres) createAuthorInTxForRuntime(ctx context.Context, tx *sql.Tx, d
 			return AuthorSubmission{SimilarTest: suggestion, ConversationID: conversationID}, nil
 		}
 	} else if chain == nil {
-		if err = p.checkAuthorIntent(ctx, input.SkillID, input.Messages); err != nil {
+		if err = p.checkAuthorIntent(intentContext(ctx, tx, session.WorkspaceID), input.SkillID, input.Messages); err != nil {
 			return AuthorSubmission{}, err
 		}
 	}

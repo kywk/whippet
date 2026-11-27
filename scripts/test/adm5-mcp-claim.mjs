@@ -131,7 +131,7 @@ createServer({ cert: readFileSync('/fixture/intent.pem'), key: readFileSync('/fi
     } catch { response.writeHead(400).end(); }
 }).listen(8443, '0.0.0.0', () => process.stdout.write('ready\\n'));
 `, { mode: 0o600 });
-  intentServer = container(['--network', network, '--network-alias', 'adm5-intent', '--mount', `type=bind,source=${workDir},target=/fixture,readonly`],
+  intentServer = container(['--network', network, '--network-alias', 'adm5-intent', '--publish', '127.0.0.1::8443', '--mount', `type=bind,source=${workDir},target=/fixture,readonly`],
     { FIXTURE_INTENT_KEY: intentKey }, 'node:24.21.0-alpine', ['node', '/fixture/intent.mjs']);
   await until('intent_ready', () => docker(['logs', intentServer]), logs => logs === 'ready');
 
@@ -147,7 +147,6 @@ createServer({ cert: readFileSync('/fixture/intent.pem'), key: readFileSync('/fi
     SSL_CERT_FILE: '/fixture/intent.pem', TLS_CERT_FILE: '/fixture/intent.pem', TLS_KEY_FILE: '/fixture/intent-key.pem',
     DATABASE_URL: `postgres://postgres:${dbPassword}@adm5-db/postgres?sslmode=disable`,
     MANAGER_TOKEN: managerKey, WHIPPET_ADMIN_TOKEN: adminKey, WHIPPET_PUBLIC_ORIGIN: origin, PORT: '8080',
-    WHIPPET_AUTHOR_INTENT_BASE_URL: 'https://adm5-intent:8443/v1', WHIPPET_AUTHOR_INTENT_MODEL: model, WHIPPET_AUTHOR_INTENT_API_KEY: intentKey,
     WHIPPET_SECRET_MASTER_KEY_FILE: '/fixture/vault.key', ARTIFACT_DIR: '/fixture/artifacts',
     WHIPPET_TOOL_REGISTRY_PATH: '/feature/contracts/tools/registry.json', WHIPPET_SKILLS_PATH: '/feature/runtimes/worker/skills',
   }, 'postgres:16.11-bookworm');
@@ -175,6 +174,8 @@ createServer({ cert: readFileSync('/fixture/intent.pem'), key: readFileSync('/fi
   const dockerHost = docker(['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}']);
   mkdirSync(join(workDir, 'manager'), { mode: 0o700 });
   manager = launch(managerBinary, {
+    WHIPPET_AUTHOR_INTENT_CA_FILE: ca,
+    WHIPPET_AUTHOR_INTENT_BASE_URL: `https://${docker(['port', intentServer, '8443/tcp'])}/v1`, WHIPPET_AUTHOR_INTENT_MODEL: model, WHIPPET_AUTHOR_INTENT_API_KEY: intentKey,
     PATH: process.env.PATH, DOCKER_HOST: dockerHost, SERVER_URL: origin, SERVER_CA_FILE: ca, MANAGER_TOKEN: managerKey, MANAGER_ID: managerID,
     WORKER_IMAGE: testedImage, WORK_DIR: join(workDir, 'manager'), MAX_WORKERS: '1', WHIPPET_TOOL_REGISTRY_PATH: registry, WHIPPET_SKILLS_PATH: skills,
   });

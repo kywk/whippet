@@ -127,7 +127,7 @@ func (p *Postgres) CreateWorkspaceAuthor(ctx context.Context, id, content string
 			input.WorkspaceProposal = &WorkspaceInterviewProposal{Content: *w.Settings, SiteReadiness: w.SiteReadiness}
 		}
 	}
-	if err = p.checkAuthorIntent(ctx, input.SkillID, input.Messages); err != nil {
+	if err = p.checkAuthorIntent(intentContext(ctx, tx, id), input.SkillID, input.Messages); err != nil {
 		return AuthorSubmission{}, err
 	}
 	input.History, err = conversationHistorySnapshot(ctx, tx, c.ID)

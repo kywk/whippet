@@ -122,8 +122,7 @@ func run(log *slog.Logger) error {
 	authorModelURL := env("WHIPPET_AUTHOR_INTENT_BASE_URL", env("WHIPPET_AI_BASE_URL", "https://opencode.ai/inference/go/openai/v1"))
 	authorModelID := env("WHIPPET_AUTHOR_INTENT_MODEL", env("WHIPPET_AI_MODEL", "muse-spark-1.3-contributor"))
 	authorModelKey := env("WHIPPET_AUTHOR_INTENT_API_KEY", os.Getenv("OPENCODE_API_KEY"))
-	intent, review := server.NewAuthorIntentGates(authorModelURL, authorModelID, authorModelKey)
-	store := &server.Postgres{DB: db, CredentialTLS: certFile != "", AuthorIntent: intent, NewTestReview: review,
+	store := &server.Postgres{DB: db, CredentialTLS: certFile != "",
 		WorkspaceLoginEnabled: os.Getenv("WHIPPET_WORKSPACE_LOGIN_ENABLED") == "true"}
 	store.Secrets, err = loadSecretVault(os.Getenv("WHIPPET_SECRET_MASTER_KEY"), os.Getenv("WHIPPET_SECRET_MASTER_KEY_FILE"), defaultSecretMasterKeyFile)
 	if err != nil {
@@ -151,6 +150,7 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	engine := server.NewEngine(store, log)
+	store.AuthorIntent, store.NewTestReview = engine.ManagerAuthorIntentGates()
 	defer engine.Close()
 	liveHub := server.NewLiveHub(store, engine, iceServers)
 	engine.SetLiveHub(liveHub)

@@ -4,7 +4,9 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"log/slog"
 	"testing"
 )
 
@@ -70,5 +72,74 @@ func TestPostgresAuthorIntentRejectsBeforeSavingConversation(t *testing.T) {
 	var status, errorCode string
 	if err := p.DB.QueryRowContext(ctx, `SELECT status,error FROM runs WHERE id=$1`, accepted.Run.ID).Scan(&status, &errorCode); err != nil || status != "failed" || errorCode != ErrAuthorOffTopic.Error() {
 		t.Fatal("legacy admission denial was not recorded", err)
+	}
+}
+
+type intentTestPeer struct {
+	receive func(Envelope) error
+}
+
+func (p intentTestPeer) Send(m Envelope) error { return p.receive(m) }
+func (p intentTestPeer) Close() error          { return nil }
+
+func TestWorkspaceIntentViaScopedManager(t *testing.T) {
+	p, ctx := workspaceTestDB(t)
+	if err := p.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	w, err := p.CreateWorkspace(ctx, "Scoped intent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := NewEngine(p, slog.Default())
+	p.AuthorIntent, p.NewTestReview = e.ManagerAuthorIntentGates()
+	defer e.Close()
+	submit := func() error {
+		_, err := p.CreateWorkspaceAuthor(ctx, w.ID, "請設定工作區的測試範圍", w.Revision, 0)
+		return err
+	}
+	if err := submit(); !errors.Is(err, ErrAuthorPolicy) {
+		t.Fatal("missing manager", err)
+	}
+	var session *Session
+	decision := "refuse"
+	checks := 0
+	peer := intentTestPeer{func(m Envelope) error {
+		if m.Type != "agent.intent" {
+			return nil
+		}
+		checks++
+		var req struct {
+			RequestID    string
+			Instructions string
+			Input        authorIntentContext
+		}
+		if json.Unmarshal(m.Payload, &req) != nil || req.Instructions != intentInstructions || req.Input.Mode != "workspace-author" || req.Input.Latest != "請設定工作區的測試範圍" {
+			t.Fatal("incorrect intent request")
+		}
+		return e.Handle(ctx, session, NewEnvelope("agent.intent_result", session.managerID, "", "", map[string]string{"requestId": req.RequestID, "reply": decision}))
+	}}
+	session, err = e.AttachManager(ctx, "intent-local", 1, peer, nil, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = e.Handle(ctx, session, NewEnvelope("heartbeat", "intent-local", "", "", map[string]any{"active": []any{}})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = p.DB.ExecContext(ctx, `UPDATE managers SET dispatch_workspace_ids=ARRAY[$1::uuid]`, NewID()); err != nil {
+		t.Fatal(err)
+	}
+	if err := submit(); !errors.Is(err, ErrAuthorPolicy) || checks != 0 {
+		t.Fatal("out-of-scope transcript", err, checks)
+	}
+	if _, err = p.DB.ExecContext(ctx, `UPDATE managers SET dispatch_workspace_ids=NULL`); err != nil {
+		t.Fatal(err)
+	}
+	if err := submit(); !errors.Is(err, ErrAuthorOffTopic) || checks != 1 {
+		t.Fatal("refusal", err, checks)
+	}
+	decision = "allow"
+	if err := submit(); err != nil || checks != 2 {
+		t.Fatal("admission", err, checks)
 	}
 }
