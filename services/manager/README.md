@@ -8,7 +8,7 @@ Go Manager 主動連線 Server，以一次性 Docker Worker 執行 TypeScript sp
 
 | 環境變數 | 用途 |
 | --- | --- |
-| `SERVER_URL` | 必填，Server 的 HTTP(S) origin，例如 `http://localhost:8080`；不加 `/api`。HTTPS 自動使用 WSS。 |
+| `SERVER_URL` | 必填，Server 的 HTTP(S) 基底網址，可含反向代理路徑前綴，例如 `http://localhost:8080`；不加 `/api`。HTTPS 自動使用 WSS。 |
 | `MANAGER_TOKEN` | 必填，與 Server 相同的部署 token；用於 WS 與 raw artifact POST。 |
 | `MANAGER_ID` | 必填，穩定且唯一的節點識別；重啟沿用原值。 |
 | `WORKER_IMAGE` | 必填，例如 `whippet-worker:m1`；亦支援契約別名 `WHIPPET_WORKER_IMAGE`，兩者不可不同。 |

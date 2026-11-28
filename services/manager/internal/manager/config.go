@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -43,8 +44,8 @@ func LoadConfig() (Config, error) {
 		return cfg, errors.New("SERVER_URL, MANAGER_TOKEN, MANAGER_ID and WORKER_IMAGE are required")
 	}
 	u, err := url.Parse(cfg.ServerURL)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
-		return cfg, errors.New("SERVER_URL must be an http(s) origin, without credentials, query or path")
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.ForceQuery || strings.Contains(cfg.ServerURL, "#") || (u.Path != "" && (path.Clean(u.Path) != u.Path || u.EscapedPath() != u.Path || strings.Contains(u.Path, "\\"))) {
+		return cfg, errors.New("SERVER_URL must be an http(s) URL with an optional clean path prefix and no credentials, query or fragment")
 	}
 	if len(cfg.ManagerID) > 128 || strings.ContainsAny(cfg.ManagerID, "\r\n\t ") || strings.ContainsAny(cfg.Token, "\r\n") {
 		return cfg, errors.New("invalid MANAGER_ID or MANAGER_TOKEN")

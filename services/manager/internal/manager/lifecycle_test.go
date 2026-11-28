@@ -542,3 +542,27 @@ func TestM2MaxWorkersConfiguration(t *testing.T) {
 		})
 	}
 }
+
+func TestServerURLPrefix(t *testing.T) {
+	t.Setenv("MANAGER_TOKEN", "fixture")
+	t.Setenv("MANAGER_ID", "local")
+	t.Setenv("WORKER_IMAGE", "fixture")
+	t.Setenv("WHIPPET_WORKER_IMAGE", "")
+	for _, tc := range []struct {
+		url   string
+		valid bool
+	}{
+		{"https://example.test", true},
+		{"https://example.test/whippet-test/", true},
+		{"https://example.test/a/../b", false},
+		{"https://example.test/a%2fb", false},
+		{"https://example.test/a?x=1", false},
+		{"https://example.test/a#b", false},
+	} {
+		t.Setenv("SERVER_URL", tc.url)
+		_, err := LoadConfig()
+		if (err == nil) != tc.valid {
+			t.Errorf("LoadConfig(%q): %v", tc.url, err)
+		}
+	}
+}
