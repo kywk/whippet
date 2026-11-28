@@ -2,6 +2,17 @@
 
 M1–M6 本機功能證據沿用；目前由 UI／UX PM 推進 M7–M9 規格與後續實作。里程碑與唯一進度來源為 [實作計畫](implementation.md)。
 
+## 整合驗收與部署證據
+
+依[規格](../requirements/acceptance-reliability/spec.md)派工，狀態與實際承接者登記於[實作計畫](implementation.md#整合驗收與部署證據)。
+
+| 負責角色 | 寫入範圍與任務 | 交接成果 |
+| --- | --- | --- |
+| 建置整合 Agent | VAL-1，負責 WLA-4 建置入口與其操作指南 | 兩種來源模式的指令、來源摘要、產物識別及 A1 對照結果，供後續驗收引用。 |
+| Runtime QA Agent | VAL-2，負責登入測試頁、觀看端量測及既有 runner 的案例接線 | 交回可定向重跑的案例、偵測器對照與成功及重試兩段影格統計。 |
+| 部署 QA Agent | VAL-3，負責跨主機操作指南與部署驗收證據 | 交回拓樸、版本、Run 與報告結果、relay 統計。環境缺項逐項回報。 |
+| 總指揮 | VAL-4，單獨維護 README 與追蹤文件，核對各項證據 | 交回入口走讀結果，將各 owner 的實測結果登記於對應任務。 |
+
 ## Workspace 逐站登入驗證與測試帳號
 
 依 [實作計畫](implementation.md#workspace-逐站登入驗證與測試帳號) 的 WLA 編號派工，使用 [規格驗收情境](../requirements/workspace-test-accounts/spec.md#驗收情境) 交接。

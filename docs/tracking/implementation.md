@@ -2,6 +2,19 @@
 
 規格已寫入；M1 三個模組首批程式已交付；M1 已完成本機真實端到端驗收：成功、斷言失敗及兩份 HTML 報告顯示皆通過。M2、M3 已完成本機驗收；M4 已完成本機驗收；M5／M6 本機功能已通過，部署與開源缺口獨立追蹤；M7–M9 對話工作區已完成本機驗收；目前優先 M10–M12 Use Case 與 Agent 平台化（見文末章節）。需求以 [MVP 規格](../requirements/mvp.md) 為準，技術邊界見 [架構設計](../architecture/design.md)，負責範圍見 [分工計畫](delegation.md)。
 
+## 整合驗收與部署證據
+
+[需求與驗收 A1–A5](../requirements/acceptance-reliability/spec.md) · [分工任務](delegation.md#整合驗收與部署證據)
+
+最近完成逐站登入 A1–A6 的本機整合，見[驗收結果](#workspace-逐站登入驗證與測試帳號)。下一項先做 VAL-1，需要 Git、Go、Node、Docker 與既有 WLA-4 環境。開工時登記實際 owner，完成時在該列附結果與證據。
+
+| 任務 | 狀態 | 依賴與交付門檻 |
+| --- | --- | --- |
+| VAL-1 同源建置入口 | 待辦 | 沿用 WLA-4 的隔離建置與 focus runner，完成 A1 的兩次建置對照。 |
+| VAL-2 LiveView 影格驗收 | 待辦 | 可先準備合成標記與觀看端量測；用 VAL-1 產物完成 A2 與偵測器對照。 |
+| VAL-3 跨主機與 TURN | 待辦 | 可先準備 Linux、Mac、兩處網路與 TURN；用可識別版本分別驗收 A3、A4。 |
+| VAL-4 進度入口整理 | 待辦 | 可獨立交付。核對 README、實作摘要與分工入口，移除過時的優先順序，走讀 A5。 |
+
 ## Workspace 逐站登入驗證與測試帳號
 
 [功能規格與驗收 A1–A6](../requirements/workspace-test-accounts/spec.md) · [分工任務](delegation.md#workspace-逐站登入驗證與測試帳號)。本表為唯一進度來源，開工時登記實際 owner。
