@@ -7,14 +7,14 @@
 [需求與驗收 A1–A5](../requirements/acceptance-reliability/spec.md) · [分工任務](delegation.md#整合驗收與部署證據)
 
 - **最近完成** VAL-1、VAL-2 與 VAL-4 在本機通過。重跑方式見 [WLA-4 驗收指南](../../scripts/test/wla4-acceptance.md)。
-- **下一項** 取得已授權、不同網路的 Linux Server 與 Mac Runner 後執行 A3，再用可達的 TURN 服務執行 A4。[跨主機驗收指南](../guides/cross-host-acceptance.md)
+- **下一項** 提供可供本機 Manager 使用的核准 HTTPS／WSS 入口，接到已部署的隔離 Web，續驗 A3。A4 另需 TURN 與跨 NAT 觀看端。[跨主機驗收指南](../guides/cross-host-acceptance.md)
 - **所需環境** VAL-1／VAL-2 需要 Git、Go、Node.js、Docker、OpenSSL、Python 3、Playwright、Chromium 與本機 PostgreSQL 映像。VAL-3 的環境缺項見下表。
 
 | 任務 | 狀態／承接者 | 交付與驗收證據 |
 | --- | --- | --- |
 | VAL-1 同源建置入口（A1） | 完成（Herdr t114、整合） | 2026-11-28 在 f05928e 加入前後端探針。commit 快照 c29376cc 兩端均無標記，工作目錄快照 816b9c4b 兩端皆有。兩組皆完成四元件建置與 w1 訪客 smoke（409／409／200）。 |
 | VAL-2 LiveView 影格驗收（A2） | 完成（Herdr t115、整合） | 2026-11-28 在 be3527c 執行 login-live。錯密碼 Run abf56577-15f0-4ebc-a5a0-4473c170f2b2 回 401，重試 67aac592-9af3-479a-b72f-7100003c064d 回 200。正式 JPEG 觀看端各收到並檢查 5 張，敏感區間各停送約 3 秒，畫面清空後恢復，兩次皆無標記命中及解碼錯誤。 |
-| VAL-3 跨主機與 TURN（A3、A4） | 受阻（部署 QA，Herdr t116） | [重跑與取證指南](../guides/cross-host-acceptance.md) 已核對四組 Compose 設定、五段 shell 語法與八個內部連結。A3 待授權的跨網路 Linux／Mac 組合；A4 另需 TURN 與跨 NAT 觀看端，兩者均未實測。 |
+| VAL-3 跨主機與 TURN（A3、A4） | 受阻（A3 入口、A4 媒體環境） | 2026-11-28 Linux 隔離 Web 於主機內驗證 TLS 並回 200，API readiness 通過。Mac Worker 映像實際讀取另一主機的合成網站。Linux SSH 拒絕控制端 TCP 轉送（administratively prohibited），尚無 Manager ACK、正式 Run 或報告。A4 尚缺 TURN 與跨 NAT 觀看端。[重跑指南](../guides/cross-host-acceptance.md) |
 | VAL-4 進度入口整理（A5） | 完成（Codex） | 2026-11-28 從 README 走讀首個進度摘要，核對任務、環境、證據與分工連結。Markdown 標題錨點與 `git diff --check` 均通過。 |
 
 2026-11-28 使用 be3527c 的同一份凍結產物，完整 WLA-4 final 回歸通過 A1–A6，另以 login-live 定向驗收登入影格。模型使用合成供應商。跨主機與 TURN 的實測結果仍待補齊。
