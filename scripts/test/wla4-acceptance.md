@@ -111,3 +111,7 @@ assert source_ids["commit"] != source_ids["worktree"]
 print(json.dumps(source_ids))
 PY
 ~~~
+
+## 登入期間的 LiveView 影格（VAL-2）
+
+沿用上方建置入口的 run 指令，以新的輸出目錄傳入 `--wla final --wla-focus login-live`。此定向案例啟動合成商店與正式 Web 的 JPEG 觀看端，先校準標記辨識，再以錯誤密碼及修正後的憑證執行同一份草稿。結果在輸出的 `wla/wla4-acceptance.json`，包含兩次的 Run ID、站台結果、觀看連線、停送與恢復時間、逐影格標記及解碼錯誤。完整 WLA-4 回歸與此影格案例各執行一次。
