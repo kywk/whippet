@@ -2,11 +2,7 @@
 
 Self-hosted Playwright 測試平台，讓 QA 透過對話建立、驗證與發佈測試，並由遠端 Worker 執行。
 
-M1–M8 的本機功能流程已有驗收證據，包含多 Workspace 設定對話、角色登入探索、AI 產稿／驗證／摘要、人工發佈、正式執行與敏感輸入期間的唯讀監看。M9 的有界歷史檢索、設定變更後續編與舊版本快照不變也已通過本機整合驗收。最新狀態與證據以 [實作進度](docs/tracking/implementation.md) 為準。
-
-本機最新驗收介面為 **http://localhost:18087**，與下方 Compose 範例的舊 `18080` 環境分開。此驗收環境使用既有依賴及固定產物封裝，保留既有資料；請勿重新執行初始化腳本來更新它。
-
-本機驗證使用 Mac／OrbStack 的 Linux arm64 容器。Linux Server＋Mac Worker 跨主機與實際 TURN 跨 NAT 尚未驗證；不代表已具備完整正式環境驗證。
+最近完成事項、下一個可執行任務、環境需求與驗收證據見 [實作計畫](docs/tracking/implementation.md#整合驗收與部署證據)。
 
 ## 本機啟動
 
@@ -28,7 +24,7 @@ docker compose --env-file deploy/.env -f deploy/compose.server.yml up -d --no-bu
 docker compose --env-file deploy/.env -f deploy/compose.runner.yml -f deploy/compose.runner.local.yml up -d --no-build manager
 ```
 
-首次建置需要取得 Docker 基底映像與鎖定依賴。本輪禁止下載新套件，正常 Dockerfile 的離線建置因依賴層缺少快取而未通過；隔離驗收使用既有映像加已編譯產物，不把此方式當成乾淨安裝證據。
+首次建置需要取得 Docker 基底映像與鎖定依賴。
 
 開啟 **http://localhost:18080**，以預選的 **QA User** 登入，選擇「固定頁面：成功範例」並執行。要管理角色、Workspace 或 MCP Token，請在登入前切換身分。Server readiness 為 **http://localhost:18081/readyz**。Web／Server 綁定 `127.0.0.1`，PostgreSQL 留在 Compose 網路。[角色與權限](contracts/mvp-v13.md)
 
@@ -74,7 +70,6 @@ npx skills add kywk/whippet --skill whippet-worker
 
 - [MVP 範圍](docs/requirements/mvp.md)
 - [架構](docs/architecture/design.md)
-- [實作進度](docs/tracking/implementation.md)
 - [Agent 分工](docs/tracking/delegation.md)
 - [M1 共用契約](contracts/mvp-v1.md)
 - [M2 草稿、驗證與發佈](docs/guides/m2-drafts.md)

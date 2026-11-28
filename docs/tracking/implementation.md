@@ -1,19 +1,21 @@
 # MVP 實作計畫
 
-規格已寫入；M1 三個模組首批程式已交付；M1 已完成本機真實端到端驗收：成功、斷言失敗及兩份 HTML 報告顯示皆通過。M2、M3 已完成本機驗收；M4 已完成本機驗收；M5／M6 本機功能已通過，部署與開源缺口獨立追蹤；M7–M9 對話工作區已完成本機驗收；目前優先 M10–M12 Use Case 與 Agent 平台化（見文末章節）。需求以 [MVP 規格](../requirements/mvp.md) 為準，技術邊界見 [架構設計](../architecture/design.md)，負責範圍見 [分工計畫](delegation.md)。
+需求與技術邊界見 [MVP 規格](../requirements/mvp.md) 與 [架構設計](../architecture/design.md)。
 
 ## 整合驗收與部署證據
 
 [需求與驗收 A1–A5](../requirements/acceptance-reliability/spec.md) · [分工任務](delegation.md#整合驗收與部署證據)
 
-最近完成逐站登入 A1–A6 的本機整合，見[驗收結果](#workspace-逐站登入驗證與測試帳號)。下一項先做 VAL-1，需要 Git、Go、Node、Docker 與既有 WLA-4 環境。開工時登記實際 owner，完成時在該列附結果與證據。
+- **最近完成** VAL-4 通過 A5 入口走讀。2026-11-27 的本機整合以 Chromium 實際操作並使用合成模型回應，通過逐站登入 A1–A6。[WLA-4 驗收結果](#workspace-逐站登入驗證與測試帳號) · [重跑指令](../../scripts/test/wla4-acceptance.md)
+- **下一項** VAL-1 在獨立 checkout 以指定 commit 和工作目錄各建置一次，執行 A1 定向對照。VAL-2 接著用同源產物驗收 A2。
+- **所需環境** VAL-1／VAL-2 需要 Git、Go、Node.js、Docker、OpenSSL、Python 3、Playwright、Chromium 與本機 PostgreSQL 映像。VAL-3 的環境缺項見下表。
 
-| 任務 | 狀態 | 依賴與交付門檻 |
+| 任務 | 狀態／承接者 | 交付與驗收證據 |
 | --- | --- | --- |
-| VAL-1 同源建置入口 | 待辦 | 沿用 WLA-4 的隔離建置與 focus runner，完成 A1 的兩次建置對照。 |
-| VAL-2 LiveView 影格驗收 | 待辦 | 可先準備合成標記與觀看端量測；用 VAL-1 產物完成 A2 與偵測器對照。 |
-| VAL-3 跨主機與 TURN | 待辦 | 可先準備 Linux、Mac、兩處網路與 TURN；用可識別版本分別驗收 A3、A4。 |
-| VAL-4 進度入口整理 | 待辦 | 可獨立交付。核對 README、實作摘要與分工入口，移除過時的優先順序，走讀 A5。 |
+| VAL-1 同源建置入口（A1） | 進行中（建置整合 Agent） | 比對兩種來源模式的未提交變更，記錄來源摘要與 Web、Server、Manager、Worker 的產物識別。 |
+| VAL-2 LiveView 影格驗收（A2） | 待辦 | 可先準備合成標記與觀看端量測。用 VAL-1 產物驗證標記偵測器、失敗及重試期間的觀看影格，以及畫面恢復。 |
+| VAL-3 跨主機與 TURN（A3、A4） | 受阻（實測） | **A3 未驗證**，尚缺已授權且分處不同網路的 Linux Server 與 Mac 執行端組合。**A4 未驗證**，另缺媒體兩端可達的已授權 TURN 服務。可先依現有設定整理操作與取證流程。[獨立 Runner 設定](../guides/local-m1.md#6-獨立-runner-配置) · [LiveView 網路設定](../guides/live-view.md#網路與設定) |
+| VAL-4 進度入口整理（A5） | 完成（Codex） | 2026-11-28 從 README 走讀首個進度摘要，核對任務、環境、證據與分工連結。Markdown 標題錨點與 `git diff --check` 均通過。 |
 
 ## Workspace 逐站登入驗證與測試帳號
 
