@@ -63,10 +63,10 @@ def login_script(origin, role):
 import {{ loginAs }} from 'whippet/login';
 test('synthetic customer can log in', async ({{ page }}) => {{
   await page.goto({json.dumps(origin + '/login')});
-  const waitForPhase = (phase: string) => page.waitForFunction(async phase => {{
-    const response = await fetch('/val2/phase');
-    return (await response.json()).phase === phase;
-  }}, phase, {{ polling: 250, timeout: 50000 }});
+  const waitForPhase = (phase: string) => expect.poll(async () => {{
+    const response = await page.request.get(new URL('/val2/phase', page.url()).href);
+    return (await response.json()).phase;
+  }}, {{ intervals: [250], timeout: 50000 }}).toBe(phase);
   await waitForPhase('login');
   await loginAs(page, {json.dumps(role)}, '[name="username"]', '[name="password"]', 'button[type="submit"]');
   const outcome = page.getByTestId('val2-outcome');
