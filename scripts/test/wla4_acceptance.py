@@ -28,7 +28,8 @@ TERMINAL = {"succeeded", "failed", "timed_out", "cancelled", "interrupted"}
 SENTINEL = re.compile(r"wla4-(?:secret-[a-z0-9-]+|provider-key)")
 MANAGED_ENGINES = ("builtin", "vercel", "pi")
 A5_ENTRIES = (*MANAGED_ENGINES, "mcp-interactive", "mcp-claim")
-FINAL_FOCUS = ("a2", "a3", "a4", "a5", "a6", *A5_ENTRIES)
+LIVE_FOCUS = "login-live"
+FINAL_FOCUS = ("a2", "a3", "a4", "a5", "a6", *A5_ENTRIES, LIVE_FOCUS)
 ACCOUNT_PURPOSES = ("建立訂單", "檢查他人的訂單不可見")
 
 
@@ -67,20 +68,23 @@ def configure(server, manager, docker, image, *, final=False):
                    WHIPPET_AI_MODEL="wla4-builtin", **context_env)
 
 
-def prepare(stack, wave, services, root, env, token, database, image, api_url, cert, manager_env):
+def prepare(stack, wave, services, root, env, token, database, image, api_url, cert, manager_env, *, focus=None):
     docker, start, wait_http, await_ready = services
     shop = HERE.parents[1] / "deploy/fixtures/m10-shop/server.mjs"
     credentials = [[f"wla4-secret-{uuid4().hex}", f"wla4-secret-{uuid4().hex}"] for _ in range(2)]
     shop_env = {**env, **dict(zip(("FIXTURE_USERNAME", "FIXTURE_PASSWORD", "FIXTURE_SECOND_USERNAME",
                                   "FIXTURE_SECOND_PASSWORD"), credentials[0] + credentials[1]))}
-    origins, containers = {}, {}
+    origins, containers, driver_env = {}, {}, {}
     sites = ("guest",) if wave == "w1" else ("guest", "orders")
     for site in sites:
         name = f"whippet-wla4-{site}-{token}"
         site_env = {**shop_env, "WLA4_SHARED_SHOP": "1" if site == "orders" else "0"}
+        live_shop = site == "orders" and focus == LIVE_FOCUS
+        fixture = HERE / "wla4-live-shop.mjs" if live_shop else shop
+        publish = ("--publish", "127.0.0.1::8081") if live_shop else ()
         docker("run", "--rm", "--detach", "--pull=never", "--name", name, "--network", "bridge",
                *(argument for key in site_env.keys() - env.keys() for argument in ("--env", key)),
-               "--mount", f"type=bind,src={shop},dst=/wla-shop.mjs,readonly",
+               *publish, "--mount", f"type=bind,src={fixture},dst=/wla-shop.mjs,readonly",
                "--entrypoint", "node", image, "/opt/wla4/fixture.mjs", "--shop", env=site_env, check=True)
         stack.callback(docker, "stop", name, check=True)
         listening_ports = [8080, 8081, 8082] if site == "orders" else [8080]
@@ -91,6 +95,9 @@ def prepare(stack, wave, services, root, env, token, database, image, api_url, c
         }}"""
         await_ready(lambda: docker("exec", name, "node", "-e", probe).returncode == 0,
                     f"isolated shop {site} did not open all required ports")
+        if live_shop:
+            address = docker("port", name, "8081/tcp", check=True).stdout.strip()
+            driver_env["WLA4_LIVE_FIXTURE"] = "http://" + address
         ip = docker("inspect", name, "--format", "{{.NetworkSettings.Networks.bridge.IPAddress}}", check=True).stdout.strip()
         if not ipaddress.IPv4Address(ip).is_private:
             raise RuntimeError("shop must use a private Docker bridge address")
@@ -102,6 +109,8 @@ def prepare(stack, wave, services, root, env, token, database, image, api_url, c
 
     if wave == "final":
         content = configuration("WLA4 v8", [("Legacy shop", origins["orders"], "authenticated")])
+        if focus == LIVE_FOCUS:
+            content["timeoutMs"] = 90000  # Allow the pre/post viewer gates in the validation script.
         content.pop("testAccounts")
         content["targets"][0].pop("testScope")
         content["loginRoles"] = [{"roleId": LEGACY_ROLE, "name": "會員", "loginMethod": "form",
@@ -113,6 +122,8 @@ def prepare(stack, wave, services, root, env, token, database, image, api_url, c
         COMMIT;"""
         docker("exec", "-i", database, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres",
                input=sql, check=True)
+    # The result proxy handles Manager control only. VAL-2 needs the Server media socket.
+    if wave == "final" and focus != LIVE_FOCUS:
         docker("cp", f"{containers['guest']}:/opt/whippet/worker/node_modules/ws", str(root / "ws"), check=True)
         with socket.socket() as connection:
             connection.bind(("127.0.0.1", 0))
@@ -123,7 +134,7 @@ def prepare(stack, wave, services, root, env, token, database, image, api_url, c
         url = f"https://127.0.0.1:{port}"
         wait_http(url + "/readyz", proxy, "WLA result proxy", cert)
         manager_env["SERVER_URL"] = url
-    return {"WLA4_SCOPE": json.dumps({"origins": origins, "containers": containers}),
+    return {**driver_env, "WLA4_SCOPE": json.dumps({"origins": origins, "containers": containers}),
             "WLA4_SITE_CREDENTIALS": json.dumps(credentials)}
 
 
@@ -812,7 +823,91 @@ test('original v8 role', async ({{page}}) => {{
                               "proposalVerificationRunId": evidence, "upgradedValidationRunId": rerun,
                               "missingEvidence": 409, "staleRevision": 409}
 
+    def login_live(self):
+        from wla4_live_view import advance, calibrate, login_script, watch_login
+
+        self.stage = "VAL-2 detector control"
+        fixture = os.environ.get("WLA4_LIVE_FIXTURE", "")
+        address = urlsplit(fixture)
+        check(address.scheme == "http" and address.netloc == f"127.0.0.1:{address.port}" and address.port and
+              not (address.path or address.query or address.fragment), "use the isolated VAL-2 fixture port")
+        evidence = {"control": {}, "trials": []}
+        self.checks["VAL-2"] = evidence
+        context = self.browser.new_context(viewport={"width": 1280, "height": 720})
+        try:
+            control = context.new_page()
+            calibrate(control, fixture, evidence["control"])
+            control.close()
+            page = self.admin
+            page.bring_to_front()
+            self.stage = "VAL-2 draft setup"
+            title = "VAL-2 登入監看"
+            route, draft = self.adm.author_draft(page, self.base, LEGACY_WORKSPACE, title)
+            script = login_script(self.origins["orders"], LEGACY_ROLE)
+            self.api("PUT", route + "/draft", data={**draft, "script": script})
+            evidence["scriptSha256"] = hashlib.sha256(script.encode()).hexdigest()
+            evidence["testId"] = route.rsplit("/", 1)[-1]
+            workspace = self.workspace(LEGACY_WORKSPACE)["name"]
+            rail = page.get_by_role("navigation", name="Workspace 與測試", exact=True)
+            rail.wait_for()
+            if not rail.get_by_role("button", name=f"{workspace} · Workspace 首頁", exact=True).is_visible():
+                rail.get_by_role("button", name="更多功能", exact=True).click()
+                rail.get_by_role("group", name="切換 Workspace").get_by_role("button", name=workspace, exact=True).click()
+            rail.get_by_role("button", name="重整測試列表", exact=True).click()
+            rail.get_by_role("button", name=re.compile(f"^{title}")).click()
+            page.get_by_role("tab", name=re.compile("^對話編輯")).click()
+            editing = page.get_by_role("tabpanel", name="測試編輯模式", exact=True)
+
+            username, correct = self.credentials[0]
+            wrong = f"wla4-secret-{uuid4().hex}"
+            credential_path = f"/api/workspaces/{LEGACY_WORKSPACE}/roles/{LEGACY_ROLE}/credentials"
+            secret_version = 0
+            for label, password, site_status, run_status in (("wrong-password", wrong, 401, "failed"),
+                                                             ("retry", correct, 200, "succeeded")):
+                self.stage = f"VAL-2 {label}"
+                saved = self.api("PUT", credential_path, data={"expectedSecretVersion": secret_version,
+                                                               "username": username, "password": password})
+                check(saved["configured"] and saved["secretVersion"] > secret_version, "credential version did not advance")
+                secret_version = saved["secretVersion"]
+                current = self.api("GET", route + "/draft")
+                check(current["script"] == script and current["editingSessionId"] == draft["editingSessionId"],
+                      "retry must execute the same draft script")
+                revision = current["revision"]
+                trial = {"case": label, "credentialVersion": secret_version, "draftRevision": revision,
+                         "expectedSiteStatus": site_status, "expectedRunStatus": run_status}
+                evidence["trials"].append(trial)
+
+                editing.get_by_role("tab", name=re.compile("^腳本")).click()
+                editing.get_by_role("button", name="重新載入草稿", exact=True).click()
+                editing.get_by_text(f"已載入 revision {revision}。", exact=True).wait_for()
+                editing.get_by_role("tab", name=re.compile("^驗證與發佈")).click()
+                path = route + "/draft/validate"
+                with page.expect_response(lambda res: res.url.endswith(path) and res.request.method == "POST") as queued:
+                    editing.get_by_role("button", name="驗證此 revision", exact=True).click()
+                run = clean(self.adm.checked(queued.value, 202))
+                run_id = trial["runId"] = run["id"]
+                check(run["kind"] == "validation" and run["draftRevision"] == revision, "Web queued a different draft revision")
+                running = wait_for(lambda: self.run(run_id), lambda row: row["status"] in TERMINAL | {"running"},
+                                   f"Run {run_id} starts", timeout=45)
+                check(running["status"] == "running", "validation ended before opening LiveView")
+                editing.get_by_role("tab", name=re.compile("^紀錄與畫面")).click()
+                watch = editing.get_by_role("button", name=f"開始監看 Run {run_id}", exact=True)
+                watch_login(page, context.request, fixture, run_id, watch, trial)
+                advance(context.request, fixture, "after")
+                trial["runStatus"] = self.terminal(run_id, TERMINAL)["status"]
+                advance(context.request, fixture, "finished")
+            self.stage = "VAL-2 evidence"
+            for trial in evidence["trials"]:
+                check(trial["siteStatus"] == trial["expectedSiteStatus"] and trial["runStatus"] == trial["expectedRunStatus"],
+                      f"{trial['case']} did not reach the expected login result")
+                check(trial["viewer"]["passed"], f"{trial['case']} did not satisfy the LiveView frame checks")
+        finally:
+            context.close()
+
     def final(self, focus):
+        if focus == LIVE_FOCUS:
+            self.login_live()
+            return
         if focus == "a6":
             self.stage = "A6"
             self.legacy()
