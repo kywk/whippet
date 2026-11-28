@@ -311,7 +311,7 @@ def run(args):
             if args.wla:
                 services = (docker, start, wait_http, await_ready)
                 driver_env.update(prepare(stack, args.wla, services, root, env, token, database,
-                                          worker, api_url, cert, manager_env))
+                                          worker, api_url, cert, manager_env, focus=args.wla_focus))
             if args.live_a2:
                 seed_a2(database)
             if args.live_a3:
@@ -392,7 +392,7 @@ def main():
     stages.add_argument("--live-ai", action="store_true", help="use the synthetic Worker for proposals, probes and authors")
     stages.add_argument("--live-a3", action="store_true", help="exercise real Manager and MCP resource concurrency")
     stages.add_argument("--wla", choices=("w1", "final"), help="run Workspace login acceptance against isolated services")
-    parser.add_argument("--wla-focus", choices=("a2", "a3", "a4", "a5", "a6", "builtin", "vercel", "pi", "mcp-interactive", "mcp-claim"),
+    parser.add_argument("--wla-focus", choices=("a2", "a3", "a4", "a5", "a6", "builtin", "vercel", "pi", "mcp-interactive", "mcp-claim", "login-live"),
                         help="run one final acceptance case and its prerequisites")
     parser.add_argument("--manager", type=Path)
     parser.add_argument("--worker-image", help="existing Docker image provided by Runtime")
